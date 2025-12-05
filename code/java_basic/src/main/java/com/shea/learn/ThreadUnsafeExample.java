@@ -1,4 +1,4 @@
-package com.shea.learn;
+package main.java.com.shea.learn;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;

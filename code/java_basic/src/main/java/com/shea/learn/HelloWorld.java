@@ -1,4 +1,4 @@
-package com.shea.learn;
+package main.java.com.shea.learn;
 
 public class HelloWorld {
     public static void main(String[] args) {
