@@ -1,8 +1,8 @@
-package com.shea.learn.abstractfactory.factory;
+package abstractfactory.factory;
 
-import com.shea.learn.abstractfactory.product.Button;
-import com.shea.learn.abstractfactory.product.Checkbox;
-import com.shea.learn.abstractfactory.product.TextField;
+import abstractfactory.product.Button;
+import abstractfactory.product.Checkbox;
+import abstractfactory.product.TextField;
 
 /**
  * 抽象工厂：定义 "创建一整套 UI 组件" 的接口

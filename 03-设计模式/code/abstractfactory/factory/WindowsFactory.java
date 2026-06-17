@@ -1,11 +1,11 @@
-package com.shea.learn.abstractfactory.factory;
+package abstractfactory.factory;
 
-import com.shea.learn.abstractfactory.product.Button;
-import com.shea.learn.abstractfactory.product.Checkbox;
-import com.shea.learn.abstractfactory.product.TextField;
-import com.shea.learn.abstractfactory.product.windows.WindowsButton;
-import com.shea.learn.abstractfactory.product.windows.WindowsCheckbox;
-import com.shea.learn.abstractfactory.product.windows.WindowsTextField;
+import abstractfactory.product.Button;
+import abstractfactory.product.Checkbox;
+import abstractfactory.product.TextField;
+import abstractfactory.product.windows.WindowsButton;
+import abstractfactory.product.windows.WindowsCheckbox;
+import abstractfactory.product.windows.WindowsTextField;
 
 /**
  * Windows 工厂：生产一整套 Windows 风格的 UI 组件

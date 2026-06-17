@@ -1,4 +1,3 @@
-package main.java.com.shea.learn;
 
 /**
  * 手动实现一个简单的单向链表来理解其工作原理

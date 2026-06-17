@@ -1,6 +1,6 @@
-package com.shea.learn.abstractfactory.product.windows;
+package abstractfactory.product.windows;
 
-import com.shea.learn.abstractfactory.product.Button;
+import abstractfactory.product.Button;
 
 /**
  * Windows 产品族 - 按钮

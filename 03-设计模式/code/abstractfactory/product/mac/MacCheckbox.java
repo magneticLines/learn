@@ -1,6 +1,6 @@
-package com.shea.learn.abstractfactory.product.mac;
+package abstractfactory.product.mac;
 
-import com.shea.learn.abstractfactory.product.Checkbox;
+import abstractfactory.product.Checkbox;
 
 /**
  * Mac 产品族 - 复选框

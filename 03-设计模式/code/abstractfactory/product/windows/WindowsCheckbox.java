@@ -1,6 +1,6 @@
-package com.shea.learn.abstractfactory.product.windows;
+package abstractfactory.product.windows;
 
-import com.shea.learn.abstractfactory.product.Checkbox;
+import abstractfactory.product.Checkbox;
 
 /**
  * Windows 产品族 - 复选框

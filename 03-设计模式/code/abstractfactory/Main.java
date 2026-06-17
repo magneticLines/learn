@@ -1,8 +1,8 @@
-package com.shea.learn.abstractfactory;
+package abstractfactory;
 
-import com.shea.learn.abstractfactory.factory.GUIFactory;
-import com.shea.learn.abstractfactory.factory.MacFactory;
-import com.shea.learn.abstractfactory.factory.WindowsFactory;
+import abstractfactory.factory.GUIFactory;
+import abstractfactory.factory.MacFactory;
+import abstractfactory.factory.WindowsFactory;
 
 /**
  * 启动入口：根据操作系统选择工厂

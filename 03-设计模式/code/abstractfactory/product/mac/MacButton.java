@@ -1,6 +1,6 @@
-package com.shea.learn.abstractfactory.product.mac;
+package abstractfactory.product.mac;
 
-import com.shea.learn.abstractfactory.product.Button;
+import abstractfactory.product.Button;
 
 /**
  * Mac 产品族 - 按钮

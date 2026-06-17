@@ -1,4 +1,4 @@
-package com.shea.learn.abstractfactory.product;
+package abstractfactory.product;
 
 /**
  * 抽象产品B：文本框

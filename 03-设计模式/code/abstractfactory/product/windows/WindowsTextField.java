@@ -1,6 +1,6 @@
-package com.shea.learn.abstractfactory.product.windows;
+package abstractfactory.product.windows;
 
-import com.shea.learn.abstractfactory.product.TextField;
+import abstractfactory.product.TextField;
 
 /**
  * Windows 产品族 - 文本框

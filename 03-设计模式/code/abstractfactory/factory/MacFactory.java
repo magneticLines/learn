@@ -1,11 +1,11 @@
-package com.shea.learn.abstractfactory.factory;
+package abstractfactory.factory;
 
-import com.shea.learn.abstractfactory.product.Button;
-import com.shea.learn.abstractfactory.product.Checkbox;
-import com.shea.learn.abstractfactory.product.TextField;
-import com.shea.learn.abstractfactory.product.mac.MacButton;
-import com.shea.learn.abstractfactory.product.mac.MacCheckbox;
-import com.shea.learn.abstractfactory.product.mac.MacTextField;
+import abstractfactory.product.Button;
+import abstractfactory.product.Checkbox;
+import abstractfactory.product.TextField;
+import abstractfactory.product.mac.MacButton;
+import abstractfactory.product.mac.MacCheckbox;
+import abstractfactory.product.mac.MacTextField;
 
 /**
  * Mac 工厂：生产一整套 Mac 风格的 UI 组件

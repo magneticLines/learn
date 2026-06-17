@@ -1,4 +1,4 @@
-package com.shea.learn.abstractfactory.product;
+package abstractfactory.product;
 
 /**
  * 抽象产品C：复选框

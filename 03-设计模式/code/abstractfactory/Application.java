@@ -1,9 +1,9 @@
-package com.shea.learn.abstractfactory;
+package abstractfactory;
 
-import com.shea.learn.abstractfactory.factory.GUIFactory;
-import com.shea.learn.abstractfactory.product.Button;
-import com.shea.learn.abstractfactory.product.Checkbox;
-import com.shea.learn.abstractfactory.product.TextField;
+import abstractfactory.factory.GUIFactory;
+import abstractfactory.product.Button;
+import abstractfactory.product.Checkbox;
+import abstractfactory.product.TextField;
 
 /**
  * 客户端：Application

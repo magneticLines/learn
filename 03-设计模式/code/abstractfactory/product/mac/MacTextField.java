@@ -1,6 +1,6 @@
-package com.shea.learn.abstractfactory.product.mac;
+package abstractfactory.product.mac;
 
-import com.shea.learn.abstractfactory.product.TextField;
+import abstractfactory.product.TextField;
 
 /**
  * Mac 产品族 - 文本框
