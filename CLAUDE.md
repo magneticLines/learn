@@ -1,55 +1,18 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 项目性质
 
-## Repository Overview
+这是一个全栈学习项目（Java + 前端）。每次讲解知识点时，请做到：
 
-This is a Java learning repository organized **by topic**. Each top-level numbered folder is one study topic and (where applicable) bundles its notes and code together:
+- **讲透原理**：不止说"是什么"，要说清楚"为什么这么设计"、"它解决了什么问题"
+- **举具体例子**：用生活类比或代码示例帮助建立直觉，避免堆砌定义
+- **建立联系**：把当前知识点与已学内容、Java 生态（JDK 源码、Spring 等）、底层原理（OS、内存模型）连起来讲
+- **点出陷阱**：初学者容易犯的错、常见误区、面试高频考点要主动提醒
+- **给出对比**：同类方案之间的取舍（如 ArrayList vs LinkedList、synchronized vs Lock），不要只介绍一种
 
-- **`notes/`** — Chinese-language study notes (numbered markdown files)
-- **`code/`** — Runnable Java examples for that topic
+## 代码风格
 
-```
-00-Java基础/code/        HelloWorld and other entry-level snippets
-01-数据结构/             notes/ + code/ (SimpleLinkedList, SimpleHashTable)
-02-并发/                 notes/ + code/ (ThreadUnsafeExample)
-03-设计模式/             notes/ + code/ (abstractfactory)
-04-工程实战/             notes/ + code/ (springbootDemo)
-05-git/                  notes/ only
-docs/                    Tooling docs (e.g. prompt.md — AI tutor prompt)
-```
-
-## Topics
-
-| Folder | Notes topics | Code |
-|---|---|---|
-| `00-Java基础/` | — | `HelloWorld` |
-| `01-数据结构/` | Arrays, linked lists, hash tables, stacks/queues, trees (BST, AVL, red-black) + drawio flowcharts | `SimpleLinkedList`, `SimpleHashTable` |
-| `02-并发/` | Locks, synchronized, volatile, final, JUC atomic classes | `ThreadUnsafeExample` |
-| `03-设计模式/` | OOP basics, SOLID, design pattern overview, 8 patterns (singleton/factory/abstract-factory/adapter/decorator/proxy/template/strategy/observer/command) | `abstractfactory/` |
-| `04-工程实战/` | Spring Security/Shiro, RBAC, login modules, SPI, if-else refactoring | `springbootDemo/` |
-| `05-git/` | Windows multi-GitHub account setup | — |
-
-## Teaching code (`*/code/`)
-
-Single-file examples have **no `package` declaration and no `pom.xml`** — run them directly via the IDE (run the `main` method). The `03-设计模式/code/abstractfactory` example is a multi-package program rooted at package `abstractfactory`; mark `03-设计模式/code/` as the source root to run it.
-
-## `04-工程实战/code/springbootDemo`
-
-The one full build project. Spring Boot 2.7.18 web application (Java 11). Entry point: `SheaApplication.java`.
-
-**Build & Run:**
-```bash
-cd 04-工程实战/code/springbootDemo
-mvn clean package          # build JAR
-mvn spring-boot:run        # run locally (port 8081)
-```
-
-**Test endpoint:** `GET http://localhost:8081/test/hello`
-
-**Deploy to Docker:**
-```bash
-mvn clean package
-./deploy.sh   # builds image, pushes to private registry, deploys via SSH
-```
-The deploy script targets a private registry at `127.0.0.1:5000` and remote server `172.17.97.140` — update `deploy.sh` variables before use.
+写示例代码时：
+- 注释解释"为什么这么写"，而不是"这行做什么"
+- 示例尽量精简，聚焦在演示当前知识点，不引入无关复杂度
+- 如果涉及并发、设计模式等，给出"反例 → 问题 → 正例"的对比结构更易理解
