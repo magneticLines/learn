@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTML · script 加载策略 async / defer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 48px 20px 80px;
+      line-height: 1.8;
+    }
+
+    .page { max-width: 720px; margin: 0 auto; }
+
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+
+    .hero { margin-bottom: 40px; }
+    .hero .tag {
+      font-size: 0.72rem; color: #fb923c;
+      border: 1px solid #7c2d12; border-radius: 4px;
+      padding: 2px 8px; margin-bottom: 12px; display: inline-block;
+    }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p  { color: #64748b; font-size: 0.9rem; }
+
+    h2 {
+      font-size: 1rem; font-weight: 600; color: #fb923c;
+      margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fb923c;
+    }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+
+    .code-block {
+      background: #1e2030; border: 1px solid #2d3148;
+      border-radius: 10px; overflow: hidden; margin: 16px 0;
+    }
+    .code-block .cb-header {
+      padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148;
+      font-size: 0.72rem; color: #475569;
+    }
+    .code-block pre {
+      padding: 16px; overflow-x: auto;
+      font-size: 0.85rem; line-height: 1.7;
+      font-family: "Fira Code", "Cascadia Code", Consolas, monospace;
+    }
+
+    .t     { color: #64748b; }
+    .tag-c { color: #f87171; }
+    .attr  { color: #fbbf24; }
+    .val   { color: #86efac; }
+    .text  { color: #e2e8f0; }
+    .punct { color: #475569; }
+    .js-key { color: #c084fc; }
+    .js-fn  { color: #fbbf24; }
+    .js-str { color: #86efac; }
+
+    .callout {
+      border-radius: 8px; padding: 14px 16px;
+      font-size: 0.85rem; margin: 16px 0; border-left: 3px solid;
+    }
+    .callout.info   { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn   { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip    { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout strong { color: inherit; filter: brightness(1.3); }
+
+    table {
+      width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0;
+    }
+    th {
+      background: #252840; color: #94a3b8; font-weight: 600;
+      padding: 10px 14px; text-align: left; border: 1px solid #2d3148;
+    }
+    td {
+      padding: 9px 14px; border: 1px solid #1e2030;
+      color: #94a3b8; vertical-align: top;
+    }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code {
+      background: #2d3148; padding: 1px 5px; border-radius: 3px;
+      font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0;
+    }
+    p code, li code {
+      background: #1e2030; border: 1px solid #2d3148;
+      padding: 1px 6px; border-radius: 4px;
+      font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24;
+    }
+
+    /* 时间线可视化 */
+    .timeline {
+      background: #1e2030; border: 1px solid #2d3148;
+      border-radius: 10px; overflow: hidden; margin: 16px 0;
+    }
+    .timeline .tl-header {
+      padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148;
+      font-size: 0.72rem; color: #475569;
+    }
+    .tl-body { padding: 18px 20px; }
+    .tl-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 12px; font-size: 0.75rem;
+    }
+    .tl-row:last-child { margin-bottom: 0; }
+    .tl-label { width: 70px; flex-shrink: 0; color: #64748b; font-family: Consolas, monospace; }
+    .tl-track { flex: 1; display: flex; height: 22px; border-radius: 4px; overflow: hidden; background: #13151f; }
+    .tl-seg {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; color: #0f1117; font-weight: 700; white-space: nowrap;
+    }
+    .seg-parse   { background: #60a5fa; }
+    .seg-fetch   { background: #fbbf24; }
+    .seg-exec    { background: #f87171; }
+    .seg-wait    { background: #2d3148; color: #475569; }
+    .tl-legend { display: flex; gap: 16px; margin-top: 10px; font-size: 0.7rem; color: #64748b; }
+    .tl-legend span { display: flex; align-items: center; gap: 5px; }
+    .legend-box { width: 12px; height: 12px; border-radius: 2px; }
+
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+
+    .nav-footer {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030;
+    }
+    .nav-btn {
+      font-size: 0.82rem; color: #475569; text-decoration: none;
+      padding: 8px 16px; border: 1px solid #2d3148;
+      border-radius: 6px; transition: all 0.15s;
+    }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next  { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next:hover { background: #431407; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../frontend-roadmap.html">路线图</a> / HTML / Head 元数据 / script 加载策略
+  </div>
+
+  <div class="hero">
+    <div class="tag">HTML · Head 元数据</div>
+    <h1>script 加载策略：async / defer</h1>
+    <p>同一段 JS，放对位置、加对属性，首屏可以快几百毫秒；放错了，整个页面会卡在那里等它下载。这是性能优化里最高频的一个考点。</p>
+  </div>
+
+
+  <!-- ─────────────────────────────────── -->
+  <h2>一、先理解问题：JS 为什么会阻塞页面</h2>
+
+  <p>
+    浏览器解析 HTML 是<strong>从上到下逐行进行</strong>的，边解析边构建 DOM 树。
+    当它遇到一个 <code>&lt;script&gt;</code> 标签时，默认行为是：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header">默认 script 的阻塞行为</div>
+    <pre><span class="t">// 浏览器遇到普通 script 时：</span>
+<span class="text">1. 暂停 HTML 解析（DOM 构建停止）</span>
+<span class="text">2. 下载 JS 文件（网络往返，可能几百毫秒）</span>
+<span class="text">3. 执行 JS</span>
+<span class="text">4. 执行完毕，才继续解析后面的 HTML</span></pre>
+  </div>
+
+  <p>
+    这就是为什么<strong>把 <code>&lt;script&gt;</code> 放在 <code>&lt;head&gt;</code> 里会拖慢首屏</strong>——
+    用户盯着白屏，等 JS 下载执行完，后面的内容才开始渲染。
+  </p>
+
+  <div class="callout warn">
+    <strong>为什么必须阻塞？</strong>因为 JS 可能用 <code>document.write()</code> 修改正在解析的文档，
+    或者操作还没构建出来的 DOM 节点。浏览器无法预知，只能保守地"停下来等 JS 跑完"。
+    这是历史设计决定的安全默认行为，<code>async</code> / <code>defer</code> 就是用来打破它的。
+  </div>
+
+
+  <!-- ─────────────────────────────────── -->
+  <h2>二、三种加载方式对比</h2>
+
+  <div class="code-block">
+    <div class="cb-header">三种写法</div>
+    <pre><span class="t">&lt;!-- ① 普通：下载 + 执行都阻塞 HTML 解析 --&gt;</span>
+<span class="punct">&lt;</span><span class="tag-c">script</span> <span class="attr">src</span><span class="punct">=</span><span class="val">"app.js"</span><span class="punct">&gt;&lt;/</span><span class="tag-c">script</span><span class="punct">&gt;</span>
+
+<span class="t">&lt;!-- ② async：下载不阻塞，下载完立即执行（执行时阻塞）--&gt;</span>
+<span class="punct">&lt;</span><span class="tag-c">script</span> <span class="attr">src</span><span class="punct">=</span><span class="val">"app.js"</span> <span class="attr">async</span><span class="punct">&gt;&lt;/</span><span class="tag-c">script</span><span class="punct">&gt;</span>
+
+<span class="t">&lt;!-- ③ defer：下载不阻塞，等 HTML 解析完才执行 --&gt;</span>
+<span class="punct">&lt;</span><span class="tag-c">script</span> <span class="attr">src</span><span class="punct">=</span><span class="val">"app.js"</span> <span class="attr">defer</span><span class="punct">&gt;&lt;/</span><span class="tag-c">script</span><span class="punct">&gt;</span></pre>
+  </div>
+
+  <h3>① 普通 script（阻塞）</h3>
+  <div class="timeline">
+    <div class="tl-header">解析被打断，下载和执行期间页面停滞</div>
+    <div class="tl-body">
+      <div class="tl-row">
+        <span class="tl-label">HTML 解析</span>
+        <div class="tl-track">
+          <div class="tl-seg seg-parse" style="width:25%">解析</div>
+          <div class="tl-seg seg-wait" style="width:45%">⏸ 暂停</div>
+          <div class="tl-seg seg-parse" style="width:30%">继续解析</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <span class="tl-label">script</span>
+        <div class="tl-track">
+          <div class="tl-seg seg-wait" style="width:25%"></div>
+          <div class="tl-seg seg-fetch" style="width:30%">下载</div>
+          <div class="tl-seg seg-exec" style="width:15%">执行</div>
+          <div class="tl-seg seg-wait" style="width:30%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>② async（异步，谁先下完谁先执行）</h3>
+  <div class="timeline">
+    <div class="tl-header">下载与解析并行，但下载完会打断解析立即执行</div>
+    <div class="tl-body">
+      <div class="tl-row">
+        <span class="tl-label">HTML 解析</span>
+        <div class="tl-track">
+          <div class="tl-seg seg-parse" style="width:50%">解析</div>
+          <div class="tl-seg seg-wait" style="width:15%">⏸</div>
+          <div class="tl-seg seg-parse" style="width:35%">继续</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <span class="tl-label">script</span>
+        <div class="tl-track">
+          <div class="tl-seg seg-fetch" style="width:50%">下载（并行）</div>
+          <div class="tl-seg seg-exec" style="width:15%">执行</div>
+          <div class="tl-seg seg-wait" style="width:35%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>③ defer（延迟，解析完按顺序执行）</h3>
+  <div class="timeline">
+    <div class="tl-header">下载与解析并行，执行推迟到 HTML 解析完成后</div>
+    <div class="tl-body">
+      <div class="tl-row">
+        <span class="tl-label">HTML 解析</span>
+        <div class="tl-track">
+          <div class="tl-seg seg-parse" style="width:70%">完整解析（不被打断）</div>
+          <div class="tl-seg seg-exec" style="width:30%">执行 JS</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <span class="tl-label">script</span>
+        <div class="tl-track">
+          <div class="tl-seg seg-fetch" style="width:45%">下载（并行）</div>
+          <div class="tl-seg seg-wait" style="width:25%">等待解析完</div>
+          <div class="tl-seg seg-exec" style="width:30%">执行</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tl-legend">
+    <span><span class="legend-box seg-parse"></span>HTML 解析</span>
+    <span><span class="legend-box seg-fetch"></span>JS 下载</span>
+    <span><span class="legend-box seg-exec"></span>JS 执行</span>
+    <span><span class="legend-box seg-wait"></span>等待/暂停</span>
+  </div>
+
+
+  <!-- ─────────────────────────────────── -->
+  <h2>三、核心差异表</h2>
+
+  <table>
+    <tr><th>特性</th><th>普通</th><th>async</th><th>defer</th></tr>
+    <tr><td>下载是否阻塞解析</td><td>是</td><td>否（并行）</td><td>否（并行）</td></tr>
+    <tr><td>执行时机</td><td>下载完立即</td><td>下载完立即</td><td>HTML 解析完后</td></tr>
+    <tr><td>执行是否阻塞解析</td><td>是</td><td>是</td><td>否</td></tr>
+    <tr><td>多个脚本执行顺序</td><td>按书写顺序</td><td><strong>不保证</strong>（谁先下完谁先跑）</td><td>按书写顺序</td></tr>
+    <tr><td>DOM 是否就绪</td><td>不一定</td><td>不一定</td><td><strong>一定就绪</strong></td></tr>
+    <tr><td>对 inline 脚本有效</td><td>—</td><td>无效</td><td>无效</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>两个关键区别记牢</strong>：<br>
+    1. <strong>执行顺序</strong>：<code>defer</code> 保证按书写顺序执行，<code>async</code> 不保证（哪个先下载完哪个先跑）。<br>
+    2. <strong>DOM 就绪</strong>：<code>defer</code> 执行时整个 DOM 已构建完成，可以安全操作任意元素；<code>async</code> 不一定。
+  </div>
+
+
+  <!-- ─────────────────────────────────── -->
+  <h2>四、async 和 defer 只对外部脚本有效</h2>
+
+  <div class="code-block">
+    <div class="cb-header">注意有 src 才生效</div>
+    <pre><span class="t">&lt;!-- ✅ 有效：有 src 的外部脚本 --&gt;</span>
+<span class="punct">&lt;</span><span class="tag-c">script</span> <span class="attr">src</span><span class="punct">=</span><span class="val">"app.js"</span> <span class="attr">defer</span><span class="punct">&gt;&lt;/</span><span class="tag-c">script</span><span class="punct">&gt;</span>
+
+<span class="t">&lt;!-- ❌ 无效：内联脚本上的 async/defer 会被忽略 --&gt;</span>
+<span class="punct">&lt;</span><span class="tag-c">script</span> <span class="attr">defer</span><span class="punct">&gt;</span>
+  <span class="js-key">console</span>.<span class="js-fn">log</span>(<span class="js-str">'我会立即执行，defer 没用'</span>)
+<span class="punct">&lt;/</span><span class="tag-c">script</span><span class="punct">&gt;</span></pre>
+  </div>
+
+
+  <!-- ─────────────────────────────────── -->
+  <h2>五、那"放在 body 底部"算什么</h2>
+
+  <p>
+    在 <code>async</code> / <code>defer</code> 普及前，最经典的做法是把 <code>&lt;script&gt;</code> 放在
+    <code>&lt;/body&gt;</code> 前面：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header">传统做法：脚本置底</div>
+    <pre><span class="punct">&lt;</span><span class="tag-c">body</span><span class="punct">&gt;</span>
+  <span class="punct">&lt;</span><span class="tag-c">h1</span><span class="punct">&gt;</span><span class="text">页面内容</span><span class="punct">&lt;/</span><span class="tag-c">h1</span><span class="punct">&gt;</span>
+  <span class="t">&lt;!-- ... 所有内容 ... --&gt;</span>
+
+  <span class="t">&lt;!-- 放最后：解析到这里 DOM 已基本就绪 --&gt;</span>
+  <span class="punct">&lt;</span><span class="tag-c">script</span> <span class="attr">src</span><span class="punct">=</span><span class="val">"app.js"</span><span class="punct">&gt;&lt;/</span><span class="tag-c">script</span><span class="punct">&gt;</span>
+<span class="punct">&lt;/</span><span class="tag-c">body</span><span class="punct">&gt;</span></pre>
+  </div>
+
+  <p>
+    置底和 <code>defer</code> 效果接近（DOM 都已就绪），但 <code>defer</code> 更优：
+    <strong>defer 的下载在解析阶段就并行开始了</strong>，而置底脚本要等解析到那一行才开始下载。
+    现代推荐：放 <code>&lt;head&gt;</code> 里加 <code>defer</code>，下载更早，DOM 又保证就绪。
+  </p>
+
+
+  <!-- ─────────────────────────────────── -->
+  <h2>六、怎么选：决策指南</h2>
+
+  <table>
+    <tr><th>场景</th><th>选择</th><th>原因</th></tr>
+    <tr>
+      <td>主应用脚本、依赖 DOM、有依赖顺序</td>
+      <td><strong>defer</strong></td>
+      <td>保证顺序 + DOM 就绪，绝大多数场景的默认选择</td>
+    </tr>
+    <tr>
+      <td>独立的第三方脚本（统计、广告）</td>
+      <td><strong>async</strong></td>
+      <td>互不依赖，越早执行越好，顺序无所谓</td>
+    </tr>
+    <tr>
+      <td>必须在 DOM 解析前运行（如反闪烁主题脚本）</td>
+      <td>普通（放 head）</td>
+      <td>少数需要阻塞的特例</td>
+    </tr>
+    <tr>
+      <td>ES Module 脚本</td>
+      <td><code>type="module"</code></td>
+      <td>默认就有 defer 行为，无需额外加</td>
+    </tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>一句话经验</strong>：拿不准就用 <code>defer</code>。它兼顾"不阻塞首屏"和"DOM 就绪 + 顺序可控"，
+    是 90% 场景的正确答案。<code>async</code> 留给那些"独立、无依赖、谁都不等"的第三方脚本。
+  </div>
+
+  <h3>type="module" 的隐藏特性</h3>
+
+  <div class="code-block">
+    <div class="cb-header">ES Module 默认 defer</div>
+    <pre><span class="t">&lt;!-- module 脚本天然延迟执行，等价于自带 defer --&gt;</span>
+<span class="punct">&lt;</span><span class="tag-c">script</span> <span class="attr">type</span><span class="punct">=</span><span class="val">"module"</span> <span class="attr">src</span><span class="punct">=</span><span class="val">"main.js"</span><span class="punct">&gt;&lt;/</span><span class="tag-c">script</span><span class="punct">&gt;</span>
+
+<span class="t">&lt;!-- 想让 module 变成 async 行为，显式加 async --&gt;</span>
+<span class="punct">&lt;</span><span class="tag-c">script</span> <span class="attr">type</span><span class="punct">=</span><span class="val">"module"</span> <span class="attr">src</span><span class="punct">=</span><span class="val">"analytics.js"</span> <span class="attr">async</span><span class="punct">&gt;&lt;/</span><span class="tag-c">script</span><span class="punct">&gt;</span></pre>
+  </div>
+
+
+  <!-- ─────────────────────────────────── -->
+  <h2>七、常见错误速查</h2>
+
+  <table>
+    <tr><th>错误</th><th>后果</th><th>正确做法</th></tr>
+    <tr>
+      <td>把大 JS 放 head 里不加任何属性</td>
+      <td>首屏白屏时间增加，FCP/LCP 变差</td>
+      <td>加 <code>defer</code>，或放 body 底部</td>
+    </tr>
+    <tr>
+      <td>有依赖关系的脚本用 async</td>
+      <td>执行顺序乱，依赖未就绪报错</td>
+      <td>有顺序依赖必须用 <code>defer</code></td>
+    </tr>
+    <tr>
+      <td>async 脚本里操作 DOM</td>
+      <td>DOM 可能还没构建，<code>querySelector</code> 返回 null</td>
+      <td>用 <code>defer</code>，或监听 <code>DOMContentLoaded</code></td>
+    </tr>
+    <tr>
+      <td>给内联脚本加 defer 期望延迟</td>
+      <td>无效，内联脚本立即执行</td>
+      <td>内联代码包进 <code>DOMContentLoaded</code> 回调</td>
+    </tr>
+  </table>
+
+
+  <!-- ─────────────────────────────────── -->
+  <h2>八、与 Java 的类比</h2>
+
+  <table>
+    <tr><th>script 概念</th><th>Java / 并发类比</th></tr>
+    <tr>
+      <td>普通 script（同步阻塞）</td>
+      <td>主线程里直接调用阻塞方法（如同步 <code>socket.read()</code>）——整个流程停在这等</td>
+    </tr>
+    <tr>
+      <td><code>async</code>（并行下载，乱序执行）</td>
+      <td>提交多个 <code>CompletableFuture</code> 不指定顺序——谁先完成谁先回调</td>
+    </tr>
+    <tr>
+      <td><code>defer</code>（并行下载，顺序执行）</td>
+      <td>多个任务并发执行，但用 <code>join()</code> 在某个屏障点按提交顺序汇总结果</td>
+    </tr>
+    <tr>
+      <td>DOM 就绪后才执行（defer）</td>
+      <td>Spring 的 <code>@PostConstruct</code> / <code>ApplicationReadyEvent</code>——等容器初始化完成再跑逻辑</td>
+    </tr>
+    <tr>
+      <td>下载与解析并行</td>
+      <td>I/O 与 CPU 计算重叠（异步 I/O），不让 CPU 空等网络</td>
+    </tr>
+  </table>
+
+  <div class="callout info">
+    本质上，<code>async</code> 和 <code>defer</code> 解决的是同一类问题：
+    <strong>把"必须串行等待"变成"能并行的并行，该有序的有序"</strong>。
+    这和后端用线程池、异步 I/O 把阻塞调用并行化，是完全相同的性能优化思想——
+    区别只在于一个发生在浏览器主线程，一个发生在 JVM 线程。
+  </div>
+
+  <hr>
+
+  <div class="nav-footer">
+    <a href="./09-title-link-favicon.html" class="nav-btn">← 上一节：title / link / favicon</a>
+    <a href="./11-资源预加载.html" class="nav-btn next">下一节：资源预加载 preload / prefetch →</a>
+  </div>
+
+</div>
+</body>
+</html>

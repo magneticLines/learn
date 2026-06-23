@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSS · z-index 与层叠上下文</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #60a5fa; border: 1px solid #1e3a8a; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #60a5fa; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #60a5fa; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .t { color: #64748b; } .sel { color: #f87171; } .prop { color: #60a5fa; } .val { color: #86efac; } .punct { color: #475569; } .text { color: #e2e8f0; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .demo { background: #13151f; border: 1px dashed #2d3148; border-radius: 8px; padding: 20px; margin: 16px 0; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #60a5fa; border-color: #1e3a8a; } .nav-btn.next:hover { background: #172554; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / CSS / 布局 / z-index 与层叠上下文</div>
+  <div class="hero"><div class="tag">CSS · 布局</div><h1>z-index 与层叠上下文</h1><p>"为什么我把 z-index 调成 9999 了，弹层还是被挡住？"——答案藏在"层叠上下文"里。这是 CSS 最反直觉、面试最爱问的概念之一。</p></div>
+
+  <h2>z-index 不是万能的</h2>
+  <p>很多人以为 <code>z-index</code> 是个全局的"图层高度"，数字越大就越靠前。<strong>错。</strong>z-index 有两个前提：</p>
+  <ul>
+    <li><strong>只对"定位元素"生效</strong>：元素必须设了 <code>position</code> 为 <code>relative/absolute/fixed/sticky</code>（或者是 flex/grid 的子项），z-index 才有意义。给一个 <code>position: static</code> 的元素写 z-index，毫无作用。</li>
+    <li><strong>比较只在同一个"层叠上下文"内进行</strong>：z-index 的大小较量，仅限于同一个层叠上下文里的兄弟之间。跨上下文时，子元素的 z-index 再大也跳不出父级的"楼层"。</li>
+  </ul>
+
+  <h2>什么是层叠上下文（stacking context）</h2>
+  <p>层叠上下文可以理解成一栋<strong>独立的"楼"</strong>。每栋楼内部有自己的楼层编号（z-index），但<strong>楼与楼之间的高低，由楼本身在城市里的位置决定，而不是看楼里某一层有多高</strong>。</p>
+  <p>一个元素一旦创建了层叠上下文，它的所有后代就都被"关进"这栋楼里，后代的 z-index 无论多大，都只在这栋楼内部排序，绝不可能越过这栋楼去和外面的元素比高低。</p>
+
+  <h3>哪些情况会创建层叠上下文</h3>
+  <table>
+    <tr><th>条件</th><th>说明</th></tr>
+    <tr><td>根元素 <code>&lt;html&gt;</code></td><td>天生是顶层层叠上下文</td></tr>
+    <tr><td><code>position</code> 非 static + <code>z-index</code> 非 auto</td><td>最经典的创建方式</td></tr>
+    <tr><td><code>position: fixed / sticky</code></td><td>无需 z-index 就会创建</td></tr>
+    <tr><td><code>opacity</code> 小于 1</td><td>哪怕 0.99 也会创建！极易踩坑</td></tr>
+    <tr><td><code>transform</code> / <code>filter</code> / <code>perspective</code> 非 none</td><td>动画类属性常意外创建</td></tr>
+    <tr><td><code>will-change</code> 指定了上述属性</td><td>性能优化时易触发</td></tr>
+    <tr><td>flex/grid 子项 + <code>z-index</code> 非 auto</td><td>无需 position</td></tr>
+    <tr><td><code>isolation: isolate</code></td><td>专门用来"主动"创建，解决问题的利器</td></tr>
+  </table>
+
+  <h2>经典陷阱：父级压死子级</h2>
+  <p>这是必考题。看下面的结构，凭直觉 <code>.popup</code> 的 z-index 高达 9999，应该盖住一切，但实际它被 z-index 仅为 2 的 <code>.other</code> 挡住了：</p>
+  <div class="code-block"><div class="cb-header"><span>反例：为什么 9999 压不过 2？</span></div><pre><span class="sel">.parent</span> <span class="punct">{</span> <span class="prop">position</span><span class="punct">:</span><span class="val">relative</span><span class="punct">;</span> <span class="prop">z-index</span><span class="punct">:</span><span class="val">1</span><span class="punct">;</span> <span class="punct">}</span> <span class="t">/* 楼A，1层 */</span>
+  <span class="sel">.popup</span>  <span class="punct">{</span> <span class="prop">position</span><span class="punct">:</span><span class="val">absolute</span><span class="punct">;</span> <span class="prop">z-index</span><span class="punct">:</span><span class="val">9999</span><span class="punct">;</span> <span class="punct">}</span> <span class="t">/* 楼A里的9999层 */</span>
+
+<span class="sel">.other</span>  <span class="punct">{</span> <span class="prop">position</span><span class="punct">:</span><span class="val">relative</span><span class="punct">;</span> <span class="prop">z-index</span><span class="punct">:</span><span class="val">2</span><span class="punct">;</span> <span class="punct">}</span> <span class="t">/* 楼B，2层 */</span></pre></div>
+  <h3>问题出在哪</h3>
+  <p><code>.parent</code>（position+z-index:1）创建了一栋楼 A，整栋楼的"海拔"是 1。<code>.other</code> 是另一栋楼 B，海拔 2。<code>.popup</code> 的 9999 只是<strong>楼 A 内部</strong>的楼层，再高也跑不出楼 A 这个海拔 1 的整体。楼 B 海拔 2 &gt; 楼 A 海拔 1，所以楼 B 整个压在楼 A 上面，<code>.popup</code> 自然被挡。</p>
+  <div class="demo">
+    <style>
+      .d15-wrap{position:relative;height:120px;}
+      .d15-A{position:absolute;top:0;left:0;width:160px;height:80px;z-index:1;}
+      .d15-A .pop{position:absolute;top:30px;left:30px;width:130px;height:60px;z-index:9999;background:#2563eb;color:#fff;padding:6px;border-radius:6px;font-size:.75rem;}
+      .d15-B{position:absolute;top:40px;left:90px;width:150px;height:70px;z-index:2;background:#f87171;color:#fff;padding:6px;border-radius:6px;font-size:.75rem;}
+    </style>
+    <div class="d15-wrap">
+      <div class="d15-A"><div class="pop">.popup<br>z-index:9999<br>（在楼A内）</div></div>
+      <div class="d15-B">.other z-index:2<br>却盖住了9999</div>
+    </div>
+  </div>
+
+  <h3>正例：怎么修</h3>
+  <p>不要继续往 <code>.popup</code> 上堆数字——那是治标。要么<strong>调整两栋"楼"本身的 z-index</strong>（把 <code>.parent</code> 提到比 <code>.other</code> 高），要么<strong>把 popup 移出受限的层叠上下文</strong>（如用 portal 渲染到 body 下）：</p>
+  <div class="code-block"><div class="cb-header"><span>正例：在楼层级别解决</span></div><pre><span class="sel">.parent</span> <span class="punct">{</span> <span class="prop">position</span><span class="punct">:</span><span class="val">relative</span><span class="punct">;</span> <span class="prop">z-index</span><span class="punct">:</span><span class="val">10</span><span class="punct">;</span> <span class="punct">}</span> <span class="t">/* 抬高整栋楼A */</span>
+<span class="sel">.other</span>  <span class="punct">{</span> <span class="prop">position</span><span class="punct">:</span><span class="val">relative</span><span class="punct">;</span> <span class="prop">z-index</span><span class="punct">:</span><span class="val">2</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="t">/* 现在楼A(10) &gt; 楼B(2)，popup 才真正在上面 */</span></pre></div>
+
+  <h2>opacity 创建上下文的隐蔽陷阱</h2>
+  <p>最容易栽的坑：你给一个父元素加了 <code>opacity: 0.95</code> 做个淡淡的半透明效果，结果它内部本来正常显示的弹层突然被别的元素挡住了。因为 <code>opacity &lt; 1</code> <strong>悄悄创建了层叠上下文</strong>，把弹层"关进了楼里"。<code>transform</code> 做动画时同理。遇到"加了透明度/动画后层级乱了"，先想到这点。</p>
+
+  <h2>层叠顺序规则（同一上下文内）</h2>
+  <p>在同一个层叠上下文里，没写 z-index 时，元素从下到上的堆叠顺序大致是：</p>
+  <ol>
+    <li>背景和边框（上下文的根）</li>
+    <li>负 z-index 的定位元素</li>
+    <li>普通流的 block 块</li>
+    <li>浮动元素 float</li>
+    <li>普通流的 inline 元素</li>
+    <li>z-index: auto / 0 的定位元素</li>
+    <li>正 z-index 的定位元素（越大越上）</li>
+  </ol>
+  <p>注意一个细节：z-index 相同（或都为 auto）时，<strong>后写的 DOM 元素盖在先写的上面</strong>。所以有时不用 z-index，只靠调整 HTML 顺序就能解决遮挡。</p>
+
+  <div class="callout tip"><strong>实战建议：</strong>① 不要无脑写 9999，先用浏览器 DevTools 查清各元素属于哪个层叠上下文；② 想让某个区块的内部层级"自成一体、不被外界干扰"，主动给它加 <code>isolation: isolate</code>；③ 全局弹层（Modal、Toast）最佳实践是用 portal 渲染到 <code>body</code> 末尾，从根本上避开嵌套上下文的束缚。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="14-position定位.html" class="nav-btn">← position</a><a href="16-float与清除浮动.html" class="nav-btn next">float 与清除浮动 →</a></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSS · will-change 与性能优化</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #60a5fa; border: 1px solid #1e3a8a; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #60a5fa; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #60a5fa; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .t { color: #64748b; } .sel { color: #f87171; } .prop { color: #60a5fa; } .val { color: #86efac; } .punct { color: #475569; } .text { color: #e2e8f0; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .demo { background: #13151f; border: 1px dashed #2d3148; border-radius: 8px; padding: 20px; margin: 16px 0; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #60a5fa; border-color: #1e3a8a; } .nav-btn.next:hover { background: #172554; }
+    .pipe { display:flex;gap:6px;flex-wrap:wrap;margin:16px 0; }
+    .pipe .step { flex:1;min-width:90px;text-align:center;padding:10px 6px;border-radius:6px;font-size:0.72rem;border:1px solid #2d3148; }
+    .pipe .js{background:#1e2030;color:#94a3b8;} .pipe .style{background:#1e2030;color:#94a3b8;}
+    .pipe .layout{background:#422006;color:#fdba74;border-color:#f97316;} .pipe .paint{background:#3b1d1d;color:#fca5a5;border-color:#ef4444;}
+    .pipe .comp{background:#1f3528;color:#86efac;border-color:#4ade80;} .pipe .arr{align-self:center;color:#475569;}
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / CSS / 动画与交互 / will-change 与性能优化</div>
+  <div class="hero"><div class="tag">CSS · 动画与交互</div><h1>will-change 与性能优化（进阶）</h1><p>读懂浏览器渲染管线，理解为什么动画只该动 transform/opacity，以及 will-change 这把"双刃剑"何时该出鞘。</p></div>
+
+  <h2>浏览器渲染管线（像素流水线）</h2>
+  <p>从你改一行 CSS 到屏幕上像素更新，浏览器要走一条流水线。理解每个环节的成本，是所有动画性能优化的根基。</p>
+  <div class="pipe">
+    <div class="step js">JS / CSS<br>改样式</div><div class="arr">→</div>
+    <div class="step style">Style<br>算最终样式</div><div class="arr">→</div>
+    <div class="step layout">Layout<br>重排·几何</div><div class="arr">→</div>
+    <div class="step paint">Paint<br>重绘·像素</div><div class="arr">→</div>
+    <div class="step comp">Composite<br>合成·图层</div>
+  </div>
+  <ul>
+    <li><strong>Style：</strong>计算每个元素最终生效的属性值。</li>
+    <li><strong>Layout（重排/回流）：</strong>计算每个元素的几何（位置、尺寸）。<strong>最贵</strong>——改一个元素的宽度可能引发整页元素重新排布。</li>
+    <li><strong>Paint（重绘）：</strong>把元素画成像素（颜色、阴影、文字）。较贵。</li>
+    <li><strong>Composite（合成）：</strong>把各个已画好的图层按层级"贴"到一起。<strong>最便宜</strong>，可在 GPU 上做，且不影响其他图层。</li>
+  </ul>
+  <div class="callout info">关键洞察：<strong>越靠后的环节越便宜，且能跳过前面的环节</strong>。如果你的改动只触发 Composite，就跳过了 Layout 和 Paint，这正是丝滑 60fps 动画的秘密。</div>
+
+  <h2>reflow vs repaint vs composite</h2>
+  <table>
+    <tr><th>改动的属性</th><th>触发到哪一步</th><th>成本</th></tr>
+    <tr><td><code>width</code> <code>height</code> <code>top</code> <code>left</code> <code>margin</code> <code>font-size</code></td><td>Layout → Paint → Composite</td><td>最高（重排）</td></tr>
+    <tr><td><code>color</code> <code>background</code> <code>box-shadow</code> <code>border-radius</code> <code>visibility</code></td><td>Paint → Composite</td><td>中（重绘）</td></tr>
+    <tr><td><code>transform</code> <code>opacity</code> <code>filter</code>(部分)</td><td>仅 Composite</td><td>最低（合成）</td></tr>
+  </table>
+  <p>每秒要画 60 帧意味着每帧只有约 <strong>16.7ms</strong> 预算。在这点时间里跑完整条流水线很容易超时丢帧（卡顿）；只跑 Composite 则游刃有余。</p>
+
+  <h2>反例 → 问题 → 正例</h2>
+  <h3>反例：用 left 做位移动画</h3>
+  <div class="code-block"><div class="cb-header"><span>反例 CSS</span></div><pre><span class="sel">.box</span>       <span class="punct">{</span> <span class="prop">position</span><span class="punct">:</span> <span class="val">relative</span><span class="punct">;</span> <span class="prop">left</span><span class="punct">:</span> <span class="val">0</span><span class="punct">;</span> <span class="prop">transition</span><span class="punct">:</span> <span class="val">left 0.3s</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="sel">.box:hover</span> <span class="punct">{</span> <span class="prop">left</span><span class="punct">:</span> <span class="val">200px</span><span class="punct">;</span> <span class="punct">}</span></pre></div>
+  <p><strong>问题：</strong>动画的<strong>每一帧</strong>都改变 <code>left</code>，每帧都触发 Layout + Paint + Composite 整条流水线。元素一多、设备一弱，立刻丢帧卡顿。</p>
+  <h3>正例：用 transform 做位移动画</h3>
+  <div class="code-block"><div class="cb-header"><span>正例 CSS</span></div><pre><span class="sel">.box</span>       <span class="punct">{</span> <span class="prop">transform</span><span class="punct">:</span> <span class="val">translateX(0)</span><span class="punct">;</span> <span class="prop">transition</span><span class="punct">:</span> <span class="val">transform 0.3s</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="sel">.box:hover</span> <span class="punct">{</span> <span class="prop">transform</span><span class="punct">:</span> <span class="val">translateX(200px)</span><span class="punct">;</span> <span class="punct">}</span></pre></div>
+  <p><strong>结果：</strong>每帧只做 Composite，浏览器把元素放进独立 GPU 图层，靠图层位移矩阵运算完成动画，跳过 Layout 与 Paint，丝滑省电。</p>
+  <div class="demo">
+    <style>
+      .t31-track { background:#252840;border-radius:6px;padding:8px;position:relative; }
+      .t31-b { width:36px;height:36px;border-radius:8px;background:#60a5fa;transition:transform 0.5s ease; }
+      .t31-track:hover .t31-b { transform: translateX(300px); }
+    </style>
+    <div class="t31-track"><div class="t31-b"></div></div>
+    <p style="font-size:0.8rem;color:#64748b;margin-top:8px;">悬停区域看 transform 位移。打开 DevTools 的 Rendering 面板可观察到它不触发 Layout 闪烁。</p>
+  </div>
+
+  <h2>will-change：提前提升合成层</h2>
+  <p>把元素提升为独立 GPU 图层是有成本的（创建图层、分配显存）。浏览器通常在动画<strong>开始的那一刻</strong>才临时提升，这一瞬间可能有微小卡顿。<code>will-change</code> 是给浏览器的<strong>提示</strong>："这个属性即将变化，请提前准备好图层"，从而消除起步时的抖动。</p>
+  <div class="code-block"><div class="cb-header"><span>CSS</span></div><pre><span class="sel">.card</span> <span class="punct">{</span> <span class="prop">will-change</span><span class="punct">:</span> <span class="val">transform</span><span class="punct">;</span> <span class="punct">}</span>   <span class="t">/* 告知：transform 将变化 */</span>
+<span class="sel">.card</span> <span class="punct">{</span> <span class="prop">will-change</span><span class="punct">:</span> <span class="val">transform, opacity</span><span class="punct">;</span> <span class="punct">}</span></pre></div>
+
+  <h2>will-change 的代价与正确用法</h2>
+  <div class="callout warn"><strong>滥用代价：</strong>每个被提升的图层都占用<strong>显存/内存</strong>。给很多元素、或全局 <code>* { will-change: transform }</code> 这样滥用，会耗尽显存，<strong>反而拖慢整个页面</strong>，得不偿失。它是"提示"不是"命令"，过度使用还会让浏览器忽略它。</div>
+  <ul>
+    <li><strong>该用：</strong>确实会频繁/即将动画、且当前观察到起步卡顿的少量关键元素。</li>
+    <li><strong>不该用：</strong>静态元素、大量元素、当成"性能万能药"无脑加。</li>
+    <li><strong>最佳实践：</strong>动画前用 JS 加上 <code>will-change</code>，<strong>动画结束后移除</strong>（设回 <code>auto</code>），让浏览器回收图层。不要在样式表里长期挂着。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>JS — 用完即弃</span></div><pre><span class="text">el.addEventListener</span><span class="punct">(</span><span class="val">'mouseenter'</span><span class="punct">,</span> <span class="punct">()</span> <span class="text">=&gt;</span> <span class="punct">{</span>
+  <span class="text">el.style.willChange</span> <span class="punct">=</span> <span class="val">'transform'</span><span class="punct">;</span>  <span class="t">// 即将动画，提前准备</span>
+<span class="punct">}</span><span class="punct">);</span>
+<span class="text">el.addEventListener</span><span class="punct">(</span><span class="val">'transitionend'</span><span class="punct">,</span> <span class="punct">()</span> <span class="text">=&gt;</span> <span class="punct">{</span>
+  <span class="text">el.style.willChange</span> <span class="punct">=</span> <span class="val">'auto'</span><span class="punct">;</span>     <span class="t">// 动画结束，释放图层</span>
+<span class="punct">}</span><span class="punct">);</span></pre></div>
+  <div class="callout tip"><strong>对比旧 hack：</strong>过去常用 <code>transform: translateZ(0)</code> 或 <code>backface-visibility: hidden</code> 强制提层。<code>will-change</code> 是为此设计的语义化、可被浏览器智能调度的正式方案，应优先使用。</div>
+
+  <h2>其他性能优化手段</h2>
+  <h3>contain：隔离渲染范围</h3>
+  <p><code>contain: layout paint</code> 告诉浏览器"这个元素的内部布局/绘制不会影响外部"，从而把重排/重绘<strong>限制在子树内</strong>，避免牵连整页。适合独立的卡片、列表项、弹窗等组件根节点。<code>content-visibility: auto</code> 更进一步，可跳过视口外内容的渲染。</p>
+  <h3>避免布局抖动（layout thrashing）</h3>
+  <div class="callout warn"><strong>反例：</strong>循环里"读一次几何 → 写一次样式 → 再读 → 再写"。读取 <code>offsetWidth</code>/<code>getBoundingClientRect</code> 会强制浏览器<strong>同步刷新 Layout</strong>，紧接着的写又让它失效，下次读再次强制重排——读写交错反复触发重排，性能雪崩。</div>
+  <div class="callout tip"><strong>正例：</strong><strong>先批量读，再批量写</strong>。把所有 DOM 读取放一起、所有写入放一起，让浏览器只在帧末统一重排一次。这就是 FastDOM 等库的核心思想。</div>
+
+  <h2>排查工具</h2>
+  <p>Chrome DevTools → Performance 面板录制可看到 Layout / Paint 的耗时火焰图；Rendering 面板的 "Paint flashing" 高亮重绘区域、"Layer borders" 显示合成图层。优化动画时<strong>先测量再优化</strong>，别凭感觉加 will-change。</p>
+
+  <hr>
+  <div class="nav-footer"><a href="30-animation.html" class="nav-btn">← animation 关键帧动画</a><a href="32-BEM命名.html" class="nav-btn next">BEM 命名规范 →</a></div>
+</div>
+</body>
+</html>

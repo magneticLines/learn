@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSS · clamp() 流体排版（进阶）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #60a5fa; border: 1px solid #1e3a8a; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #60a5fa; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #60a5fa; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .t { color: #64748b; } .sel { color: #f87171; } .prop { color: #60a5fa; } .val { color: #86efac; } .punct { color: #475569; } .text { color: #e2e8f0; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .demo { background: #13151f; border: 1px dashed #2d3148; border-radius: 8px; padding: 20px; margin: 16px 0; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #60a5fa; border-color: #1e3a8a; } .nav-btn.next:hover { background: #172554; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / CSS / 响应式 / clamp() 流体排版</div>
+  <div class="hero"><div class="tag">CSS · 响应式</div><h1>clamp() 流体排版（进阶）</h1><p>用一行 CSS 让字号、间距在最小值和最大值之间「平滑流动」，告别一堆媒体查询的台阶式跳变。</p></div>
+
+  <h2>一、问题：媒体查询的「台阶感」</h2>
+  <p>用媒体查询调字号，本质是「阶梯式」的：在 768px 那一刻字号从 24px 突然跳到 32px。在两个断点之间，字号一直保持不变，宽度都用上了字却没跟着长——既不充分利用空间，跨断点时还有突兀的跳变。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>反例：用媒体查询做字号台阶</span></div>
+    <pre><span class="sel">h1</span> <span class="punct">{</span> <span class="prop">font-size</span><span class="punct">:</span> <span class="val">24px</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="prop">@media</span> <span class="punct">(</span><span class="prop">min-width</span><span class="punct">:</span> <span class="val">768px</span><span class="punct">)</span> <span class="punct">{</span> <span class="sel">h1</span> <span class="punct">{</span> <span class="prop">font-size</span><span class="punct">:</span> <span class="val">32px</span><span class="punct">;</span> <span class="punct">}</span> <span class="punct">}</span>
+<span class="prop">@media</span> <span class="punct">(</span><span class="prop">min-width</span><span class="punct">:</span> <span class="val">1200px</span><span class="punct">)</span> <span class="punct">{</span> <span class="sel">h1</span> <span class="punct">{</span> <span class="prop">font-size</span><span class="punct">:</span> <span class="val">40px</span><span class="punct">;</span> <span class="punct">}</span> <span class="punct">}</span>
+<span class="t">/* 三段台阶 + 两次突兀跳变 + 大量样板代码 */</span></pre>
+  </div>
+
+  <h2>二、clamp(min, preferred, max)：把值「夹」在区间里</h2>
+  <p><code>clamp()</code> 接收三个参数，含义就是英文单词「夹钳」：把<strong>首选值</strong>夹在<strong>最小值</strong>和<strong>最大值</strong>之间。</p>
+  <table>
+    <tr><th>参数</th><th>角色</th><th>说明</th></tr>
+    <tr><td>第 1 个 <code>min</code></td><td>下限</td><td>结果不会小于它（小屏兜底）</td></tr>
+    <tr><td>第 2 个 <code>preferred</code></td><td>首选/理想值</td><td>通常含 vw，随视口流动</td></tr>
+    <tr><td>第 3 个 <code>max</code></td><td>上限</td><td>结果不会大于它（大屏封顶）</td></tr>
+  </table>
+  <p>它等价于 <code>max(min, min(preferred, max))</code>：首选值在区间内时用首选值；超出下限取下限，超出上限取上限。</p>
+
+  <h2>三、流体字号：一行替代多个断点</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>正例：clamp 流体字号</span></div>
+    <pre><span class="sel">h1</span> <span class="punct">{</span>
+  <span class="prop">font-size</span><span class="punct">:</span> <span class="val">clamp(1.5rem, 2.5vw + 1rem, 2.5rem)</span><span class="punct">;</span>
+  <span class="t">/* 小屏不小于 1.5rem，大屏不大于 2.5rem，
+     中间随视口宽度平滑流动 —— 无台阶、无突变 */</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>一行解决了上面三段媒体查询的全部职责，而且中间段是<strong>连续</strong>的，每多一像素宽度字号都跟着长一点点。这就是「流体（fluid）」一词的由来。</p>
+  <div class="callout tip">为什么首选值常写成 <code>2.5vw + 1rem</code> 而不是纯 <code>2.5vw</code>？纯 vw 在极窄屏会过小、放大不够线性。加一个 rem 常数项相当于给斜线一个「截距」，让缩放曲线更平缓自然，也对用户字号设置更友好。</p>
+
+  <h2>四、min() 与 max()：clamp 的两个「半成品」</h2>
+  <p>clamp 其实是 min/max 的组合，单独用它俩也很有用：</p>
+  <table>
+    <tr><th>函数</th><th>取值</th><th>典型用途</th></tr>
+    <tr><td><code>min(a, b)</code></td><td>取较小者</td><td>「最多这么大」：<code>width: min(90%, 1200px)</code> 限宽</td></tr>
+    <tr><td><code>max(a, b)</code></td><td>取较大者</td><td>「至少这么大」：<code>padding: max(1rem, 3vw)</code> 保底间距</td></tr>
+    <tr><td><code>clamp(a,b,c)</code></td><td>夹在区间</td><td>同时有上下限的流体值</td></tr>
+  </table>
+  <div class="code-block">
+    <div class="cb-header"><span>min() 做容器限宽（替代 max-width + width）</span></div>
+    <pre><span class="sel">.container</span> <span class="punct">{</span>
+  <span class="prop">width</span><span class="punct">:</span> <span class="val">min(90%, 1200px)</span><span class="punct">;</span>
+  <span class="t">/* 窄屏占 90%（留边距），宽屏封顶 1200px，自动居中配 margin:auto */</span>
+  <span class="prop">margin-inline</span><span class="punct">:</span> <span class="val">auto</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>五、流体间距：不只是字号</h2>
+  <p>clamp 同样适合 padding、margin、gap。让区块间距在小屏紧凑、大屏舒展，避免桌面上元素挤在一起。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>流体区块间距</span></div>
+    <pre><span class="sel">section</span> <span class="punct">{</span>
+  <span class="prop">padding-block</span><span class="punct">:</span> <span class="val">clamp(2rem, 6vw, 6rem)</span><span class="punct">;</span> <span class="t">/* 上下留白随屏幕流动 */</span>
+<span class="punct">}</span>
+<span class="sel">.cards</span> <span class="punct">{</span>
+  <span class="prop">gap</span><span class="punct">:</span> <span class="val">clamp(0.75rem, 2vw, 2rem)</span><span class="punct">;</span> <span class="t">/* 卡片间距同理 */</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>六、怎么算 preferred 值（vw 系数）</h2>
+  <p>想让字号「在视口 360px 时为 16px，在 1200px 时为 24px」之间线性流动，可以解一个一次方程求出 <code>preferred = a·vw + b</code>：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>线性插值推导</span></div>
+    <pre><span class="t">/* 斜率：每 1px 视口变化对应多少 px 字号 */</span>
+<span class="t">slope = (24 - 16) / (1200 - 360) = 8 / 840 ≈ 0.00952 */</span>
+<span class="t">a(vw系数) = slope × 100 = 0.952vw */</span>
+<span class="t">b(常数rem) = 16 - slope × 360 = 16 - 3.43 ≈ 12.57px ≈ 0.78rem */</span>
+
+<span class="sel">h2</span> <span class="punct">{</span> <span class="prop">font-size</span><span class="punct">:</span> <span class="val">clamp(1rem, 0.78rem + 0.95vw, 1.5rem)</span><span class="punct">;</span> <span class="punct">}</span></pre>
+  </div>
+  <div class="callout info">实战不必手算：用在线工具（如 Utopia、clamp-calculator）输入「最小视口/最大视口、最小字号/最大字号」就能生成。理解原理后用工具，效率与正确性兼得。</div>
+
+  <h2>七、可访问性：别让用户无法缩放！</h2>
+  <p>这是 clamp 流体排版最重要的陷阱。看一个反例：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>反例：纯 vw 字号</span></div>
+    <pre><span class="sel">h1</span> <span class="punct">{</span> <span class="prop">font-size</span><span class="punct">:</span> <span class="val">5vw</span><span class="punct">;</span> <span class="punct">}</span> <span class="t">/* 完全跟着视口，不随用户字号设置变化 */</span></pre>
+  </div>
+  <p><strong>问题</strong>：视口单位（vw）<strong>无视用户在浏览器里调大的默认字号</strong>。视力不佳的用户把浏览器字号调到 200% 也没用，字号永远只认视口——这违反 WCAG「文本可缩放至 200%」的要求。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>正例：preferred 里混入 rem</span></div>
+    <pre><span class="sel">h1</span> <span class="punct">{</span> <span class="prop">font-size</span><span class="punct">:</span> <span class="val">clamp(1.5rem, 1rem + 2vw, 2.5rem)</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="t">/* 首选值里有 rem 项 → 用户放大默认字号时，这部分会跟着变大，
+   保住了可缩放性；vw 项继续负责随屏幕流动 */</span></pre>
+  </div>
+  <div class="callout warn">规则记牢：<strong>clamp 流体字号的 preferred 值一定要包含 rem/em 项</strong>，不能是纯 vw。这样既流体又可缩放，鱼与熊掌兼得。</div>
+
+  <h2>八、实时演示：流体字号 vs 固定字号</h2>
+  <div class="demo">
+    <style>
+      .fl-fluid { font-weight: 700; color: #93c5fd; font-size: clamp(1.2rem, 1rem + 4vw, 3rem); }
+      .fl-fixed { font-weight: 700; color: #64748b; font-size: 1.5rem; margin-top: 8px; }
+      .fl-note { font-size: 0.8rem; color: #64748b; margin-top: 12px; }
+    </style>
+    <div class="fl-fluid">流体字号 clamp()</div>
+    <div class="fl-fixed">固定字号 1.5rem</div>
+    <div class="fl-note">拖动窗口宽度：上面一行（clamp）会在 1.2rem~3rem 之间平滑流动；下面一行始终不变。注意 clamp 到达上下限后会「停住」，不会无限增大或缩小。</div>
+  </div>
+
+  <h2>九、小结与取舍</h2>
+  <table>
+    <tr><th>方案</th><th>变化方式</th><th>适合</th></tr>
+    <tr><td>媒体查询切字号</td><td>台阶跳变</td><td>布局结构性变化（列数、显隐）</td></tr>
+    <tr><td>纯 vw</td><td>连续但无上下限</td><td>几乎不推荐（不可缩放、易过大过小）</td></tr>
+    <tr><td>clamp()</td><td>连续 + 有上下限</td><td>字号、间距等连续量的流体缩放</td></tr>
+  </table>
+  <div class="callout tip">现代响应式的成熟组合：<strong>布局列数/显隐用 @media；字号、间距、限宽用 clamp/min/max</strong>。前者管「结构换挡」，后者管「连续微调」，配合使用能大幅减少媒体查询数量。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="19-移动优先.html" class="nav-btn">← 移动优先设计思路</a><a href="21-颜色.html" class="nav-btn next">颜色 →</a></div>
+</div>
+</body>
+</html>
