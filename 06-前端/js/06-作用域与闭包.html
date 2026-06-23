@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · 作用域与闭包</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 语言基础 / 作用域与闭包</div>
+  <div class="hero"><div class="tag">JS · 语言基础</div><h1>作用域与闭包</h1><p>作用域决定一个变量"在哪里能被看见"，闭包则让函数把它出生时的环境"随身携带"。这两个概念是 JS 模块化、私有数据、异步回调能成立的底层支撑——理解它们，你就理解了 JS 函数为什么"有记忆"。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>如果所有变量都是全局的，任意一处代码都能读写它，大型程序会变成一锅"谁都能改的乱炖"：命名冲突、意外覆盖、无法追踪谁动了数据。<strong>作用域</strong>把变量的可见范围限制在一块代码内，实现了"隔离"；而<strong>闭包</strong>更进一步，让函数能在外层环境已经结束后，仍然安全地访问那块被它"锁住"的变量——这正是实现<strong>数据私有化</strong>（无 <code>private</code> 关键字时的替代方案）、<strong>状态记忆</strong>（计数器、缓存）、<strong>回调保留上下文</strong>（异步、事件处理）的基础。可以说，闭包是 JS 把"函数当一等公民"这件事用到极致的产物。</p>
+
+  <h2>作用域的三种种类</h2>
+  <p>作用域就是变量的"有效范围"。JS 里有三层：</p>
+  <table>
+    <tr><th>种类</th><th>边界</th><th>说明</th></tr>
+    <tr><td>全局作用域</td><td>整个程序</td><td>任何地方都能访问；浏览器里挂在 <code>window</code> 上（仅 <code>var</code> / 函数声明）</td></tr>
+    <tr><td>函数作用域</td><td>一个函数体 <code>{}</code></td><td><code>var</code> 和函数内声明的变量只在函数内可见</td></tr>
+    <tr><td>块级作用域</td><td>一对 <code>{}</code>（<code>if</code> / <code>for</code> 等）</td><td>ES6 新增，<code>let</code> / <code>const</code> 才享有，<code>var</code> 没有</td></tr>
+  </table>
+  <div class="code-block"><div class="cb-header"><span>块级作用域：let 被 {} 关住，var 漏出来</span></div><pre><span class="kw">if</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">var</span> <span class="var">a</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>      <span class="com">// 函数作用域，块外仍可见</span>
+  <span class="kw">let</span> <span class="var">b</span> <span class="punct">=</span> <span class="num">2</span><span class="punct">;</span>      <span class="com">// 块级作用域，只在这对 {} 内有效</span>
+<span class="punct">}</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">a</span><span class="punct">);</span>      <span class="com">// 1</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">b</span><span class="punct">);</span>      <span class="com">// ReferenceError: b is not defined</span></pre></div>
+
+  <h2>词法作用域：由"写在哪"决定，不是"在哪调用"</h2>
+  <p>这是最容易被误解的一点。JS 采用<strong>词法作用域</strong>（也叫静态作用域）：一个函数能访问哪些外层变量，在<strong>代码书写的那一刻</strong>就已经定死了，由它<strong>嵌套的物理位置</strong>决定，<strong>与它被谁、在哪里调用毫无关系</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>关键考点：value 看的是定义处，不是调用处</span></div><pre><span class="kw">const</span> <span class="var">value</span> <span class="punct">=</span> <span class="str">"全局"</span><span class="punct">;</span>
+
+<span class="kw">function</span> <span class="fn">inner</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">value</span><span class="punct">);</span>   <span class="com">// 它定义在全局，就只认全局的 value</span>
+<span class="punct">}</span>
+
+<span class="kw">function</span> <span class="fn">outer</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">value</span> <span class="punct">=</span> <span class="str">"outer 内"</span><span class="punct">;</span>
+  <span class="fn">inner</span><span class="punct">();</span>             <span class="com">// 虽然在 outer 里调用，但 inner 不看这里</span>
+<span class="punct">}</span>
+
+<span class="fn">outer</span><span class="punct">();</span>                <span class="com">// 打印 "全局"，不是 "outer 内"</span></pre></div>
+  <div class="callout info"><strong>对比记忆：</strong>与之相对的是<strong>动态作用域</strong>（如 Bash），变量按调用栈查找。JS 的变量查找是词法的（看定义位置），但 <code>this</code> 的绑定却是动态的（看调用方式）——这两个机制独立，初学者常把它们混为一谈，下一篇会专门讲 <code>this</code>。</div>
+
+  <h2>作用域链：变量是怎么被找到的</h2>
+  <p>当代码访问一个变量，引擎会<strong>从当前作用域开始，沿着词法嵌套关系一层层向外查找</strong>，直到全局；找到第一个同名变量就停下，全程找不到才报 <code>ReferenceError</code>。这条由内到外串起来的查找路径，就是<strong>作用域链</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>作用域链：逐层向外查找</span></div><pre><span class="kw">const</span> <span class="var">g</span> <span class="punct">=</span> <span class="str">"g"</span><span class="punct">;</span>
+<span class="kw">function</span> <span class="fn">a</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">x</span> <span class="punct">=</span> <span class="str">"x"</span><span class="punct">;</span>
+  <span class="kw">function</span> <span class="fn">b</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="var">y</span> <span class="punct">=</span> <span class="str">"y"</span><span class="punct">;</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">y</span><span class="punct">,</span> <span class="var">x</span><span class="punct">,</span> <span class="var">g</span><span class="punct">);</span>  <span class="com">// y 在本层；x 向上一层找；g 一直找到全局</span>
+  <span class="punct">}</span>
+  <span class="fn">b</span><span class="punct">();</span>
+<span class="punct">}</span>
+<span class="fn">a</span><span class="punct">();</span>                       <span class="com">// "y" "x" "g"</span></pre></div>
+  <div class="callout warn"><strong>陷阱：作用域链只向外，不向内。</strong>外层函数访问不到内层函数的变量。另外查找是<strong>逐层就近</strong>的——内层有同名变量会"遮蔽"外层（shadowing），别误以为改的是外层那个。</div>
+
+  <h2>闭包到底是什么</h2>
+  <p>一句话定义：<strong>闭包 = 函数 + 它定义时所捕获的外层变量环境</strong>。当一个内层函数引用了外层函数的变量，并且这个内层函数被传递到外层函数之外（作为返回值、回调、事件处理器等），即使外层函数<strong>早已执行完毕</strong>，那些被引用的变量也<strong>不会被销毁</strong>——它们被这个函数"锁住"了。</p>
+  <div class="code-block"><div class="cb-header"><span>最小闭包：count 活过了 makeCounter 的执行</span></div><pre><span class="kw">function</span> <span class="fn">makeCounter</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>          <span class="com">// 本该随函数结束而消失的局部变量</span>
+  <span class="kw">return</span> <span class="kw">function</span> <span class="punct">()</span> <span class="punct">{</span>
+    <span class="var">count</span><span class="punct">++;</span>               <span class="com">// 内层函数引用了它 —— 形成闭包</span>
+    <span class="kw">return</span> <span class="var">count</span><span class="punct">;</span>
+  <span class="punct">};</span>
+<span class="punct">}</span>
+
+<span class="kw">const</span> <span class="var">c</span> <span class="punct">=</span> <span class="fn">makeCounter</span><span class="punct">();</span>   <span class="com">// makeCounter 执行完，但 count 没被回收</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="fn">c</span><span class="punct">());</span>        <span class="com">// 1</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="fn">c</span><span class="punct">());</span>        <span class="com">// 2 —— count 被记住了</span></pre></div>
+
+  <h3>为什么内层函数能"记住"外层变量？</h3>
+  <p>原理在于<strong>引用计数与可达性</strong>。函数被创建时，引擎会给它挂上一个隐藏的内部引用（规范里叫 <code>[[Environment]]</code>），指向它出生时所处的词法环境。只要这个函数对象还"活着"（被变量 <code>c</code> 持有），它指向的那个环境就<strong>仍然可达</strong>，垃圾回收器便不会清理其中的 <code>count</code>。所以闭包不是"拷贝了一份变量的值"，而是<strong>持有了对那块变量内存的活引用</strong>——这也是下面几个陷阱的根源。</p>
+
+  <h2>闭包的典型应用</h2>
+  <h3>① 数据私有化 / 模块模式</h3>
+  <p>JS 早期没有 <code>private</code>，闭包就是实现真正私有状态的标准手段：把变量关在函数里，只暴露受控的方法。</p>
+  <div class="code-block"><div class="cb-header"><span>模块模式：balance 外部无法直接访问</span></div><pre><span class="kw">function</span> <span class="fn">createAccount</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">balance</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>                 <span class="com">// 私有，外界拿不到</span>
+  <span class="kw">return</span> <span class="punct">{</span>
+    <span class="fn">deposit</span><span class="punct">(</span><span class="var">n</span><span class="punct">)</span> <span class="punct">{</span> <span class="var">balance</span> <span class="punct">+=</span> <span class="var">n</span><span class="punct">;</span> <span class="punct">},</span>
+    <span class="fn">getBalance</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="var">balance</span><span class="punct">;</span> <span class="punct">}</span>
+  <span class="punct">};</span>
+<span class="punct">}</span>
+<span class="kw">const</span> <span class="var">acc</span> <span class="punct">=</span> <span class="fn">createAccount</span><span class="punct">();</span>
+<span class="var">acc</span><span class="punct">.</span><span class="fn">deposit</span><span class="punct">(</span><span class="num">100</span><span class="punct">);</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">acc</span><span class="punct">.</span><span class="fn">getBalance</span><span class="punct">());</span>  <span class="com">// 100</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">acc</span><span class="punct">.</span><span class="var">balance</span><span class="punct">);</span>       <span class="com">// undefined —— 碰不到私有变量</span></pre></div>
+
+  <h3>② 函数柯里化</h3>
+  <p>柯里化是"把多参数函数拆成一串单参数函数"，每一层用闭包记住已经传入的参数。</p>
+  <div class="code-block"><div class="cb-header"><span>柯里化：每层闭包锁住一个参数</span></div><pre><span class="kw">function</span> <span class="fn">add</span><span class="punct">(</span><span class="var">a</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">return</span> <span class="kw">function</span> <span class="punct">(</span><span class="var">b</span><span class="punct">)</span> <span class="punct">{</span>     <span class="com">// 闭包记住了 a</span>
+    <span class="kw">return</span> <span class="var">a</span> <span class="punct">+</span> <span class="var">b</span><span class="punct">;</span>
+  <span class="punct">};</span>
+<span class="punct">}</span>
+<span class="kw">const</span> <span class="var">add5</span> <span class="punct">=</span> <span class="fn">add</span><span class="punct">(</span><span class="num">5</span><span class="punct">);</span>        <span class="com">// 固化 a = 5</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="fn">add5</span><span class="punct">(</span><span class="num">3</span><span class="punct">));</span>      <span class="com">// 8</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="fn">add5</span><span class="punct">(</span><span class="num">10</span><span class="punct">));</span>     <span class="com">// 15</span></pre></div>
+
+  <h3>③ 防抖 / 节流的引子</h3>
+  <p>防抖、节流需要在多次调用之间"记住"上一次的定时器或时间戳——这个跨调用的私有状态，正是靠闭包保存的。</p>
+  <div class="code-block"><div class="cb-header"><span>防抖：timer 被闭包跨次调用保留</span></div><pre><span class="kw">function</span> <span class="fn">debounce</span><span class="punct">(</span><span class="var">fn</span><span class="punct">,</span> <span class="var">delay</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">timer</span><span class="punct">;</span>                     <span class="com">// 闭包变量，每次调用都访问同一个</span>
+  <span class="kw">return</span> <span class="kw">function</span> <span class="punct">(...</span><span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="fn">clearTimeout</span><span class="punct">(</span><span class="var">timer</span><span class="punct">);</span>     <span class="com">// 用上一次留下的 timer</span>
+    <span class="var">timer</span> <span class="punct">=</span> <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">fn</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">args</span><span class="punct">),</span> <span class="var">delay</span><span class="punct">);</span>
+  <span class="punct">};</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>陷阱一：循环 + 闭包（呼应 var / let）</h2>
+  <p>这是闭包最经典的坑，也是面试高频题。根因是闭包<strong>持有的是变量的引用，不是当时的值</strong>。<code>var</code> 在整个循环里只有<strong>一个</strong> <code>i</code>，三个回调闭包共享它；等异步回调真正执行时，循环早结束，<code>i</code> 已是 3。</p>
+  <div class="code-block"><div class="cb-header"><span>反例：三个闭包共享同一个 i</span></div><pre><span class="com">// 反例：全部打印 3</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">var</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">3</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span>
+  <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">i</span><span class="punct">));</span>  <span class="com">// 3 3 3</span></pre></div>
+  <p>问题出在"只有一个 <code>i</code>，且回调延迟读取它"。<code>let</code> 在<strong>每轮迭代都新建一个块级绑定</strong>，每个闭包捕获各自独立的副本，问题自然消失。</p>
+  <div class="code-block"><div class="cb-header"><span>正例：let 每轮独立绑定</span></div><pre><span class="com">// 正例：打印 0 1 2</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">let</span> <span class="var">j</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">j</span> <span class="punct">&lt;</span> <span class="num">3</span><span class="punct">;</span> <span class="var">j</span><span class="punct">++)</span>
+  <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">j</span><span class="punct">));</span>  <span class="com">// 0 1 2</span>
+
+<span class="com">// ES6 前的老办法：用 IIFE 手动给每轮造一个独立作用域</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">var</span> <span class="var">k</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">k</span> <span class="punct">&lt;</span> <span class="num">3</span><span class="punct">;</span> <span class="var">k</span><span class="punct">++)</span>
+  <span class="punct">(</span><span class="kw">function</span> <span class="punct">(</span><span class="var">k</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">k</span><span class="punct">));</span>  <span class="com">// 0 1 2，每次传入当前值的拷贝</span>
+  <span class="punct">})(</span><span class="var">k</span><span class="punct">);</span></pre></div>
+
+  <h2>陷阱二：闭包共享同一变量</h2>
+  <p>同一个外层函数里定义的多个内层函数，<strong>共享同一份闭包变量</strong>。一个改了，另一个看到的就是改后的值——这有时是特性，有时是 bug。</p>
+  <div class="code-block"><div class="cb-header"><span>两个函数共享同一个 n</span></div><pre><span class="kw">function</span> <span class="fn">make</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">n</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+  <span class="kw">return</span> <span class="punct">{</span>
+    <span class="fn">inc</span><span class="punct">()</span> <span class="punct">{</span> <span class="var">n</span><span class="punct">++;</span> <span class="punct">},</span>
+    <span class="fn">get</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="var">n</span><span class="punct">;</span> <span class="punct">}</span>   <span class="com">// 与 inc 共享同一个 n</span>
+  <span class="punct">};</span>
+<span class="punct">}</span>
+<span class="kw">const</span> <span class="var">m</span> <span class="punct">=</span> <span class="fn">make</span><span class="punct">();</span>
+<span class="var">m</span><span class="punct">.</span><span class="fn">inc</span><span class="punct">();</span> <span class="var">m</span><span class="punct">.</span><span class="fn">inc</span><span class="punct">();</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">m</span><span class="punct">.</span><span class="fn">get</span><span class="punct">());</span>      <span class="com">// 2</span></pre></div>
+
+  <h2>陷阱三：闭包的内存占用与泄漏</h2>
+  <p>闭包让变量"活得更久"是把双刃剑：只要闭包函数还被引用，它捕获的整个环境就<strong>无法被回收</strong>。如果不小心捕获了大对象（如整个 DOM 节点、大数组），又把这个闭包长期挂在全局或事件监听上，内存就会被白白占用，形成<strong>内存泄漏</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>反例 → 正例：及时释放不再需要的闭包</span></div><pre><span class="com">// 反例：bigData 被回调闭包长期持有，无法回收</span>
+<span class="kw">function</span> <span class="fn">leak</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">bigData</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Array</span><span class="punct">(</span><span class="num">1000000</span><span class="punct">).</span><span class="fn">fill</span><span class="punct">(</span><span class="str">"x"</span><span class="punct">);</span>
+  <span class="var">window</span><span class="punct">.</span><span class="fn">onresize</span> <span class="punct">=</span> <span class="kw">function</span> <span class="punct">()</span> <span class="punct">{</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">bigData</span><span class="punct">.</span><span class="var">length</span><span class="punct">);</span>   <span class="com">// 只用了 length，却锁死整个数组</span>
+  <span class="punct">};</span>
+<span class="punct">}</span>
+
+<span class="com">// 正例：只捕获真正需要的最小数据；用完解绑回调</span>
+<span class="kw">function</span> <span class="fn">noLeak</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">len</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Array</span><span class="punct">(</span><span class="num">1000000</span><span class="punct">).</span><span class="fn">fill</span><span class="punct">(</span><span class="str">"x"</span><span class="punct">).</span><span class="var">length</span><span class="punct">;</span>  <span class="com">// 大数组用完即可被回收</span>
+  <span class="kw">const</span> <span class="var">handler</span> <span class="punct">=</span> <span class="punct">()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">len</span><span class="punct">);</span>
+  <span class="var">window</span><span class="punct">.</span><span class="fn">addEventListener</span><span class="punct">(</span><span class="str">"resize"</span><span class="punct">,</span> <span class="var">handler</span><span class="punct">);</span>
+  <span class="kw">return</span> <span class="punct">()</span> <span class="kw">=&gt;</span> <span class="var">window</span><span class="punct">.</span><span class="fn">removeEventListener</span><span class="punct">(</span><span class="str">"resize"</span><span class="punct">,</span> <span class="var">handler</span><span class="punct">);</span>  <span class="com">// 提供销毁手段</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout warn"><strong>面试高频追问：</strong>"闭包会导致内存泄漏吗？"标准答案是——闭包本身不是泄漏，<strong>不再使用却仍被引用</strong>才是泄漏。规避之道：闭包只捕获最小必要数据、组件卸载/元素移除时主动解绑事件监听、不需要时把持有闭包的变量置为 <code>null</code>。</div>
+
+  <div class="callout tip"><strong>小结：</strong>① 作用域分全局/函数/块级，<code>let</code>/<code>const</code> 才有块级作用域；② JS 是<strong>词法作用域</strong>，能访问哪些变量由"写在哪"决定，不看"在哪调用"；③ 变量沿<strong>作用域链由内向外</strong>查找，就近遮蔽；④ <strong>闭包 = 函数 + 它捕获的外层环境</strong>，本质是持有了变量的活引用，所以函数"有记忆"；⑤ 它撑起了数据私有化、柯里化、防抖节流；⑥ 三大坑：循环 + 闭包共享 <code>var</code>（用 <code>let</code> 解）、多函数共享同一变量、捕获大对象不释放导致泄漏。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="05-函数.html" class="nav-btn">← 函数</a><a href="07-this指向规则.html" class="nav-btn next">this 指向规则 →</a></div>
+</div>
+</body>
+</html>

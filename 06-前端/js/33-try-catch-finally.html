@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · try / catch / finally</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 错误处理 / try / catch / finally</div>
+  <div class="hero"><div class="tag">JS · 错误处理</div><h1>try / catch / finally</h1><p>程序运行时总会遇到意外：网络断了、数据格式不对、调了不存在的方法。错误处理决定了你的代码是优雅地"软着陆"，还是直接崩溃白屏。<code>try/catch/finally</code> 就是 JS 给你的安全网——但它有个致命的边界：管不了异步。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>没有错误处理时，一旦某行代码抛出异常，<strong>整个调用栈会立即中断</strong>，后续逻辑全部不执行，浏览器控制台报一个红错，用户看到的可能是半截渲染的页面或彻底卡死。错误处理的本质，是把"会失败的危险操作"用安全网圈起来：<strong>失败时不让它炸穿整个程序，而是接住它、记录它、给出降级方案，让程序继续优雅地活着</strong>。这就是工程上说的"健壮性"（robustness）——不是保证不出错，而是出错了也能可控地失败。</p>
+
+  <h2>三块结构：try / catch / finally</h2>
+  <p><code>try</code> 块圈起<strong>受监控的代码</strong>；一旦它内部任何一处抛错，控制权立刻跳进 <code>catch</code>，错误对象作为参数传入；<code>finally</code> 则<strong>无论成功还是失败都会执行</strong>，是清理资源的最佳位置。</p>
+  <div class="code-block"><div class="cb-header"><span>三块各司其职</span></div><pre><span class="kw">function</span> <span class="fn">parseConfig</span><span class="punct">(</span><span class="var">raw</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"开始解析"</span><span class="punct">);</span>
+  <span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="var">cfg</span> <span class="punct">=</span> <span class="fn">JSON</span><span class="punct">.</span><span class="fn">parse</span><span class="punct">(</span><span class="var">raw</span><span class="punct">);</span>  <span class="com">// 若 raw 非法 JSON，这里抛 SyntaxError</span>
+    <span class="kw">return</span> <span class="var">cfg</span><span class="punct">.</span><span class="var">name</span><span class="punct">;</span>
+  <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"解析失败，用默认值兜底："</span><span class="punct">,</span> <span class="var">err</span><span class="punct">.</span><span class="var">message</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="str">"default"</span><span class="punct">;</span>  <span class="com">// 降级：不让调用方崩溃</span>
+  <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"解析结束（无论成败都打印）"</span><span class="punct">);</span>
+  <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout info"><strong>执行顺序要点：</strong>即使 <code>try</code> 或 <code>catch</code> 里有 <code>return</code>，<code>finally</code> 也会<strong>先执行完</strong>再真正返回。所以 <code>finally</code> 永远跑得到，这正是它适合做"关闭文件 / 释放锁 / 隐藏 loading"这类收尾工作的原因。</div>
+
+  <h2>throw：主动抛出错误</h2>
+  <p>除了语言自动抛的错，你也能用 <code>throw</code> 主动制造一个错误，强行中断当前流程并把控制权交给最近的 <code>catch</code>。语法上 <strong>throw 后面可以跟任意值</strong>——字符串、数字、对象都行，但<strong>强烈推荐抛 <code>Error</code> 对象</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>抛字符串 vs 抛 Error</span></div><pre><span class="com">// 反例：抛裸字符串，丢失了堆栈信息，排错困难</span>
+<span class="kw">throw</span> <span class="str">"年龄不能为负"</span><span class="punct">;</span>
+
+<span class="com">// 正例：抛 Error 对象，自带 name / message / stack</span>
+<span class="kw">function</span> <span class="fn">setAge</span><span class="punct">(</span><span class="var">age</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="var">age</span> <span class="punct">&lt;</span> <span class="num">0</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">Error</span><span class="punct">(</span><span class="str">"年龄不能为负，收到："</span> <span class="punct">+</span> <span class="var">age</span><span class="punct">);</span>
+  <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+  <p>为什么推荐 <code>Error</code>？因为它携带三个关键属性，让排错有据可查：</p>
+  <table>
+    <tr><th>属性</th><th>含义</th><th>示例</th></tr>
+    <tr><td><code>name</code></td><td>错误类型名</td><td><code>"TypeError"</code> / <code>"Error"</code></td></tr>
+    <tr><td><code>message</code></td><td>人类可读的描述</td><td>构造时传入的字符串</td></tr>
+    <tr><td><code>stack</code></td><td>抛错时的调用栈快照</td><td>定位到具体文件与行号</td></tr>
+  </table>
+  <div class="callout warn"><strong>陷阱：抛裸值后果很重。</strong>如果你 <code>throw "出错了"</code>，下游 <code>catch (e)</code> 拿到的 <code>e</code> 是个字符串，<code>e.message</code> 是 <code>undefined</code>，<code>e.stack</code> 也没有——监控系统（如 Sentry）几乎无法定位问题来源。统一抛 <code>Error</code>（或它的子类，见下一篇<a href="34-自定义错误类型.html">自定义错误类型</a>）是团队协作的底线规范。</div>
+
+  <h2>ES2019：可省略 catch 参数</h2>
+  <p>有时你只关心"出没出错"，不关心错误细节。从 ES2019 起，<code>catch</code> 后的括号可以整个省掉。</p>
+  <div class="code-block"><div class="cb-header"><span>optional catch binding</span></div><pre><span class="com">// 旧写法：即使不用 e 也得声明</span>
+<span class="kw">try</span> <span class="punct">{</span> <span class="var">localStorage</span><span class="punct">.</span><span class="fn">setItem</span><span class="punct">(</span><span class="str">"k"</span><span class="punct">,</span> <span class="var">v</span><span class="punct">);</span> <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="var">e</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">return</span> <span class="kw">null</span><span class="punct">;</span> <span class="punct">}</span>
+
+<span class="com">// ES2019：不需要错误对象时直接省略括号，更干净</span>
+<span class="kw">try</span> <span class="punct">{</span> <span class="var">localStorage</span><span class="punct">.</span><span class="fn">setItem</span><span class="punct">(</span><span class="str">"k"</span><span class="punct">,</span> <span class="var">v</span><span class="punct">);</span> <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">{</span> <span class="kw">return</span> <span class="kw">null</span><span class="punct">;</span> <span class="punct">}</span></pre></div>
+
+  <h2>最大的坑：try/catch 抓不住异步错误</h2>
+  <p>这是初学者翻车率最高的地方，也是面试必考。<code>try/catch</code> 是<strong>同步</strong>机制：它只能捕获在 <code>try</code> 块<strong>同步执行期间</strong>抛出的错误。而 <code>setTimeout</code>、事件回调、<code>Promise</code> 里的代码是<strong>稍后</strong>才执行的——那时 <code>try/catch</code> 早已退出，调用栈完全不同，错误自然"逃逸"出去了。</p>
+  <div class="code-block"><div class="cb-header"><span>反例：catch 形同虚设</span></div><pre><span class="kw">try</span> <span class="punct">{</span>
+  <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+    <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">Error</span><span class="punct">(</span><span class="str">"异步炸了"</span><span class="punct">);</span>  <span class="com">// 1 秒后才执行</span>
+  <span class="punct">},</span> <span class="num">1000</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="com">// 永远不会进来！try 块同步部分早已执行完毕退出</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"我抓不到"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+<span class="punct">}</span>
+<span class="com">// 结果：1 秒后抛出未捕获错误，程序崩在回调里</span></pre></div>
+  <p>修复方式取决于异步的形态。对 <strong>Promise</strong> 用链式 <code>.catch()</code>；对 <code>async</code> 函数，则可以用 <code>await</code> 把异步"拉回"到同步流里，<code>try/catch</code> 就重新生效了（呼应上一篇 <a href="31-async-await.html">async / await</a>）。</p>
+  <div class="code-block"><div class="cb-header"><span>正例：两种修复</span></div><pre><span class="com">// 方式一：Promise 链式 catch</span>
+<span class="fn">fetch</span><span class="punct">(</span><span class="str">"/api"</span><span class="punct">)</span>
+  <span class="punct">.</span><span class="fn">then</span><span class="punct">(</span><span class="var">r</span> <span class="kw">=&gt;</span> <span class="var">r</span><span class="punct">.</span><span class="fn">json</span><span class="punct">())</span>
+  <span class="punct">.</span><span class="fn">catch</span><span class="punct">(</span><span class="var">err</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"请求失败"</span><span class="punct">,</span> <span class="var">err</span><span class="punct">));</span>
+
+<span class="com">// 方式二：async/await + try/catch（await 让错误回到同步可捕获位置）</span>
+<span class="kw">async</span> <span class="kw">function</span> <span class="fn">load</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="var">r</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">"/api"</span><span class="punct">);</span>  <span class="com">// await 抛出的错能被下面 catch 接住</span>
+    <span class="kw">return</span> <span class="kw">await</span> <span class="var">r</span><span class="punct">.</span><span class="fn">json</span><span class="punct">();</span>
+  <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"请求失败"</span><span class="punct">,</span> <span class="var">err</span><span class="punct">);</span>
+  <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>陷阱：finally 里的 return 会覆盖一切</h2>
+  <p><code>finally</code> 如果出现 <code>return</code>（或 <code>throw</code>），它会<strong>覆盖掉 <code>try/catch</code> 里已经准备好的返回值或异常</strong>。这往往是无意中埋下的 bug，调试时极其反直觉。</p>
+  <div class="code-block"><div class="cb-header"><span>finally 的 return 偷梁换柱</span></div><pre><span class="kw">function</span> <span class="fn">test</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span>      <span class="com">// 本想返回 1</span>
+  <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="kw">return</span> <span class="num">2</span><span class="punct">;</span>      <span class="com">// 却被 finally 改成 2，连抛出的异常也会被它"吞掉"</span>
+  <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="fn">test</span><span class="punct">());</span>  <span class="com">// 2</span></pre></div>
+  <div class="callout warn"><strong>规范建议：</strong><code>finally</code> 里只做<strong>无副作用的清理</strong>（关连接、清定时器、复位状态），<strong>绝不要在 finally 里写 <code>return</code> 或 <code>throw</code></strong>，否则会无声地丢失正常结果或真实异常，是排查噩梦。</div>
+
+  <h2>三种错误处理方式对比</h2>
+  <table>
+    <tr><th>方式</th><th>适用场景</th><th>能否抓异步</th><th>特点</th></tr>
+    <tr><td><code>try/catch</code></td><td>同步代码 / <code>await</code> 表达式</td><td>仅配合 <code>await</code></td><td>就近捕获，可读性好</td></tr>
+    <tr><td><code>.catch()</code></td><td>Promise 链式调用</td><td>能（限本链）</td><td>链式优雅，但易漏接</td></tr>
+    <tr><td>全局兜底</td><td>谁都没接住的"漏网之鱼"</td><td>能</td><td>最后防线，只宜上报日志</td></tr>
+  </table>
+  <p>全局兜底是最后一道防线：同步未捕获错误触发 <code>window.onerror</code>，未处理的 Promise rejection 触发 <code>unhandledrejection</code> 事件。它们不该替代局部处理，而是用来<strong>上报监控、避免页面彻底白屏</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>全局兜底（上报用）</span></div><pre><span class="var">window</span><span class="punct">.</span><span class="fn">onerror</span> <span class="punct">=</span> <span class="punct">(</span><span class="var">msg</span><span class="punct">,</span> <span class="var">url</span><span class="punct">,</span> <span class="var">line</span><span class="punct">,</span> <span class="var">col</span><span class="punct">,</span> <span class="var">err</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="fn">report</span><span class="punct">(</span><span class="str">"同步未捕获"</span><span class="punct">,</span> <span class="var">err</span><span class="punct">);</span>
+<span class="punct">};</span>
+<span class="var">window</span><span class="punct">.</span><span class="fn">addEventListener</span><span class="punct">(</span><span class="str">"unhandledrejection"</span><span class="punct">,</span> <span class="var">e</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="fn">report</span><span class="punct">(</span><span class="str">"未处理的 Promise"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">.</span><span class="var">reason</span><span class="punct">);</span>
+<span class="punct">});</span></pre></div>
+
+  <h2>更多常见陷阱</h2>
+  <ul>
+    <li><strong>吞掉错误</strong>：<code>catch (e) {}</code> 空着什么都不做，错误被默默吃掉，线上出问题时毫无线索——这是最危险的"假装没事"。至少要 <code>console.error</code> 或上报。</li>
+    <li><strong>捕获范围过大</strong>：把一大段代码全包进一个 <code>try</code>，出错时分不清是哪一步崩的。应只圈住真正可能失败的危险操作。</li>
+    <li><strong>用错误控制正常流程</strong>：把 <code>throw/catch</code> 当 <code>if/else</code> 用（比如靠抛错跳出循环）。异常机制开销大且语义混乱，正常分支该用普通控制流。</li>
+  </ul>
+
+  <div class="callout tip"><strong>小结：</strong>① <code>try</code> 监控、<code>catch (err)</code> 捕获、<code>finally</code> 收尾，三者无论成败 <code>finally</code> 必跑；② <code>throw</code> 优先抛 <code>Error</code> 对象，才有 <code>message/stack</code> 可排错；③ <strong>try/catch 抓不住异步回调里的错</strong>，要用 <code>.catch()</code> 或 <code>async + await + try/catch</code>；④ 别在 <code>finally</code> 里 <code>return</code>（会覆盖结果），别空 <code>catch</code> 吞错，别把范围圈太大；⑤ <code>window.onerror</code> / <code>unhandledrejection</code> 是全局最后防线，只做上报。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="32-Fetch-API与HTTP请求.html" class="nav-btn">← Fetch API</a><a href="34-自定义错误类型.html" class="nav-btn next">自定义错误类型 →</a></div>
+</div>
+</body>
+</html>

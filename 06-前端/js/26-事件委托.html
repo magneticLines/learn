@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · 事件委托</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 事件 / 事件委托</div>
+  <div class="hero"><div class="tag">JS · 事件</div><h1>事件委托</h1><p>与其给一百个子元素各绑一个监听器，不如把监听器交给它们共同的父亲——这就是事件委托。它是事件冒泡最优雅的实战应用，也是高性能、动态列表的标配套路。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>想象一个有 1000 个 <code>&lt;li&gt;</code> 的列表，你想给每个 <code>&lt;li&gt;</code> 加点击事件。最直觉的写法是循环遍历、逐个 <code>addEventListener</code>。这会带来两个真实痛点：<strong>① 性能与内存</strong>——1000 个监听器意味着浏览器要维护 1000 份回调引用，绑定本身也要遍历 1000 次 DOM；<strong>② 动态元素失效</strong>——如果之后用 JS 又往列表里 <code>append</code> 了新的 <code>&lt;li&gt;</code>，这些新元素根本没被绑过，点了没反应，你必须记得每次新增后都重新绑定。</p>
+  <p>事件委托借助上一篇讲的<strong>事件冒泡</strong>：子元素上触发的事件会一路向上冒泡到父元素。所以我们<strong>只在父元素上绑一个监听器</strong>，等事件冒泡上来，再通过 <code>event.target</code> 判断"到底是哪个子元素被点了"。一个监听管一片，新增的子元素天然也在父元素之下，冒泡照样能捕获——两个问题一并解决。</p>
+
+  <h2>核心机制：target 与 currentTarget</h2>
+  <p>理解委托的关键是分清事件对象上的两个属性，它们在冒泡过程中含义完全不同：</p>
+  <table>
+    <tr><th>属性</th><th>含义</th><th>在委托中的角色</th></tr>
+    <tr><td><code>event.target</code></td><td>真正触发事件的<strong>最深层</strong>元素（用户实际点到的那个）</td><td>用它来识别"点了哪个子元素"</td></tr>
+    <tr><td><code>event.currentTarget</code></td><td>当前正在执行回调的元素，即<strong>绑监听器的那个</strong>父元素</td><td>始终等于父元素，也等于 <code>this</code></td></tr>
+  </table>
+  <div class="callout info"><strong>一句话区分：</strong><code>currentTarget</code> 是"监听器贴在谁身上"（固定不变），<code>target</code> 是"事件源头在哪"（随每次点击变化）。委托的全部逻辑就是从 <code>target</code> 反推出我们关心的那个子元素。</div>
+
+  <h2>反例：给每个 li 单独绑</h2>
+  <p>能用，但每个元素一份监听器，且对动态新增的元素无效。</p>
+  <div class="code-block"><div class="cb-header"><span>反例：逐个绑定</span></div><pre><span class="kw">const</span> <span class="var">items</span> <span class="punct">=</span> <span class="fn">document</span><span class="punct">.</span><span class="fn">querySelectorAll</span><span class="punct">(</span><span class="str">'#list li'</span><span class="punct">);</span>
+<span class="var">items</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">((</span><span class="var">li</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="var">li</span><span class="punct">.</span><span class="fn">addEventListener</span><span class="punct">(</span><span class="str">'click'</span><span class="punct">,</span> <span class="punct">()</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'点击了'</span><span class="punct">,</span> <span class="var">li</span><span class="punct">.</span><span class="var">textContent</span><span class="punct">);</span>
+  <span class="punct">});</span>
+<span class="punct">});</span>
+
+<span class="com">// 痛点：① N 个 li 就有 N 个监听器；</span>
+<span class="com">// ② 之后 list.appendChild(newLi) 新增的 li 没绑过，点了没反应</span></pre></div>
+
+  <h2>正例：委托给父元素 ul</h2>
+  <p>只在 <code>&lt;ul&gt;</code> 上绑一次。冒泡上来后用 <code>event.target.closest('li')</code> 精准定位——<code>closest</code> 会从 <code>target</code> 自身开始向上查找最近的匹配 <code>li</code>，这样即使用户点到的是 <code>&lt;li&gt;</code> 内部的 <code>&lt;span&gt;</code>、<code>&lt;b&gt;</code> 等子节点，也能正确归位到那一行。</p>
+  <div class="code-block"><div class="cb-header"><span>正例：一个监听管一片</span></div><pre><span class="kw">const</span> <span class="var">list</span> <span class="punct">=</span> <span class="fn">document</span><span class="punct">.</span><span class="fn">getElementById</span><span class="punct">(</span><span class="str">'list'</span><span class="punct">);</span>
+
+<span class="var">list</span><span class="punct">.</span><span class="fn">addEventListener</span><span class="punct">(</span><span class="str">'click'</span><span class="punct">,</span> <span class="punct">(</span><span class="var">e</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="com">// closest 从 target 向上找最近的 li，点到 li 内部的子节点也能命中</span>
+  <span class="kw">const</span> <span class="var">li</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">.</span><span class="var">target</span><span class="punct">.</span><span class="fn">closest</span><span class="punct">(</span><span class="str">'li'</span><span class="punct">);</span>
+
+  <span class="com">// 没命中（如点到了 ul 的空白内边距），或命中的 li 不在本列表里 —— 直接忽略</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="punct">!</span><span class="var">li</span> <span class="punct">||</span> <span class="punct">!</span><span class="var">list</span><span class="punct">.</span><span class="fn">contains</span><span class="punct">(</span><span class="var">li</span><span class="punct">))</span> <span class="kw">return</span><span class="punct">;</span>
+
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'点击了'</span><span class="punct">,</span> <span class="var">li</span><span class="punct">.</span><span class="var">textContent</span><span class="punct">);</span>
+<span class="punct">});</span>
+
+<span class="com">// 之后动态新增的 li 自动生效，无需重新绑定 ↓</span>
+<span class="var">list</span><span class="punct">.</span><span class="fn">insertAdjacentHTML</span><span class="punct">(</span><span class="str">'beforeend'</span><span class="punct">,</span> <span class="str">'&lt;li&gt;新来的&lt;/li&gt;'</span><span class="punct">);</span></pre></div>
+  <div class="callout tip"><strong>为什么用 <code>closest</code> 而不是 <code>e.target === li</code>？</strong>因为 <code>target</code> 是用户实际点到的<strong>最深节点</strong>。如果 <code>&lt;li&gt;&lt;span&gt;文字&lt;/span&gt;&lt;/li&gt;</code>，点到文字时 <code>target</code> 是那个 <code>&lt;span&gt;</code>，直接比较就会漏判。<code>closest</code> 帮你向上"归位"到那一行。</div>
+
+  <h2>陷阱一：target 可能是更深的子节点</h2>
+  <p>这是委托第一大坑，承接上面。不要假设 <code>target</code> 就是你想要的那一层。两种稳妥的定位方式：</p>
+  <ul>
+    <li><code>e.target.closest('li')</code>：向上找最近的祖先（含自身），适合子元素结构复杂的情况，最常用。</li>
+    <li><code>e.target.matches('li')</code> 或 <code>e.target.tagName === 'LI'</code>：只判断自身是否匹配，适合子元素结构扁平、确定不会点到内部节点时。注意 <code>tagName</code> 返回的是<strong>大写</strong>。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>两种判断方式</span></div><pre><span class="var">list</span><span class="punct">.</span><span class="fn">addEventListener</span><span class="punct">(</span><span class="str">'click'</span><span class="punct">,</span> <span class="punct">(</span><span class="var">e</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="com">// 方式 A：向上归位（推荐）</span>
+  <span class="kw">const</span> <span class="var">li</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">.</span><span class="var">target</span><span class="punct">.</span><span class="fn">closest</span><span class="punct">(</span><span class="str">'li'</span><span class="punct">);</span>
+
+  <span class="com">// 方式 B：只看 target 自身（结构扁平时够用）</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="var">e</span><span class="punct">.</span><span class="var">target</span><span class="punct">.</span><span class="fn">matches</span><span class="punct">(</span><span class="str">'li'</span><span class="punct">))</span> <span class="punct">{</span> <span class="com">/* ... */</span> <span class="punct">}</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="var">e</span><span class="punct">.</span><span class="var">target</span><span class="punct">.</span><span class="var">tagName</span> <span class="punct">===</span> <span class="str">'LI'</span><span class="punct">)</span> <span class="punct">{</span> <span class="com">/* tagName 是大写！*/</span> <span class="punct">}</span>
+<span class="punct">});</span></pre></div>
+
+  <h2>陷阱二：不冒泡的事件不能直接委托</h2>
+  <p>委托的引擎是冒泡，所以<strong>不冒泡的事件就委托不了</strong>。最典型的是 <code>focus</code> / <code>blur</code>——它们只在目标元素上触发、不向上冒泡，绑在父元素上根本收不到。解决办法是用它们会冒泡的兄弟版本：<code>focusin</code> / <code>focusout</code>。</p>
+  <table>
+    <tr><th>事件</th><th>是否冒泡</th><th>委托时改用</th></tr>
+    <tr><td><code>focus</code></td><td>否</td><td><code>focusin</code></td></tr>
+    <tr><td><code>blur</code></td><td>否</td><td><code>focusout</code></td></tr>
+    <tr><td><code>click</code> / <code>input</code> / <code>change</code></td><td>是</td><td>可直接委托</td></tr>
+    <tr><td><code>mouseenter</code> / <code>mouseleave</code></td><td>否</td><td>用 <code>mouseover</code> / <code>mouseout</code> 替代</td></tr>
+  </table>
+
+  <h2>陷阱三：委托范围与 stopPropagation 的冲突</h2>
+  <p>还有两个容易踩的点：</p>
+  <ul>
+    <li><strong>范围过大导致误判</strong>：如果把监听器绑到 <code>document</code> 或很高层的容器上，<code>closest('li')</code> 可能匹配到页面里别处的、不属于本列表的 <code>li</code>。务必把委托范围收窄到真正的父容器，并配合 <code>list.contains(li)</code> 二次校验。</li>
+    <li><strong>子元素调用了 <code>stopPropagation</code></strong>：委托靠冒泡，而 <code>e.stopPropagation()</code> 会<strong>掐断冒泡链</strong>。如果某个子元素（或第三方组件）在内部 <code>click</code> 里阻止了冒泡，事件就到不了你委托的父元素，委托回调静默失效。排查"委托怎么不触发"时，先去看链路上有没有人偷偷 <code>stopPropagation</code>。</li>
+  </ul>
+  <div class="callout warn"><strong>考点：委托 vs 直接绑定怎么选？</strong>子元素多、会动态增删（列表、表格、菜单）→ 用委托。元素少且固定、或需要精确控制单个元素的多种事件 → 直接绑更清晰。委托不是银弹：它增加了一层 <code>target</code> 判断逻辑，元素很少时反而是过度设计。</div>
+
+  <div class="callout tip"><strong>小结：</strong>① 委托 = 把监听器绑在共同父元素上，靠<strong>冒泡</strong>接收子元素事件；② 用 <code>event.target</code> 找事件源、<code>currentTarget</code> 是绑定者，二者别混；③ 定位子元素优先 <code>e.target.closest('选择器')</code>，能正确处理点到内部子节点的情况；④ 好处是省内存、对<strong>动态新增元素自动生效</strong>；⑤ 三大坑：<code>target</code> 可能是更深节点、<code>focus/blur</code> 不冒泡（改用 <code>focusin/focusout</code>）、范围过大误判 + 子元素 <code>stopPropagation</code> 会让委托失效。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="25-事件冒泡与捕获.html" class="nav-btn">← 事件冒泡与捕获</a><a href="27-常用事件类型速查.html" class="nav-btn next">常用事件类型速查 →</a></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · 事件循环与调用栈</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 异步编程 / 事件循环与调用栈</div>
+  <div class="hero"><div class="tag">JS · 异步编程</div><h1>事件循环与调用栈</h1><p>JS 只有一根线程，却能同时处理定时器、网络请求和用户点击而不卡死——靠的就是事件循环这套调度机制。它是整个异步篇的地基：看懂它，你就能预测任何一段代码的执行顺序。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>JS 诞生时的使命是在浏览器里操作 DOM。如果它是多线程的，就会出现"线程 A 正在删除一个节点、线程 B 同时往这个节点里写内容"的竞态——DOM 是共享状态，多线程会让一切失控。所以 JS 被设计成<strong>单线程</strong>：同一时刻只做一件事，结果可预测，也不需要锁。</p>
+  <p>但单线程有个致命问题：一个耗时操作（比如等服务器返回数据）会把唯一的线程<strong>堵死</strong>，期间页面完全无响应。解法不是加线程，而是<strong>把耗时操作交给别人去等，等好了再回来通知我</strong>——这个"别人"是浏览器（宿主环境），这个"回来通知"的调度机制就是<strong>事件循环（Event Loop）</strong>。</p>
+
+  <h2>调用栈：函数执行的舞台</h2>
+  <p>JS 引擎用一个<strong>调用栈（Call Stack）</strong>来追踪"现在执行到哪了"。它是后进先出（LIFO）的：调用一个函数就<strong>压栈（push）</strong>，函数返回就<strong>弹栈（pop）</strong>。栈顶永远是当前正在执行的那个函数。</p>
+  <div class="code-block"><div class="cb-header"><span>调用栈的压栈与弹栈</span></div><pre><span class="kw">function</span> <span class="fn">multiply</span><span class="punct">(</span><span class="var">a</span><span class="punct">,</span> <span class="var">b</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">return</span> <span class="var">a</span> <span class="punct">*</span> <span class="var">b</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="kw">function</span> <span class="fn">square</span><span class="punct">(</span><span class="var">n</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">return</span> <span class="fn">multiply</span><span class="punct">(</span><span class="var">n</span><span class="punct">,</span> <span class="var">n</span><span class="punct">);</span> <span class="punct">}</span>
+
+<span class="fn">square</span><span class="punct">(</span><span class="num">5</span><span class="punct">);</span>
+<span class="com">// 栈的变化（自底向上）：</span>
+<span class="com">// 1. square 压栈</span>
+<span class="com">// 2. square 内部调用 multiply，multiply 压栈（栈顶）</span>
+<span class="com">// 3. multiply 返回 25，弹栈</span>
+<span class="com">// 4. square 返回 25，弹栈 —— 栈空</span></pre></div>
+  <div class="callout warn"><strong>栈溢出（Stack Overflow）</strong>：栈空间有限。无限递归（忘了写终止条件）会不停压栈直到撑爆，抛出 <code>RangeError: Maximum call stack size exceeded</code>。这正是著名问答网站的名字由来。</div>
+
+  <h2>三个角色：栈、Web APIs、任务队列</h2>
+  <p>同步代码直接进调用栈，一行行执行完就弹出。遇到<strong>异步任务</strong>（定时器、网络请求、DOM 事件监听）时，JS 引擎自己不等待——它把任务<strong>交给宿主环境的 Web APIs</strong>（浏览器或 Node 提供的，运行在引擎之外），然后立刻继续执行后面的同步代码。</p>
+  <p>当 Web APIs 那边的事情办完了（定时到点、数据回来、按钮被点），对应的<strong>回调函数</strong>不会插队直接执行，而是被放进一个<strong>任务队列（Queue）</strong>排队等候。</p>
+  <div class="callout info"><strong>事件循环</strong>就是一个永不停歇的循环：它反复检查"<strong>调用栈空了吗？</strong>"。只要栈一空，就从队列里取出排在最前的回调，压入栈中执行。这就是为什么异步回调总是在所有同步代码之后才跑。</div>
+
+  <h2>宏任务 vs 微任务（核心）</h2>
+  <p>队列其实不止一个。回调分两类，优先级不同，这是事件循环最容易考、也最容易答错的地方。</p>
+  <table>
+    <tr><th>对比项</th><th>宏任务 macrotask</th><th>微任务 microtask</th></tr>
+    <tr><td>典型来源</td><td><code>setTimeout</code>、<code>setInterval</code>、I/O、UI 事件</td><td><code>Promise.then/catch/finally</code>、<code>queueMicrotask</code>、<code>MutationObserver</code></td></tr>
+    <tr><td>所在队列</td><td>宏任务队列</td><td>微任务队列</td></tr>
+    <tr><td>执行时机</td><td>每轮循环只取<strong>一个</strong>来执行</td><td>该轮里<strong>全部清空</strong>才罢休</td></tr>
+    <tr><td>优先级</td><td>低</td><td>高（紧跟当前宏任务）</td></tr>
+  </table>
+  <p>事件循环的精确流程是：<strong>执行一个宏任务 → 清空所有微任务（包括清空过程中新产生的微任务）→ （需要时）渲染一帧 → 再取下一个宏任务</strong>。换句话说，<strong>微任务永远在下一个宏任务之前跑完</strong>。</p>
+  <div class="callout warn"><strong>陷阱：微任务能"插队"且会自我增殖。</strong>如果一个微任务里又不断产生新的微任务，事件循环会一直清理微任务队列、迟迟轮不到下一个宏任务，甚至饿死渲染（页面卡住）。</div>
+
+  <h2>经典输出顺序题，逐步拆解</h2>
+  <p>这道题几乎是异步面试的"投名状"。先盖住答案，自己推一遍。</p>
+  <div class="code-block"><div class="cb-header"><span>同步 → 微任务 → 宏任务</span></div><pre><span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'1 同步'</span><span class="punct">);</span>
+
+<span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'2 setTimeout 宏任务'</span><span class="punct">),</span> <span class="num">0</span><span class="punct">);</span>
+
+<span class="fn">Promise</span><span class="punct">.</span><span class="fn">resolve</span><span class="punct">()</span>
+  <span class="punct">.</span><span class="fn">then</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'3 then 微任务'</span><span class="punct">));</span>
+
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'4 同步'</span><span class="punct">);</span>
+
+<span class="com">// 输出顺序：1 同步 → 4 同步 → 3 then 微任务 → 2 setTimeout 宏任务</span></pre></div>
+  <p>逐步分析：</p>
+  <ol>
+    <li>整段脚本本身就是<strong>第一个宏任务</strong>。同步代码先入栈：打印 <code>1 同步</code>。</li>
+    <li><code>setTimeout</code> 的回调交给 Web APIs 计时，到点后进<strong>宏任务队列</strong>排队。</li>
+    <li><code>Promise.then</code> 的回调进<strong>微任务队列</strong>排队。</li>
+    <li>继续同步执行：打印 <code>4 同步</code>。此刻栈空，本宏任务结束。</li>
+    <li>清空微任务队列：执行 <code>then</code>，打印 <code>3 then 微任务</code>。</li>
+    <li>微任务清空后，取下一个宏任务：执行 <code>setTimeout</code> 回调，打印 <code>2 setTimeout 宏任务</code>。</li>
+  </ol>
+
+  <h2>await 的本质也是微任务</h2>
+  <p><code>async/await</code> 是 Promise 的语法糖。关键认知：<strong>遇到 <code>await</code> 时，函数会"暂停"并立即把控制权交还给调用者；<code>await</code> 后面的代码相当于被包进了 <code>.then</code> 回调，即一个微任务</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>await 之后的代码是微任务</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">foo</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'A 同步'</span><span class="punct">);</span>
+  <span class="kw">await</span> <span class="fn">Promise</span><span class="punct">.</span><span class="fn">resolve</span><span class="punct">();</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'C 微任务（await 之后）'</span><span class="punct">);</span>
+<span class="punct">}</span>
+<span class="fn">foo</span><span class="punct">();</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'B 同步'</span><span class="punct">);</span>
+<span class="com">// 输出：A 同步 → B 同步 → C 微任务（await 之后）</span></pre></div>
+
+  <h2>常见陷阱与考点</h2>
+  <ul>
+    <li><strong><code>setTimeout(fn, 0)</code> 不是"立即执行"</strong>：它只是把回调尽快放进宏任务队列，仍要等当前同步代码跑完、微任务清空、且前面的宏任务排完才轮到。延迟 <code>0</code> 是"最少 0 毫秒"，不是马上。</li>
+    <li><strong>微任务永远先于下一个宏任务</strong>：哪怕 <code>setTimeout</code> 写在 <code>Promise.then</code> 前面，<code>then</code> 也先执行。</li>
+    <li><strong>长任务阻塞渲染</strong>：浏览器渲染发生在宏任务之间。一个跑了几百毫秒的同步循环会霸占线程，期间页面无法重绘、无法响应点击——表现为"卡死"。重活应切片或丢给 Web Worker。</li>
+    <li><strong>定时器不精确</strong>：到点了若栈不空，回调只能继续排队，实际触发会晚于设定时间。</li>
+  </ul>
+
+  <div class="callout tip"><strong>小结：</strong>① JS 单线程是为安全操作 DOM 而生，靠事件循环实现"非阻塞"；② 调用栈 LIFO，递归无底会栈溢出；③ 异步任务交给 Web APIs，完成后回调进队列，栈空才被取出；④ 顺序铁律：<strong>同步代码 → 清空所有微任务 → 取一个宏任务</strong>，循环往复；⑤ <code>Promise.then</code> / <code>await</code> 之后是微任务，<code>setTimeout</code> 是宏任务，<code>setTimeout(fn,0)</code> 也得排队。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="27-常用事件类型速查.html" class="nav-btn">← 常用事件类型速查</a><a href="29-回调函数与回调地狱.html" class="nav-btn next">回调函数与回调地狱 →</a></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · Generator 与 Iterator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 进阶概念 / Generator 与 Iterator</div>
+  <div class="hero"><div class="tag">JS · 进阶概念</div><h1>Generator 与 Iterator</h1><p>为什么数组能 <code>for...of</code>、能展开 <code>...</code>、能解构，而普通对象不行？答案藏在一套"迭代协议"里。Generator 则是 JS 给你的一把"可暂停的函数"瑞士军刀——它既是迭代器的最佳生产工具，也是 async/await 的前身。这两者，是把前面所学串成一条线的收官知识。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>ES6 之前，遍历不同集合的方式各不相同：数组用 <code>for</code> 索引、对象用 <code>for...in</code>、类数组（如 <code>arguments</code>、DOM 节点列表）还得手动转换。JS 缺一套<strong>统一的"如何逐个取值"的约定</strong>。ES6 用两个协议把这件事标准化了：<strong>迭代器协议（Iterator）</strong>规定"怎么取下一个"，<strong>可迭代协议（Iterable）</strong>规定"怎么拿到一个迭代器"。一旦遵守，对象就能被 <code>for...of</code>、展开运算符、解构、<code>Array.from</code> 等所有"消费方"统一处理——这正是数组、字符串、<code>Map</code>、<code>Set</code> 天生可迭代的原因（呼应 04 / 08 篇）。而 Generator，则让你<strong>不用手写这套协议</strong>，写几行就能造出一个迭代器。</p>
+
+  <h2>迭代器协议（Iterator）：怎么取下一个</h2>
+  <p>一个对象只要有一个 <code>next()</code> 方法，且每次调用返回形如 <code>{ value, done }</code> 的对象，它就是<strong>迭代器</strong>。<code>value</code> 是本次产出的值，<code>done</code> 是布尔值，表示"是否已经取完"。它本质就是一个<strong>带状态的指针</strong>：每调一次 <code>next()</code>，指针前移一格。</p>
+  <div class="code-block"><div class="cb-header"><span>手写一个最朴素的迭代器</span></div><pre><span class="kw">const</span> <span class="var">it</span> <span class="punct">=</span> <span class="punct">{</span>
+  <span class="var">cur</span><span class="punct">:</span> <span class="num">0</span><span class="punct">,</span>
+  <span class="fn">next</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">return</span> <span class="kw">this</span><span class="punct">.</span><span class="var">cur</span> <span class="punct">&lt;</span> <span class="num">3</span>
+      <span class="punct">?</span> <span class="punct">{</span> <span class="var">value</span><span class="punct">:</span> <span class="kw">this</span><span class="punct">.</span><span class="var">cur</span><span class="punct">++,</span> <span class="var">done</span><span class="punct">:</span> <span class="kw">false</span> <span class="punct">}</span>
+      <span class="punct">:</span> <span class="punct">{</span> <span class="var">value</span><span class="punct">:</span> <span class="kw">undefined</span><span class="punct">,</span> <span class="var">done</span><span class="punct">:</span> <span class="kw">true</span> <span class="punct">};</span>
+  <span class="punct">}</span>
+<span class="punct">};</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">next</span><span class="punct">());</span>  <span class="com">// { value: 0, done: false }</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">next</span><span class="punct">());</span>  <span class="com">// { value: 1, done: false }</span></pre></div>
+
+  <h2>可迭代协议（Iterable）：怎么拿到迭代器</h2>
+  <p>光有迭代器还不够。<code>for...of</code> 拿到的是一个集合，它怎么知道该向谁要迭代器？答案是：集合要实现一个名为 <code>[Symbol.iterator]</code> 的方法（用 Symbol 当键，避免和普通属性冲突——呼应 09 篇 Symbol），调用它返回一个迭代器。<strong>实现了 <code>[Symbol.iterator]()</code> 的对象，就叫"可迭代对象"。</strong>这就是数组、字符串、<code>Map</code>、<code>Set</code> 能被 <code>for...of</code> 遍历的全部秘密——它们的原型上都内置了这个方法。</p>
+  <div class="code-block"><div class="cb-header"><span>让普通对象变得可迭代</span></div><pre><span class="kw">const</span> <span class="var">range</span> <span class="punct">=</span> <span class="punct">{</span>
+  <span class="var">from</span><span class="punct">:</span> <span class="num">1</span><span class="punct">,</span>
+  <span class="var">to</span><span class="punct">:</span> <span class="num">3</span><span class="punct">,</span>
+  <span class="com">// 计算属性名：键是 Symbol.iterator，值是一个返回迭代器的函数</span>
+  <span class="punct">[</span><span class="fn">Symbol</span><span class="punct">.</span><span class="var">iterator</span><span class="punct">]()</span> <span class="punct">{</span>
+    <span class="kw">let</span> <span class="var">cur</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">from</span><span class="punct">,</span> <span class="var">last</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">to</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="punct">{</span>
+      <span class="fn">next</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">return</span> <span class="var">cur</span> <span class="punct">&lt;=</span> <span class="var">last</span>
+          <span class="punct">?</span> <span class="punct">{</span> <span class="var">value</span><span class="punct">:</span> <span class="var">cur</span><span class="punct">++,</span> <span class="var">done</span><span class="punct">:</span> <span class="kw">false</span> <span class="punct">}</span>
+          <span class="punct">:</span> <span class="punct">{</span> <span class="var">value</span><span class="punct">:</span> <span class="kw">undefined</span><span class="punct">,</span> <span class="var">done</span><span class="punct">:</span> <span class="kw">true</span> <span class="punct">};</span>
+      <span class="punct">}</span>
+    <span class="punct">};</span>
+  <span class="punct">}</span>
+<span class="punct">};</span>
+
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">const</span> <span class="var">n</span> <span class="kw">of</span> <span class="var">range</span><span class="punct">)</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">n</span><span class="punct">);</span>  <span class="com">// 1 2 3</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">([...</span><span class="var">range</span><span class="punct">]);</span>            <span class="com">// [1, 2, 3] —— 展开运算符也认这套协议</span>
+<span class="kw">const</span> <span class="punct">[</span><span class="var">a</span><span class="punct">,</span> <span class="var">b</span><span class="punct">]</span> <span class="punct">=</span> <span class="var">range</span><span class="punct">;</span>           <span class="com">// 解构同理：a=1, b=2</span></pre></div>
+  <div class="callout info"><strong>两个协议的分工：</strong>Iterable 回答"找谁要"（<code>[Symbol.iterator]()</code>），Iterator 回答"怎么取"（<code>next()</code>）。<code>for...of</code> 内部做的事就是：先调 <code>[Symbol.iterator]()</code> 拿到迭代器，再循环调 <code>next()</code> 直到 <code>done: true</code>。把这条链记牢，所有"可迭代"现象都不再神秘。</div>
+
+  <h2>Generator 函数：可暂停的函数</h2>
+  <p>手写迭代器又是闭包又是状态，啰嗦易错。Generator 把这套活儿全包了。它的写法是 <code>function*</code>（function 后加星号）配 <code>yield</code> 关键字。<strong>最反直觉、也最关键的一点：调用 Generator 函数并不执行函数体</strong>，而是立即返回一个<strong>生成器对象</strong>。函数体的代码要等你调 <code>next()</code> 才一步步执行，执行到 <code>yield</code> 就<strong>暂停</strong>并把 <code>yield</code> 后的值作为 <code>value</code> 吐出来，下次 <code>next()</code> 再从暂停处<strong>恢复</strong>。</p>
+  <p>这正是它与普通函数的本质区别：普通函数一旦调用就一口气跑到 <code>return</code>，中途无法停；Generator 则像一台可以反复"暂停 / 续播"的播放器，把函数的执行权交还给调用者。</p>
+  <div class="code-block"><div class="cb-header"><span>function* 与 yield 的暂停-恢复</span></div><pre><span class="kw">function*</span> <span class="fn">gen</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'开始'</span><span class="punct">);</span>
+  <span class="kw">yield</span> <span class="num">1</span><span class="punct">;</span>            <span class="com">// 暂停点 ①，吐出 1</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'中间'</span><span class="punct">);</span>
+  <span class="kw">yield</span> <span class="num">2</span><span class="punct">;</span>            <span class="com">// 暂停点 ②，吐出 2</span>
+  <span class="kw">return</span> <span class="num">99</span><span class="punct">;</span>          <span class="com">// 结束，done 变 true</span>
+<span class="punct">}</span>
+
+<span class="kw">const</span> <span class="var">g</span> <span class="punct">=</span> <span class="fn">gen</span><span class="punct">();</span>     <span class="com">// 注意：此时"开始"还没打印！函数体尚未执行</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">g</span><span class="punct">.</span><span class="fn">next</span><span class="punct">());</span> <span class="com">// 打印"开始"，再返回 { value: 1, done: false }</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">g</span><span class="punct">.</span><span class="fn">next</span><span class="punct">());</span> <span class="com">// 打印"中间"，再返回 { value: 2, done: false }</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">g</span><span class="punct">.</span><span class="fn">next</span><span class="punct">());</span> <span class="com">// { value: 99, done: true } —— return 的值出现在这里</span></pre></div>
+  <p>生成器对象同时满足两个协议：它有 <code>next()</code>（是迭代器），它的 <code>[Symbol.iterator]()</code> 又返回自身（是可迭代对象）。所以可以直接 <code>for...of</code> 它，或用展开运算符消费——再也不用手写那一堆状态代码了。</p>
+
+  <h2>进阶用法：next(arg) 传值、yield* 委托</h2>
+  <p><code>yield</code> 不只是单向吐值，它还能<strong>双向通信</strong>：<code>next(arg)</code> 传入的实参，会成为<strong>上一个 <code>yield</code> 表达式的返回值</strong>。这让调用者能反过来"喂数据"给暂停中的函数，是 Generator 实现异步流程控制的核心机制。</p>
+  <div class="code-block"><div class="cb-header"><span>next 传值 与 yield* 委托</span></div><pre><span class="kw">function*</span> <span class="fn">dialog</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">name</span> <span class="punct">=</span> <span class="kw">yield</span> <span class="str">'你叫什么？'</span><span class="punct">;</span>  <span class="com">// yield 的"值"由下次 next(arg) 注入</span>
+  <span class="kw">yield</span> <span class="str">`你好，${</span><span class="var">name</span><span class="str">}`</span><span class="punct">;</span>
+<span class="punct">}</span>
+<span class="kw">const</span> <span class="var">d</span> <span class="punct">=</span> <span class="fn">dialog</span><span class="punct">();</span>
+<span class="var">d</span><span class="punct">.</span><span class="fn">next</span><span class="punct">();</span>            <span class="com">// 第一次 next 启动，无参数；返回 '你叫什么？'</span>
+<span class="var">d</span><span class="punct">.</span><span class="fn">next</span><span class="punct">(</span><span class="str">'小明'</span><span class="punct">);</span>      <span class="com">// '小明' 成为上面 yield 的返回值 → name</span>
+
+<span class="com">// yield* 委托：把遍历权转交给另一个可迭代对象</span>
+<span class="kw">function*</span> <span class="fn">inner</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">yield</span> <span class="num">1</span><span class="punct">;</span> <span class="kw">yield</span> <span class="num">2</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="kw">function*</span> <span class="fn">outer</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">yield*</span> <span class="fn">inner</span><span class="punct">();</span>   <span class="com">// 等价于把 inner 产出的值逐个 yield 出来</span>
+  <span class="kw">yield</span> <span class="num">3</span><span class="punct">;</span>
+<span class="punct">}</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">([...</span><span class="fn">outer</span><span class="punct">()]);</span>  <span class="com">// [1, 2, 3]</span></pre></div>
+
+  <h2>典型应用：惰性求值与无限序列</h2>
+  <p>因为 Generator 只在 <code>next()</code> 时才算下一个值，它天生适合<strong>惰性求值</strong>——可以表达"无限"的序列而不会卡死，要多少取多少。自增 ID 生成器就是经典例子。</p>
+  <div class="code-block"><div class="cb-header"><span>无限自增 ID 生成器</span></div><pre><span class="kw">function*</span> <span class="fn">idMaker</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">id</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+  <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="kw">yield</span> <span class="var">id</span><span class="punct">++;</span>  <span class="com">// 无限循环不会卡死：每次 next 只走一步</span>
+<span class="punct">}</span>
+<span class="kw">const</span> <span class="var">ids</span> <span class="punct">=</span> <span class="fn">idMaker</span><span class="punct">();</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">ids</span><span class="punct">.</span><span class="fn">next</span><span class="punct">().</span><span class="var">value</span><span class="punct">);</span>  <span class="com">// 1</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">ids</span><span class="punct">.</span><span class="fn">next</span><span class="punct">().</span><span class="var">value</span><span class="punct">);</span>  <span class="com">// 2 …… 按需取值</span></pre></div>
+  <p>其他常见场景：<strong>自定义可迭代</strong>（用 Generator 实现 <code>[Symbol.iterator]</code>，比手写迭代器干净得多）、<strong>状态机</strong>（每个 <code>yield</code> 是一个状态）、以及历史上的<strong>异步流程控制</strong>——在 async/await 出现前，社区用 Generator + Promise（如 co 库）模拟"同步写法的异步代码"，<code>yield</code> 一个 Promise、等它 resolve 后再 <code>next</code> 回来。这正是 async/await 的思想原型（呼应 31 篇）：<code>async</code> 函数本质就是被引擎自动驱动的 Generator。</p>
+  <div class="code-block"><div class="cb-header"><span>用 Generator 简化自定义可迭代</span></div><pre><span class="kw">const</span> <span class="var">range</span> <span class="punct">=</span> <span class="punct">{</span>
+  <span class="var">from</span><span class="punct">:</span> <span class="num">1</span><span class="punct">,</span> <span class="var">to</span><span class="punct">:</span> <span class="num">3</span><span class="punct">,</span>
+  <span class="punct">*[</span><span class="fn">Symbol</span><span class="punct">.</span><span class="var">iterator</span><span class="punct">]()</span> <span class="punct">{</span>   <span class="com">// 直接用 generator 方法，替代前面那一大坨</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="kw">let</span> <span class="var">i</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">from</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">to</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="kw">yield</span> <span class="var">i</span><span class="punct">;</span>
+  <span class="punct">}</span>
+<span class="punct">};</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">([...</span><span class="var">range</span><span class="punct">]);</span>  <span class="com">// [1, 2, 3]</span></pre></div>
+
+  <h2>四个高频陷阱</h2>
+  <table>
+    <tr><th>陷阱</th><th>说明</th></tr>
+    <tr><td>不调 <code>next()</code> 就不执行</td><td>调用 <code>gen()</code> 只是拿到生成器对象，函数体一行都没跑。误以为"调用即执行"会导致副作用（如 <code>console.log</code>）迟迟不发生。</td></tr>
+    <tr><td><code>for...of</code> 不消费 <code>return</code> 值</td><td><code>for...of</code> 在 <code>done: true</code> 那一轮就停止，<strong>不会</strong>把 <code>return</code> 的值纳入遍历。所以 <code>[...gen()]</code> 里看不到 <code>return 99</code> 的 99，只有各个 <code>yield</code> 的值。</td></tr>
+    <tr><td><code>Symbol.iterator</code> 写错</td><td>必须是 <code>[Symbol.iterator]</code>（带方括号的计算属性，且是 Symbol），写成字符串 <code>'Symbol.iterator'</code> 或拼成 <code>Symbol.iterater</code> 都会让对象不可迭代，<code>for...of</code> 直接报 <code>is not iterable</code>。</td></tr>
+    <tr><td>生成器只能遍历一次</td><td>生成器对象是一次性的迭代器：跑完后状态停在 <code>done: true</code>，再 <code>for...of</code> 它将得到空结果。要重复遍历，应每次重新调用 Generator 函数拿新对象（这也是 <code>[Symbol.iterator]()</code> 要返回新迭代器的原因）。</td></tr>
+  </table>
+  <div class="callout warn"><strong>易错对比：</strong>把"可迭代对象"和"迭代器"搞混。数组是<strong>可迭代的</strong>但本身不是迭代器（它没有 <code>next()</code>，要先 <code>arr[Symbol.iterator]()</code> 才拿到迭代器）；而生成器对象两者皆是。区分清楚，才能理解为什么数组能反复 <code>for...of</code>、而生成器只能遍历一次。</div>
+
+  <div class="callout tip"><strong>小结（JS 进阶篇收官）：</strong>① <strong>Iterator</strong> = 有 <code>next()</code> 返回 <code>{value, done}</code> 的指针；<strong>Iterable</strong> = 实现 <code>[Symbol.iterator]()</code> 返回迭代器，于是能被 <code>for...of</code> / 展开 / 解构统一消费；② 数组、字符串、Map、Set 天生可迭代，普通对象不是；③ <strong>Generator</strong>（<code>function*</code> + <code>yield</code>）是"可暂停的函数"，调用返回的生成器对象既是迭代器又可迭代，是造迭代器的利器；④ <code>next(arg)</code> 双向传值、<code>yield*</code> 委托，支撑了惰性序列、状态机，并孕育了 async/await。至此 JS 进阶篇收官——闭包给了它记忆、迭代协议给了它统一的遍历语言、Promise 与 Generator 共同点亮了异步，三者交汇于此，正是 JS 语言设计之美的缩影。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="41-正则表达式基础.html" class="nav-btn">← 正则表达式基础</a><a href="../frontend-roadmap.html" class="nav-btn next">返回路线图 →</a></div>
+</div>
+</body>
+</html>

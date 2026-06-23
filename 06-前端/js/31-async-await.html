@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · async / await</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 异步编程 / async / await</div>
+  <div class="hero"><div class="tag">JS · 异步编程</div><h1>async / await</h1><p>Promise 把回调地狱拉平成了链式调用，但 <code>.then()</code> 套来套去依然不够直观。async / await 是建立在 Promise 之上的语法糖——它让异步代码读起来、写起来都像同步代码，是现代 JS 处理异步的首选写法。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>上一篇我们用 <code>Promise</code> 解决了回调地狱，但 <code>.then()</code> 链式调用有两个不爽：① 取出的值被困在回调函数里，要靠层层 <code>.then</code> 往下传；② 控制流（条件、循环、try/catch）和 <code>.then</code> 拼起来很别扭。<strong>async / await（ES2017）</strong>用同步的书写形式包装了 Promise：<code>await</code> 把"等待结果"这件事变成一行赋值语句，错误处理直接用熟悉的 <code>try/catch</code>。它没有引入新的异步机制，<strong>底层仍然是 Promise</strong>——只是换了件更顺眼的外衣。</p>
+  <div class="code-block"><div class="cb-header"><span>同一段逻辑：Promise 链 vs async/await</span></div><pre><span class="com">// Promise 链：值困在回调里，层层缩进</span>
+<span class="kw">function</span> <span class="fn">getUser</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">return</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">'/api/user'</span><span class="punct">)</span>
+    <span class="punct">.</span><span class="fn">then</span><span class="punct">(</span><span class="var">res</span> <span class="kw">=&gt;</span> <span class="var">res</span><span class="punct">.</span><span class="fn">json</span><span class="punct">())</span>
+    <span class="punct">.</span><span class="fn">then</span><span class="punct">(</span><span class="var">user</span> <span class="kw">=&gt;</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">`/api/orders/`</span> <span class="punct">+</span> <span class="var">user</span><span class="punct">.</span><span class="var">id</span><span class="punct">))</span>
+    <span class="punct">.</span><span class="fn">then</span><span class="punct">(</span><span class="var">res</span> <span class="kw">=&gt;</span> <span class="var">res</span><span class="punct">.</span><span class="fn">json</span><span class="punct">());</span>
+<span class="punct">}</span>
+
+<span class="com">// async/await：像同步代码一样自上而下读</span>
+<span class="kw">async</span> <span class="kw">function</span> <span class="fn">getUser</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">res</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">'/api/user'</span><span class="punct">);</span>
+  <span class="kw">const</span> <span class="var">user</span> <span class="punct">=</span> <span class="kw">await</span> <span class="var">res</span><span class="punct">.</span><span class="fn">json</span><span class="punct">();</span>
+  <span class="kw">const</span> <span class="var">orders</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">`/api/orders/`</span> <span class="punct">+</span> <span class="var">user</span><span class="punct">.</span><span class="var">id</span><span class="punct">);</span>
+  <span class="kw">return</span> <span class="kw">await</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">json</span><span class="punct">();</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>async 函数总是返回 Promise</h2>
+  <p>给函数加上 <code>async</code> 关键字，无论你 <code>return</code> 什么，外部拿到的<strong>永远是一个 Promise</strong>。返回普通值时会被自动包成 <code>Promise.resolve(值)</code>；函数体里抛出异常时则变成一个 <strong>rejected 的 Promise</strong>。这正是 async/await 能和 Promise 无缝互通的根基——它们本就是同一套东西。</p>
+  <div class="code-block"><div class="cb-header"><span>返回值与异常都被 Promise 包裹</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">f</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="num">42</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="fn">f</span><span class="punct">()</span><span class="punct">.</span><span class="fn">then</span><span class="punct">(</span><span class="var">v</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">v</span><span class="punct">));</span>   <span class="com">// 42（42 被包成 Promise.resolve(42)）</span>
+
+<span class="kw">async</span> <span class="kw">function</span> <span class="fn">g</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">Error</span><span class="punct">(</span><span class="str">'boom'</span><span class="punct">);</span> <span class="punct">}</span>
+<span class="fn">g</span><span class="punct">()</span><span class="punct">.</span><span class="fn">catch</span><span class="punct">(</span><span class="var">e</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">e</span><span class="punct">.</span><span class="var">message</span><span class="punct">));</span>  <span class="com">// boom（抛错 → rejected Promise）</span></pre></div>
+
+  <h2>await：暂停并取出结果</h2>
+  <p><code>await</code> 后面跟一个 Promise，它会<strong>暂停当前 async 函数的执行</strong>，等这个 Promise 完成（fulfilled）后取出其结果值，再继续往下走。注意"暂停"只是暂停了这个函数，<strong>主线程并没有被阻塞</strong>——引擎会去执行其它任务，等结果好了再回到这里。</p>
+  <table>
+    <tr><th>规则</th><th>说明</th></tr>
+    <tr><td>只能在 <code>async</code> 函数内用</td><td>普通函数里写 <code>await</code> 是语法错误</td></tr>
+    <tr><td>取出的是<strong>结果值</strong></td><td><code>await p</code> 的值是 <code>p</code> resolve 出的值，不是 Promise</td></tr>
+    <tr><td>await 非 Promise 值</td><td>会被自动包装，等价于 <code>await Promise.resolve(值)</code></td></tr>
+    <tr><td>Promise 被 reject</td><td><code>await</code> 处会"抛出"该错误，可被 <code>try/catch</code> 捕获</td></tr>
+    <tr><td>顶层 await</td><td>仅在 ES 模块（<code>&lt;script type="module"&gt;</code> 或 <code>.mjs</code>）顶层可用</td></tr>
+  </table>
+
+  <h2>错误处理：用 try / catch</h2>
+  <p>这是 async/await 比 <code>.then().catch()</code> 更自然的地方。被 <code>await</code> 的 Promise 一旦 reject，错误会在 <code>await</code> 那一行"抛出"，于是你可以用同步代码里最熟悉的 <code>try/catch</code> 来兜住它——同步异常和异步异常被统一成了一种处理方式。</p>
+  <div class="code-block"><div class="cb-header"><span>try/catch 同时兜住同步与异步错误</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">load</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="var">res</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">'/api/data'</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="punct">!</span><span class="var">res</span><span class="punct">.</span><span class="var">ok</span><span class="punct">)</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">Error</span><span class="punct">(</span><span class="str">'HTTP '</span> <span class="punct">+</span> <span class="var">res</span><span class="punct">.</span><span class="var">status</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="kw">await</span> <span class="var">res</span><span class="punct">.</span><span class="fn">json</span><span class="punct">();</span>
+  <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="com">// 网络失败、4xx/5xx、JSON 解析失败 都会落到这里</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">'加载失败：'</span><span class="punct">,</span> <span class="var">err</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="kw">null</span><span class="punct">;</span>
+  <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'无论成败都执行（关 loading 等）'</span><span class="punct">);</span>
+  <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout info"><strong>关于 Fetch API：</strong>下一站会专门讲 <code>fetch</code>。这里先记住一个坑——<code>fetch</code> 只在<strong>网络层面失败</strong>时才 reject，HTTP 404/500 这类响应它认为是"成功收到了"，<code>res.ok</code> 为 <code>false</code> 但 Promise 不会 reject，所以要手动判断并 <code>throw</code>。</div>
+
+  <h2>并发要点：别让独立任务排队</h2>
+  <p>这是用 async/await 最容易写慢的地方。<strong>连续的 <code>await</code> 是串行的</strong>：第一个等完才发起第二个。如果两个任务互不依赖，这种写法白白浪费时间。正确做法是先把 Promise 都发出去，再用 <code>Promise.all</code> 一起 <code>await</code>，让它们<strong>并发</strong>执行。</p>
+  <div class="code-block"><div class="cb-header"><span>反例：串行 await（总耗时 = 之和）</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">slow</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">user</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetchUser</span><span class="punct">();</span>     <span class="com">// 等 1s</span>
+  <span class="kw">const</span> <span class="var">posts</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetchPosts</span><span class="punct">();</span>   <span class="com">// 再等 1s（其实它根本不依赖 user）</span>
+  <span class="kw">return</span> <span class="punct">{</span> <span class="var">user</span><span class="punct">,</span> <span class="var">posts</span> <span class="punct">};</span>           <span class="com">// 总共 ≈ 2s ❌</span>
+<span class="punct">}</span></pre></div>
+  <div class="code-block"><div class="cb-header"><span>正例：Promise.all 并发（总耗时 = 最大值）</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">fast</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="com">// 两个请求几乎同时发出，再一起等</span>
+  <span class="kw">const</span> <span class="punct">[</span><span class="var">user</span><span class="punct">,</span> <span class="var">posts</span><span class="punct">]</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">Promise</span><span class="punct">.</span><span class="fn">all</span><span class="punct">([</span>
+    <span class="fn">fetchUser</span><span class="punct">(),</span>
+    <span class="fn">fetchPosts</span><span class="punct">(),</span>
+  <span class="punct">]);</span>
+  <span class="kw">return</span> <span class="punct">{</span> <span class="var">user</span><span class="punct">,</span> <span class="var">posts</span> <span class="punct">};</span>           <span class="com">// 总共 ≈ 1s ✅</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout info"><strong>选 all 还是 allSettled？</strong><code>Promise.all</code> 有一个失败就整体 reject（适合"全要成功"）；<code>Promise.allSettled</code> 等所有都结束、各自带成功/失败状态（适合"能拿多少算多少"）。</div>
+
+  <h2>循环中的 await：当心串行与失效</h2>
+  <p>在 <code>for</code> 循环里写 <code>await</code> 是<strong>串行</strong>的——这有时是你要的（需要顺序执行），但常常是无意中写慢了。更隐蔽的坑是 <code>forEach</code>：它的回调是普通函数，里面的 <code>await</code> <strong>根本拦不住外层</strong>，<code>forEach</code> 会立刻返回，循环"看起来在等"实际没等。</p>
+  <div class="code-block"><div class="cb-header"><span>forEach 里的 await 是无效的</span></div><pre><span class="com">// ❌ forEach 不会等待，"全部完成"会先于任何一个打印</span>
+<span class="var">ids</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="kw">async</span> <span class="var">id</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">data</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="var">id</span><span class="punct">);</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">data</span><span class="punct">);</span>
+<span class="punct">});</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'全部完成'</span><span class="punct">);</span>  <span class="com">// 这行会最先执行！</span>
+
+<span class="com">// ✅ 需要顺序：用 for...of，await 真正生效</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">const</span> <span class="var">id</span> <span class="kw">of</span> <span class="var">ids</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">data</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="var">id</span><span class="punct">);</span>  <span class="com">// 一个接一个</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">data</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 不要求顺序、想要快：map 出 Promise 数组再 all</span>
+<span class="kw">const</span> <span class="var">results</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">Promise</span><span class="punct">.</span><span class="fn">all</span><span class="punct">(</span><span class="var">ids</span><span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="var">id</span> <span class="kw">=&gt;</span> <span class="fn">fetch</span><span class="punct">(</span><span class="var">id</span><span class="punct">)));</span></pre></div>
+
+  <h2>for await...of：遍历异步迭代</h2>
+  <p>当数据源是<strong>异步可迭代对象</strong>（如分页流、可读流），<code>for await...of</code> 会在每次迭代自动 <code>await</code> 取出下一项，让你像遍历普通数组一样处理一段段陆续到达的数据。</p>
+  <div class="code-block"><div class="cb-header"><span>for await...of 逐块处理异步数据流</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="punct">*</span><span class="fn">pages</span><span class="punct">()</span> <span class="punct">{</span>           <span class="com">// 异步生成器：每页是一个 Promise</span>
+  <span class="kw">yield</span> <span class="kw">await</span> <span class="fn">fetchPage</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+  <span class="kw">yield</span> <span class="kw">await</span> <span class="fn">fetchPage</span><span class="punct">(</span><span class="num">2</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="kw">for</span> <span class="kw">await</span> <span class="punct">(</span><span class="kw">const</span> <span class="var">page</span> <span class="kw">of</span> <span class="fn">pages</span><span class="punct">())</span> <span class="punct">{</span>  <span class="com">// 每轮自动等待下一页</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">page</span><span class="punct">.</span><span class="var">length</span><span class="punct">);</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>常见陷阱速查</h2>
+  <table>
+    <tr><th>陷阱</th><th>后果 / 说明</th></tr>
+    <tr><td>忘记写 <code>await</code></td><td>拿到的是 <strong>Promise 对象</strong>而非结果值，后续 <code>data.xxx</code> 全是 <code>undefined</code></td></tr>
+    <tr><td>循环里 <code>await</code></td><td>默认<strong>串行</strong>，独立任务会拖慢；该并发时用 <code>Promise.all</code></td></tr>
+    <tr><td><code>forEach</code> 里 <code>await</code></td><td>完全无效，外层不会等待（用 <code>for...of</code> 或 <code>map + all</code>）</td></tr>
+    <tr><td><code>await</code> 非 Promise</td><td>会被包装成 resolved Promise，多走一个微任务 tick</td></tr>
+    <tr><td>漏 <code>await</code> 被 <code>try/catch</code></td><td><code>return fetchX()</code> 不加 await，错误逃出 try（除非直接 return）</td></tr>
+    <tr><td>顶层 <code>await</code> 在普通脚本</td><td>报语法错误，仅 ES 模块顶层可用</td></tr>
+    <tr><td>未处理的 rejected</td><td>async 抛错变 rejected Promise，无人 catch 会触发未处理拒绝警告</td></tr>
+  </table>
+
+  <div class="callout warn"><strong>最隐蔽的一个：忘记 await。</strong>例如 <code>const data = fetchUser();</code> 漏了 <code>await</code>，<code>data</code> 是个 Promise，<code>data.name</code> 自然是 <code>undefined</code>，且不会报错——非常难排查。开 ESLint 的 <code>require-await</code> / <code>no-floating-promises</code> 规则能帮你提前发现。</div>
+
+  <div class="callout tip"><strong>小结：</strong>① async/await 是 Promise 的语法糖，async 函数<strong>总是返回 Promise</strong>；② <code>await</code> 暂停函数、取出结果值，只能在 async 内用（ESM 顶层例外）；③ 错误处理用 <code>try/catch</code>，比 <code>.catch</code> 更自然；④ 独立任务别串行 <code>await</code>，用 <code>Promise.all</code> 并发；⑤ <code>forEach</code> 里的 <code>await</code> 无效，顺序遍历用 <code>for...of</code>、异步流用 <code>for await...of</code>。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="30-Promise.html" class="nav-btn">← Promise</a><a href="32-Fetch-API与HTTP请求.html" class="nav-btn next">Fetch API →</a></div>
+</div>
+</body>
+</html>

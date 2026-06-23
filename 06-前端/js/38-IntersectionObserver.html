@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · Intersection Observer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 浏览器 API / Intersection Observer</div>
+  <div class="hero"><div class="tag">JS · 浏览器 API</div><h1>Intersection Observer</h1><p>「元素是否进入了视口？」这个看似简单的问题，过去要靠监听滚动事件硬算，代价高得离谱。IntersectionObserver 把这件事交给浏览器异步处理——图片懒加载、无限滚动、曝光埋点，从此都有了优雅的标准答案。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>过去判断一个元素是否出现在视口里，标准做法是监听 <code>scroll</code> 事件，在回调里对每个目标元素调用 <code>getBoundingClientRect()</code> 算出它相对视口的位置。这套方案有三宗罪：<strong>① 高频触发</strong>——滚动一下能触发几十上百次回调；<strong>② 强制同步布局（reflow）</strong>——<code>getBoundingClientRect()</code> 会逼浏览器立刻重新计算布局，在滚动这种高频场景里极易掉帧卡顿；<strong>③ 全在主线程上跑</strong>，和渲染抢资源。</p>
+  <p><code>IntersectionObserver</code> 换了个思路：你只需告诉浏览器「我关心这些元素和视口的相交关系」，剩下的<strong>由浏览器在底层异步地观察</strong>，相交状态发生变化时才回调通知你。它不阻塞主线程、不强制 reflow，天生高效。这正是「<strong>声明式</strong>」对「命令式」的胜利——你描述意图，浏览器决定何时、如何高效地完成。</p>
+
+  <h2>基本用法</h2>
+  <p>三步走：创建观察者（传入回调和配置）、用 <code>observe()</code> 注册要观察的元素、在回调里处理相交变化。</p>
+  <div class="code-block"><div class="cb-header"><span>创建并启动观察</span></div><pre><span class="kw">const</span> <span class="var">observer</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">IntersectionObserver</span><span class="punct">((</span><span class="var">entries</span><span class="punct">,</span> <span class="var">obs</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="var">entries</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">((</span><span class="var">entry</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">entry</span><span class="punct">.</span><span class="var">isIntersecting</span><span class="punct">)</span> <span class="punct">{</span>
+      <span class="com">// entry.target 是当前正在相交的那个元素</span>
+      <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">&#39;进入视口&#39;</span><span class="punct">,</span> <span class="var">entry</span><span class="punct">.</span><span class="var">target</span><span class="punct">);</span>
+    <span class="punct">}</span>
+  <span class="punct">});</span>
+<span class="punct">},</span> <span class="punct">{</span>
+  <span class="var">root</span><span class="punct">:</span> <span class="kw">null</span><span class="punct">,</span>          <span class="com">// null = 相对浏览器视口</span>
+  <span class="var">rootMargin</span><span class="punct">:</span> <span class="str">&#39;0px&#39;</span><span class="punct">,</span>  <span class="com">// 视口边界的外扩/内缩</span>
+  <span class="var">threshold</span><span class="punct">:</span> <span class="num">0</span>         <span class="com">// 相交比例达到多少时触发回调</span>
+<span class="punct">});</span>
+
+<span class="kw">const</span> <span class="var">el</span> <span class="punct">=</span> <span class="fn">document</span><span class="punct">.</span><span class="fn">querySelector</span><span class="punct">(</span><span class="str">&#39;.target&#39;</span><span class="punct">);</span>
+<span class="var">observer</span><span class="punct">.</span><span class="fn">observe</span><span class="punct">(</span><span class="var">el</span><span class="punct">);</span>      <span class="com">// 开始观察</span>
+<span class="com">// observer.unobserve(el);  停止观察某个元素</span>
+<span class="com">// observer.disconnect();   停止观察全部元素</span></pre></div>
+
+  <h2>回调收到的 entry 有哪些信息</h2>
+  <p>回调的第一个参数是 <code>entries</code> 数组（注意：只包含<strong>相交状态发生变化</strong>的元素，不是全部被观察元素）。每个 <code>entry</code> 携带这些常用字段：</p>
+  <table>
+    <tr><th>字段</th><th>含义</th></tr>
+    <tr><td><code>isIntersecting</code></td><td>布尔值，是否正在与 root 相交（最常用的判断依据）</td></tr>
+    <tr><td><code>intersectionRatio</code></td><td>相交比例 0~1，元素露出多少（用于精细控制，如曝光面积埋点）</td></tr>
+    <tr><td><code>target</code></td><td>触发本次变化的目标元素（多元素共用一个 observer 时靠它区分）</td></tr>
+    <tr><td><code>boundingClientRect</code></td><td>目标元素的位置尺寸（浏览器已算好，无需自己 reflow）</td></tr>
+    <tr><td><code>intersectionRect</code></td><td>实际相交区域的矩形</td></tr>
+    <tr><td><code>time</code></td><td>变化发生的时间戳</td></tr>
+  </table>
+
+  <h2>三个配置项详解</h2>
+  <p><strong><code>root</code></strong>：作为参照的「视口」。默认 <code>null</code> 即浏览器视口；也可传一个可滚动的祖先元素，用于「容器内滚动」的场景。</p>
+  <p><strong><code>rootMargin</code></strong>：给 root 的边界加一圈外边距（语法同 CSS margin，如 <code>'100px 0px'</code>）。正值<strong>提前</strong>触发——元素还没真正进视口、离边界 100px 时就回调，常用于懒加载提前加载；负值则<strong>延后</strong>触发。</p>
+  <p><strong><code>threshold</code></strong>：相交比例阈值。<code>0</code> 表示一露头（哪怕 1 像素）就触发；<code>1</code> 表示完全进入才触发；也可传数组 <code>[0, 0.5, 1]</code>，在露出 0%、50%、100% 这几个节点各触发一次。</p>
+
+  <h2>实战：图片懒加载</h2>
+  <p>这是 IntersectionObserver 最经典的应用。把真实地址放在 <code>data-src</code> 里，元素进视口才赋给 <code>src</code> 触发真正的网络请求；加载后<strong>立刻 <code>unobserve</code></strong> 该元素，避免重复触发、也减少观察负担。</p>
+  <div class="code-block"><div class="cb-header"><span>HTML：用 data-src 占位</span></div><pre><span class="punct">&lt;</span><span class="kw">img</span> <span class="var">class</span><span class="punct">=</span><span class="str">&quot;lazy&quot;</span> <span class="var">data-src</span><span class="punct">=</span><span class="str">&quot;/photos/real.jpg&quot;</span> <span class="var">alt</span><span class="punct">=</span><span class="str">&quot;&quot;</span> <span class="punct">/&gt;</span></pre></div>
+  <div class="code-block"><div class="cb-header"><span>JS：进视口才加载，加载后停止观察</span></div><pre><span class="kw">const</span> <span class="var">imgs</span> <span class="punct">=</span> <span class="fn">document</span><span class="punct">.</span><span class="fn">querySelectorAll</span><span class="punct">(</span><span class="str">&#39;img.lazy&#39;</span><span class="punct">);</span>
+
+<span class="kw">const</span> <span class="var">io</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">IntersectionObserver</span><span class="punct">((</span><span class="var">entries</span><span class="punct">,</span> <span class="var">obs</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="var">entries</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">((</span><span class="var">entry</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(!</span><span class="var">entry</span><span class="punct">.</span><span class="var">isIntersecting</span><span class="punct">)</span> <span class="kw">return</span><span class="punct">;</span>
+    <span class="kw">const</span> <span class="var">img</span> <span class="punct">=</span> <span class="var">entry</span><span class="punct">.</span><span class="var">target</span><span class="punct">;</span>
+    <span class="var">img</span><span class="punct">.</span><span class="var">src</span> <span class="punct">=</span> <span class="var">img</span><span class="punct">.</span><span class="var">dataset</span><span class="punct">.</span><span class="var">src</span><span class="punct">;</span>  <span class="com">// 此刻才发起真正的请求</span>
+    <span class="var">obs</span><span class="punct">.</span><span class="fn">unobserve</span><span class="punct">(</span><span class="var">img</span><span class="punct">);</span>           <span class="com">// 加载过一次就不必再观察了</span>
+  <span class="punct">});</span>
+<span class="punct">},</span> <span class="punct">{</span> <span class="var">rootMargin</span><span class="punct">:</span> <span class="str">&#39;200px&#39;</span> <span class="punct">});</span>  <span class="com">// 提前 200px 预加载，体验更顺滑</span>
+
+<span class="var">imgs</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">((</span><span class="var">img</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="var">io</span><span class="punct">.</span><span class="fn">observe</span><span class="punct">(</span><span class="var">img</span><span class="punct">));</span></pre></div>
+  <div class="callout info">同样的套路稍作变形即可做<strong>无限滚动</strong>：在列表末尾放一个「哨兵」空 div，观察它；哨兵进视口就加载下一页数据。还能做<strong>滚动动画</strong>（进视口添加动画 class）和<strong>曝光埋点</strong>（用 <code>threshold</code> 配合，元素露出 50% 才算一次有效曝光）。</div>
+
+  <h2>对比：scroll + 节流 vs IntersectionObserver</h2>
+  <div class="code-block"><div class="cb-header"><span>反例：scroll 事件 + 节流 + getBoundingClientRect</span></div><pre><span class="com">// 即使加了节流，仍有成本：每次回调都要遍历元素、强制同步布局</span>
+<span class="fn">window</span><span class="punct">.</span><span class="fn">addEventListener</span><span class="punct">(</span><span class="str">&#39;scroll&#39;</span><span class="punct">,</span> <span class="fn">throttle</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="var">imgs</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">((</span><span class="var">img</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="var">rect</span> <span class="punct">=</span> <span class="var">img</span><span class="punct">.</span><span class="fn">getBoundingClientRect</span><span class="punct">();</span> <span class="com">// 触发 reflow！</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">rect</span><span class="punct">.</span><span class="var">top</span> <span class="punct">&lt;</span> <span class="fn">innerHeight</span><span class="punct">)</span> <span class="var">img</span><span class="punct">.</span><span class="var">src</span> <span class="punct">=</span> <span class="var">img</span><span class="punct">.</span><span class="var">dataset</span><span class="punct">.</span><span class="var">src</span><span class="punct">;</span>
+  <span class="punct">});</span>
+<span class="punct">},</span> <span class="num">200</span><span class="punct">));</span></pre></div>
+  <table>
+    <tr><th>维度</th><th>scroll + 节流</th><th>IntersectionObserver</th></tr>
+    <tr><td>触发频率</td><td>高频，靠节流硬压</td><td>仅相交状态变化时</td></tr>
+    <tr><td>是否 reflow</td><td>是（<code>getBoundingClientRect</code>）</td><td>否，浏览器底层算好</td></tr>
+    <tr><td>执行线程</td><td>主线程，和渲染抢资源</td><td>浏览器异步，不阻塞</td></tr>
+    <tr><td>代码复杂度</td><td>要手写节流 + 位置判断</td><td>声明式，浏览器代劳</td></tr>
+  </table>
+
+  <h2>陷阱与注意点</h2>
+  <ul>
+    <li><strong>回调是异步触发的，不保证实时</strong>。它在浏览器空闲时批量上报，所以别拿它做需要像素级实时同步的逻辑（如「跟手」动画）——那种场景仍需 <code>requestAnimationFrame</code>。</li>
+    <li><strong>初始就在视口内的元素也会触发一次回调</strong>。<code>observe()</code> 后浏览器会立刻做一次初始检测，因此首屏可见的元素会马上收到 <code>isIntersecting: true</code>，这通常正是你想要的。</li>
+    <li><strong>触发一次后记得 <code>unobserve</code></strong>。懒加载、动画这类「只需触发一次」的场景，不解绑会导致元素反复进出视口时重复执行。</li>
+    <li><strong>看清 <code>threshold</code> 的含义</strong>。<code>threshold: 0</code> 是「露 1 像素就触发」，不是「完全离开」；要等完全可见用 <code>1</code>。初学者常把它和 <code>rootMargin</code> 混淆——前者管「露出多少比例」，后者管「边界扩缩多少距离」。</li>
+    <li><strong>兼容性</strong>：现代浏览器（含移动端）早已全面支持，可放心使用；如需兼容远古环境可引入官方 polyfill。</li>
+  </ul>
+
+  <div class="callout tip"><strong>小结：</strong>① 用它替代「scroll + getBoundingClientRect」判断元素是否进视口，省掉高频触发与强制 reflow；② 三步：<code>new IntersectionObserver(cb, options)</code> → <code>observe()</code> → 回调里读 <code>entry.isIntersecting</code>；③ options 三件套：<code>root</code> 参照系、<code>rootMargin</code> 提前/延后、<code>threshold</code> 相交比例；④ 懒加载/无限滚动/曝光埋点是经典场景，记得用完 <code>unobserve</code>；⑤ 回调异步、初始会触发一次，按需求处理。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="37-URL与History-API.html" class="nav-btn">← URL 与 History API</a><a href="39-深拷贝与浅拷贝.html" class="nav-btn next">深拷贝与浅拷贝 →</a></div>
+</div>
+</body>
+</html>

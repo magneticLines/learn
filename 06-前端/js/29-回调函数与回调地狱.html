@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · 回调函数与回调地狱</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 异步编程 / 回调函数与回调地狱</div>
+  <div class="hero"><div class="tag">JS · 异步编程</div><h1>回调函数与回调地狱</h1><p>回调函数是 JS 异步世界的第一块基石——"事情做完了再叫我"。它简单、直接，却在多个异步操作互相依赖时退化成层层嵌套的"金字塔"。理解回调的好与坏，才能明白后面 Promise、async/await 究竟在解决什么。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>承接上一篇<strong>事件循环</strong>：JS 是单线程的，遇到耗时操作（定时器、网络请求、读文件）如果<strong>同步等待</strong>，整个线程就被卡死，页面假死、什么都点不动。所以这些操作必须<strong>异步</strong>——"先把任务交出去，我接着干别的，等结果好了你再通知我"。问题来了：结果到来时，怎么知道"接下来该执行哪段逻辑"？答案就是<strong>回调函数</strong>——你提前把"结果到了之后要做的事"写成一个函数交给它，等异步完成时由它来调用（call back）。回调把"未来某一刻才能执行的代码"打包起来，交给事件循环在合适的时机调度。</p>
+
+  <h2>什么是回调函数</h2>
+  <p>回调函数的本质很朴素：<strong>把一个函数作为参数传给另一个函数，待某件事完成后再被调用</strong>。在 JS 里函数是"一等公民"（可以像值一样传递），这才让回调成为可能。</p>
+  <div class="code-block"><div class="cb-header"><span>函数作为参数传入</span></div><pre><span class="com">// greet 不关心"打完招呼后做什么"，把决定权交给调用者</span>
+<span class="kw">function</span> <span class="fn">greet</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="var">callback</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"你好, "</span> <span class="punct">+</span> <span class="var">name</span><span class="punct">);</span>
+  <span class="var">callback</span><span class="punct">();</span>  <span class="com">// 在合适的时机回调</span>
+<span class="punct">}</span>
+
+<span class="fn">greet</span><span class="punct">(</span><span class="str">"小明"</span><span class="punct">,</span> <span class="kw">function</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"招呼打完了"</span><span class="punct">);</span>
+<span class="punct">});</span></pre></div>
+
+  <h2>同步回调 vs 异步回调</h2>
+  <p>同样是"把函数传进去被调用"，回调其实分两种，初学者常把它们混为一谈，导致对执行顺序的判断出错。</p>
+  <ul>
+    <li><strong>同步回调</strong>：在当前函数执行过程中<strong>立即、原地</strong>被调用，不脱离当前调用栈。如 <code>arr.map(fn)</code>、<code>arr.forEach(fn)</code>、<code>arr.sort(fn)</code>——它们在 <code>map</code> 返回前就把回调全部跑完。</li>
+    <li><strong>异步回调</strong>：被登记后<strong>稍后</strong>才执行，要等当前同步代码跑完、事件循环把它从任务队列取出。如 <code>setTimeout</code>、DOM 事件监听、<code>fetch</code> 等网络请求。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>同步回调 vs 异步回调的执行顺序</span></div><pre><span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"1 开始"</span><span class="punct">);</span>
+
+<span class="com">// 同步回调：map 内部立刻执行，紧贴当前流程</span>
+<span class="punct">[</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">].</span><span class="fn">map</span><span class="punct">((</span><span class="var">n</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"2 同步 map "</span> <span class="punct">+</span> <span class="var">n</span><span class="punct">));</span>
+
+<span class="com">// 异步回调：被登记进任务队列，等同步代码跑完才执行</span>
+<span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"4 异步 setTimeout"</span><span class="punct">),</span> <span class="num">0</span><span class="punct">);</span>
+
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"3 结束"</span><span class="punct">);</span>
+<span class="com">// 输出顺序：1 开始 → 2 同步 map 1 → 2 同步 map 2 → 3 结束 → 4 异步 setTimeout</span></pre></div>
+  <div class="callout info"><strong>关键区别：</strong>同步回调不脱离当前调用栈，<strong>执行顺序可预测</strong>；异步回调要交给事件循环调度，<strong>晚于所有同步代码</strong>。回调地狱专指<strong>异步</strong>回调的嵌套问题——同步回调不会有这种麻烦。</div>
+
+  <h2>回调地狱（Callback Hell）</h2>
+  <p>当多个异步操作<strong>前后依赖</strong>（第二步需要第一步的结果，第三步又依赖第二步……）时，由于异步结果只能在回调里拿到，你被迫把下一步写进上一步的回调里。一层套一层，代码向右缩进成一座"金字塔"，这就是<strong>回调地狱</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>反例：4 层嵌套的回调金字塔</span></div><pre><span class="com">// 场景：登录 → 拿用户资料 → 拿订单列表 → 拿第一个订单详情</span>
+<span class="fn">login</span><span class="punct">(</span><span class="str">"小明"</span><span class="punct">,</span> <span class="kw">function</span> <span class="punct">(</span><span class="var">err</span><span class="punct">,</span> <span class="var">user</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="kw">return</span> <span class="fn">handle</span><span class="punct">(</span><span class="var">err</span><span class="punct">);</span>
+  <span class="fn">getProfile</span><span class="punct">(</span><span class="var">user</span><span class="punct">.</span><span class="var">id</span><span class="punct">,</span> <span class="kw">function</span> <span class="punct">(</span><span class="var">err</span><span class="punct">,</span> <span class="var">profile</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="kw">return</span> <span class="fn">handle</span><span class="punct">(</span><span class="var">err</span><span class="punct">);</span>
+    <span class="fn">getOrders</span><span class="punct">(</span><span class="var">profile</span><span class="punct">,</span> <span class="kw">function</span> <span class="punct">(</span><span class="var">err</span><span class="punct">,</span> <span class="var">orders</span><span class="punct">)</span> <span class="punct">{</span>
+      <span class="kw">if</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="kw">return</span> <span class="fn">handle</span><span class="punct">(</span><span class="var">err</span><span class="punct">);</span>
+      <span class="fn">getDetail</span><span class="punct">(</span><span class="var">orders</span><span class="punct">[</span><span class="num">0</span><span class="punct">],</span> <span class="kw">function</span> <span class="punct">(</span><span class="var">err</span><span class="punct">,</span> <span class="var">detail</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="kw">return</span> <span class="fn">handle</span><span class="punct">(</span><span class="var">err</span><span class="punct">);</span>
+        <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">detail</span><span class="punct">);</span>  <span class="com">// 终于拿到了，缩进已经到天边</span>
+      <span class="punct">});</span>
+    <span class="punct">});</span>
+  <span class="punct">});</span>
+<span class="punct">});</span></pre></div>
+  <p>回调地狱的三宗罪：<strong>① 难读</strong>——逻辑顺序（先登录后取详情）和代码缩进方向一致，但视觉上像一团乱麻，结尾一排 <code>});</code> 难以对齐；<strong>② 难维护</strong>——想在中间插一步、或调整顺序，要大段挪动嵌套层；<strong>③ 错误处理重复且散落</strong>——每一层都得写一遍 <code>if (err) return ...</code>，漏写一处就静默吞掉错误。</p>
+
+  <h2>Node 风格回调约定：错误优先</h2>
+  <p>注意上面每个回调的第一个参数都是 <code>err</code>。这是 Node.js 社区的事实标准——<strong>错误优先回调（error-first callback）</strong>：回调签名固定为 <code>callback(err, data)</code>。成功时 <code>err</code> 为 <code>null</code>、数据在后面的参数里；失败时 <code>err</code> 是一个 <code>Error</code> 对象。</p>
+  <div class="code-block"><div class="cb-header"><span>错误优先约定</span></div><pre><span class="kw">const</span> <span class="var">fs</span> <span class="punct">=</span> <span class="fn">require</span><span class="punct">(</span><span class="str">"fs"</span><span class="punct">);</span>
+
+<span class="var">fs</span><span class="punct">.</span><span class="fn">readFile</span><span class="punct">(</span><span class="str">"a.txt"</span><span class="punct">,</span> <span class="str">"utf8"</span><span class="punct">,</span> <span class="kw">function</span> <span class="punct">(</span><span class="var">err</span><span class="punct">,</span> <span class="var">data</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="punct">{</span>          <span class="com">// 永远先判断 err</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"读取失败"</span><span class="punct">,</span> <span class="var">err</span><span class="punct">);</span>
+    <span class="kw">return</span><span class="punct">;</span>              <span class="com">// 别忘了 return，否则会继续往下执行</span>
+  <span class="punct">}</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">data</span><span class="punct">);</span>      <span class="com">// 走到这里说明成功</span>
+<span class="punct">});</span></pre></div>
+  <div class="callout info"><strong>为什么要约定？</strong>异步回调里的错误<strong>没法用 <code>return</code> 把错误抛回调用者</strong>（调用 <code>readFile</code> 那行早就执行完了），也<strong>没法被外层 <code>try/catch</code> 捕获</strong>。错误只能"随结果一起送进回调"，于是社区统一约定放在第一个参数，调用方一眼就知道去哪儿查错。</div>
+
+  <h2>陷阱清单</h2>
+  <table>
+    <tr><th>陷阱</th><th>说明 / 后果</th></tr>
+    <tr><td>try/catch 抓不到</td><td><code>try</code> 包住 <code>setTimeout</code>，回调里抛的错<strong>逃出</strong>了 try 块（执行时调用栈早已不同），catch 形同虚设。</td></tr>
+    <tr><td>this 丢失</td><td>把对象方法当回调传出去（如 <code>setTimeout(obj.fn)</code>），调用时 <code>this</code> 不再指向 obj。需用箭头函数或 <code>.bind(obj)</code> 固定。</td></tr>
+    <tr><td>回调被多次触发</td><td>同一个回调被错误地调用了两次（如重复绑定事件、重试逻辑没去重），导致逻辑执行两遍。可加 <code>called</code> 标志位防护。</td></tr>
+    <tr><td>错误处理散落</td><td>每层都写 <code>if (err) return</code>，重复且容易漏；漏一处就静默失败，极难排查。</td></tr>
+    <tr><td>忘记 return</td><td>判断 err 后没 <code>return</code>，错误分支和成功分支同时跑，引发二次报错。</td></tr>
+  </table>
+  <div class="code-block"><div class="cb-header"><span>陷阱演示：try/catch 抓不到异步错误 + this 丢失</span></div><pre><span class="com">// ① try/catch 抓不到异步回调里的错误</span>
+<span class="kw">try</span> <span class="punct">{</span>
+  <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+    <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">Error</span><span class="punct">(</span><span class="str">"炸了"</span><span class="punct">);</span>  <span class="com">// 此时 try 块早已执行完毕</span>
+  <span class="punct">},</span> <span class="num">0</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"抓到了吗？"</span><span class="punct">);</span>   <span class="com">// 不会执行，错误变成未捕获异常</span>
+<span class="punct">}</span>
+
+<span class="com">// ② this 丢失</span>
+<span class="kw">const</span> <span class="var">timer</span> <span class="punct">=</span> <span class="punct">{</span>
+  <span class="var">id</span><span class="punct">:</span> <span class="num">42</span><span class="punct">,</span>
+  <span class="fn">start</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="fn">setTimeout</span><span class="punct">(</span><span class="kw">function</span> <span class="punct">()</span> <span class="punct">{</span>
+      <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">id</span><span class="punct">);</span>  <span class="com">// undefined！this 不再是 timer</span>
+    <span class="punct">},</span> <span class="num">0</span><span class="punct">);</span>
+    <span class="com">// 修复：用箭头函数继承外层 this —— () =&gt; console.log(this.id)</span>
+  <span class="punct">}</span>
+<span class="punct">};</span>
+<span class="var">timer</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span></pre></div>
+
+  <h2>引出解决方案</h2>
+  <p>回调地狱的根源在于：异步结果只能"困"在回调内部，无法像同步代码那样用返回值往外传、用 <code>try/catch</code> 统一兜错。下一篇的 <strong>Promise</strong> 用"链式 <code>.then()</code>"把金字塔拍扁成一条直线，并提供统一的 <code>.catch()</code> 收口错误；再下一篇的 <strong>async/await</strong> 更进一步，让异步代码"长得像同步"，连 <code>try/catch</code> 都能正常用了。它们要解决的，正是本篇暴露的全部痛点。</p>
+
+  <div class="callout tip"><strong>小结：</strong>① 回调 = 把函数作为参数传入，待某事完成后被调用；② 同步回调（<code>map</code>）原地执行、顺序可预测，异步回调（<code>setTimeout</code>/事件/请求）晚于同步代码、由事件循环调度；③ 异步必须用回调，因为单线程不能同步等待否则阻塞；④ 多个异步操作前后依赖时层层嵌套形成<strong>回调地狱</strong>——难读、难维护、错误处理散落；⑤ Node 约定<strong>错误优先</strong> <code>callback(err, data)</code>；⑥ 牢记陷阱：<code>try/catch</code> 抓不到异步错误、<code>this</code> 丢失、回调重复触发、忘写 <code>return</code>；⑦ 这些痛点正是 Promise 与 async/await 要解决的。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="28-事件循环与调用栈.html" class="nav-btn">← 事件循环与调用栈</a><a href="30-Promise.html" class="nav-btn next">Promise →</a></div>
+</div>
+</body>
+</html>

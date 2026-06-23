@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · Fetch API 与 HTTP 请求</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 异步编程 / Fetch API 与 HTTP 请求</div>
+  <div class="hero"><div class="tag">JS · 异步编程</div><h1>Fetch API 与 HTTP 请求</h1><p>前端的核心工作之一就是和服务器对话——拿数据、提交表单、上传文件。<code>fetch</code> 是浏览器内置的现代请求工具，它返回 Promise，天然适配上两篇学过的 async/await。但它有一个让无数新人栽跟头的"不报错"陷阱，本篇会重点拆解。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>在 <code>fetch</code> 出现之前，发请求只能用 <strong>XMLHttpRequest（XHR）</strong>——一个 1999 年遗留下来的 API。它基于事件回调，写法繁琐：要 <code>new</code> 对象、注册 <code>onreadystatechange</code>、判断 <code>readyState</code>、手动拼参数，一个简单的 GET 也要十几行。更糟的是它和 Promise 体系格格不入，没法直接 <code>await</code>，容易堆出"回调地狱"。</p>
+  <p><code>fetch</code>（2015 年随 ES6 时代进入浏览器）用一句话解决了这些痛点：<strong>它返回 Promise</strong>。这意味着你可以用上两篇学的 <code>async/await</code> 把异步请求写得像同步代码一样线性、好读。它把"发请求"这件事抽象成了 <code>fetch(url, options)</code> 这一个函数，并用 <code>Request</code> / <code>Response</code> 两个标准对象描述请求和响应。</p>
+
+  <h2>基本 GET：两步 await</h2>
+  <p>这是初学者最容易混淆的地方。<code>fetch</code> 拿数据要 <strong>await 两次</strong>，因为它把"响应到达"和"响应体解析完成"拆成了两个异步阶段：</p>
+  <ul>
+    <li><strong>第一次 await</strong>：等服务器返回响应头（HTTP status、headers）。此时 body 可能还在路上（想象一个几百 MB 的下载），所以 <code>fetch</code> 一拿到响应头就 resolve，给你一个 <code>Response</code> 对象。</li>
+    <li><strong>第二次 await</strong>：调 <code>res.json()</code> 才开始读取并解析整个响应体。它本身又是异步的，所以又返回一个 Promise。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>基本 GET 请求</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">getUser</span><span class="punct">(</span><span class="var">id</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="com">// 第 1 次 await：拿到 Response 对象（只代表响应头已到）</span>
+  <span class="kw">const</span> <span class="var">res</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">`/api/users/</span><span class="punct">${</span><span class="var">id</span><span class="punct">}</span><span class="str">`</span><span class="punct">);</span>
+  <span class="com">// 第 2 次 await：把响应体按 JSON 解析（这一步才真正读完整个 body）</span>
+  <span class="kw">const</span> <span class="var">data</span> <span class="punct">=</span> <span class="kw">await</span> <span class="var">res</span><span class="punct">.</span><span class="fn">json</span><span class="punct">();</span>
+  <span class="kw">return</span> <span class="var">data</span><span class="punct">;</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout warn"><strong>陷阱：忘记第二个 await。</strong>新手常写成 <code>const data = await fetch(url)</code> 然后直接 <code>data.name</code>，结果发现拿到的是 <code>Response</code> 对象而不是数据——因为还没解析 body。Response 不是你的 JSON，它只是一个"信封"，<code>.json()</code> 才是拆信。</div>
+
+  <h2>Response 对象：信封上的信息</h2>
+  <p>第一次 await 拿到的 <code>Response</code> 上有这些常用成员：</p>
+  <table>
+    <tr><th>成员</th><th>类型</th><th>说明</th></tr>
+    <tr><td><code>res.ok</code></td><td>boolean</td><td>status 在 200~299 之间为 <code>true</code>，否则 <code>false</code>。<strong>判断成功就看它</strong></td></tr>
+    <tr><td><code>res.status</code></td><td>number</td><td>HTTP 状态码，如 <code>200</code>、<code>404</code>、<code>500</code></td></tr>
+    <tr><td><code>res.statusText</code></td><td>string</td><td>状态描述，如 <code>"Not Found"</code></td></tr>
+    <tr><td><code>res.headers</code></td><td>Headers</td><td>响应头对象，用 <code>res.headers.get("Content-Type")</code> 读取</td></tr>
+    <tr><td><code>res.json()</code></td><td>Promise</td><td>把 body 解析为 JS 对象</td></tr>
+    <tr><td><code>res.text()</code></td><td>Promise</td><td>把 body 读为纯文本字符串（HTML、CSV 等）</td></tr>
+    <tr><td><code>res.blob()</code></td><td>Promise</td><td>把 body 读为二进制 Blob（图片、文件下载）</td></tr>
+  </table>
+  <div class="callout warn"><strong>陷阱：body 只能读一次。</strong>响应体是一个"流"（stream），<code>res.json()</code> / <code>res.text()</code> / <code>res.blob()</code> 三个里只能调一个、且只能调一次。读完流就枯竭了，再调第二个会抛 <code>TypeError: body stream already read</code>。要复用得先存下解析结果，或用 <code>res.clone()</code> 复制一份。</div>
+
+  <h2>最重要的陷阱：fetch 不会因为 404/500 而 reject</h2>
+  <p>这是 <code>fetch</code> 最反直觉、坑了最多人的设计。<strong><code>fetch</code> 只在网络层面失败时才 reject</strong>——比如断网、DNS 解析失败、CORS 被拦截、请求被中断。只要服务器<strong>成功返回了一个响应</strong>，哪怕是 404 或 500，<code>fetch</code> 都认为"请求这件事成功了"，Promise 照常 resolve。</p>
+  <p>它的逻辑是：HTTP 404/500 是一次<strong>成功完成的 HTTP 交互</strong>，只不过服务器告诉你"资源不存在"或"我崩了"——这属于业务结果，不是请求本身的失败。所以判断业务成功与否，必须你自己检查 <code>res.ok</code>。</p>
+  <div class="code-block"><div class="cb-header"><span>反例：以为 catch 能接住 404</span></div><pre><span class="kw">try</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">res</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">"/api/not-exist"</span><span class="punct">);</span>  <span class="com">// 服务器返回 404</span>
+  <span class="kw">const</span> <span class="var">data</span> <span class="punct">=</span> <span class="kw">await</span> <span class="var">res</span><span class="punct">.</span><span class="fn">json</span><span class="punct">();</span>      <span class="com">// 404 不抛错，代码继续往下走！</span>
+  <span class="fn">render</span><span class="punct">(</span><span class="var">data</span><span class="punct">);</span>                          <span class="com">// data 可能是错误页 HTML，解析直接出乱子</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="com">// 永远进不来——因为 404 根本没让 fetch reject</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"出错了"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+<span class="punct">}</span></pre></div>
+  <div class="code-block"><div class="cb-header"><span>正例：手动检查 res.ok 并主动抛错</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">getJSON</span><span class="punct">(</span><span class="var">url</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">res</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="var">url</span><span class="punct">);</span>
+  <span class="com">// 把"HTTP 错误状态"显式转成异常，交给上层 catch 处理</span>
+  <span class="kw">if</span> <span class="punct">(!</span><span class="var">res</span><span class="punct">.</span><span class="var">ok</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">Error</span><span class="punct">(</span><span class="str">`HTTP </span><span class="punct">${</span><span class="var">res</span><span class="punct">.</span><span class="var">status</span><span class="punct">}</span><span class="str"> </span><span class="punct">${</span><span class="var">res</span><span class="punct">.</span><span class="var">statusText</span><span class="punct">}</span><span class="str">`</span><span class="punct">);</span>
+  <span class="punct">}</span>
+  <span class="kw">return</span> <span class="var">res</span><span class="punct">.</span><span class="fn">json</span><span class="punct">();</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout info"><strong>记忆口诀：</strong>fetch 的 reject 只管"<strong>网络通不通</strong>"，不管"<strong>服务器答了什么</strong>"。所以每个 fetch 后面几乎都该跟一句 <code>if (!res.ok) throw ...</code>，这是写 fetch 的肌肉记忆。</div>
+
+  <h2>发送 POST：写数据</h2>
+  <p>GET 只传 URL，POST 要带请求体。三件事缺一不可：用 <code>method</code> 指定动词、用 <code>headers</code> 声明体的格式、用 <code>body</code> 放序列化后的数据。</p>
+  <div class="code-block"><div class="cb-header"><span>POST JSON 数据</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">createUser</span><span class="punct">(</span><span class="var">user</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">res</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">"/api/users"</span><span class="punct">,</span> <span class="punct">{</span>
+    <span class="var">method</span><span class="punct">:</span> <span class="str">"POST"</span><span class="punct">,</span>
+    <span class="com">// 必须声明 Content-Type，否则服务器不知道按 JSON 解析</span>
+    <span class="var">headers</span><span class="punct">:</span> <span class="punct">{</span> <span class="str">"Content-Type"</span><span class="punct">:</span> <span class="str">"application/json"</span> <span class="punct">},</span>
+    <span class="com">// body 必须是字符串：对象要先 JSON.stringify</span>
+    <span class="var">body</span><span class="punct">:</span> <span class="fn">JSON</span><span class="punct">.</span><span class="fn">stringify</span><span class="punct">(</span><span class="var">user</span><span class="punct">),</span>
+  <span class="punct">});</span>
+  <span class="kw">if</span> <span class="punct">(!</span><span class="var">res</span><span class="punct">.</span><span class="var">ok</span><span class="punct">)</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">Error</span><span class="punct">(</span><span class="str">`HTTP </span><span class="punct">${</span><span class="var">res</span><span class="punct">.</span><span class="var">status</span><span class="punct">}</span><span class="str">`</span><span class="punct">);</span>
+  <span class="kw">return</span> <span class="var">res</span><span class="punct">.</span><span class="fn">json</span><span class="punct">();</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout warn"><strong>陷阱：POST 忘设 Content-Type。</strong>不写这个头时，浏览器默认按 <code>text/plain</code> 发送，许多后端框架（如 Spring 的 <code>@RequestBody</code>）会因为 Content-Type 不匹配而拒绝解析，报 415 Unsupported Media Type。另一个常见错是把对象直接塞进 <code>body</code> 而忘了 <code>JSON.stringify</code>——那样会被转成无意义的 <code>"[object Object]"</code> 字符串。</div>
+
+  <h2>取消请求与超时：AbortController</h2>
+  <p><code>fetch</code> 自身没有超时参数，也没有 <code>.cancel()</code>。要中断一个进行中的请求，得借助 <strong><code>AbortController</code></strong>：它产生一个 <code>signal</code> 传给 fetch，调用 <code>controller.abort()</code> 就会让那次 fetch 立刻 reject（抛 <code>AbortError</code>）。配合 <code>setTimeout</code> 即可实现超时。</p>
+  <div class="code-block"><div class="cb-header"><span>带超时的 fetch</span></div><pre><span class="kw">async</span> <span class="kw">function</span> <span class="fn">fetchWithTimeout</span><span class="punct">(</span><span class="var">url</span><span class="punct">,</span> <span class="var">ms</span> <span class="punct">=</span> <span class="num">5000</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">ctrl</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">AbortController</span><span class="punct">();</span>
+  <span class="kw">const</span> <span class="var">timer</span> <span class="punct">=</span> <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="var">ctrl</span><span class="punct">.</span><span class="fn">abort</span><span class="punct">(),</span> <span class="var">ms</span><span class="punct">);</span>
+  <span class="kw">try</span> <span class="punct">{</span>
+    <span class="com">// 把 signal 交给 fetch；超时后 abort() 触发它 reject</span>
+    <span class="kw">return</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="var">url</span><span class="punct">,</span> <span class="punct">{</span> <span class="var">signal</span><span class="punct">:</span> <span class="var">ctrl</span><span class="punct">.</span><span class="var">signal</span> <span class="punct">});</span>
+  <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="fn">clearTimeout</span><span class="punct">(</span><span class="var">timer</span><span class="punct">);</span>  <span class="com">// 别忘了清理定时器，避免内存泄漏</span>
+  <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>CORS 跨域：浏览器的安全闸门</h2>
+  <p>当你的页面（如 <code>https://a.com</code>）向<strong>另一个源</strong>（不同协议/域名/端口，如 <code>https://api.b.com</code>）发请求时，浏览器会启动 <strong>同源策略</strong> 的检查，这就是 CORS（跨域资源共享）。</p>
+  <p>关键认知：<strong>CORS 是浏览器拦的，不是服务器拒的</strong>。服务器其实可能已经正常处理并返回了响应，但如果响应头里没有 <code>Access-Control-Allow-Origin</code> 允许你的源，浏览器会在 JS 拿到结果前把它拦下，让 fetch reject。所以 CORS 报错<strong>无法靠改前端代码解决</strong>，必须后端配置允许的源——这是新人常误以为"我代码写错了"的典型陷阱。</p>
+
+  <h2>对比：XHR / fetch / axios 怎么选</h2>
+  <table>
+    <tr><th>维度</th><th>XMLHttpRequest</th><th>fetch</th><th>axios（第三方）</th></tr>
+    <tr><td>异步模型</td><td>事件回调</td><td>Promise，可 await</td><td>Promise，可 await</td></tr>
+    <tr><td>JSON 处理</td><td>手动 <code>JSON.parse</code></td><td>手动 <code>res.json()</code></td><td>自动解析与序列化</td></tr>
+    <tr><td>HTTP 错误状态</td><td>手动判断 status</td><td><strong>不 reject，需查 ok</strong></td><td>4xx/5xx 自动抛错</td></tr>
+    <tr><td>超时</td><td>内置 <code>timeout</code></td><td>需 AbortController</td><td>内置 <code>timeout</code></td></tr>
+    <tr><td>拦截器</td><td>无</td><td>无</td><td>有（统一加 token、错误处理）</td></tr>
+    <tr><td>体积/依赖</td><td>内置</td><td>内置</td><td>需安装 npm 包</td></tr>
+  </table>
+  <div class="callout info"><strong>怎么选：</strong>新项目里 <code>fetch</code> 已足够，零依赖、标准化。但当项目需要<strong>统一注入鉴权头、全局错误处理、自动重试</strong>时，<code>axios</code> 的拦截器和"4xx/5xx 自动抛错"会省下大量样板代码——这正是它至今流行的原因。XHR 现在基本只在维护老代码或需要上传进度事件时才碰。</div>
+
+  <div class="callout tip"><strong>小结：</strong>① <code>fetch</code> 返回 Promise，配 async/await 写最顺；② 拿数据要<strong>两次 await</strong>——先 Response 再 <code>res.json()</code>；③ 最大的坑：<strong>404/500 不会 reject</strong>，必须手动 <code>if (!res.ok) throw</code>；④ POST 三件套：<code>method</code> + <code>Content-Type</code> 头 + <code>JSON.stringify</code> 的 body；⑤ body 只能读一次；⑥ 取消/超时用 <code>AbortController</code>；⑦ CORS 是浏览器拦的、要后端配；⑧ 需要拦截器和自动抛错就上 axios。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="31-async-await.html" class="nav-btn">← async / await</a><a href="33-try-catch-finally.html" class="nav-btn next">try / catch / finally →</a></div>
+</div>
+</body>
+</html>

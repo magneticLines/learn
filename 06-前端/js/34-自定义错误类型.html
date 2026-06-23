@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · 自定义错误类型</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 错误处理 / 自定义错误类型</div>
+  <div class="hero"><div class="tag">JS · 错误处理</div><h1>自定义错误类型</h1><p>内置的 <code>Error</code> 只能告诉你"出错了"，却说不清"是哪一类错、出在哪个字段、该返回什么状态码"。自定义错误类型让你给异常贴上精确的标签，把"模糊的报错"变成"可被代码分类处理的信号"。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>设想一个表单提交流程：可能因为<strong>字段校验失败</strong>，也可能因为<strong>网络请求 404</strong>，还可能因为<strong>代码本身的逻辑 bug</strong>。如果全都抛一个笼统的 <code>Error("出错了")</code>，<code>catch</code> 里就只能靠字符串匹配 <code>err.message</code> 来猜是哪种情况——脆弱、易碎、无法携带上下文。</p>
+  <p>自定义错误类型解决三件事：① 用 <code>instanceof</code> <strong>精确区分错误种类</strong>，让 <code>catch</code> 分类处理；② 在错误对象上<strong>携带额外上下文</strong>（如 <code>statusCode</code>、出错的字段名）；③ 保留完整的<strong>调用堆栈</strong>，方便定位。这正是后端框架（Spring 的 <code>BusinessException</code>、Java 的受检异常体系）里"按异常类型分门别类捕获"思路在前端的对应物。</p>
+
+  <h2>内置错误类型一览</h2>
+  <p>JS 早就内置了一套错误类型，它们都继承自 <code>Error</code>。引擎在不同场景下会自动抛出对应类型——认识它们，是设计自己错误体系的前提。</p>
+  <table>
+    <tr><th>类型</th><th>何时被抛出</th><th>例子</th></tr>
+    <tr><td><code>Error</code></td><td>所有错误的基类，也可直接 <code>throw new Error()</code></td><td><code>throw new Error("自定义信息")</code></td></tr>
+    <tr><td><code>TypeError</code></td><td>值的类型不对，或对 <code>null</code>/<code>undefined</code> 取属性</td><td><code>null.foo</code> / <code>(123)()</code></td></tr>
+    <tr><td><code>RangeError</code></td><td>数值超出合法范围</td><td><code>new Array(-1)</code></td></tr>
+    <tr><td><code>SyntaxError</code></td><td>代码或 <code>JSON</code> 解析时语法非法</td><td><code>JSON.parse("{bad}")</code></td></tr>
+    <tr><td><code>ReferenceError</code></td><td>访问未声明的变量（含 TDZ）</td><td><code>console.log(notDefined)</code></td></tr>
+  </table>
+  <div class="callout info">每个 <code>Error</code> 实例都带三个核心属性：<code>name</code>（错误类型名，用于显示）、<code>message</code>（你传入的描述）、<code>stack</code>（调用堆栈字符串，由引擎自动生成）。自定义错误的目标，就是在保留这三者的前提下扩展出更多语义。</div>
+
+  <h2>用 class extends Error 创建</h2>
+  <p>ES6 的 <code>class</code>（见第 15 篇）让继承内置类型变得自然。核心模板只有几行，但每一行都有讲究：</p>
+  <div class="code-block"><div class="cb-header"><span>自定义错误的标准写法</span></div><pre><span class="kw">class</span> <span class="fn">ValidationError</span> <span class="kw">extends</span> <span class="fn">Error</span> <span class="punct">{</span>
+  <span class="fn">constructor</span><span class="punct">(</span><span class="var">message</span><span class="punct">,</span> <span class="var">field</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">super</span><span class="punct">(</span><span class="var">message</span><span class="punct">);</span>            <span class="com">// 必须！把 message 交给父类，否则 this.message 为空</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="str">"ValidationError"</span><span class="punct">;</span>  <span class="com">// 覆盖默认的 "Error"，让打印/日志显示真实类型</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">field</span> <span class="punct">=</span> <span class="var">field</span><span class="punct">;</span>     <span class="com">// 附加上下文：出错的字段名</span>
+  <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">const</span> <span class="var">e</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">ValidationError</span><span class="punct">(</span><span class="str">"邮箱格式不对"</span><span class="punct">,</span> <span class="str">"email"</span><span class="punct">);</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">e</span><span class="punct">.</span><span class="var">name</span><span class="punct">,</span> <span class="var">e</span><span class="punct">.</span><span class="var">message</span><span class="punct">,</span> <span class="var">e</span><span class="punct">.</span><span class="var">field</span><span class="punct">);</span> <span class="com">// ValidationError 邮箱格式不对 email</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">e</span> <span class="kw">instanceof</span> <span class="fn">Error</span><span class="punct">);</span>          <span class="com">// true，仍是 Error，可被通用兜底捕获</span></pre></div>
+  <p>为什么这么写：<code>super(message)</code> 调用父类 <code>Error</code> 的构造器，由它去设置 <code>message</code> 并生成 <code>stack</code>；<code>this.name</code> 默认是 <code>"Error"</code>，不改的话日志里看不出是哪种错；自定义属性（这里的 <code>field</code>）则把"出错时的现场信息"随错误一起带走。</p>
+
+  <h2>catch 里按类型分类处理</h2>
+  <p>有了类型，<code>catch</code> 就能像后端的多 <code>catch</code> 块一样，用 <code>instanceof</code> 把不同错误引向不同的处理逻辑——校验错误提示用户，网络错误重试，其余的当作未知 bug 上报。</p>
+  <div class="code-block"><div class="cb-header"><span>ValidationError 与 HttpError 的分类处理</span></div><pre><span class="kw">class</span> <span class="fn">HttpError</span> <span class="kw">extends</span> <span class="fn">Error</span> <span class="punct">{</span>
+  <span class="fn">constructor</span><span class="punct">(</span><span class="var">message</span><span class="punct">,</span> <span class="var">statusCode</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">super</span><span class="punct">(</span><span class="var">message</span><span class="punct">);</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="str">"HttpError"</span><span class="punct">;</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">statusCode</span> <span class="punct">=</span> <span class="var">statusCode</span><span class="punct">;</span> <span class="com">// 携带 HTTP 状态码</span>
+  <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">function</span> <span class="fn">submit</span><span class="punct">(</span><span class="var">email</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="punct">!</span><span class="var">email</span><span class="punct">.</span><span class="fn">includes</span><span class="punct">(</span><span class="str">"@"</span><span class="punct">))</span>
+    <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">ValidationError</span><span class="punct">(</span><span class="str">"邮箱格式不对"</span><span class="punct">,</span> <span class="str">"email"</span><span class="punct">);</span>
+  <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">HttpError</span><span class="punct">(</span><span class="str">"用户不存在"</span><span class="punct">,</span> <span class="num">404</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="kw">try</span> <span class="punct">{</span>
+  <span class="fn">submit</span><span class="punct">(</span><span class="str">"bad-email"</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="var">err</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="var">err</span> <span class="kw">instanceof</span> <span class="fn">ValidationError</span><span class="punct">)</span>
+    <span class="fn">showFieldError</span><span class="punct">(</span><span class="var">err</span><span class="punct">.</span><span class="var">field</span><span class="punct">,</span> <span class="var">err</span><span class="punct">.</span><span class="var">message</span><span class="punct">);</span> <span class="com">// 精准高亮出错字段</span>
+  <span class="kw">else</span> <span class="kw">if</span> <span class="punct">(</span><span class="var">err</span> <span class="kw">instanceof</span> <span class="fn">HttpError</span> <span class="punct">&amp;&amp;</span> <span class="var">err</span><span class="punct">.</span><span class="var">statusCode</span> <span class="punct">===</span> <span class="num">404</span><span class="punct">)</span>
+    <span class="fn">toast</span><span class="punct">(</span><span class="str">"资源不存在"</span><span class="punct">);</span>
+  <span class="kw">else</span>
+    <span class="kw">throw</span> <span class="var">err</span><span class="punct">;</span>  <span class="com">// 不认识的错误，重新抛出，别吞掉</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout tip"><strong>设计技巧：</strong>可以先建一个 <code>AppError</code> 基类继承 <code>Error</code>，再让 <code>ValidationError</code>、<code>HttpError</code> 都继承 <code>AppError</code>。这样 <code>catch</code> 里用 <code>err instanceof AppError</code> 就能一刀切分"我们自己抛的业务错误"和"未预料的系统错误"。</div>
+
+  <h2>陷阱一：转译环境下 instanceof 失效</h2>
+  <p>这是最隐蔽的坑。当代码用 Babel 等工具<strong>转译到 ES5</strong>（target 较低）时，<code>class extends Error</code> 内部依赖的原型链可能被破坏：<code>new ValidationError()</code> 出来的实例 <code>instanceof ValidationError</code> 竟然返回 <code>false</code>，分类处理全部失灵。</p>
+  <p>根因是 ES5 里 <code>Error</code> 构造器调用时会返回一个全新对象，丢掉了子类的原型。修复方法是在构造器里手动把原型链接回来：</p>
+  <div class="code-block"><div class="cb-header"><span>修复转译丢失的原型链</span></div><pre><span class="kw">class</span> <span class="fn">ValidationError</span> <span class="kw">extends</span> <span class="fn">Error</span> <span class="punct">{</span>
+  <span class="fn">constructor</span><span class="punct">(</span><span class="var">message</span><span class="punct">,</span> <span class="var">field</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">super</span><span class="punct">(</span><span class="var">message</span><span class="punct">);</span>
+    <span class="com">// new.target.prototype 指向"实际被 new 的那个类"的原型</span>
+    <span class="com">// 兼容子类再被继承的情况，比写死 ValidationError.prototype 更稳</span>
+    <span class="fn">Object</span><span class="punct">.</span><span class="fn">setPrototypeOf</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="kw">new</span><span class="punct">.</span><span class="var">target</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">);</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="str">"ValidationError"</span><span class="punct">;</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">field</span> <span class="punct">=</span> <span class="var">field</span><span class="punct">;</span>
+  <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout warn"><strong>注意：</strong>只有当编译目标低于 ES2015、且未启用相应 helper 时才会触发。如果你的构建目标本就是现代浏览器（<code>target: "es2017"</code> 及以上），原生 <code>class</code> 不会有这个问题，可不必加。但写库代码不确定使用方环境时，加上这行更保险。</div>
+
+  <h2>陷阱二：忘记 super 与 stack</h2>
+  <ul>
+    <li><strong>忘记 <code>super(message)</code></strong>：构造器里如果先访问 <code>this</code> 会直接报错（子类必须先调 <code>super</code> 才有 <code>this</code>）；即便侥幸不报错，<code>message</code> 也会丢失、<code>stack</code> 不完整。<strong>第一行永远先 <code>super(message)</code>。</strong></li>
+    <li><strong>关于 <code>stack</code></strong>：<code>stack</code> 由引擎在 <code>Error</code> 构造时捕获，记录"错误诞生的位置"。所以一定要 <code>throw new XxxError()</code>，而不是复用一个老的错误对象——否则堆栈指向的是创建处，不是出错处。</li>
+  </ul>
+
+  <h2>对比：抛字符串 / 普通对象 vs 抛 Error 子类</h2>
+  <table>
+    <tr><th>抛出方式</th><th>能 instanceof 分类</th><th>有 stack 堆栈</th><th>建议</th></tr>
+    <tr><td><code>throw "出错了"</code></td><td>不能（是 string）</td><td>无</td><td>禁止</td></tr>
+    <tr><td><code>throw { code: 1 }</code></td><td>不能（普通对象）</td><td>无</td><td>不推荐</td></tr>
+    <tr><td><code>throw new Error(...)</code></td><td>仅能判断是 Error</td><td>有</td><td>可用</td></tr>
+    <tr><td><code>throw new XxxError(...)</code></td><td>能精确分类</td><td>有</td><td>推荐</td></tr>
+  </table>
+  <p>抛字符串或裸对象的最大代价是<strong>丢失堆栈</strong>：出了问题在控制台只看到一行字，定位不到是哪行代码抛的。而 <code>Error</code> 子类既保留堆栈，又能被 <code>instanceof</code> 分类，还能携带上下文——没有理由不用它。</p>
+
+  <div class="callout tip"><strong>小结：</strong>① 自定义错误 = <code>class XxxError extends Error</code>，构造器里第一行 <code>super(message)</code>，再设 <code>this.name</code> 和自定义属性；② 价值在于 <code>instanceof</code> 分类 + 携带上下文（<code>statusCode</code>/<code>field</code>）+ 保留 <code>stack</code>；③ 转译到 ES5 时可能 <code>instanceof</code> 失效，用 <code>Object.setPrototypeOf(this, new.target.prototype)</code> 修；④ 永远抛 <code>Error</code> 子类，别抛字符串或裸对象，否则丢堆栈、没法分类。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="33-try-catch-finally.html" class="nav-btn">← try / catch / finally</a><a href="35-localStorage与Cookie.html" class="nav-btn next">localStorage / Cookie →</a></div>
+</div>
+</body>
+</html>

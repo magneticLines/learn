@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · 原型链与继承</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 面向对象 / 原型链与继承</div>
+  <div class="hero"><div class="tag">JS · 面向对象</div><h1>原型链与继承</h1><p>别的语言用"类"实现继承，JS 偏偏用"原型"。理解原型链，你就看穿了 <code>class</code> 的真面目、<code>new</code> 的本质，以及为什么 <code>typeof null</code> 那种历史坑会一直存在——它们都长在同一棵原型树上。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>设想你有一万个数组，每个都要能调用 <code>push</code> / <code>map</code> / <code>filter</code>。如果每个数组对象自己存一份这些方法，内存会被同样的函数撑爆。JS 的答案是：<strong>方法只存一份，放在一个"公共原型对象"上，所有实例共享它</strong>。当你在实例上找不到某个属性时，引擎就顺着一条隐藏的链条往上找，找到为止。这条链就是<strong>原型链（prototype chain）</strong>，它既解决了方法复用（省内存），又顺势实现了<strong>继承</strong>——子类的实例能用到父类原型上的方法。所以 JS 的继承不是"拷贝"，而是"<strong>委托查找</strong>"：自己没有，就问上级要。</p>
+
+  <h2>核心：每个对象都有 [[Prototype]]</h2>
+  <p>每个对象内部都有一个隐藏槽位 <code>[[Prototype]]</code>，指向它的原型对象（另一个对象，或 <code>null</code>）。这个槽位不能直接写，但可以通过 <code>Object.getPrototypeOf(obj)</code> 读取，或通过非标准但被广泛实现的 <code>obj.__proto__</code> 访问。</p>
+  <div class="code-block"><div class="cb-header"><span>读取一个对象的原型</span></div><pre><span class="kw">const</span> <span class="var">obj</span> <span class="punct">=</span> <span class="punct">{</span> <span class="var">name</span><span class="punct">:</span> <span class="str">"shea"</span> <span class="punct">};</span>
+
+<span class="fn">Object</span><span class="punct">.</span><span class="fn">getPrototypeOf</span><span class="punct">(</span><span class="var">obj</span><span class="punct">)</span> <span class="punct">===</span> <span class="fn">Object</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">;</span>  <span class="com">// true，字面量对象的原型就是 Object.prototype</span>
+<span class="var">obj</span><span class="punct">.</span><span class="var">__proto__</span> <span class="punct">===</span> <span class="fn">Object</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">;</span>           <span class="com">// true，等价写法（但 __proto__ 是历史遗留，生产代码用 getPrototypeOf）</span>
+
+<span class="fn">Object</span><span class="punct">.</span><span class="fn">getPrototypeOf</span><span class="punct">(</span><span class="fn">Object</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">);</span>          <span class="com">// null —— 原型链的尽头</span></pre></div>
+
+  <h2>属性查找：沿原型链向上，直到 null</h2>
+  <p>这是整篇文章最该刻进脑子里的一句话：<strong>读取 <code>obj.x</code> 时，引擎先看 obj 自身有没有 x；没有就去 <code>obj 的原型</code>找；还没有再去原型的原型……一直找到 <code>null</code> 为止，全程没找到就返回 <code>undefined</code></strong>。继承的本质，就是这个查找过程。</p>
+  <div class="code-block"><div class="cb-header"><span>查找过程演示</span></div><pre><span class="kw">const</span> <span class="var">animal</span> <span class="punct">=</span> <span class="punct">{</span> <span class="fn">eat</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="str">"咀嚼"</span><span class="punct">;</span> <span class="punct">}</span> <span class="punct">};</span>
+
+<span class="com">// 让 dog 的原型指向 animal —— dog 自己没有 eat，但能"继承"到</span>
+<span class="kw">const</span> <span class="var">dog</span> <span class="punct">=</span> <span class="fn">Object</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="var">animal</span><span class="punct">);</span>
+<span class="var">dog</span><span class="punct">.</span><span class="var">bark</span> <span class="punct">=</span> <span class="punct">()</span> <span class="kw">=&gt;</span> <span class="str">"汪"</span><span class="punct">;</span>
+
+<span class="var">dog</span><span class="punct">.</span><span class="fn">bark</span><span class="punct">();</span>  <span class="com">// "汪" —— 自身找到</span>
+<span class="var">dog</span><span class="punct">.</span><span class="fn">eat</span><span class="punct">();</span>   <span class="com">// "咀嚼" —— 自身没有，沿链找到 animal 上的 eat</span>
+<span class="var">dog</span><span class="punct">.</span><span class="var">fly</span><span class="punct">;</span>      <span class="com">// undefined —— 整条链都没有</span></pre></div>
+  <div class="callout info"><strong>只读不写</strong>：原型链只影响"读取"。给 <code>dog.eat = ...</code> 赋值时，会在 <code>dog</code> 自身创建一个 eat 属性（叫"属性遮蔽 / shadowing"），<strong>不会修改 animal</strong>。写入永远落在自身对象上。</div>
+
+  <h2>函数的 prototype 与实例的 __proto__</h2>
+  <p>这里是 JS 初学者最大的混淆点，务必分清两个名字相似但完全不同的东西：</p>
+  <ul>
+    <li><code>prototype</code>：只有<strong>函数</strong>才有的一个普通属性。它指向一个对象，这个对象将成为"用该函数 new 出来的实例"的原型。</li>
+    <li><code>__proto__</code>（即 <code>[[Prototype]]</code>）：<strong>每个对象</strong>都有，指向自己的原型。</li>
+  </ul>
+  <p>二者由 <code>new</code> 关键字串起来，铁律是：<strong><code>实例.__proto__ === 构造函数.prototype</code></strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>new 到底做了什么</span></div><pre><span class="kw">function</span> <span class="fn">Person</span><span class="punct">(</span><span class="var">name</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="var">name</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="fn">Person</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">.</span><span class="fn">hello</span> <span class="punct">=</span> <span class="kw">function</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="str">"hi "</span> <span class="punct">+</span> <span class="kw">this</span><span class="punct">.</span><span class="var">name</span><span class="punct">;</span> <span class="punct">};</span>
+
+<span class="kw">const</span> <span class="var">p</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Person</span><span class="punct">(</span><span class="str">"shea"</span><span class="punct">);</span>
+
+<span class="com">// new 内部大致等价于：</span>
+<span class="com">//   1. 创建空对象 obj</span>
+<span class="com">//   2. obj.__proto__ = Person.prototype   ← 关键：建立原型链</span>
+<span class="com">//   3. 以 obj 为 this 执行 Person(name)</span>
+<span class="com">//   4. 返回 obj（除非构造函数返回了别的对象）</span>
+
+<span class="var">p</span><span class="punct">.</span><span class="var">__proto__</span> <span class="punct">===</span> <span class="fn">Person</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">;</span>   <span class="com">// true</span>
+<span class="var">p</span><span class="punct">.</span><span class="fn">hello</span><span class="punct">();</span>                            <span class="com">// "hi shea"，hello 在原型上，被 p 继承</span>
+<span class="var">p</span> <span class="kw">instanceof</span> <span class="fn">Person</span><span class="punct">;</span>                 <span class="com">// true，instanceof 就是检查原型链上有没有 Person.prototype</span></pre></div>
+
+  <h2>constructor 指回构造函数</h2>
+  <p>每个函数的 <code>prototype</code> 对象上，默认都有一个 <code>constructor</code> 属性，指回函数自己。所以实例可以通过原型链拿到 <code>constructor</code>，"反查"自己是被谁造出来的。</p>
+  <div class="code-block"><div class="cb-header"><span>constructor 的指向</span></div><pre><span class="fn">Person</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">.</span><span class="var">constructor</span> <span class="punct">===</span> <span class="fn">Person</span><span class="punct">;</span>  <span class="com">// true</span>
+<span class="var">p</span><span class="punct">.</span><span class="var">constructor</span> <span class="punct">===</span> <span class="fn">Person</span><span class="punct">;</span>                  <span class="com">// true（p 自身没有，沿原型链找到）</span></pre></div>
+  <div class="callout warn"><strong>陷阱</strong>：如果你用 <code>Person.prototype = { hello() {...} }</code> 整体替换原型对象，会<strong>丢掉默认的 constructor</strong>，导致 <code>p.constructor</code> 错误地指向 <code>Object</code>。手动改原型时记得补一句 <code>Person.prototype.constructor = Person</code>。</div>
+
+  <h2>把链条画出来</h2>
+  <p>对一个 <code>new Person()</code> 出来的实例 <code>p</code>，完整的原型链是这样一条单向链表：</p>
+  <div class="code-block"><div class="cb-header"><span>原型链文字图</span></div><pre><span class="var">p</span>
+  <span class="punct">│</span> <span class="com">.__proto__</span>
+  <span class="punct">▼</span>
+<span class="fn">Person</span><span class="punct">.</span><span class="var">prototype</span>       <span class="com">// 这里有 hello、constructor</span>
+  <span class="punct">│</span> <span class="com">.__proto__</span>
+  <span class="punct">▼</span>
+<span class="fn">Object</span><span class="punct">.</span><span class="var">prototype</span>       <span class="com">// 这里有 toString、hasOwnProperty、valueOf...</span>
+  <span class="punct">│</span> <span class="com">.__proto__</span>
+  <span class="punct">▼</span>
+<span class="lit">null</span>                   <span class="com">// 尽头，查找结束</span></pre></div>
+  <p>这就是为什么任何对象都能调用 <code>toString()</code> / <code>hasOwnProperty()</code>——它们其实定义在链条顶端的 <code>Object.prototype</code> 上，被所有对象共享。数组的链条则多一层：<code>arr → Array.prototype → Object.prototype → null</code>，所以数组既能用 <code>map</code>（来自 Array.prototype），又能用 <code>toString</code>（来自 Object.prototype）。</p>
+
+  <h2>旧式继承：构造函数 + prototype</h2>
+  <p>ES6 之前，要让 <code>Dog</code> 继承 <code>Animal</code>，靠的是手工拼接两条原型链。核心两步：① 在子构造函数里用 <code>Animal.call(this, ...)</code> 借调父类构造函数，继承<strong>实例属性</strong>；② 把子类的 <code>prototype</code> 接到父类 <code>prototype</code> 上，继承<strong>原型方法</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>寄生组合继承（最优雅的旧式写法）</span></div><pre><span class="kw">function</span> <span class="fn">Animal</span><span class="punct">(</span><span class="var">name</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="var">name</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="fn">Animal</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">.</span><span class="fn">eat</span> <span class="punct">=</span> <span class="kw">function</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">+</span> <span class="str">" 在吃"</span><span class="punct">;</span> <span class="punct">};</span>
+
+<span class="kw">function</span> <span class="fn">Dog</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="var">color</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="fn">Animal</span><span class="punct">.</span><span class="fn">call</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">name</span><span class="punct">);</span>   <span class="com">// ① 借父类构造函数，继承实例属性 name</span>
+  <span class="kw">this</span><span class="punct">.</span><span class="var">color</span> <span class="punct">=</span> <span class="var">color</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="com">// ② 用 Object.create 建一个原型指向 Animal.prototype 的空对象，避免直接 new Animal() 的副作用</span>
+<span class="fn">Dog</span><span class="punct">.</span><span class="var">prototype</span> <span class="punct">=</span> <span class="fn">Object</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="fn">Animal</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">);</span>
+<span class="fn">Dog</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">.</span><span class="var">constructor</span> <span class="punct">=</span> <span class="fn">Dog</span><span class="punct">;</span>   <span class="com">// 别忘了修回 constructor</span>
+<span class="fn">Dog</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">.</span><span class="fn">bark</span> <span class="punct">=</span> <span class="kw">function</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="str">"汪"</span><span class="punct">;</span> <span class="punct">};</span>
+
+<span class="kw">const</span> <span class="var">d</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Dog</span><span class="punct">(</span><span class="str">"旺财"</span><span class="punct">,</span> <span class="str">"黄"</span><span class="punct">);</span>
+<span class="var">d</span><span class="punct">.</span><span class="fn">eat</span><span class="punct">();</span>   <span class="com">// "旺财 在吃" —— 沿链找到 Animal.prototype.eat</span>
+<span class="var">d</span><span class="punct">.</span><span class="fn">bark</span><span class="punct">();</span>  <span class="com">// "汪"</span></pre></div>
+  <p>为什么不直接 <code>Dog.prototype = new Animal()</code>？因为那样会立刻执行一次 Animal 构造函数（可能有副作用），还会把 name 等实例属性塞进原型里被所有 Dog 共享。<code>Object.create</code> 只搭桥、不执行构造函数，这就是"寄生组合"比"组合继承"更优的原因。</p>
+
+  <h2>ES6 class 只是语法糖</h2>
+  <p>呼应上一篇——<code>class</code> / <code>extends</code> 并没有引入新的继承机制，它<strong>底层仍然是原型链</strong>，只是把上面那堆手工拼接包装成了清爽的语法。下面两段代码运行时几乎等价：</p>
+  <div class="code-block"><div class="cb-header"><span>class 写法（与上方寄生组合等价）</span></div><pre><span class="kw">class</span> <span class="fn">Animal</span> <span class="punct">{</span>
+  <span class="fn">constructor</span><span class="punct">(</span><span class="var">name</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="var">name</span><span class="punct">;</span> <span class="punct">}</span>
+  <span class="fn">eat</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">+</span> <span class="str">" 在吃"</span><span class="punct">;</span> <span class="punct">}</span>  <span class="com">// 方法自动挂到 Animal.prototype</span>
+<span class="punct">}</span>
+<span class="kw">class</span> <span class="fn">Dog</span> <span class="kw">extends</span> <span class="fn">Animal</span> <span class="punct">{</span>
+  <span class="fn">constructor</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="var">color</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">super</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>          <span class="com">// 等价于 Animal.call(this, name)</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">color</span> <span class="punct">=</span> <span class="var">color</span><span class="punct">;</span>
+  <span class="punct">}</span>
+  <span class="fn">bark</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="str">"汪"</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// extends 在底层就帮你做了：Dog.prototype.__proto__ = Animal.prototype</span>
+<span class="fn">Object</span><span class="punct">.</span><span class="fn">getPrototypeOf</span><span class="punct">(</span><span class="fn">Dog</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">)</span> <span class="punct">===</span> <span class="fn">Animal</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">;</span>  <span class="com">// true</span></pre></div>
+  <div class="callout info">理解了这一点，<code>class</code> 就不再神秘：它就是原型链的"皮肤"。所以面试问"JS 有真正的类吗"，答案是：没有，<code>class</code> 是基于原型的语法糖。</div>
+
+  <h2>Object.create：直接指定原型</h2>
+  <p><code>Object.create(proto)</code> 创建一个新对象，并把它的 <code>[[Prototype]]</code> 设为传入的 <code>proto</code>。这是不经过构造函数、直接控制原型链的最纯粹方式。</p>
+  <div class="code-block"><div class="cb-header"><span>Object.create 的用法</span></div><pre><span class="kw">const</span> <span class="var">base</span> <span class="punct">=</span> <span class="punct">{</span> <span class="fn">greet</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="str">"hi"</span><span class="punct">;</span> <span class="punct">}</span> <span class="punct">};</span>
+
+<span class="kw">const</span> <span class="var">o</span> <span class="punct">=</span> <span class="fn">Object</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="var">base</span><span class="punct">);</span>      <span class="com">// o.__proto__ === base</span>
+<span class="var">o</span><span class="punct">.</span><span class="fn">greet</span><span class="punct">();</span>                          <span class="com">// "hi"，继承自 base</span>
+
+<span class="kw">const</span> <span class="var">pure</span> <span class="punct">=</span> <span class="fn">Object</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="lit">null</span><span class="punct">);</span>  <span class="com">// 没有任何原型的"纯净字典"，连 toString 都没有</span></pre></div>
+
+  <h2>陷阱与高频考点</h2>
+  <table>
+    <tr><th>坑</th><th>说明</th></tr>
+    <tr><td><code>prototype</code> vs <code>__proto__</code></td><td><strong>最大的坑</strong>。<code>prototype</code> 是函数的属性；<code>__proto__</code> 是每个对象的原型指针。记牢公式 <code>实例.__proto__ === 构造函数.prototype</code>。</td></tr>
+    <tr><td>原型上放引用类型</td><td>放在原型上的数组/对象会被<strong>所有实例共享</strong>，一个实例改动会影响全部。引用类型应放在构造函数里用 <code>this.xxx</code> 定义。</td></tr>
+    <tr><td>改原型影响全部实例</td><td>原型是共享的，运行时给 <code>Foo.prototype</code> 加方法，所有已存在的实例立刻能用到——既强大也危险。</td></tr>
+    <tr><td><code>for...in</code> 会遍历原型链</td><td>它会枚举到原型上的可枚举属性。只想遍历自有属性请配合 <code>hasOwnProperty</code>，或改用 <code>Object.keys()</code>。</td></tr>
+    <tr><td>替换原型丢 constructor</td><td>整体赋值 <code>Foo.prototype = {...}</code> 会丢失默认 constructor，需手动补回。</td></tr>
+  </table>
+  <div class="code-block"><div class="cb-header"><span>反例：原型上放引用类型 → 实例共享</span></div><pre><span class="kw">function</span> <span class="fn">Cart</span><span class="punct">()</span> <span class="punct">{}</span>
+<span class="fn">Cart</span><span class="punct">.</span><span class="var">prototype</span><span class="punct">.</span><span class="var">items</span> <span class="punct">=</span> <span class="punct">[];</span>   <span class="com">// ❌ 数组在原型上，被共享</span>
+
+<span class="kw">const</span> <span class="var">a</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Cart</span><span class="punct">(),</span> <span class="var">b</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Cart</span><span class="punct">();</span>
+<span class="var">a</span><span class="punct">.</span><span class="var">items</span><span class="punct">.</span><span class="fn">push</span><span class="punct">(</span><span class="str">"苹果"</span><span class="punct">);</span>
+<span class="var">b</span><span class="punct">.</span><span class="var">items</span><span class="punct">;</span>   <span class="com">// ["苹果"] —— b 莫名其妙也有了！因为 a、b 共用原型上的同一个数组</span>
+
+<span class="com">// 正例：引用类型放在构造函数里，每个实例独立</span>
+<span class="kw">function</span> <span class="fn">Cart2</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">this</span><span class="punct">.</span><span class="var">items</span> <span class="punct">=</span> <span class="punct">[];</span> <span class="punct">}</span></pre></div>
+  <div class="code-block"><div class="cb-header"><span>hasOwnProperty 区分自有与继承</span></div><pre><span class="kw">const</span> <span class="var">p</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Person</span><span class="punct">(</span><span class="str">"shea"</span><span class="punct">);</span>
+
+<span class="var">p</span><span class="punct">.</span><span class="fn">hasOwnProperty</span><span class="punct">(</span><span class="str">"name"</span><span class="punct">);</span>    <span class="com">// true，name 是自身属性</span>
+<span class="var">p</span><span class="punct">.</span><span class="fn">hasOwnProperty</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>   <span class="com">// false，hello 来自原型，不是自有</span>
+<span class="str">"hello"</span> <span class="kw">in</span> <span class="var">p</span><span class="punct">;</span>                  <span class="com">// true，in 会查整条原型链 —— 注意和 hasOwnProperty 的区别</span></pre></div>
+
+  <h2>对比：原型继承 vs 类式继承</h2>
+  <table>
+    <tr><th>角度</th><th>JS 原型继承</th><th>Java/C++ 类式继承</th></tr>
+    <tr><td>继承的对象</td><td>对象继承<strong>对象</strong>（实例委托给另一个对象）</td><td>类继承<strong>类</strong>，对象由类"铸造"出来</td></tr>
+    <tr><td>本质</td><td>运行时<strong>委托查找</strong>，找不到就问上级</td><td>编译期确定的<strong>蓝图复制</strong>，结构固定</td></tr>
+    <tr><td>动态性</td><td>极强：运行时可随时改原型，影响所有实例</td><td>弱：类定义编译后基本固定</td></tr>
+    <tr><td>方法存储</td><td>共享在原型对象上，只一份</td><td>方法属于类，逻辑上也共享</td></tr>
+  </table>
+  <p>思维差异在于：Java 程序员想的是"先有类这个模板，再造对象"；JS 的原型思维是"对象可以直接以另一个对象为模板，没有类这个中间层"。<code>class</code> 语法让 JS 看起来像前者，但骨子里仍是后者。看穿这层，才算真正懂了 JS 的面向对象。</p>
+
+  <div class="callout tip"><strong>小结：</strong>① 每个对象有 <code>[[Prototype]]</code>，用 <code>Object.getPrototypeOf</code> 读取；② 属性查找沿原型链向上直到 <code>null</code>，这就是继承的本质；③ 铁律 <code>实例.__proto__ === 构造函数.prototype</code>，别和函数的 <code>prototype</code> 混淆；④ 链条 <code>实例 → 构造函数.prototype → Object.prototype → null</code>；⑤ <code>class/extends</code> 是原型链的语法糖；⑥ 引用类型别放原型、<code>for...in</code> 会遍历原型链、用 <code>hasOwnProperty</code> 区分自有属性。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="15-Class语法.html" class="nav-btn">← Class 语法</a><a href="17-import与export语法.html" class="nav-btn next">import / export →</a></div>
+</div>
+</body>
+</html>

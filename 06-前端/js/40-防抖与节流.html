@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · 防抖与节流</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 进阶概念 / 防抖与节流</div>
+  <div class="hero"><div class="tag">JS · 进阶概念</div><h1>防抖与节流</h1><p>防抖（debounce）和节流（throttle）是前端性能优化的两把手术刀。它们都用来"压制"高频触发的事件，让昂贵的逻辑别被疯狂调用——但压制的策略截然不同。搞清两者的区别与适用场景，是性能优化的基本功，也是面试常客。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>浏览器里有一批事件天生<strong>高频触发</strong>：滚动 <code>scroll</code>、窗口缩放 <code>resize</code>、鼠标移动 <code>mousemove</code>、输入框 <code>input</code>……（呼应第 27、36 篇的事件机制）。这些事件在用户操作的几秒里能触发几十上百次。如果每次回调都做<strong>昂贵的活</strong>——发网络请求、操作 DOM 引发重排（reflow）、复杂计算——主线程会被瞬间塞满，页面卡顿、掉帧甚至假死。</p>
+  <p>问题的本质是：<strong>事件触发的频率，远高于我们真正需要执行逻辑的频率</strong>。用户在搜索框连打十个字，我们并不需要为每个字符都发一次请求；用户疯狂滚动页面，我们也不必每一像素都重新计算布局。防抖和节流就是两种"把触发频率削下来"的通用手段。</p>
+
+  <h2>防抖 debounce：等"安静"了才执行</h2>
+  <p>防抖的策略是：<strong>把短时间内的连续触发合并成一次，只有当事件停止触发、安静了指定的时间，才执行最后一次</strong>。每来一次新触发，就把之前排好的执行计划取消、重新计时。</p>
+  <p>生活类比：<strong>电梯关门</strong>。电梯准备关门（计时），但只要有人进来（新触发），就重新等待几秒；直到没人再进来、安静了，门才真正关上（执行）。再比如游戏里"长按蓄力，松手才放招"。</p>
+  <div class="callout info"><strong>典型场景：</strong>① 搜索框联想——用户停止输入后才发请求，避免每个字符一次请求；② 窗口 <code>resize</code> 完成后再重新计算布局；③ 表单的实时校验——停止输入再校验，体验更顺。它们的共同点是：<strong>只关心"最终状态"，中间过程可以丢弃</strong>。</div>
+  <p>实现的核心是<strong>闭包</strong>（呼应第 06 篇）：用一个闭包变量保存定时器 id，每次调用先 <code>clearTimeout</code> 掉上一个计划，再 <code>setTimeout</code> 重新排一个。只有最后一次的定时器能"活到"触发的那一刻。</p>
+  <div class="code-block"><div class="cb-header"><span>debounce 基础实现</span></div><pre><span class="kw">function</span> <span class="fn">debounce</span><span class="punct">(</span><span class="var">fn</span><span class="punct">,</span> <span class="var">delay</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">timer</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>           <span class="com">// 闭包变量：保存定时器 id，跨多次调用复用</span>
+  <span class="kw">return</span> <span class="kw">function</span> <span class="punct">(...</span><span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>   <span class="com">// 用普通函数，保留调用时的 this 与参数</span>
+    <span class="fn">clearTimeout</span><span class="punct">(</span><span class="var">timer</span><span class="punct">);</span>       <span class="com">// 每次新触发，先取消上一个排好的计划</span>
+    <span class="var">timer</span> <span class="punct">=</span> <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+      <span class="var">fn</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span>   <span class="com">// 箭头函数继承外层 this，再透传 args</span>
+    <span class="punct">},</span> <span class="var">delay</span><span class="punct">);</span>
+  <span class="punct">};</span>
+<span class="punct">}</span>
+
+<span class="com">// 用法：停止输入 300ms 后才真正发请求</span>
+<span class="kw">const</span> <span class="var">onSearch</span> <span class="punct">=</span> <span class="fn">debounce</span><span class="punct">((</span><span class="var">e</span><span class="punct">)</span> <span class="kw">=&gt;</span> <span class="fn">sendRequest</span><span class="punct">(</span><span class="var">e</span><span class="punct">.</span><span class="var">target</span><span class="punct">.</span><span class="var">value</span><span class="punct">),</span> <span class="num">300</span><span class="punct">);</span>
+<span class="var">input</span><span class="punct">.</span><span class="fn">addEventListener</span><span class="punct">(</span><span class="str">'input'</span><span class="punct">,</span> <span class="var">onSearch</span><span class="punct">);</span></pre></div>
+
+  <h2>防抖的 leading（立即执行）选项</h2>
+  <p>上面的版本是<strong>尾部执行（trailing）</strong>：安静后才跑。有时我们希望<strong>第一次触发立刻执行</strong>（如点赞按钮立即响应），之后的连续触发再被压制——这叫 <strong>leading（前缘）防抖</strong>。常用一个 <code>immediate</code> 开关来切换。</p>
+  <div class="code-block"><div class="cb-header"><span>带 immediate 的 debounce</span></div><pre><span class="kw">function</span> <span class="fn">debounce</span><span class="punct">(</span><span class="var">fn</span><span class="punct">,</span> <span class="var">delay</span><span class="punct">,</span> <span class="var">immediate</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">timer</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+  <span class="kw">return</span> <span class="kw">function</span> <span class="punct">(...</span><span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="var">callNow</span> <span class="punct">=</span> <span class="var">immediate</span> <span class="punct">&amp;&amp;</span> <span class="punct">!</span><span class="var">timer</span><span class="punct">;</span>  <span class="com">// 没有计时中且要求立即，则本次先执行</span>
+    <span class="fn">clearTimeout</span><span class="punct">(</span><span class="var">timer</span><span class="punct">);</span>
+    <span class="var">timer</span> <span class="punct">=</span> <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+      <span class="var">timer</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>                  <span class="com">// 冷却结束，恢复"可立即执行"状态</span>
+      <span class="kw">if</span> <span class="punct">(!</span><span class="var">immediate</span><span class="punct">)</span> <span class="var">fn</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span>
+    <span class="punct">},</span> <span class="var">delay</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">callNow</span><span class="punct">)</span> <span class="var">fn</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span>
+  <span class="punct">};</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>节流 throttle：固定频率执行</h2>
+  <p>节流的策略是：<strong>在固定的时间间隔内，最多执行一次</strong>。无论事件触发多频繁，每隔 N 毫秒才放行一次——保证执行有稳定的节奏。</p>
+  <p>生活类比：<strong>水龙头限流</strong>，开多大都只流那么多；或游戏技能的 <strong>CD（冷却）</strong>，放完技能要等冷却好才能再放，期间狂点也没用。</p>
+  <div class="callout info"><strong>典型场景：</strong>① 滚动加载 / 滚动监听——每隔一段固定时间判断一次是否到底；② 按钮防连点——限制提交频率；③ <code>mousemove</code> 跟随——固定节奏更新坐标，画面平滑又不卡。它们的共同点是：<strong>过程中需要持续有反馈，但不必每次触发都跑</strong>。</div>
+  <h3>实现方式一：时间戳（leading，首次立即）</h3>
+  <div class="code-block"><div class="cb-header"><span>时间戳版 throttle</span></div><pre><span class="kw">function</span> <span class="fn">throttle</span><span class="punct">(</span><span class="var">fn</span><span class="punct">,</span> <span class="var">interval</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">last</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>             <span class="com">// 闭包变量：记录上次执行的时间戳</span>
+  <span class="kw">return</span> <span class="kw">function</span> <span class="punct">(...</span><span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="var">now</span> <span class="punct">=</span> <span class="fn">Date</span><span class="punct">.</span><span class="fn">now</span><span class="punct">();</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">now</span> <span class="punct">-</span> <span class="var">last</span> <span class="punct">&gt;=</span> <span class="var">interval</span><span class="punct">)</span> <span class="punct">{</span>  <span class="com">// 距上次已超过间隔，才放行</span>
+      <span class="var">last</span> <span class="punct">=</span> <span class="var">now</span><span class="punct">;</span>
+      <span class="var">fn</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span>
+    <span class="punct">}</span>
+  <span class="punct">};</span>
+<span class="punct">}</span></pre></div>
+  <h3>实现方式二：定时器（trailing，尾部补一次）</h3>
+  <p>时间戳版<strong>首次立即执行、但最后一次可能丢失</strong>；定时器版则<strong>首次延迟、能保证尾部那次</strong>。想首尾都执行，可把两者结合（lodash 的 throttle 就提供 <code>leading</code> / <code>trailing</code> 两个选项）。</p>
+  <div class="code-block"><div class="cb-header"><span>定时器版 throttle</span></div><pre><span class="kw">function</span> <span class="fn">throttle</span><span class="punct">(</span><span class="var">fn</span><span class="punct">,</span> <span class="var">interval</span><span class="punct">)</span> <span class="punct">{</span>
+  <span class="kw">let</span> <span class="var">timer</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+  <span class="kw">return</span> <span class="kw">function</span> <span class="punct">(...</span><span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">timer</span><span class="punct">)</span> <span class="kw">return</span><span class="punct">;</span>          <span class="com">// 冷却中，直接忽略本次触发</span>
+    <span class="var">timer</span> <span class="punct">=</span> <span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+      <span class="var">fn</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span>
+      <span class="var">timer</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>             <span class="com">// 执行完清空，开启下一轮冷却</span>
+    <span class="punct">},</span> <span class="var">interval</span><span class="punct">);</span>
+  <span class="punct">};</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>核心区别对比</h2>
+  <table>
+    <tr><th>维度</th><th>防抖 debounce</th><th>节流 throttle</th></tr>
+    <tr><td>触发时机</td><td>停止触发、安静 N 毫秒后</td><td>每隔固定 N 毫秒到点就执行</td></tr>
+    <tr><td>执行频率</td><td>连续触发只执行<strong>一次</strong>（最后一次）</td><td>固定频率，<strong>匀速</strong>执行多次</td></tr>
+    <tr><td>关注点</td><td>只要"最终结果"</td><td>过程中要"持续反馈"</td></tr>
+    <tr><td>典型场景</td><td>搜索联想、<code>resize</code>、表单校验</td><td>滚动加载、按钮防连点、<code>mousemove</code></td></tr>
+    <tr><td>类比</td><td>电梯关门 / 蓄力放招</td><td>水龙头限流 / 技能 CD</td></tr>
+  </table>
+  <div class="callout warn"><strong>一句话口诀：防抖看"最后一下"，节流看"固定频率"。</strong> 拿不准时问自己——只关心用户操作完的最终态，用防抖；操作过程中需要稳定地持续反馈，用节流。</div>
+
+  <h2>实现里的陷阱</h2>
+  <ul>
+    <li><strong>this 与参数传递：</strong>返回的包装函数务必用<strong>普通函数</strong>（不是箭头函数），这样它才能拿到事件触发时正确的 <code>this</code>（如绑定的 DOM 元素）；再用 <code>fn.apply(this, args)</code> 把 <code>this</code> 和参数完整透传给原函数。若用箭头函数包装，<code>this</code> 会被锁死成定义时的外层，事件回调里就拿不到 DOM 了。</li>
+    <li><strong>闭包保存状态：</strong><code>timer</code> / <code>last</code> 必须是闭包里的变量，由返回的函数<strong>跨多次调用共享</strong>。若误把它写进函数体内部，每次调用都重置，防抖节流就彻底失效了。</li>
+    <li><strong>记得清理定时器：</strong>组件卸载、元素移除时，要 <code>clearTimeout</code> 掉挂起的定时器并移除事件监听，否则可能在已销毁的上下文里执行、引发报错或内存泄漏（呼应事件解绑那篇）。</li>
+    <li><strong>leading / trailing 取舍：</strong>防抖默认尾部执行，加 <code>immediate</code> 可前缘立即；节流时间戳版偏首、定时器版偏尾。要"首次响应快又不丢最后一次"，得把两套机制组合，这正是用 lodash 现成实现的理由。</li>
+  </ul>
+  <div class="callout info"><strong>生产建议：</strong>真实项目优先用 <code>lodash.debounce</code> / <code>lodash.throttle</code>，它们处理好了 <code>leading</code>、<code>trailing</code>、<code>maxWait</code>、<code>cancel()</code> 等边界。手写实现主要用于<strong>理解原理和面试</strong>——能讲清闭包、this、定时器三件事，基本就过关了。</div>
+
+  <div class="callout tip"><strong>小结：</strong>① 高频事件（scroll/resize/mousemove/input）直接绑昂贵逻辑会卡顿，防抖与节流都是"削频率"的手段；② <strong>防抖</strong>＝等安静了执行最后一次（电梯门），适合搜索联想、resize；③ <strong>节流</strong>＝固定间隔执行一次（技能 CD），适合滚动、防连点、mousemove；④ 口诀：防抖看"最后一下"，节流看"固定频率"；⑤ 实现三要点——普通函数 + <code>apply</code> 透传 this/args、闭包存定时器、记得清理。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="39-深拷贝与浅拷贝.html" class="nav-btn">← 深拷贝与浅拷贝</a><a href="41-正则表达式基础.html" class="nav-btn next">正则表达式基础 →</a></div>
+</div>
+</body>
+</html>

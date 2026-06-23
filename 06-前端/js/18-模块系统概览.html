@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JS · 模块系统概览（ESM / CJS）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../frontend-roadmap.html">路线图</a> / JS / 模块化 / 模块系统概览</div>
+  <div class="hero"><div class="tag">JS · 模块化</div><h1>模块系统概览（ESM / CJS）</h1><p>同样是 <code>import</code> 和 <code>require</code>，背后却是两套设计哲学完全不同的模块系统。搞懂它们的来龙去脉，才能理解为什么有时候 <code>require</code> 不能用、为什么打包工具能做 tree-shaking、为什么混用会报奇怪的错。</p></div>
+
+  <h2>它解决了什么问题</h2>
+  <p>最早的 JS 根本没有模块。所有脚本都往<strong>同一个全局作用域</strong>里塞变量，多个 <code>&lt;script&gt;</code> 之间靠全局变量通信。这带来两个致命问题：<strong>命名冲突</strong>（两个库都定义了 <code>$</code>）和<strong>依赖关系不明</strong>（你必须手动保证 <code>&lt;script&gt;</code> 的加载顺序正确，否则后面的脚本拿不到前面的变量）。模块系统要解决的核心问题就是：<strong>每个文件有自己独立的作用域，并能明确声明"我依赖谁、我导出什么"</strong>。这样依赖关系变成了代码里可分析的结构，而不是隐藏在加载顺序里的潜规则。</p>
+
+  <h2>模块化演进简史</h2>
+  <p>理解今天的 ESM 与 CJS，要顺着这条历史线看——每一步都是在补前一步的坑。</p>
+  <ul>
+    <li><strong>无模块时代</strong>：靠全局变量 + IIFE（立即执行函数）造"命名空间"，把内部实现藏进闭包，只往全局挂一个对象，缓解冲突。</li>
+    <li><strong>CommonJS（2009，为 Node 而生）</strong>：用 <code>require()</code> 同步加载、<code>module.exports</code> 导出。同步读文件在服务端没问题（本地磁盘快），但搬不到浏览器（网络请求不能同步阻塞）。</li>
+    <li><strong>AMD（RequireJS）</strong>：为浏览器设计的<strong>异步</strong>方案，用回调声明依赖。语法繁琐，是过渡产物，今天基本退场。</li>
+    <li><strong>ES Modules（ES6 / 2015）</strong>：终于写进<strong>语言标准</strong>，<code>import</code> / <code>export</code> 同时被浏览器和 Node 原生支持，是当下唯一推荐的统一方案。</li>
+  </ul>
+  <div class="callout info"><strong>为什么是"语言级"很关键？</strong>CJS 的 <code>require</code> 本质只是 Node 实现的一个普通函数；而 ESM 的 <code>import</code> 是语法关键字，引擎在<strong>解析阶段</strong>就能看懂模块结构，不必先运行代码。这个差别是后面一切对比的根源。</div>
+
+  <h2>核心对比：ESM vs CommonJS</h2>
+  <p>这是面试与工程实践的双重高频点。下面逐项拆开，下面的代码示例会逐条印证。</p>
+  <table>
+    <tr><th>维度</th><th>CommonJS (CJS)</th><th>ES Modules (ESM)</th></tr>
+    <tr><td>导入/导出语法</td><td><code>require</code> / <code>module.exports</code></td><td><code>import</code> / <code>export</code></td></tr>
+    <tr><td>解析时机</td><td>运行时动态求值</td><td>编译期静态分析</td></tr>
+    <tr><td>加载方式</td><td>同步加载</td><td>异步加载</td></tr>
+    <tr><td>导出本质</td><td>值的<strong>拷贝</strong>（快照）</td><td>实时<strong>绑定</strong>（引用）</td></tr>
+    <tr><td>tree-shaking</td><td>难（结构动态）</td><td>支持（结构静态）</td></tr>
+    <tr><td>顶层 <code>this</code></td><td>指向 <code>module.exports</code></td><td><code>undefined</code></td></tr>
+    <tr><td>条件加载</td><td>可以（<code>require</code> 就是函数）</td><td>静态 <code>import</code> 不行，需 <code>import()</code></td></tr>
+    <tr><td>严格模式</td><td>默认非严格</td><td>默认严格模式</td></tr>
+  </table>
+
+  <h2>语法对照</h2>
+  <div class="code-block"><div class="cb-header"><span>CommonJS：运行时的函数调用</span></div><pre><span class="com">// math.cjs —— 导出就是给一个普通对象赋值</span>
+<span class="kw">function</span> <span class="fn">add</span><span class="punct">(</span><span class="var">a</span><span class="punct">,</span> <span class="var">b</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">return</span> <span class="var">a</span> <span class="punct">+</span> <span class="var">b</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="var">module</span><span class="punct">.</span><span class="var">exports</span> <span class="punct">=</span> <span class="punct">{</span> <span class="var">add</span> <span class="punct">};</span>
+
+<span class="com">// main.cjs —— require 是函数，可以写在任何地方</span>
+<span class="kw">const</span> <span class="punct">{</span> <span class="var">add</span> <span class="punct">}</span> <span class="punct">=</span> <span class="fn">require</span><span class="punct">(</span><span class="str">'./math.cjs'</span><span class="punct">);</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="fn">add</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">));</span>  <span class="com">// 3</span></pre></div>
+  <div class="code-block"><div class="cb-header"><span>ESM：编译期就确定的静态声明</span></div><pre><span class="com">// math.mjs</span>
+<span class="kw">export</span> <span class="kw">function</span> <span class="fn">add</span><span class="punct">(</span><span class="var">a</span><span class="punct">,</span> <span class="var">b</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">return</span> <span class="var">a</span> <span class="punct">+</span> <span class="var">b</span><span class="punct">;</span> <span class="punct">}</span>
+
+<span class="com">// main.mjs —— import 必须在顶层，引擎解析时就读取这些声明</span>
+<span class="kw">import</span> <span class="punct">{</span> <span class="var">add</span> <span class="punct">}</span> <span class="kw">from</span> <span class="str">'./math.mjs'</span><span class="punct">;</span>
+<span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="fn">add</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">));</span>  <span class="com">// 3</span></pre></div>
+
+  <h2>陷阱一：CJS 是值拷贝，ESM 是实时绑定</h2>
+  <p>这是两套系统最本质、也最容易出 bug 的差异。CJS 的 <code>require</code> 拿到的是导出那一刻的<strong>值快照</strong>；之后源模块内部即使改了变量，导入方也看不到。ESM 的 <code>import</code> 拿到的是一个<strong>只读的实时绑定</strong>，源模块改了，导入方读到的就是新值。</p>
+  <div class="code-block"><div class="cb-header"><span>反例：CJS 拿到的是旧值</span></div><pre><span class="com">// counter.cjs</span>
+<span class="kw">let</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+<span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="punct">{</span> <span class="var">count</span><span class="punct">++;</span> <span class="punct">},</span> <span class="num">100</span><span class="punct">);</span>
+<span class="var">module</span><span class="punct">.</span><span class="var">exports</span> <span class="punct">=</span> <span class="punct">{</span> <span class="var">count</span> <span class="punct">};</span>  <span class="com">// 此刻拷贝了 0</span>
+
+<span class="com">// main.cjs：100ms 后读到的仍是 0（拷贝的快照不会变）</span>
+<span class="kw">const</span> <span class="var">c</span> <span class="punct">=</span> <span class="fn">require</span><span class="punct">(</span><span class="str">'./counter.cjs'</span><span class="punct">);</span>
+<span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">c</span><span class="punct">.</span><span class="var">count</span><span class="punct">),</span> <span class="num">200</span><span class="punct">);</span>  <span class="com">// 0</span></pre></div>
+  <div class="code-block"><div class="cb-header"><span>正例：ESM 实时反映源模块的变化</span></div><pre><span class="com">// counter.mjs</span>
+<span class="kw">export</span> <span class="kw">let</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+<span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="punct">{</span> <span class="var">count</span><span class="punct">++;</span> <span class="punct">},</span> <span class="num">100</span><span class="punct">);</span>
+
+<span class="com">// main.mjs：200ms 后读到 1（import 是活的绑定，但你不能给它赋值）</span>
+<span class="kw">import</span> <span class="punct">{</span> <span class="var">count</span> <span class="punct">}</span> <span class="kw">from</span> <span class="str">'./counter.mjs'</span><span class="punct">;</span>
+<span class="fn">setTimeout</span><span class="punct">(()</span> <span class="kw">=&gt;</span> <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">count</span><span class="punct">),</span> <span class="num">200</span><span class="punct">);</span>  <span class="com">// 1</span></pre></div>
+
+  <h2>陷阱二：循环依赖的不同表现</h2>
+  <p>A 引 B、B 又引 A，两套系统都不会死循环（都靠"模块缓存"打破），但<strong>拿到的中间状态不同</strong>。CJS 遇到循环时，返回的是被引模块当前<strong>已执行到的那部分</strong> <code>exports</code>——可能是个残缺的对象，访问还没赋值的属性会得到 <code>undefined</code>。ESM 因为是实时绑定，只要你在真正<strong>用到</strong>变量时它已被初始化，就能拿到正确的值；引擎对未初始化绑定的访问会直接抛 <code>ReferenceError</code>（暴露得更早）。</p>
+  <div class="callout warn"><strong>实践建议：</strong>无论哪套系统，循环依赖都是设计气味。最好的修法不是研究它的求值顺序，而是<strong>把共享的部分抽到第三个模块</strong>，让 A、B 都依赖它，从而打破环。</div>
+
+  <h2>ESM 的静态结构与 tree-shaking</h2>
+  <p>为什么 ESM 能"摇树"（删掉没用到的导出），CJS 不能？因为 ESM 的 <code>import</code> / <code>export</code> 必须写在顶层、名字写死、不能放进 <code>if</code> 里。于是打包工具<strong>不运行代码、只静态分析</strong>就能画出完整的依赖图，判断哪个导出从没被引用，安全地删掉。CJS 的 <code>require</code> 是运行时函数，参数甚至可以是变量拼出来的字符串（<code>require('./' + name)</code>），工具无法在编译期确定到底加载了什么，自然不敢删。</p>
+  <div class="code-block"><div class="cb-header"><span>静态结构让 tree-shaking 成为可能</span></div><pre><span class="com">// utils.mjs 导出两个函数</span>
+<span class="kw">export</span> <span class="kw">function</span> <span class="fn">used</span><span class="punct">()</span> <span class="punct">{</span> <span class="com">/* ... */</span> <span class="punct">}</span>
+<span class="kw">export</span> <span class="kw">function</span> <span class="fn">unused</span><span class="punct">()</span> <span class="punct">{</span> <span class="com">/* ... */</span> <span class="punct">}</span>
+
+<span class="com">// app.mjs 只用 used，打包后 unused 会被剔除</span>
+<span class="kw">import</span> <span class="punct">{</span> <span class="var">used</span> <span class="punct">}</span> <span class="kw">from</span> <span class="str">'./utils.mjs'</span><span class="punct">;</span>
+<span class="fn">used</span><span class="punct">();</span></pre></div>
+
+  <h2>动态 import()：按需加载与代码分割</h2>
+  <p>静态 <code>import</code> 不能写在条件里，但有时确实需要"用到才加载"（比如点击按钮才打开的弹窗组件）。<code>import()</code> 是个<strong>函数形式的动态导入</strong>，返回一个 <code>Promise</code>，解析出模块对象。打包工具看到它会自动把这个模块<strong>切成单独的 chunk</strong>，实现首屏不加载、按需拉取——这就是路由懒加载的底层机制。</p>
+  <div class="code-block"><div class="cb-header"><span>动态导入实现按需加载</span></div><pre><span class="var">button</span><span class="punct">.</span><span class="fn">addEventListener</span><span class="punct">(</span><span class="str">'click'</span><span class="punct">,</span> <span class="kw">async</span> <span class="punct">()</span> <span class="kw">=&gt;</span> <span class="punct">{</span>
+  <span class="com">// 点击时才真正发请求加载这个模块</span>
+  <span class="kw">const</span> <span class="punct">{</span> <span class="fn">openDialog</span> <span class="punct">}</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">import</span><span class="punct">(</span><span class="str">'./dialog.mjs'</span><span class="punct">);</span>
+  <span class="fn">openDialog</span><span class="punct">();</span>
+<span class="punct">});</span></pre></div>
+
+  <h2>Node 里如何区分两套系统</h2>
+  <p>Node 同时支持两套，靠文件后缀和 <code>package.json</code> 判断：</p>
+  <ul>
+    <li><code>.mjs</code> 文件永远当 ESM；<code>.cjs</code> 文件永远当 CJS。</li>
+    <li>普通 <code>.js</code> 文件看最近的 <code>package.json</code>：有 <code>"type": "module"</code> 就按 ESM 解析，否则（或没写）按 CJS。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>package.json 决定 .js 的归属</span></div><pre><span class="punct">{</span>
+  <span class="str">"name"</span><span class="punct">:</span> <span class="str">"my-app"</span><span class="punct">,</span>
+  <span class="str">"type"</span><span class="punct">:</span> <span class="str">"module"</span>  <span class="com">// 此后 .js 都按 ESM 解析</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout warn"><strong>互操作陷阱：</strong>ESM 里可以 <code>import</code> 一个 CJS 模块（Node 会把它的 <code>module.exports</code> 包装成 default 导出）；但反过来在 CJS 里<strong>不能直接 <code>require</code> 一个 ESM 模块</strong>（require 是同步的，ESM 是异步的，对不上），只能用动态 <code>import()</code>。混用时这是最常见的"为什么 require 报错"的原因。</div>
+
+  <h2>浏览器原生 ESM</h2>
+  <p>现代浏览器直接支持 ESM，只要给 <code>&lt;script&gt;</code> 加上 <code>type="module"</code>。它和普通脚本有几个关键区别：</p>
+  <ul>
+    <li><strong>默认 defer</strong>：不阻塞 HTML 解析，等文档解析完按顺序执行。</li>
+    <li><strong>自带模块作用域</strong>：顶层声明不再污染全局 <code>window</code>。</li>
+    <li><strong>默认严格模式</strong>：不用写 <code>'use strict'</code>。</li>
+    <li>同一模块只会被<strong>下载并执行一次</strong>，多处引用共享同一实例。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>浏览器原生模块脚本</span></div><pre><span class="punct">&lt;</span><span class="fn">script</span> <span class="var">type</span><span class="punct">=</span><span class="str">"module"</span><span class="punct">&gt;</span>
+  <span class="kw">import</span> <span class="punct">{</span> <span class="var">add</span> <span class="punct">}</span> <span class="kw">from</span> <span class="str">'./math.mjs'</span><span class="punct">;</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="fn">add</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">));</span>
+<span class="punct">&lt;/</span><span class="fn">script</span><span class="punct">&gt;</span></pre></div>
+
+  <h2>陷阱三：顶层 await 与打包工具的转换</h2>
+  <p>ESM 因为是异步加载的，允许在<strong>模块顶层直接写 <code>await</code></strong>（不必包在 <code>async</code> 函数里）——CJS 做不到这点。但要注意：顶层 <code>await</code> 会让依赖它的模块也"等"它执行完，用不好会拖慢整个加载链。</p>
+  <p>另外，你日常写 <code>import</code> 但项目最终跑的可能并不是原生 ESM。<strong>Webpack / Vite 这类打包工具会在中间做转换</strong>：开发期 Vite 利用浏览器原生 ESM 实现秒级热更新，生产构建时则把成百上千个模块打包、做 tree-shaking、必要时降级成兼容旧浏览器的格式。所以"我写的 ESM"和"浏览器最终执行的代码"往往不是一回事，理解这层转换能帮你看懂构建产物和很多诡异报错。</p>
+
+  <div class="callout tip"><strong>小结：</strong>① 模块化是为隔离作用域 + 明确依赖而生；演进是 无模块 → CJS → AMD → ESM；② ESM 是<strong>编译期静态</strong>、实时绑定、可 tree-shaking，CJS 是<strong>运行时动态</strong>、值拷贝、可条件加载；③ <code>import()</code> 返回 Promise，是懒加载/代码分割的基础；④ Node 靠 <code>.mjs/.cjs</code> 与 <code>"type": "module"</code> 区分，CJS 不能直接 require ESM；⑤ 浏览器 <code>&lt;script type="module"&gt;</code> 默认 defer + 严格模式 + 独立作用域；⑥ 你写的 import 经 Webpack/Vite 转换后才真正运行。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="17-import与export语法.html" class="nav-btn">← import / export</a><a href="19-DOM选取元素.html" class="nav-btn next">DOM 选取元素 →</a></div>
+</div>
+</body>
+</html>
