@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · 虚拟 DOM 与 Reconciliation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; background: transparent; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .lit { color: #fb923c; }
+    .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #22d3ee; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .formula { text-align: center; font-size: 1.4rem; font-family: "Fira Code", Consolas, monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: #61dafb; }
+    .flow-steps { margin: 20px 0; }
+    .flow-step { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+    .flow-step .step-num { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #164e63; border: 1px solid #61dafb; color: #61dafb; font-size: 0.78rem; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+    .flow-step .step-body { color: #94a3b8; font-size: 0.88rem; }
+    .flow-step .step-body strong { color: #e2e8f0; }
+    .flow-arrow { text-align: center; color: #334155; font-size: 1.1rem; margin: 4px 0 4px 14px; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / React 基础 / 虚拟 DOM 与 Reconciliation</div>
+  <div class="hero">
+    <div class="tag">React · 心智模型</div>
+    <h1>虚拟 DOM 与 Reconciliation</h1>
+    <p>上一节说了"UI 是 state 的函数"——每次 state 变化 React 都重新描述 UI。但真实 DOM 操作开销很大，React 怎么解决这个矛盾的？这一节讲清楚其中的机制。</p>
+  </div>
+
+  <h2>为什么需要虚拟 DOM：真实 DOM 操作的代价</h2>
+  <p>浏览器的真实 DOM 操作非常昂贵。每次你修改一个 DOM 节点，浏览器可能需要：</p>
+  <ul>
+    <li><strong>重排（Reflow）</strong>：重新计算元素的几何位置和尺寸，整棵渲染树都可能受影响</li>
+    <li><strong>重绘（Repaint）</strong>：把新的布局结果绘制到屏幕上</li>
+  </ul>
+  <p>这两步是浏览器里最耗性能的操作之一。如果你有一个复杂页面，每次状态变化都把整个页面的 DOM 销毁重建，帧率会直接掉到个位数，用户体验灾难。</p>
+  <p>但声明式写法天然要求"每次都重新描述整个 UI"——这和"不能全量更新 DOM"之间存在矛盾。<strong>虚拟 DOM 就是解决这个矛盾的桥梁</strong>。</p>
+
+  <h2>虚拟 DOM 是什么</h2>
+  <p>虚拟 DOM（Virtual DOM）是<strong>内存中的 JavaScript 对象树</strong>，是真实 DOM 的轻量级副本。它用普通 JS 对象来描述 DOM 结构，比如：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>一个简单组件对应的虚拟 DOM 结构</span></div>
+    <pre><span class="com">// 你写的 JSX：</span>
+<span class="punct">&lt;</span><span class="tag-c">div</span> <span class="attr">className</span><span class="punct">=</span><span class="str">"card"</span><span class="punct">&gt;</span>
+  <span class="punct">&lt;</span><span class="tag-c">h2</span><span class="punct">&gt;</span>React<span class="punct">&lt;/</span><span class="tag-c">h2</span><span class="punct">&gt;</span>
+  <span class="punct">&lt;</span><span class="tag-c">p</span><span class="punct">&gt;</span><span class="jsx-expr">{count}</span><span class="punct">&lt;/</span><span class="tag-c">p</span><span class="punct">&gt;</span>
+<span class="punct">&lt;/</span><span class="tag-c">div</span><span class="punct">&gt;</span>
+
+<span class="com">// React 在内存里维护的虚拟 DOM（简化版）：</span>
+<span class="com">// 只是普通 JS 对象，创建/比较它们比操作真实 DOM 快得多</span>
+<span class="punct">{</span>
+  <span class="var">type</span><span class="punct">:</span> <span class="str">'div'</span><span class="punct">,</span>
+  <span class="var">props</span><span class="punct">:</span> <span class="punct">{</span> <span class="var">className</span><span class="punct">:</span> <span class="str">'card'</span> <span class="punct">},</span>
+  <span class="var">children</span><span class="punct">:</span> <span class="punct">[</span>
+    <span class="punct">{</span> <span class="var">type</span><span class="punct">:</span> <span class="str">'h2'</span><span class="punct">,</span> <span class="var">props</span><span class="punct">:</span> <span class="punct">{},</span> <span class="var">children</span><span class="punct">:</span> <span class="str">'React'</span> <span class="punct">},</span>
+    <span class="punct">{</span> <span class="var">type</span><span class="punct">:</span> <span class="str">'p'</span><span class="punct">,</span>  <span class="var">props</span><span class="punct">:</span> <span class="punct">{},</span> <span class="var">children</span><span class="punct">:</span> <span class="num">42</span> <span class="punct">}</span>
+  <span class="punct">]</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>创建和比较这样的 JS 对象，成本远低于直接操作真实 DOM 节点。这就是虚拟 DOM 存在的意义：<strong>在内存里做"全量描述"，在真实 DOM 里做"最小化更新"</strong>。</p>
+
+  <h2>Reconciliation（协调）：完整流程</h2>
+  <p>当你调用 <code>setState</code> 或某个 Hook 触发状态更新时，React 会走完这整个流程：</p>
+
+  <div class="flow-steps">
+    <div class="flow-step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong>触发重新渲染</strong>：state 或 props 发生变化，React 标记该组件需要重新渲染</div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div class="step-body"><strong>重新调用组件函数</strong>：React 用新的 state/props 重新调用你写的组件函数，得到新的 JSX 返回值</div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div class="step-body"><strong>生成新虚拟 DOM 树</strong>：React 把新的 JSX 转换成新的虚拟 DOM 对象树（存在内存中）</div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div class="step-body"><strong>Diff：与旧树对比</strong>：React 把新虚拟 DOM 树与上次渲染保存的旧虚拟 DOM 树逐节点比较，找出哪些节点发生了变化</div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step">
+      <div class="step-num">5</div>
+      <div class="step-body"><strong>最小化更新真实 DOM</strong>：只把 diff 发现的差异部分（patch）同步到真实 DOM，没变的节点原封不动</div>
+    </div>
+  </div>
+
+  <p>这个"新虚拟树和旧虚拟树做差异比较、只更新差异到真实 DOM"的整个过程，就叫 <strong>Reconciliation（协调）</strong>。</p>
+
+  <div class="callout react">
+    <strong>草稿类比：</strong>你要修改一份 10 页的报告。聪明的做法不是把整份报告重新打印，而是：先在草稿纸上写好新版本（虚拟 DOM），然后和原版逐段对比（diff），只把改动了的段落重新打印覆盖（最小化真实 DOM 更新）。React 做的正是这件事——在内存里折腾，对真实 DOM 动最少的手。
+  </div>
+
+  <h2>Diff 算法的关键规则</h2>
+  <p>对比两棵树的时间复杂度理论上是 O(n³)，React 通过两个假设把它降到 O(n)：</p>
+  <ul>
+    <li><strong>不同类型的节点产生不同的树</strong>：如果一个 <code>&lt;div&gt;</code> 变成了 <code>&lt;span&gt;</code>，React 不会尝试复用，直接销毁整棵子树重建</li>
+    <li><strong>key 属性标识列表中的稳定元素</strong>：渲染列表时，React 用 <code>key</code> 来判断哪个元素是"同一个"，避免因为顺序变化而错误地销毁/重建节点</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>常见误解："虚拟 DOM 让 React 更快"</strong><br>
+    这个说法流传很广，但并不准确。虚拟 DOM 本身引入了额外的开销：每次渲染要创建新的对象树，还要做 diff 计算。<br><br>
+    虚拟 DOM 的真正价值是：<strong>让你可以用声明式写法（描述 UI 应该是什么），同时保持合理的性能</strong>。如果你直接手写精确的原生 DOM 操作，理论上会比 React 更快——但随着业务复杂，这样的代码会越来越难以维护和正确。<br><br>
+    React 在"开发体验/可维护性"与"运行性能"之间找到了很好的平衡点，这才是它的真正价值。
+  </div>
+
+  <h2>React 18 的 Fiber：Reconciliation 的进化</h2>
+  <p>React 16 引入了 <strong>Fiber 架构</strong>，把原来同步、不可中断的 Reconciliation 变成了可以暂停、恢复、优先级调度的异步过程。React 18 的 Concurrent Mode 就建立在 Fiber 之上。</p>
+  <p>现阶段你只需要知道：<strong>React 的协调过程不是同步阻塞主线程的</strong>，它可以把高优先级的更新（用户输入）插队到低优先级的更新（数据加载）之前执行，保证界面响应不卡顿。这是虚拟 DOM + Fiber 带来的更深层价值。</p>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="01-React是什么.html" class="nav-btn">← React 是什么</a>
+    <a href="03-单向数据流.html" class="nav-btn next">单向数据流 →</a>
+  </div>
+</div>
+</body>
+</html>

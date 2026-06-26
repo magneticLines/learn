@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据访问 · N+1 查询问题</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 760px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #854d0e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; border-bottom: 1px dashed #475569; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block .cb-header.bad { color: #fca5a5; } .code-block .cb-header.good { color: #86efac; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.84rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .typ { color: #2dd4bf; } .sql { color: #fb923c; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.bad { background: #3f1d1d; border-color: #ef4444; color: #fca5a5; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 12px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 12px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.78rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .storm { background: #13151f; border: 1px solid #3f1d1d; border-radius: 10px; padding: 14px 18px; margin: 16px 0; font-family: Consolas, monospace; font-size: 0.8rem; color: #fca5a5; }
+    .storm .one { color: #93c5fd; } .storm .n { color: #fdba74; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #854d0e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../计算机抽象塔.html">计算机抽象塔</a> / 数据访问 / N+1 查询问题</div>
+  <div class="hero">
+    <div class="tag">数据访问 · ORM</div>
+    <h1>N+1 查询问题</h1>
+    <p>ORM 让你像访问对象属性一样拿关联数据——但这份"廉价假象"会泄漏：一个无害的 for 循环，可能在背后制造上百次数据库往返。N+1 是线上事故最高发的 ORM 陷阱，也是面试高频题。它正是「抽象泄漏」最典型的一个案例。</p>
+  </div>
+
+  <h2>一、现象：1 条 SQL 怎么变成了 11 条</h2>
+  <p>假设有「订单 <code>Order</code>」和「订单明细 <code>OrderItem</code>」，一对多关系。你要查 10 个订单，顺便显示每个订单的明细：</p>
+  <div class="code-block"><div class="cb-header bad">反例 · 看起来人畜无害</div><pre><span class="typ">List</span><span class="punct">&lt;</span><span class="typ">Order</span><span class="punct">&gt;</span> <span class="var">orders</span> <span class="punct">=</span> <span class="var">orderRepository</span><span class="punct">.</span><span class="fn">findAll</span><span class="punct">();</span>      <span class="com">// ① 查出 10 个订单</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="typ">Order</span> <span class="var">order</span> <span class="punct">:</span> <span class="var">orders</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="var">order</span><span class="punct">.</span><span class="fn">getItems</span><span class="punct">().</span><span class="fn">size</span><span class="punct">();</span>                  <span class="com">// ② 访问明细 —— 陷阱在这</span>
+<span class="punct">}</span></pre></div>
+  <p>你以为只发了 1 条 SQL。打开日志一看：</p>
+  <div class="storm"><span class="one">SELECT * FROM orders;                          -- ① 这是那个 "1"</span>
+<span class="n">SELECT * FROM order_items WHERE order_id = 1;   -- ② 这是 "N"</span>
+<span class="n">SELECT * FROM order_items WHERE order_id = 2;</span>
+<span class="n">SELECT * FROM order_items WHERE order_id = 3;</span>
+<span class="n">...                                             -- 一共 10 条</span></pre></div>
+  <p>总共 <strong>1 + N</strong> 条 SQL（这里 1 + 10 = 11），这就是名字的由来。</p>
+  <div class="callout bad"><strong>真正的杀手不是 SQL 慢，是"条数"。</strong>每条 SQL 都是一次<strong>数据库网络往返(round-trip)</strong>。首页列 100 个订单 = 101 次往返；若再嵌套（订单→明细→商品），会膨胀到 N×M 级别，足以拖垮整个数据库。</div>
+
+  <h2>二、为什么会发生：一次教科书级的「抽象泄漏」</h2>
+  <p><code>order.getItems()</code> 在<strong>业务代码层(L7)</strong>看起来就是一次普通的对象属性访问——廉价、内存级、瞬间完成，和 <code>order.getId()</code> 没区别。</p>
+  <p>但 ORM(L6) 在背后撒了个谎：<code>items</code> 字段是<strong>懒加载(Lazy)</strong>的。你第一次访问它的瞬间，ORM 才偷偷去 <strong>数据库(L4)</strong> 发一条 SQL + 一次网络往返。</p>
+  <div class="callout info"><strong>泄漏点就在这：</strong>"对象导航"的廉价假象，漏掉了"每次访问 = 一次远程查询"的真相。你在 L7 写了个无害的 <code>for</code> 循环，实际在 L4 制造了 N 次网络风暴。这正是 N+1 隐蔽的原因——代码读起来完全正常。</div>
+
+  <h2>三、怎么定位（先会抓，再会治）</h2>
+  <p>光看代码看不出 N+1，必须看真实 SQL：</p>
+  <ul>
+    <li><strong>打开 SQL 日志</strong>：JPA 用 <code>spring.jpa.show-sql=true</code>（粗糙），或上 <strong>p6spy</strong> 看真实条数和耗时；MyBatis 把 Mapper 日志设为 <code>DEBUG</code>。</li>
+    <li><strong>看条数是否随数据量线性增长</strong>：一个接口的 SQL 条数若随记录数变多而变多，基本就是 N+1。</li>
+    <li>Hibernate 可用 <code>Statistics</code> 或 <code>hibernate.session.events.log</code> 统计查询次数。</li>
+  </ul>
+
+  <h2>四、正例：四种解法</h2>
+
+  <h3>解法 A · JOIN FETCH（JPA 最常用）</h3>
+  <p>一条 SQL 用 <code>JOIN</code> 把关联一次性捞回来。</p>
+  <div class="code-block"><div class="cb-header good">JPQL</div><pre><span class="punct">@</span><span class="fn">Query</span><span class="punct">(</span><span class="str">"SELECT DISTINCT o FROM Order o JOIN FETCH o.items"</span><span class="punct">)</span>
+<span class="typ">List</span><span class="punct">&lt;</span><span class="typ">Order</span><span class="punct">&gt;</span> <span class="fn">findAllWithItems</span><span class="punct">();</span></pre></div>
+  <p>✅ 把 <code>1+N</code> 压成 <code>1</code>。⚠️ 但有三个坑（见第五节），尤其不能用于分页。</p>
+
+  <h3>解法 B · @EntityGraph（JPA 更声明式）</h3>
+  <p>不想写 JPQL，用注解声明"这次查询要带哪些关联"，适合复用 Repository 方法：</p>
+  <div class="code-block"><div class="cb-header good">注解</div><pre><span class="punct">@</span><span class="fn">EntityGraph</span><span class="punct">(</span><span class="var">attributePaths</span> <span class="punct">=</span> <span class="punct">{</span><span class="str">"items"</span><span class="punct">})</span>
+<span class="typ">List</span><span class="punct">&lt;</span><span class="typ">Order</span><span class="punct">&gt;</span> <span class="fn">findAll</span><span class="punct">();</span></pre></div>
+
+  <h3>解法 C · @BatchSize（JPA 优雅折中，推荐做默认）</h3>
+  <p>不消灭懒加载，而是把"N 条单查"合并成 <code>IN</code> 查询：</p>
+  <div class="code-block"><div class="cb-header good">实体配置</div><pre><span class="punct">@</span><span class="fn">OneToMany</span><span class="punct">(</span><span class="var">mappedBy</span> <span class="punct">=</span> <span class="str">"order"</span><span class="punct">)</span>
+<span class="punct">@</span><span class="fn">BatchSize</span><span class="punct">(</span><span class="var">size</span> <span class="punct">=</span> <span class="num">100</span><span class="punct">)</span>                  <span class="com">// 关键</span>
+<span class="kw">private</span> <span class="typ">List</span><span class="punct">&lt;</span><span class="typ">OrderItem</span><span class="punct">&gt;</span> <span class="var">items</span><span class="punct">;</span>
+<span class="com">// 或全局：hibernate.default_batch_fetch_size=100</span></pre></div>
+  <div class="storm" style="border-color:#1f3528; color:#86efac;"><span style="color:#93c5fd;">SELECT * FROM orders;</span>
+SELECT * FROM order_items WHERE order_id IN (1,2,...,100);  -- N 条变 1~2 条</pre></div>
+  <p>✅ 从 <code>1+N</code> 降到 <code>1 + ⌈N/size⌉</code>，且<strong>天然兼容分页、不产生笛卡尔积</strong>。👉 强烈建议设为全局默认，兜底掉大量你没注意到的 N+1。</p>
+
+  <h3>解法 D · 手动 IN 查询 + 内存组装（MyBatis 首选，最可控）</h3>
+  <div class="code-block"><div class="cb-header good">显式控制</div><pre><span class="com">// 1. 查订单</span>
+<span class="typ">List</span><span class="punct">&lt;</span><span class="typ">Order</span><span class="punct">&gt;</span> <span class="var">orders</span> <span class="punct">=</span> <span class="var">orderMapper</span><span class="punct">.</span><span class="fn">findAll</span><span class="punct">();</span>
+<span class="typ">List</span><span class="punct">&lt;</span><span class="typ">Long</span><span class="punct">&gt;</span> <span class="var">ids</span> <span class="punct">=</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">().</span><span class="fn">map</span><span class="punct">(</span><span class="typ">Order</span><span class="punct">::</span><span class="fn">getId</span><span class="punct">).</span><span class="fn">toList</span><span class="punct">();</span>
+
+<span class="com">// 2. 一条 IN 查询捞出所有明细</span>
+<span class="typ">List</span><span class="punct">&lt;</span><span class="typ">OrderItem</span><span class="punct">&gt;</span> <span class="var">items</span> <span class="punct">=</span> <span class="var">itemMapper</span><span class="punct">.</span><span class="fn">findByOrderIds</span><span class="punct">(</span><span class="var">ids</span><span class="punct">);</span>
+
+<span class="com">// 3. 内存里 group by 组装（O(n)，纯内存，极快）</span>
+<span class="typ">Map</span><span class="punct">&lt;</span><span class="typ">Long</span><span class="punct">,</span> <span class="typ">List</span><span class="punct">&lt;</span><span class="typ">OrderItem</span><span class="punct">&gt;&gt;</span> <span class="var">map</span> <span class="punct">=</span> <span class="var">items</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+        <span class="punct">.</span><span class="fn">collect</span><span class="punct">(</span><span class="fn">groupingBy</span><span class="punct">(</span><span class="typ">OrderItem</span><span class="punct">::</span><span class="fn">getOrderId</span><span class="punct">));</span>
+<span class="var">orders</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="var">o</span> <span class="kw">-&gt;</span> <span class="var">o</span><span class="punct">.</span><span class="fn">setItems</span><span class="punct">(</span><span class="var">map</span><span class="punct">.</span><span class="fn">getOrDefault</span><span class="punct">(</span><span class="var">o</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">(),</span> <span class="typ">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">())));</span></pre></div>
+  <p>✅ 永远只有 <strong>2 条 SQL</strong>，可控、可分页、无笛卡尔积。</p>
+  <div class="callout warn"><strong>MyBatis 最容易踩 N+1 的写法：</strong><code>resultMap</code> 里用 <code>&lt;association&gt;</code> / <code>&lt;collection&gt;</code> 的 <code>select=</code> <strong>嵌套查询</strong>——它本质就是 N+1。要改成<strong>嵌套结果</strong>（单条 JOIN 映射一个 <code>resultMap</code>），或用上面的手动 IN。</div>
+
+  <h3>取舍速查</h3>
+  <table>
+    <tr><th>方案</th><th>SQL 数</th><th>分页</th><th>笛卡尔积</th><th>适用</th></tr>
+    <tr><td>JOIN FETCH</td><td>1</td><td>❌ 失效</td><td>⚠️ 有，需 distinct</td><td>JPA，不分页的小集合</td></tr>
+    <tr><td>@EntityGraph</td><td>1</td><td>❌ 失效</td><td>⚠️ 同上</td><td>JPA，想复用方法</td></tr>
+    <tr><td><strong>@BatchSize</strong></td><td>1+N/size</td><td>✅ 友好</td><td>✅ 无</td><td><strong>JPA 默认兜底，推荐</strong></td></tr>
+    <tr><td><strong>手动 IN 组装</strong></td><td>2</td><td>✅ 友好</td><td>✅ 无</td><td><strong>MyBatis 首选，大数据量</strong></td></tr>
+  </table>
+
+  <h2>五、JOIN FETCH 的三个坑（治好 N+1 又踩这里）</h2>
+  <ol>
+    <li><strong>笛卡尔积重复</strong>：一对多 JOIN 后，一个订单有 3 个明细，订单字段就重复 3 行。JPQL 要加 <code>DISTINCT</code>（它在内存去重对象，还你正确的对象列表）。</li>
+    <li><strong>分页直接失效（最危险）</strong>：<code>JOIN FETCH</code> + 分页时，Hibernate 没法在 SQL 层分页，会<strong>偷偷把全表拉进内存再分页</strong>，并打印一条易被忽略的警告：<br><code>HHH000104: firstResult/maxResults specified with collection fetch; applying in memory!</code><br>数据量一大直接 OOM。<strong>要分页又要带集合，请改用 @BatchSize。</strong></li>
+    <li><strong>不能同时 fetch 两个集合</strong>：<code>JOIN FETCH o.items JOIN FETCH o.payments</code> 会抛 <code>MultipleBagFetchException</code>，或产生 items×payments 的笛卡尔积爆炸。多个集合 → 用 @BatchSize。</li>
+  </ol>
+
+  <div class="callout tip"><strong>小结（回到抽象塔）：</strong>① N+1 的本质是 <strong>L6(ORM) 用"对象导航"伪装了 L4(数据库网络往返)</strong>；② 所有解法的核心思想都一样——<strong>把"N 次往返"合并成"1~2 次往返"</strong>，要么 JOIN 一次拉全，要么 IN 一批拉回内存组装；③ JPA 项目全局开 <code>default_batch_fetch_size</code> 兜底；④ MyBatis 警惕 <code>&lt;collection select&gt;</code> 嵌套查询，优先手动 IN；⑤ <strong>上线前看 SQL 日志条数</strong>是发现 N+1 唯一可靠的手段。</div>
+
+  <hr>
+  <div class="nav-footer"><a href="../../计算机抽象塔.html" class="nav-btn">← 计算机抽象塔</a><span class="nav-btn" style="opacity:0.4;">下一篇 待续 →</span></div>
+</div>
+</body>
+</html>
