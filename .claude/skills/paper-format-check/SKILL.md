@@ -32,6 +32,7 @@ description: Use when checking or fixing a Word (.docx) paper's formatting again
 - **实际 = 段落覆盖值**：`check_format.py` 对目标文档**每个命名样式取首个非空段落作代表**，读其有效格式（run 级直接排版优先于样式继承）。
 - 因此：若文档大量用「直接排版」而非命名样式（标题、封面常见），自比对/校对会出现差异，这是**正常设计行为**——`render` 输出已含该说明行。汇报时需向用户点明这一口径，并对正文 `Normal` 重点核对。
 - 工具按样式抽样一个代表段落，不逐段全量检查；个别段落的个性化偏差可能不被覆盖。
+- **v1 不自动比对**：段前/段后间距、页边距。这两项已被 `extract_styles.py` 提取进 `_style_spec.json`（可供人工参考），但 `check_format.py` 的差异清单暂不覆盖；如需校对，step 4 里请人工对照修正。
 
 ## 注意
 - 中文字体读取的是 `w:eastAsia`，西文字体是 `w:ascii/hAnsi`，两者分别校对。
