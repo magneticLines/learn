@@ -36,3 +36,20 @@ def test_detects_font_and_size_diff(tmp_path):
     items = {(d["style"], d["field"]) for d in diffs}
     assert ("Normal", "font_ascii") in items
     assert ("Normal", "size_pt") in items
+
+
+def test_render_empty_returns_sentinel():
+    cf = _load()
+    assert cf.render([]) == "✓ 未发现格式差异。"
+
+
+def test_render_escapes_pipe():
+    cf = _load()
+    diff = {"style": "Normal", "field": "size_pt", "field_cn": "字号(pt)",
+            "expected": 12.0, "actual": 10.0, "sample": "P(A|B)"}
+    out = cf.render([diff])
+    # 原始裸管道符（来自 sample）必须被转义
+    assert "P(A\\|B)" in out
+    # 数据行去掉转义序列后应恰好剩 6 个列分隔符（5 列结构）
+    row = [ln for ln in out.splitlines() if ln.startswith("| Normal")][0]
+    assert row.replace("\\|", "##").count("|") == 6

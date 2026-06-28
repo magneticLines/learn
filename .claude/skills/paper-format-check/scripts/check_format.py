@@ -55,15 +55,22 @@ def compare(target_path, spec):
     return diffs
 
 
+def _cell(v):
+    """转义表格单元格：管道符与换行会破坏 markdown 表格结构。"""
+    return str(v).replace("|", "\\|").replace("\n", " ")
+
+
 def render(diffs):
     if not diffs:
         return "✓ 未发现格式差异。"
     lines = [f"发现 {len(diffs)} 处格式差异：", ""]
+    lines.append("> 注：标准取“样式定义值”，实际取“段落覆盖值”；标题等含直接排版的样式可能因此显示差异。")
+    lines.append("")
     lines.append("| 样式 | 段落预览 | 项目 | 期望 | 当前 |")
     lines.append("|---|---|---|---|---|")
     for d in diffs:
         lines.append(
-            f"| {d['style']} | {d['sample']} | {d['field_cn']} | {d['expected']} | {d['actual']} |"
+            f"| {_cell(d['style'])} | {_cell(d['sample'])} | {_cell(d['field_cn'])} | {_cell(d['expected'])} | {_cell(d['actual'])} |"
         )
     return "\n".join(lines)
 
