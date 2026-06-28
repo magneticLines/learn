@@ -10,11 +10,12 @@
 - `大作业2026.doc` —— 作业要求（旧版 `.doc`）
 - `大作业报告模版.docx` —— 报告格式模板（`.docx`）
 
-需要在本项目（当前 worktree `exp`）建立三个项目级 skill，覆盖：
+需要在本项目（当前 worktree `exp`）建立四个项目级 skill，覆盖：
 
 1. **论文格式校对** —— 按指定的 `.docx` 样例模板，校对并修正目标论文格式
 2. **论文内容编辑** —— 润色、结构调整、表述优化
-3. **代码设计与实现** —— 作业代码的方案设计到落地实现
+3. **论文编写** —— 从选题/要求生成大纲与草稿（基于开源 prompt/模板改造）
+4. **代码设计与实现** —— 作业代码的方案设计到落地实现
 
 底层文档读写**复用官方 `anthropic-skills:docx`**，不重造轮子。
 
@@ -39,6 +40,10 @@
 │       └── check_format.py      # 目标 docx vs 标准 → 差异清单
 ├── paper-content-edit/
 │   └── SKILL.md
+├── paper-writing/
+│   ├── SKILL.md                 # 主流程（draft/polish/cite/abstract/review/caption）
+│   ├── prompts/                 # 改造自 xiaoshuntian/academic-paper-skill
+│   └── templates/               # ieee/acm/nature/中文核心期刊/学报 + GB/T 7714
 └── code-design-impl/
     └── SKILL.md
 ```
@@ -74,7 +79,26 @@
 - **只改文字、不动样式**，直接原地修改
 - 大改动前向用户确认要点，避免改变原意
 
-## Skill 3：code-design-impl
+## Skill 3：paper-writing（改造自开源）
+
+来源：`xiaoshuntian/academic-paper-skill`（MIT）。安全审查通过：无 postinstall、无遥测，仅各家 LLM 官方接口。
+
+**集成方式**：不安装其 npm CLI（避免再调外部 LLM、配 API key、产生额外费用、脱离会话上下文）。仅提取其 `prompts/` 与 `src/templates/` 两份资产，封装为原生 `SKILL.md`，由 Claude 直接执行。
+
+**能力**（沿用上游 6 个命令的 prompt 设计）：
+
+- `draft` 生成大纲/完整草稿（按模板 ieee/acm/nature/中文核心期刊/学报）
+- `polish` 学术语言润色
+- `cite` 参考文献格式化（APA/MLA/Chicago/IEEE/ACM/GB/T 7714）
+- `abstract` 生成摘要
+- `review` 生成文献综述
+- `caption` 图题/表题
+
+**约定**：保留上游"中英双语自动检测 + 防杜撰引用（用 `[PLACEHOLDER]`/`<!-- TODO -->` 标记）"规则。`LICENSE`/来源在 skill 内注明（保留 MIT 归属）。
+
+**与其它 skill 协同**：写完草稿 → `paper-content-edit` 润色 → 落入 docx → `paper-format-check` 按 `大作业报告模版.docx` 校对格式。
+
+## Skill 4：code-design-impl
 
 薄调度入口，把作业代码需求接入已有工作流：
 
@@ -88,6 +112,7 @@
 - `python-docx`（样式提取/比对脚本；需确认环境已安装或在脚本内提示安装）
 - `elements-of-style`（内容编辑写作规范）
 - superpowers 工作流 skills（代码设计实现）
+- `xiaoshuntian/academic-paper-skill` 的 prompts/templates（MIT，论文编写 skill 的素材来源）
 
 ## 非目标（YAGNI）
 
