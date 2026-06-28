@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>并发 · 锁的分类总览</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #2e1065; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../concurrency-roadmap.html">并发路线图</a> / 高级主题 / 锁的分类总览</div>
+  <div class="hero">
+    <div class="tag">并发 · 高级主题</div>
+    <h1>锁的分类总览</h1>
+    <p>「锁」不是一种东西,而是一组从不同维度切分的设计选择。先建立这张地图,再去看每把具体的锁就有了坐标。</p>
+    <p class="src">📖 来源:<b>《Java 并发编程实战》</b> 第 13 章「显式锁」 · 综合整理</p>
+  </div>
+
+  <h2>一、为什么要「分类」而不是「背名字」</h2>
+  <p>面试里一连串「公平锁、可重入锁、自旋锁、读写锁……」听着像并列的几十种锁,其实它们是<strong>同一把锁在不同维度上的属性</strong>。比如 <code>ReentrantLock</code> 同时是「悲观锁 + 可重入锁 + 独占锁 + 可公平可非公平」。所以正确的理解方式是<strong>抓维度</strong>,而不是记名字。下面四个维度回答四个不同的问题。</p>
+
+  <h2>二、维度①:遇到冲突怎么办 —— 悲观 vs 乐观</h2>
+  <p>这是从<strong>冲突处理策略</strong>切分的,也是最根本的一刀。</p>
+  <table>
+    <tr><th></th><th>悲观锁</th><th>乐观锁</th></tr>
+    <tr><td>假设</td><td>一定会冲突,先上锁再操作</td><td>大概率不冲突,先操作提交时再校验</td></tr>
+    <tr><td>代表</td><td><code>synchronized</code>、<code>ReentrantLock</code></td><td>CAS、<code>atomic</code> 原子类、数据库版本号</td></tr>
+    <tr><td>适合</td><td>写多、冲突频繁</td><td>读多写少、冲突少</td></tr>
+    <tr><td>代价</td><td>加解锁开销、可能阻塞</td><td>冲突多时大量重试,空耗 CPU</td></tr>
+  </table>
+  <div class="code-block"><div class="cb-header"><span>Java · 乐观锁的底层:CAS</span></div><pre><span class="cm">// AtomicInteger.incrementAndGet() 内部就是「比较并交换 + 失败重试」</span>
+<span class="kw">do</span> <span class="punct">{</span>
+    <span class="kw">int</span> old <span class="punct">=</span> value<span class="punct">;</span>
+    <span class="kw">int</span> next <span class="punct">=</span> old <span class="punct">+</span> <span class="nu">1</span><span class="punct">;</span>
+<span class="punct">}</span> <span class="kw">while</span> <span class="punct">(!</span><span class="fn">compareAndSet</span><span class="punct">(</span>old<span class="punct">,</span> next<span class="punct">));</span> <span class="cm">// 没人改过才写成功,否则重来</span></pre></div>
+
+  <h2>三、维度②:谁先拿到 —— 公平 vs 非公平</h2>
+  <p>从<strong>获取顺序</strong>切分。公平锁严格 FIFO(先申请先得);非公平锁允许「插队」。</p>
+  <ul>
+    <li><code>synchronized</code> 只能<strong>非公平</strong>。</li>
+    <li><code>ReentrantLock</code> 可选:<code>new ReentrantLock(true)</code> 公平,默认非公平。</li>
+  </ul>
+  <div class="callout info"><strong>为什么默认非公平?</strong> 刚释放锁的线程往往还在 CPU 上「热着」,让它直接再抢成功,可以省掉「唤醒队列里下一个线程」的上下文切换开销,吞吐更高。代价是排队线程可能被反复插队而饥饿。</div>
+
+  <h2>四、维度③:能否重复进入 —— 可重入 vs 不可重入</h2>
+  <p>从<strong>同一线程能否重复获取自己已持有的锁</strong>切分。</p>
+  <div class="code-block"><div class="cb-header"><span>Java · 可重入避免自锁死</span></div><pre><span class="kw">synchronized void</span> <span class="fn">a</span><span class="punct">()</span> <span class="punct">{</span> <span class="fn">b</span><span class="punct">();</span> <span class="punct">}</span> <span class="cm">// 已持有 this 锁</span>
+<span class="kw">synchronized void</span> <span class="fn">b</span><span class="punct">()</span> <span class="punct">{</span> <span class="punct">}</span> <span class="cm">// 同一线程再次进入 this 锁——可重入才不会卡死</span></pre></div>
+  <p><code>synchronized</code> 和 <code>ReentrantLock</code>(名字里 Reentrant 就是「可重入」)都可重入。不可重入锁现实中极少见,需要自己实现。</p>
+
+  <h2>五、维度④:能否共享 —— 独占 vs 共享</h2>
+  <p>从<strong>能否被多个线程同时持有</strong>切分。独占锁同一时刻只一个线程持有;共享锁可多线程同时持有。最典型的应用是<strong>读写锁</strong>:</p>
+  <table>
+    <tr><th>锁</th><th>类型</th><th>规则</th></tr>
+    <tr><td>读锁(共享)</td><td>共享锁</td><td>多个读线程可同时持有</td></tr>
+    <tr><td>写锁(排他)</td><td>独占锁</td><td>写时不允许任何其他读/写</td></tr>
+  </table>
+  <div class="callout tip"><code>ReentrantReadWriteLock</code> 的「读读不互斥、读写/写写互斥」,非常适合<strong>读多写少</strong>的缓存类场景,比一把独占锁并发度高得多。</div>
+
+  <h2>六、专门说说 synchronized 的「锁升级」</h2>
+  <p>这其实是另一条维度——<strong>JVM 内部的实现优化</strong>,不是用户能选的。按竞争激烈程度单向升级:</p>
+  <p style="text-align:center;color:#cbd5e1;font-family:Consolas,monospace;font-size:0.85rem;">无锁 ⟶ 偏向锁 ⟶ 轻量级锁(自旋) ⟶ 重量级锁(OS 互斥量)</p>
+  <p>其中<strong>自旋锁</strong>(失败不挂起、忙循环重试)正是轻量级锁的手段——用 CPU 空转换取省掉上下文切换。细节见 <code>synchronized</code> 一节。</p>
+
+  <h2>七、一张总表收口</h2>
+  <table>
+    <tr><th>维度</th><th>一端</th><th>另一端</th><th>判断标准</th></tr>
+    <tr><td>处理策略</td><td>悲观(synchronized)</td><td>乐观(CAS)</td><td>是否假设冲突会发生</td></tr>
+    <tr><td>获取顺序</td><td>公平</td><td>非公平(默认)</td><td>是否先来先得</td></tr>
+    <tr><td>可重入性</td><td>可重入</td><td>不可重入</td><td>同线程能否重复获取</td></tr>
+    <tr><td>共享模式</td><td>独占</td><td>共享(读锁)</td><td>能否多线程同时持有</td></tr>
+    <tr><td>JVM 实现</td><td colspan="2">偏向 → 轻量 → 重量(锁升级)</td><td>针对 synchronized 的优化</td></tr>
+  </table>
+  <div class="callout warn"><strong>常见误区:</strong>把这些当成「几十种并列的锁」去背。记住——任何一把具体的锁,都是这几个维度上各选一个值的<strong>组合</strong>。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>锁按四个维度切分:处理策略、获取顺序、可重入性、共享模式。</li>
+    <li>乐观锁靠 CAS 实现,适合读多写少;悲观锁靠阻塞,适合写多冲突频繁。</li>
+    <li>非公平是默认,因为能省上下文切换;代价是可能饥饿。</li>
+    <li>读写锁 = 读共享 + 写独占,是「读多写少」的利器。</li>
+    <li>锁升级是 JVM 对 synchronized 的内部优化,不是用户选项。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="../basics/01-synchronized.html" class="nav-btn">← synchronized</a>
+    <a href="../concurrency-roadmap.html" class="nav-btn next">返回路线图 →</a>
+  </div>
+</div>
+</body>
+</html>
