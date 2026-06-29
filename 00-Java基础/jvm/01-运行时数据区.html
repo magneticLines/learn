@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>01. 运行时数据区 — JVM 内存模型</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 内存模型
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 内存模型</div>
+    <h1>运行时数据区</h1>
+    <p>堆 / 栈 / 方法区 / PC 寄存器 — JVM 如何在内存中安排你的程序</p>
+  </div>
+
+  <!-- ── 为什么要有运行时数据区 ── -->
+  <h2 style="border-color:#c084fc;">为什么要有运行时数据区？</h2>
+  <p>
+    C/C++ 直接操作操作系统内存，程序员手动 <code>malloc/free</code>。这带来了极高的自由度，也带来了
+    <strong>野指针、内存泄漏、缓冲区溢出</strong>等一系列灾难。Java 的设计目标之一就是
+    <strong>「Write Once, Run Anywhere」</strong>——屏蔽底层差异，提供一个统一、安全的执行环境。
+  </p>
+  <p>
+    JVM 规范（JVMS）定义了<strong>运行时数据区（Runtime Data Areas）</strong>，把内存按用途切分为若干逻辑区域，
+    每块区域有明确的生命周期和访问规则。这样做的好处：
+  </p>
+  <ul>
+    <li>GC 只需关心堆，不会误回收栈帧</li>
+    <li>线程私有区与共享区隔离，天然避免部分并发问题</li>
+    <li>OutOfMemoryError / StackOverflowError 可精准定位到具体区域</li>
+  </ul>
+
+  <!-- ── 总览图 ── -->
+  <h2 style="border-color:#c084fc;">总览：五大区域</h2>
+  <div class="tree">
+JVM 运行时数据区
+├── <span class="hi">线程共享</span>（随 JVM 启动而生，随 JVM 停止而灭）
+│   ├── <span class="hi">堆（Heap）</span>           ← 对象实例 / 数组
+│   └── <span class="hi">方法区（Method Area）</span>  ← 类元数据 / 常量池 / 静态变量
+│
+└── <span class="hi">线程私有</span>（随线程创建而生，随线程销毁而灭）
+    ├── <span class="hi">虚拟机栈（JVM Stack）</span>  ← 方法调用栈帧
+    ├── <span class="hi">本地方法栈（Native Stack）</span> ← native 方法
+    └── <span class="hi">程序计数器（PC Register）</span>← 当前字节码行号
+  </div>
+  <div class="callout info">
+    规范 vs 实现：上面是 JVMS 定义的逻辑模型。HotSpot 等具体实现可以把多个区域合并或拆分，
+    比如 HotSpot 将"本地方法栈"与"虚拟机栈"合并为同一块内存。
+  </div>
+
+  <hr />
+
+  <!-- ── PC 寄存器 ── -->
+  <h2 style="border-color:#c084fc;">① 程序计数器（PC Register）</h2>
+  <p>
+    可以把 PC 寄存器理解为<strong>书签</strong>：它记录当前线程正在执行的字节码指令的地址（行号）。
+    CPU 在线程间切换时，靠 PC 记录的位置恢复执行。
+  </p>
+  <ul>
+    <li><strong>线程私有</strong>：每条线程独享一个，互不干扰</li>
+    <li>执行 Java 方法时，保存字节码指令的地址</li>
+    <li>执行 <code>native</code> 方法时，PC 值为 <strong>undefined</strong>（规范定义）</li>
+    <li><strong>唯一不会 OOM 的区域</strong>——它只存一个整数地址，大小固定</li>
+  </ul>
+  <div class="callout tip">
+    生活类比：多人阅读同一本书（共享字节码），每人用自己的书签（私有 PC）记录读到哪一页。
+    书签不占多少空间，永远不会"放不下"。
+  </div>
+
+  <hr />
+
+  <!-- ── 虚拟机栈 ── -->
+  <h2 style="border-color:#c084fc;">② 虚拟机栈（JVM Stack）</h2>
+  <p>
+    每次调用一个 Java 方法，JVM 就往当前线程的栈里压入一个<strong>栈帧（Stack Frame）</strong>；
+    方法返回时弹出。栈帧是方法执行的完整上下文，包含：
+  </p>
+
+  <div class="tree">
+栈帧（Stack Frame）
+├── <span class="hi">局部变量表（Local Variable Table）</span>  ← 方法参数 + 局部变量
+├── <span class="hi">操作数栈（Operand Stack）</span>          ← 字节码执行时的计算暂存区
+├── <span class="hi">动态链接（Dynamic Linking）</span>         ← 指向方法区中该方法的符号引用
+└── <span class="hi">返回地址（Return Address）</span>          ← 方法正常/异常返回后跳到哪里
+  </div>
+
+  <h3>用代码感受栈帧的压入与弹出</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>StackDemo.java</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">StackDemo</span> <span class="punct">{</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="com">// 调用 a() → 压入 a 的栈帧</span>
+        <span class="fn">a</span><span class="punct">();</span>
+    <span class="punct">}</span>
+
+    <span class="kw">static void</span> <span class="fn">a</span><span class="punct">() {</span>
+        <span class="kw">int</span> <span class="var">x</span> <span class="punct">=</span> <span class="num">10</span><span class="punct">;</span>         <span class="com">// x 存放在 a 的局部变量表</span>
+        <span class="fn">b</span><span class="punct">(</span><span class="var">x</span><span class="punct">);</span>               <span class="com">// 调用 b() → 再压入 b 的栈帧</span>
+    <span class="punct">}</span>                      <span class="com">// a() 返回 → 弹出 a 的栈帧，x 随之消失</span>
+
+    <span class="kw">static void</span> <span class="fn">b</span><span class="punct">(</span><span class="kw">int</span> <span class="var">n</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">y</span> <span class="punct">=</span> <span class="var">n</span> <span class="punct">*</span> <span class="num">2</span><span class="punct">;</span>      <span class="com">// y 存放在 b 的局部变量表</span>
+    <span class="punct">}</span>                      <span class="com">// b() 返回 → 弹出 b 的栈帧，y 随之消失</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>执行到 <code>b()</code> 内部时，栈的状态是：</p>
+  <div class="tree">
+  栈顶 → [ b 的栈帧：n=10, y=20 ]
+         [ a 的栈帧：x=10        ]
+  栈底 → [ main 的栈帧           ]
+  </div>
+
+  <h3>两种错误及触发场景</h3>
+  <table>
+    <thead>
+      <tr><th>错误</th><th>触发原因</th><th>典型场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>StackOverflowError</code></td><td>栈深度超过 JVM 允许的上限</td><td>无终止条件的递归</td></tr>
+      <tr><td><code>OutOfMemoryError</code></td><td>动态扩展栈时系统内存不足</td><td>大量线程并发创建</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    陷阱：<code>-Xss</code> 参数设置每个线程的栈大小（默认 512KB～1MB）。
+    线程数 × Xss ≈ 栈总内存占用。创建大量线程时，<strong>调小 Xss</strong> 是扩大线程数的有效手段，
+    而不是加大堆。
+  </div>
+
+  <hr />
+
+  <!-- ── 堆 ── -->
+  <h2 style="border-color:#c084fc;">③ 堆（Heap）</h2>
+  <p>
+    堆是 JVM 中<strong>最大的一块内存</strong>，也是 GC 的主战场。
+    <strong>所有线程共享</strong>，用于存放：
+  </p>
+  <ul>
+    <li>通过 <code>new</code> 创建的对象实例</li>
+    <li>数组（数组也是对象）</li>
+  </ul>
+  <p>
+    堆被进一步划分为<strong>新生代（Young Gen）</strong>和<strong>老年代（Old Gen）</strong>，
+    这是 GC 分代假设（大多数对象朝生夕死）驱动的设计——下一节「堆内存分代」会详细展开。
+  </p>
+
+  <h3>对象在堆上的生命周期</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>HeapDemo.java</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">HeapDemo</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+
+        <span class="com">// new 触发在堆上分配内存，obj 是栈上的引用（仅 4/8 字节）</span>
+        <span class="ty">Object</span> <span class="var">obj</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+
+        <span class="com">// obj 指向堆地址；obj 本身存在栈的局部变量表里</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">obj</span><span class="punct">);</span>
+
+        <span class="com">// 方法结束后 obj 出栈，堆上的 Object 实例失去引用</span>
+        <span class="com">// → GC 在下次回收时释放堆内存</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    关键区分：<strong>引用（reference）在栈，对象实例在堆</strong>。
+    <code>Object obj</code> 这个变量只有 4 或 8 字节（压缩指针），
+    真正的 Object 数据在堆上。这是理解 GC、内存泄漏的基础。
+  </div>
+
+  <h3>控制堆大小的 JVM 参数</h3>
+  <table>
+    <thead>
+      <tr><th>参数</th><th>含义</th><th>示例</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>-Xms</code></td><td>堆初始大小</td><td><code>-Xms256m</code></td></tr>
+      <tr><td><code>-Xmx</code></td><td>堆最大大小</td><td><code>-Xmx1g</code></td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    生产建议：将 <code>-Xms</code> 与 <code>-Xmx</code> 设为相同值，避免堆动态扩展时触发 Full GC 和内存抖动。
+  </div>
+
+  <hr />
+
+  <!-- ── 方法区 ── -->
+  <h2 style="border-color:#c084fc;">④ 方法区（Method Area）</h2>
+  <p>
+    方法区存放<strong>类级别</strong>的数据，是类加载器加载 <code>.class</code> 文件后写入的目的地：
+  </p>
+  <ul>
+    <li>类的结构信息：字段、方法描述符、访问标志</li>
+    <li><strong>运行时常量池（Runtime Constant Pool）</strong>：字面量 + 符号引用解析后的直接引用</li>
+    <li>静态变量（<code>static</code> 字段）</li>
+    <li>即时编译后的代码缓存（JIT 代码）</li>
+  </ul>
+
+  <h3>实现演变：从 PermGen 到 Metaspace</h3>
+  <table>
+    <thead>
+      <tr><th>JDK 版本</th><th>方法区实现</th><th>位置</th><th>大小限制</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>≤ JDK 7</td><td>永久代（PermGen）</td><td>堆内（逻辑上）</td><td><code>-XX:MaxPermSize</code>，默认 64～256MB，容易 OOM</td></tr>
+      <tr><td>≥ JDK 8</td><td>元空间（Metaspace）</td><td>本地内存（堆外）</td><td>默认无上限，受物理内存约束，可用 <code>-XX:MaxMetaspaceSize</code> 限制</td></tr>
+    </tbody>
+  </table>
+  <p>
+    <strong>为什么要移除 PermGen？</strong>
+    PermGen 大小静态配置，难以预估合适的值；类动态生成（反射、CGLib、JSP）会把 PermGen 撑爆，
+    出现臭名昭著的 <code>java.lang.OutOfMemoryError: PermGen space</code>。
+    Metaspace 使用本地内存，弹性更好，JVM 本身也能更好地与操作系统协作管理。
+  </p>
+
+  <h3>运行时常量池</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>StringPoolDemo.java</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">StringPoolDemo</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+
+        <span class="com">// 字面量 "hello" 在编译期写入常量池；运行时驻留字符串池（String Pool）</span>
+        <span class="ty">String</span> <span class="var">s1</span> <span class="punct">=</span> <span class="str">"hello"</span><span class="punct">;</span>
+        <span class="ty">String</span> <span class="var">s2</span> <span class="punct">=</span> <span class="str">"hello"</span><span class="punct">;</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">s1</span> <span class="punct">==</span> <span class="var">s2</span><span class="punct">);</span>  <span class="com">// true：同一个常量池对象</span>
+
+        <span class="com">// new String() 在堆上新建对象，不走常量池</span>
+        <span class="ty">String</span> <span class="var">s3</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">String</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">s1</span> <span class="punct">==</span> <span class="var">s3</span><span class="punct">);</span>  <span class="com">// false：s3 指向堆中新对象</span>
+
+        <span class="com">// intern() 将堆对象引用"注册"进字符串池，返回池中的引用</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">s1</span> <span class="punct">==</span> <span class="var">s3</span><span class="punct">.</span><span class="fn">intern</span><span class="punct">());</span>  <span class="com">// true</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    JDK 7 之后，字符串常量池（String Pool）从方法区移入了<strong>堆</strong>，
+    受 GC 管理。这是理解 <code>intern()</code> 行为的关键背景。
+  </div>
+
+  <hr />
+
+  <!-- ── 本地方法栈 ── -->
+  <h2 style="border-color:#c084fc;">⑤ 本地方法栈（Native Method Stack）</h2>
+  <p>
+    功能与虚拟机栈完全对称，区别是服务于 <code>native</code> 方法——即用 C/C++ 实现、通过
+    JNI 调用的方法。HotSpot 把它与虚拟机栈合并实现，实际上是同一块内存区域。
+    同样可能抛出 <code>StackOverflowError</code> 和 <code>OutOfMemoryError</code>。
+  </p>
+
+  <hr />
+
+  <!-- ── 整体交互示例 ── -->
+  <h2 style="border-color:#c084fc;">五区协作：一次方法调用的内存全景</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>Memory全景示例</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Order</span> <span class="punct">{</span>
+    <span class="com">// ① 类加载时，Order 的元数据写入方法区</span>
+    <span class="kw">private static final</span> <span class="ty">String</span> <span class="var">TYPE</span> <span class="punct">=</span> <span class="str">"retail"</span><span class="punct">;</span>  <span class="com">// 静态变量 → 方法区</span>
+    <span class="kw">private</span> <span class="kw">int</span> <span class="var">amount</span><span class="punct">;</span>                          <span class="com">// 实例字段 → 随对象存在堆上</span>
+
+    <span class="kw">public</span> <span class="ty">Order</span><span class="punct">(</span><span class="kw">int</span> <span class="var">amount</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">amount</span> <span class="punct">=</span> <span class="var">amount</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public int</span> <span class="fn">getAmount</span><span class="punct">() {</span>
+        <span class="com">// ② 调用 getAmount()：JVM 压入栈帧</span>
+        <span class="com">//    PC 寄存器记录下一条字节码地址</span>
+        <span class="com">//    this 引用存于局部变量表 slot 0</span>
+        <span class="kw">return</span> <span class="kw">this</span><span class="punct">.</span><span class="var">amount</span><span class="punct">;</span>  <span class="com">// 从堆上的对象读取字段</span>
+    <span class="punct">}</span>                          <span class="com">// ③ 方法返回：弹出栈帧，PC 跳回调用处</span>
+<span class="punct">}</span>
+
+<span class="kw">class</span> <span class="ty">Main</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="com">// order 引用 → 栈的局部变量表（4/8 字节）</span>
+        <span class="com">// new Order(100) → 堆上分配对象</span>
+        <span class="ty">Order</span> <span class="var">order</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Order</span><span class="punct">(</span><span class="num">100</span><span class="punct">);</span>
+        <span class="kw">int</span> <span class="var">amt</span> <span class="punct">=</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">();</span>  <span class="com">// amt → 栈的局部变量表</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <hr />
+
+  <!-- ── 快速对比表 ── -->
+  <h2 style="border-color:#c084fc;">快速对比表</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>区域</th>
+        <th>线程</th>
+        <th>存放内容</th>
+        <th>生命周期</th>
+        <th>OOM / SOE</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>PC 寄存器</td>
+        <td>私有</td>
+        <td>当前字节码地址</td>
+        <td>线程</td>
+        <td>不会</td>
+      </tr>
+      <tr>
+        <td>虚拟机栈</td>
+        <td>私有</td>
+        <td>栈帧（局部变量、操作数栈）</td>
+        <td>线程</td>
+        <td>SOE / OOM</td>
+      </tr>
+      <tr>
+        <td>本地方法栈</td>
+        <td>私有</td>
+        <td>native 方法栈帧</td>
+        <td>线程</td>
+        <td>SOE / OOM</td>
+      </tr>
+      <tr>
+        <td>堆</td>
+        <td>共享</td>
+        <td>对象实例、数组</td>
+        <td>JVM</td>
+        <td>OOM</td>
+      </tr>
+      <tr>
+        <td>方法区</td>
+        <td>共享</td>
+        <td>类元数据、常量池、静态变量</td>
+        <td>JVM</td>
+        <td>OOM</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr />
+
+  <!-- ── 常见陷阱 ── -->
+  <h2 style="border-color:#c084fc;">常见陷阱 &amp; 误区</h2>
+
+  <h3>陷阱 1：「局部变量是线程安全的」——不完全对</h3>
+  <p>
+    <strong>基本类型</strong>局部变量存在栈帧里，确实线程私有、天然安全。
+    但若局部变量是<strong>对象引用</strong>，且该对象被传递给其他线程，对象本身在堆上被共享，
+    依然存在并发风险。
+  </p>
+
+  <h3>陷阱 2：方法区不受 GC 管理</h3>
+  <p>
+    错误！方法区<strong>会被 GC</strong>，但条件苛刻：类需要满足「类的实例全部回收 + ClassLoader 已被回收 + Class 对象没有被引用」
+    三个条件才能卸载。动态代理/CGLib 大量生成类时若 ClassLoader 管理不当，会导致 Metaspace OOM。
+  </p>
+
+  <h3>陷阱 3：new 的对象一定在堆上</h3>
+  <p>
+    JDK 的 JIT 编译器支持<strong>逃逸分析（Escape Analysis）</strong>。
+    若对象不会"逃逸"出方法（不被外部引用），JIT 可能将其<strong>栈上分配</strong>，
+    GC 完全不参与，性能更优。这是 <code>-XX:+DoEscapeAnalysis</code>（JDK 8 默认开启）的效果。
+  </p>
+
+  <hr />
+
+  <!-- ── 面试考点 ── -->
+  <h2 style="border-color:#c084fc;">面试高频考点</h2>
+  <ol>
+    <li>
+      <strong>JVM 运行时数据区有哪些？哪些是线程私有的？</strong><br />
+      五大区：堆、方法区（共享）；虚拟机栈、本地方法栈、PC 寄存器（私有）。
+    </li>
+    <li>
+      <strong>StackOverflowError 和 OutOfMemoryError 分别出现在哪？</strong><br />
+      SOE：栈深度超限（无限递归）；OOM：可发生在堆、方法区、栈（动态扩展失败）。
+    </li>
+    <li>
+      <strong>JDK 8 为什么移除 PermGen 改为 Metaspace？</strong><br />
+      PermGen 大小固定，动态类生成容易 OOM；Metaspace 使用本地内存，弹性伸缩，
+      避免 <code>OutOfMemoryError: PermGen space</code>。
+    </li>
+    <li>
+      <strong>字符串常量池在哪里？</strong><br />
+      JDK 6 在方法区；JDK 7+ 移入堆，可被 GC 回收。
+    </li>
+    <li>
+      <strong>对象一定分配在堆上吗？</strong><br />
+      不一定。逃逸分析后 JIT 可将不逃逸的对象栈上分配；标量替换可进一步将对象字段拆散到寄存器/栈。
+    </li>
+  </ol>
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="../java-roadmap.html" class="nav-btn">← 路线图</a>
+    <a href="./02-堆内存分代.html" class="nav-btn next">02. 堆内存分代（Eden / Survivor / Old Gen） →</a>
+  </div>
+
+</div>
+</body>
+</html>

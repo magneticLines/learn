@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>02. 堆内存分代（Eden / Survivor / Old Gen）</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 内存模型
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 内存模型</div>
+    <h1>02. 堆内存分代</h1>
+    <p>Eden / Survivor / Old Gen 的设计原理、对象晋升流程与 GC 调优基础</p>
+  </div>
+
+  <!-- 1. 为什么要分代 -->
+  <h2 style="border-color:#c084fc;">为什么要分代？从一个根本矛盾说起</h2>
+  <p>
+    如果把堆看成一整块连续内存，GC 每次都要扫描所有对象，代价极高。
+    但工程实践告诉我们一件事：<strong>大多数对象"朝生夕死"</strong>——
+    一次 HTTP 请求里创建的临时 DTO、循环里的中间变量，活不过几毫秒。
+    真正长命的对象（缓存、连接池、Spring Bean）只占少数。
+  </p>
+  <p>
+    这就是 <strong>弱代假说（Weak Generational Hypothesis）</strong>：
+    <em>绝大多数对象只存活很短时间；少数对象则几乎永远存活。</em>
+    分代 GC 正是为了利用这个规律——<strong>只频繁扫描"可能含有大量垃圾"的年轻区域</strong>，
+    减少全堆扫描频率，从而大幅降低平均 GC 停顿。
+  </p>
+  <div class="callout info">
+    弱代假说并非 Java 首创，它源自 1980 年代对 Smalltalk 程序的统计研究，
+    后来被 C++、Python、Ruby 等几乎所有托管运行时采纳。
+  </div>
+
+  <!-- 2. 分代结构 -->
+  <h2 style="border-color:#c084fc;">堆的分代结构（HotSpot 视角）</h2>
+
+  <div class="tree">
+Heap（-Xms / -Xmx）
+├── <span class="hi">Young Generation（年轻代）</span>  ← -Xmn / -XX:NewRatio
+│   ├── <span class="hi">Eden</span>         约 8/10
+│   ├── <span class="hi">Survivor 0</span>   约 1/10  (from)
+│   └── <span class="hi">Survivor 1</span>   约 1/10  (to)
+└── <span class="hi">Old Generation（老年代）</span>     ← 剩余空间
+</div>
+
+  <p>
+    JDK 8 及之前还有 <strong>Permanent Generation（永久代）</strong>存放类元数据，
+    JDK 8 起改为堆外的 <strong>Metaspace</strong>，不再受 <code>-Xmx</code> 约束。
+    本文聚焦 Eden / Survivor / Old Gen 三个核心区域。
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>区域</th><th>默认比例</th><th>GC 类型</th><th>GC 频率</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Eden + Survivor</td><td>~1/3 堆</td><td>Minor GC（Young GC）</td><td>高（秒级）</td></tr>
+      <tr><td>Old Gen</td><td>~2/3 堆</td><td>Major GC / Full GC</td><td>低（分钟级）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 3. 对象分配与晋升流程 -->
+  <h2 style="border-color:#c084fc;">对象从出生到"养老"的完整流程</h2>
+
+  <h3>① 新对象优先分配到 Eden</h3>
+  <p>
+    JVM 在 Eden 区使用 <strong>指针碰撞（Bump-the-pointer）</strong>分配，
+    速度几乎等同于 C 的 <code>malloc</code>（有 TLAB 缓冲，甚至可做到无锁）。
+    当 Eden 满时触发一次 <strong>Minor GC</strong>。
+  </p>
+
+  <h3>② Minor GC：复制算法清理年轻代</h3>
+  <p>
+    年轻代使用 <strong>标记-复制（Mark-Copy）</strong>算法。
+    过程如下：
+  </p>
+  <ol>
+    <li>扫描 Eden + 当前 Survivor（from 区），标记存活对象。</li>
+    <li>将存活对象 <strong>复制</strong>到另一块 Survivor（to 区），并给每个对象的年龄计数器 +1。</li>
+    <li>清空 Eden 和旧 from 区（直接抹掉，极快）。</li>
+    <li>交换 from / to 角色，等待下次 Minor GC。</li>
+  </ol>
+  <div class="callout tip">
+    复制算法的代价是空间浪费：始终有一块 Survivor 闲置。
+    但年轻代对象存活率极低（&lt;10%），需要复制的量很小，所以速度非常快，停顿通常在 10ms 以内。
+  </div>
+
+  <h3>③ 对象年龄与晋升老年代</h3>
+  <p>
+    每次 Minor GC 存活后，对象年龄 +1。
+    默认年龄达到 <strong>15</strong>（参数 <code>-XX:MaxTenuringThreshold=15</code>）时晋升老年代。
+  </p>
+  <p>还有两种<strong>提前晋升</strong>的情况：</p>
+  <ul>
+    <li><strong>大对象直接进老年代</strong>：超过 <code>-XX:PretenureSizeThreshold</code> 的对象直接绕过 Eden，避免在年轻代来回复制。</li>
+    <li><strong>动态年龄判断</strong>：若 Survivor 中年龄 N 的对象总大小 &gt; Survivor 容量的 50%，则年龄 ≥ N 的对象全部晋升，无需等到 15。</li>
+  </ul>
+
+  <h3>④ 老年代：标记-整理算法</h3>
+  <p>
+    老年代对象存活率高，复制算法不划算（需要额外 50% 空间）。
+    Serial Old / Parallel Old 使用 <strong>标记-整理（Mark-Compact）</strong>：
+    标记存活对象，向一端移动，释放边界外的空间，消除碎片，但会 STW（Stop-The-World）较长。
+    CMS 使用标记-清除，G1 / ZGC 有各自的混合策略（后续章节详述）。
+  </p>
+
+  <!-- 4. 代码示例 -->
+  <h2 style="border-color:#c084fc;">代码示例：观察分代 GC 行为</h2>
+
+  <p>用 <code>-verbose:gc -XX:+PrintGCDetails</code>（JDK 8）或 <code>-Xlog:gc*</code>（JDK 9+）观察。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>AllocationDemo.java</span><span>JVM · 分代观察</span></div>
+    <pre><span class="com">/**
+ * 启动参数（JDK 8）：
+ *   -Xms64m -Xmx64m -Xmn20m -XX:+PrintGCDetails -XX:+PrintGCDateStamps
+ *
+ * 目的：让 Eden 快速填满，触发 Minor GC，再让部分对象晋升 Old Gen
+ */</span>
+<span class="kw">public class</span> <span class="ty">AllocationDemo</span> <span class="punct">{</span>
+
+    <span class="kw">private static final int</span> <span class="var">_1MB</span> <span class="punct">=</span> <span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">;</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="com">// 分配 4 个 2MB 对象；前三个 Minor GC 后会进 Old Gen，</span>
+        <span class="com">// 因为 Survivor 放不下（动态年龄判断提前晋升）</span>
+        <span class="ty">byte</span><span class="punct">[]</span> <span class="var">a1</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">byte</span><span class="punct">[</span><span class="num">2</span> <span class="punct">*</span> <span class="var">_1MB</span><span class="punct">];</span>
+        <span class="ty">byte</span><span class="punct">[]</span> <span class="var">a2</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">byte</span><span class="punct">[</span><span class="num">2</span> <span class="punct">*</span> <span class="var">_1MB</span><span class="punct">];</span>
+        <span class="ty">byte</span><span class="punct">[]</span> <span class="var">a3</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">byte</span><span class="punct">[</span><span class="num">2</span> <span class="punct">*</span> <span class="var">_1MB</span><span class="punct">];</span>
+
+        <span class="com">// 触发 Minor GC：Eden 不够放下 a4，先回收前三个</span>
+        <span class="ty">byte</span><span class="punct">[]</span> <span class="var">a4</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">byte</span><span class="punct">[</span><span class="num">4</span> <span class="punct">*</span> <span class="var">_1MB</span><span class="punct">];</span>
+
+        <span class="com">// 此时 a1/a2/a3 已无引用，GC 后 Eden 只剩 a4</span>
+        <span class="com">// 若 a1/a2/a3 仍有引用，则会晋升 Old Gen</span>
+        <span class="fn">System.out.println</span><span class="punct">(</span><span class="str">"分配完成，查看 GC 日志观察分代变化"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>GC 日志（简化）</span><span>-XX:+PrintGCDetails</span></div>
+    <pre><span class="com">[GC (Allocation Failure)</span>
+  <span class="com">[PSYoungGen: 14336K->720K(18432K)]  ← Eden 清空，存活对象进 Survivor</span>
+  <span class="com"> 14336K->6864K(62976K)               ← 部分对象晋升 Old Gen</span>
+  <span class="com"> 0.0042 secs]</span>
+
+<span class="com">[Full GC (Ergonomics)                 ← Old Gen 触发 Full GC</span>
+  <span class="com">[PSYoungGen: 0K->0K(18432K)]</span>
+  <span class="com">[ParOldGen: 6144K->6132K(44544K)]</span>
+  <span class="com"> 6144K->6132K(63232K)  0.0531 secs]</span></pre>
+  </div>
+
+  <!-- 5. TLAB -->
+  <h2 style="border-color:#c084fc;">TLAB：让每个线程都有自己的"私人 Eden"</h2>
+  <p>
+    Eden 是所有线程共享的，若每次分配都加锁，并发性能会很差。
+    JVM 的解法是 <strong>TLAB（Thread-Local Allocation Buffer）</strong>：
+    在 Eden 内为每个线程预先划一块私有缓冲区，线程在自己的 TLAB 内分配对象无需加锁。
+    TLAB 用完才回到 Eden 竞争申请新缓冲，争锁概率大幅降低。
+  </p>
+  <div class="callout tip">
+    可通过 <code>-XX:+PrintTLAB</code> 查看 TLAB 的使用情况；
+    大对象（超过 TLAB 剩余空间）会直接在 Eden 做 CAS 分配或直接进老年代。
+  </div>
+
+  <!-- 6. 各分区大小调优 -->
+  <h2 style="border-color:#c084fc;">关键 JVM 参数一览</h2>
+  <table>
+    <thead>
+      <tr><th>参数</th><th>含义</th><th>建议</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>-Xms</code> / <code>-Xmx</code></td><td>堆初始 / 最大大小</td><td>生产环境设为相等，避免动态扩容触发 Full GC</td></tr>
+      <tr><td><code>-Xmn</code></td><td>年轻代大小（绝对值）</td><td>与 <code>-XX:NewRatio</code> 二选一</td></tr>
+      <tr><td><code>-XX:NewRatio=2</code></td><td>老年代 / 年轻代 = 2:1</td><td>默认值；对象存活率高时可调大老年代</td></tr>
+      <tr><td><code>-XX:SurvivorRatio=8</code></td><td>Eden : S0 : S1 = 8:1:1</td><td>默认；Eden 越大，Minor GC 越少但每次更慢</td></tr>
+      <tr><td><code>-XX:MaxTenuringThreshold</code></td><td>晋升年龄阈值</td><td>默认 15；短命对象多时可调小，减少复制次数</td></tr>
+      <tr><td><code>-XX:PretenureSizeThreshold</code></td><td>大对象直接进老年代阈值</td><td>Serial/ParNew 有效；G1 用 <code>-XX:G1HeapRegionSize</code></td></tr>
+    </tbody>
+  </table>
+
+  <!-- 7. 陷阱 -->
+  <h2 style="border-color:#c084fc;">常见陷阱</h2>
+
+  <div class="callout warn">
+    <strong>陷阱 1：Survivor 区太小导致对象提前晋升</strong><br/>
+    如果 Survivor 只有 1MB，一次 Minor GC 后存活对象超过 500KB，动态年龄判断就会把年龄较大的对象全部晋升老年代，最终频繁触发 Full GC。
+    可通过 <code>-XX:SurvivorRatio</code> 调小（让 Survivor 更大）来缓解。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱 2：以为 new 对象一定在堆上</strong><br/>
+    JIT 的 <strong>逃逸分析（Escape Analysis）</strong>可以把不逃逸出方法的对象<strong>栈上分配</strong>或做<strong>标量替换</strong>，
+    完全绕开堆分配，GC 压力为零。不要手动做过早优化去复用对象池，先让 JVM 自己优化。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱 3：-Xmn 设太大</strong><br/>
+    年轻代过大会导致 Minor GC 扫描时间变长，反而增加停顿；
+    老年代空间被挤压，促使 Full GC 更频繁。
+    经验值：年轻代一般为堆的 1/4 ~ 1/3，具体看对象存活率。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱 4：G1 / ZGC 下"分代"概念已演化</strong><br/>
+    G1 将堆拆分为等大的 Region，Eden/Survivor/Old 是逻辑标签而非连续物理区域。
+    JDK 21 引入 <strong>Generational ZGC</strong>，ZGC 也正式支持分代回收。
+    用 G1/ZGC 时，<code>-Xmn</code>、<code>-XX:NewRatio</code> 等参数不再生效或意义改变，需重新学习调优方法。
+  </div>
+
+  <!-- 8. 面试考点 -->
+  <h2 style="border-color:#c084fc;">面试高频考点</h2>
+
+  <h3>Q1：Minor GC 和 Full GC 的触发条件？</h3>
+  <p>
+    <strong>Minor GC</strong>：Eden 区空间不足，无法分配新对象时触发。<br/>
+    <strong>Full GC</strong>（会 STW 更长）触发条件包括：①老年代空间不足；②System.gc()（不推荐）；
+    ③CMS 的 Concurrent Mode Failure；④方法区（Metaspace）空间不足；⑤空间分配担保失败（晋升对象大于老年代可用空间）。
+  </p>
+
+  <h3>Q2：为什么 Survivor 要设计成两块而不是一块？</h3>
+  <p>
+    复制算法需要一个"干净的目标区"来接收存活对象。
+    若只有一块 Survivor，GC 后存活对象和新分配对象混在一起，年龄无法准确追踪，也无法整理碎片。
+    两块 Survivor 交替使用，保证每次复制目标区始终是空的。
+  </p>
+
+  <h3>Q3：对象一定先在 Eden 分配吗？</h3>
+  <p>
+    不一定。<strong>大对象直接进老年代</strong>（Serial/ParNew 下超过 <code>PretenureSizeThreshold</code>）；
+    <strong>逃逸分析</strong>可能让对象在栈上分配；
+    <strong>TLAB 溢出</strong>的对象会直接在 Eden 做 CAS 分配。
+  </p>
+
+  <h3>Q4：空间分配担保（Handle Promotion）是什么？</h3>
+  <p>
+    Minor GC 前，JVM 检查老年代最大可用连续空间是否大于年轻代所有对象总大小。
+    如果是，Minor GC 是安全的；如果不是，JVM 根据历史晋升量做概率预测，
+    若预测失败则直接触发 Full GC，这就是<strong>担保失败</strong>。
+  </p>
+
+  <hr/>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-运行时数据区.html" class="nav-btn">← 01. 运行时数据区（堆 / 栈 / 方法区 / PC 寄存器）</a>
+    <a href="./03-栈帧结构.html" class="nav-btn next">03. 栈帧结构（局部变量表 / 操作数栈） →</a>
+  </div>
+
+</div>
+</body>
+</html>

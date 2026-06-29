@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>04. 线程安全集合 — Java 学习</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: inherit; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+    .nav-btn.next:hover { background: #16653422; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / 核心类库 / 集合框架
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">核心类库 · 集合框架</div>
+    <h1>线程安全集合</h1>
+    <p>ConcurrentHashMap、CopyOnWriteArrayList —— 从锁分段到写时复制，彻底搞懂并发集合的设计哲学与使用边界。</p>
+  </div>
+
+  <!-- ========== 1. 为什么需要线程安全集合 ========== -->
+  <h2>1. 为什么普通集合在多线程下会崩</h2>
+  <p>
+    <code>HashMap</code> 和 <code>ArrayList</code> 的所有操作都<strong>不带任何同步机制</strong>。两个线程同时写入时，内部数组扩容、链表挂接、size 自增都可能交错执行，造成数据丢失甚至死循环（JDK 7 的 HashMap 在并发 resize 时会形成环形链表，导致 CPU 100%）。
+  </p>
+
+  <div class="callout warn">
+    <strong>经典事故：JDK 7 HashMap 并发死循环</strong><br/>
+    JDK 7 的 resize 采用头插法，并发时两个线程都完成扩容后链表节点顺序相互引用，形成环，之后任何 get 都会死循环。JDK 8 改为尾插法修复了死循环，但数据丢失问题依然存在。
+  </div>
+
+  <p>解决思路有三种：</p>
+  <ul>
+    <li>用 <code>Collections.synchronizedMap()</code> 包装 —— 每个方法加 <code>synchronized</code>，粒度粗，并发性差</li>
+    <li>用 <code>Hashtable</code> —— 同上，全方法加锁，基本被淘汰</li>
+    <li>用 <strong>java.util.concurrent</strong> 包的专用并发集合 —— 细粒度锁或无锁，性能好</li>
+  </ul>
+
+  <!-- ========== 2. ConcurrentHashMap ========== -->
+  <h2>2. ConcurrentHashMap — 分段锁 → CAS + synchronized</h2>
+
+  <h3>2.1 JDK 7：分段锁（Segment）</h3>
+  <p>
+    JDK 7 将整个 HashMap 切成 <strong>16 个 Segment</strong>，每个 Segment 是一把独立的 <code>ReentrantLock</code>。两个线程操作不同 Segment 互不影响，并发度最高为 16。
+  </p>
+  <div class="tree">
+ConcurrentHashMap (JDK 7)
+├── Segment[0]  → <span class="hi">ReentrantLock</span> + HashEntry[]
+├── Segment[1]  → <span class="hi">ReentrantLock</span> + HashEntry[]
+├── ...
+└── Segment[15] → <span class="hi">ReentrantLock</span> + HashEntry[]
+  </div>
+
+  <h3>2.2 JDK 8：Node 数组 + CAS + synchronized（现行方案）</h3>
+  <p>
+    JDK 8 彻底抛弃了 Segment，改用与 HashMap 相同的 <strong>数组 + 链表 / 红黑树</strong>结构，但在并发控制上做了两层优化：
+  </p>
+  <ul>
+    <li><strong>写入时只锁桶头节点</strong>（<code>synchronized(f)</code>，f 为链表或树的第一个节点），不同桶完全并行</li>
+    <li><strong>空桶用 CAS 插入</strong>，完全无锁</li>
+    <li><strong>扩容时多线程协作</strong>：每个线程领取一段桶范围，并行迁移数据</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ConcurrentHashMap 核心 put 逻辑（JDK 8 简化版）</span></div>
+    <pre><span class="kw">final</span> <span class="ty">V</span> <span class="fn">putVal</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">,</span> <span class="ty">V</span> <span class="var">val</span><span class="punct">,</span> <span class="kw">boolean</span> <span class="var">onlyIfAbsent</span><span class="punct">) {</span>
+    <span class="kw">for</span> <span class="punct">(;;) {</span>
+        <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span><span class="ty">V</span><span class="punct">&gt;[]</span> <span class="var">tab</span><span class="punct">;</span> <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span><span class="ty">V</span><span class="punct">&gt;</span> <span class="var">f</span><span class="punct">;</span> <span class="kw">int</span> <span class="var">n</span><span class="punct">,</span> <span class="var">i</span><span class="punct">,</span> <span class="var">fh</span><span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">tab</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">)</span>
+            <span class="var">tab</span> <span class="punct">=</span> <span class="fn">initTable</span><span class="punct">();</span>          <span class="com">// 懒初始化，用 CAS 保证只有一个线程完成</span>
+        <span class="kw">else if</span> <span class="punct">((</span><span class="var">f</span> <span class="punct">=</span> <span class="fn">tabAt</span><span class="punct">(</span><span class="var">tab</span><span class="punct">,</span> <span class="var">i</span> <span class="punct">=</span> <span class="punct">(</span><span class="var">n</span><span class="punct">-</span><span class="num">1</span><span class="punct">) &amp;</span> <span class="var">hash</span><span class="punct">)) ==</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="com">// 空桶：用 CAS 原子插入，失败则重试循环 —— 完全无锁</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="fn">casTabAt</span><span class="punct">(</span><span class="var">tab</span><span class="punct">,</span> <span class="var">i</span><span class="punct">,</span> <span class="kw">null</span><span class="punct">,</span> <span class="kw">new</span> <span class="ty">Node</span><span class="punct">&lt;&gt;(</span><span class="var">hash</span><span class="punct">,</span> <span class="var">key</span><span class="punct">,</span> <span class="var">val</span><span class="punct">)))</span>
+                <span class="kw">break</span><span class="punct">;</span>
+        <span class="punct">}</span> <span class="kw">else if</span> <span class="punct">((</span><span class="var">fh</span> <span class="punct">=</span> <span class="var">f</span><span class="punct">.</span><span class="var">hash</span><span class="punct">) ==</span> <span class="var">MOVED</span><span class="punct">)</span>
+            <span class="var">tab</span> <span class="punct">=</span> <span class="fn">helpTransfer</span><span class="punct">(</span><span class="var">tab</span><span class="punct">,</span> <span class="var">f</span><span class="punct">);</span>   <span class="com">// 正在扩容：帮忙迁移数据</span>
+        <span class="kw">else</span> <span class="punct">{</span>
+            <span class="com">// 有冲突：只锁住该桶的头节点 f</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">f</span><span class="punct">) {</span>
+                <span class="com">// 遍历链表 / 红黑树，找到则更新，否则追加</span>
+                <span class="var">...</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么用 synchronized 而非 ReentrantLock？</strong><br/>
+    JDK 8 的 JVM 对 <code>synchronized</code> 做了大量优化（偏向锁、轻量级锁、锁粗化），在竞争不激烈时开销极低。而 <code>ReentrantLock</code> 需要额外的 <code>AbstractQueuedSynchronizer</code> 对象，反而更重。
+  </div>
+
+  <h3>2.3 常用 API 与注意事项</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ConcurrentHashMap 典型用法</span></div>
+    <pre><span class="ty">ConcurrentHashMap</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">map</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ConcurrentHashMap</span><span class="punct">&lt;&gt;();</span>
+
+<span class="com">// 1. 原子"不存在才放" —— putIfAbsent</span>
+<span class="var">map</span><span class="punct">.</span><span class="fn">putIfAbsent</span><span class="punct">(</span><span class="str">"key"</span><span class="punct">,</span> <span class="num">1</span><span class="punct">);</span>
+
+<span class="com">// 2. 原子累加计数器（推荐写法）</span>
+<span class="var">map</span><span class="punct">.</span><span class="fn">merge</span><span class="punct">(</span><span class="str">"word"</span><span class="punct">,</span> <span class="num">1</span><span class="punct">,</span> <span class="ty">Integer</span><span class="punct">::</span><span class="fn">sum</span><span class="punct">);</span>
+
+<span class="com">// 3. 原子"不存在则计算"—— computeIfAbsent（常用于多值 Map）</span>
+<span class="ty">ConcurrentHashMap</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;&gt;</span> <span class="var">multiMap</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ConcurrentHashMap</span><span class="punct">&lt;&gt;();</span>
+<span class="var">multiMap</span><span class="punct">.</span><span class="fn">computeIfAbsent</span><span class="punct">(</span><span class="str">"group"</span><span class="punct">,</span> <span class="var">k</span> <span class="punct">-&gt;</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;()).</span><span class="fn">add</span><span class="punct">(</span><span class="str">"item"</span><span class="punct">);</span>
+
+<span class="com">// ❌ 错误：复合操作不是原子的！</span>
+<span class="kw">if</span> <span class="punct">(!</span><span class="var">map</span><span class="punct">.</span><span class="fn">containsKey</span><span class="punct">(</span><span class="str">"key"</span><span class="punct">)) {</span>       <span class="com">// check</span>
+    <span class="var">map</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="str">"key"</span><span class="punct">,</span> <span class="num">1</span><span class="punct">);</span>              <span class="com">// act — 两步之间可能被其他线程插入</span>
+<span class="punct">}</span>
+<span class="com">// ✅ 正确：用原子方法替代 check-then-act</span>
+<span class="var">map</span><span class="punct">.</span><span class="fn">putIfAbsent</span><span class="punct">(</span><span class="str">"key"</span><span class="punct">,</span> <span class="num">1</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：size() 不精确</strong><br/>
+    <code>size()</code> 返回的是估算值（通过汇总各 Cell 的 baseCount），在遍历期间其他线程仍可修改 Map。如果需要精确统计，应在外部使用 <code>LongAdder</code> 或 <code>AtomicLong</code> 自己维护。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：key/value 不允许为 null</strong><br/>
+    <code>ConcurrentHashMap</code> 禁止 <code>null</code> key 和 <code>null</code> value。原因：在并发场景下，<code>get(key) == null</code> 无法区分"key 不存在"还是"value 本身是 null"，会造成二义性。而 <code>HashMap</code> 允许 null 是因为它本来就不是线程安全的。
+  </div>
+
+  <!-- ========== 3. CopyOnWriteArrayList ========== -->
+  <h2>3. CopyOnWriteArrayList — 写时复制</h2>
+
+  <h3>3.1 核心思想</h3>
+  <p>
+    <strong>写时复制（Copy-On-Write，COW）</strong>：每次写操作（add/set/remove）都会先把底层数组完整地复制一份，修改完副本后再用 <code>volatile</code> 引用原子地指向新数组。读操作始终操作"快照"，完全无锁。
+  </p>
+
+  <div class="tree">
+读线程  →  旧数组 [A, B, C]  （无锁，直接读）
+
+写线程  →  加锁
+            复制 → [A, B, C, D]  （新数组）
+            修改完毕
+            volatile 引用 → 新数组
+            释放锁
+  </div>
+
+  <h3>3.2 源码核心：add 方法</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>CopyOnWriteArrayList#add（JDK 11 简化）</span></div>
+    <pre><span class="kw">public boolean</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">E</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lock</span><span class="punct">) {</span>              <span class="com">// 写操作互斥</span>
+        <span class="ty">Object</span><span class="punct">[]</span> <span class="var">es</span> <span class="punct">=</span> <span class="fn">getArray</span><span class="punct">();</span>
+        <span class="kw">int</span> <span class="var">len</span> <span class="punct">=</span> <span class="var">es</span><span class="punct">.</span><span class="var">length</span><span class="punct">;</span>
+        <span class="com">// 复制出一个长度 +1 的新数组 —— 关键！</span>
+        <span class="var">es</span> <span class="punct">=</span> <span class="ty">Arrays</span><span class="punct">.</span><span class="fn">copyOf</span><span class="punct">(</span><span class="var">es</span><span class="punct">,</span> <span class="var">len</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">);</span>
+        <span class="var">es</span><span class="punct">[</span><span class="var">len</span><span class="punct">] =</span> <span class="var">e</span><span class="punct">;</span>
+        <span class="fn">setArray</span><span class="punct">(</span><span class="var">es</span><span class="punct">);</span>                    <span class="com">// volatile 写，对所有线程立即可见</span>
+        <span class="kw">return true</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// get 不加任何锁 —— 读的是某一时刻的快照数组</span>
+<span class="kw">public</span> <span class="ty">E</span> <span class="fn">get</span><span class="punct">(</span><span class="kw">int</span> <span class="var">index</span><span class="punct">) {</span>
+    <span class="kw">return</span> <span class="fn">elementAt</span><span class="punct">(</span><span class="fn">getArray</span><span class="punct">(),</span> <span class="var">index</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>3.3 迭代器的快照语义</h3>
+  <p>
+    <code>iterator()</code> 在创建时固定住了当前数组的引用。此后无论写线程怎么修改，迭代器看到的始终是创建时的快照，<strong>不会抛出 ConcurrentModificationException</strong>，也不会看到新写入的数据。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>迭代器快照演示</span></div>
+    <pre><span class="ty">CopyOnWriteArrayList</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CopyOnWriteArrayList</span><span class="punct">&lt;&gt;(</span><span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"A"</span><span class="punct">,</span> <span class="str">"B"</span><span class="punct">));</span>
+<span class="ty">Iterator</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">it</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">.</span><span class="fn">iterator</span><span class="punct">();</span>  <span class="com">// 此时快照 = ["A", "B"]</span>
+
+<span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="str">"C"</span><span class="punct">);</span>                            <span class="com">// 写线程：list 变为 ["A","B","C"]</span>
+
+<span class="kw">while</span> <span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">hasNext</span><span class="punct">())</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">next</span><span class="punct">());</span>      <span class="com">// 输出 A B，看不到 C</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>适用场景</strong>：<code>CopyOnWriteArrayList</code> 适合<strong>读多写极少</strong>的场景，例如：监听器列表（事件总线）、白名单/黑名单缓存、配置项列表。每次写都复制全量数组，写频繁时内存和 GC 压力极大。
+  </div>
+
+  <!-- ========== 4. 对比表 ========== -->
+  <h2>4. 并发集合横向对比</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>类</th>
+        <th>锁机制</th>
+        <th>读性能</th>
+        <th>写性能</th>
+        <th>null</th>
+        <th>适用场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>HashMap</code></td>
+        <td>无</td>
+        <td>最高</td>
+        <td>最高</td>
+        <td>允许</td>
+        <td>单线程</td>
+      </tr>
+      <tr>
+        <td><code>Hashtable</code></td>
+        <td>全方法 synchronized</td>
+        <td>低</td>
+        <td>低</td>
+        <td>不允许</td>
+        <td>已过时</td>
+      </tr>
+      <tr>
+        <td><code>synchronizedMap</code></td>
+        <td>包装锁（this）</td>
+        <td>低</td>
+        <td>低</td>
+        <td>允许</td>
+        <td>简单需求</td>
+      </tr>
+      <tr>
+        <td><code>ConcurrentHashMap</code></td>
+        <td>CAS + 桶头 synchronized</td>
+        <td>高</td>
+        <td>高</td>
+        <td>不允许</td>
+        <td>读写均衡</td>
+      </tr>
+      <tr>
+        <td><code>ArrayList</code></td>
+        <td>无</td>
+        <td>最高</td>
+        <td>最高</td>
+        <td>允许</td>
+        <td>单线程</td>
+      </tr>
+      <tr>
+        <td><code>CopyOnWriteArrayList</code></td>
+        <td>写时 synchronized + 读无锁</td>
+        <td>极高</td>
+        <td>极低</td>
+        <td>允许</td>
+        <td>读多写极少</td>
+      </tr>
+      <tr>
+        <td><code>ConcurrentLinkedQueue</code></td>
+        <td>CAS 无锁</td>
+        <td>高</td>
+        <td>高</td>
+        <td>不允许</td>
+        <td>并发队列</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ========== 5. 实战代码 ========== -->
+  <h2>5. 实战：多线程词频统计</h2>
+  <p>用 <code>ConcurrentHashMap</code> 统计多个线程并发处理文本的词频，体会原子 API 的价值：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>WordCounter.java</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.*</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="var">java.util.concurrent.atomic.LongAdder</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">WordCounter</span> <span class="punct">{</span>
+
+    <span class="com">// LongAdder 比 AtomicLong 在高并发写时更高效（分段累加，读时合并）</span>
+    <span class="kw">private final</span> <span class="ty">ConcurrentHashMap</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">LongAdder</span><span class="punct">&gt;</span> <span class="var">counts</span>
+            <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ConcurrentHashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public void</span> <span class="fn">count</span><span class="punct">(</span><span class="ty">String</span> <span class="var">word</span><span class="punct">) {</span>
+        <span class="com">// computeIfAbsent 保证原子性地创建 LongAdder，再 increment</span>
+        <span class="var">counts</span><span class="punct">.</span><span class="fn">computeIfAbsent</span><span class="punct">(</span><span class="var">word</span><span class="punct">,</span> <span class="var">k</span> <span class="punct">-&gt;</span> <span class="kw">new</span> <span class="ty">LongAdder</span><span class="punct">()).</span><span class="fn">increment</span><span class="punct">();</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public long</span> <span class="fn">getCount</span><span class="punct">(</span><span class="ty">String</span> <span class="var">word</span><span class="punct">) {</span>
+        <span class="ty">LongAdder</span> <span class="var">adder</span> <span class="punct">=</span> <span class="var">counts</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">word</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">adder</span> <span class="punct">==</span> <span class="kw">null</span> <span class="punct">?</span> <span class="num">0</span> <span class="punct">:</span> <span class="var">adder</span><span class="punct">.</span><span class="fn">sum</span><span class="punct">();</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="ty">WordCounter</span> <span class="var">counter</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">WordCounter</span><span class="punct">();</span>
+        <span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="num">4</span><span class="punct">);</span>
+        <span class="ty">CountDownLatch</span> <span class="var">latch</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="num">4</span><span class="punct">);</span>
+
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">t</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">t</span> <span class="punct">&lt;</span> <span class="num">4</span><span class="punct">;</span> <span class="var">t</span><span class="punct">++) {</span>
+            <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+                <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">10_000</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span>
+                    <span class="var">counter</span><span class="punct">.</span><span class="fn">count</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>
+                <span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>
+            <span class="punct">});</span>
+        <span class="punct">}</span>
+        <span class="var">latch</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+        <span class="com">// 4 个线程各 10000 次，期望结果 40000</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">counter</span><span class="punct">.</span><span class="fn">getCount</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">));</span>  <span class="com">// 40000</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ========== 6. 与其他知识的联系 ========== -->
+  <h2>6. 知识联系</h2>
+
+  <ul>
+    <li><strong>volatile</strong>：<code>CopyOnWriteArrayList</code> 用 <code>volatile Object[] array</code> 保证数组引用的可见性；读线程无需加锁即可感知到写线程的替换。</li>
+    <li><strong>CAS（Unsafe）</strong>：<code>ConcurrentHashMap</code> 的空桶插入用 <code>Unsafe.compareAndSetObject</code> 完成，是整个无锁路径的基础。</li>
+    <li><strong>AQS / ReentrantLock</strong>：JDK 7 的 Segment 继承自 <code>ReentrantLock</code>；JDK 8 虽然换成 <code>synchronized</code>，但理解 AQS 有助于理解锁升级过程。</li>
+    <li><strong>Java 内存模型（happens-before）</strong>：<code>volatile</code> 写 happens-before 后续 <code>volatile</code> 读，这是 COW 读无锁仍能看到正确数据的理论依据。</li>
+    <li><strong>Stream / forEach</strong>：<code>ConcurrentHashMap</code> 的 <code>forEach</code>、<code>reduce</code> 等并行流方法天然利用了 ForkJoinPool，可以指定并行度阈值。</li>
+  </ul>
+
+  <!-- ========== 7. 面试考点 ========== -->
+  <h2>7. 面试高频考点</h2>
+
+  <div class="callout tip">
+    <strong>1. ConcurrentHashMap JDK 7 vs JDK 8 区别？</strong><br/>
+    JDK 7 用分段锁（Segment + ReentrantLock），并发度固定为 16；JDK 8 改为 Node 数组 + CAS + synchronized（锁粒度降至桶级），并发度最大为桶数（默认 16，扩容后更多），且数据结构与 HashMap 对齐（链表 + 红黑树）。
+  </div>
+
+  <div class="callout tip">
+    <strong>2. 为什么 ConcurrentHashMap 不允许 null？</strong><br/>
+    在并发场景下，<code>get(key) == null</code> 存在二义性：无法区分 key 不存在还是 value 是 null。而在单线程 HashMap 中可以用 <code>containsKey</code> 再判断，但并发场景下这两步之间可能被修改，没有意义。
+  </div>
+
+  <div class="callout tip">
+    <strong>3. CopyOnWriteArrayList 的 iterator 为什么不抛 CME？</strong><br/>
+    因为迭代器持有的是创建时的数组快照引用，写操作替换的是 volatile 引用指向的新数组，迭代器的引用不会变，所以永远不会有结构修改，也就不会触发 modCount 检查，不抛 <code>ConcurrentModificationException</code>。
+  </div>
+
+  <div class="callout tip">
+    <strong>4. ConcurrentHashMap 的 size() 为什么不精确？</strong><br/>
+    JDK 8 用 <code>baseCount</code> + <code>CounterCell[]</code>（类似 LongAdder）维护元素数量，<code>size()</code> 汇总各 cell 时不加锁，其他线程仍可并发修改，所以返回的是近似值。若需精确数量，在外部自行维护计数器。
+  </div>
+
+  <div class="callout tip">
+    <strong>5. 什么时候用 CopyOnWriteArrayList？</strong><br/>
+    读写比例悬殊（读远多于写）且集合规模不大时，如 Spring ApplicationContext 中的事件监听器列表。若写频繁，每次全量复制数组会造成大量 GC，此时应换用 <code>ConcurrentLinkedQueue</code> 或加锁的 ArrayList。
+  </div>
+
+  <!-- 分隔线 -->
+  <hr/>
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./03-Collections工具类.html" class="nav-btn">← 03. Collections 工具类</a>
+    <a href="./05-Lambda表达式.html" class="nav-btn next">05. Lambda 表达式 →</a>
+  </div>
+
+</div>
+</body>
+</html>

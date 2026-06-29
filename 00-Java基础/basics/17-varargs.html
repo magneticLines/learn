@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>17 · 可变参数 varargs</title>
+  <style>
+    /* ── 基础 reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #0f1117; color: #c9d1d9; line-height: 1.75;
+      padding: 0 1rem 4rem;
+    }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── 页头 ── */
+    .page-header {
+      max-width: 860px; margin: 0 auto;
+      padding: 2.5rem 0 1rem;
+      border-bottom: 1px solid #21262d;
+    }
+    .page-header .badge {
+      display: inline-block;
+      background: #1f6feb; color: #fff;
+      font-size: .75rem; font-weight: 600;
+      padding: .2em .7em; border-radius: 20px;
+      margin-bottom: .5rem; letter-spacing: .04em;
+    }
+    .page-header h1 { font-size: 2rem; color: #e6edf3; }
+    .page-header p  { margin-top: .5rem; color: #8b949e; font-size: .95rem; }
+
+    /* ── 主体 ── */
+    main { max-width: 860px; margin: 0 auto; padding-top: 2rem; }
+    section { margin-bottom: 3rem; }
+    h2 {
+      font-size: 1.3rem; color: #e6edf3;
+      border-left: 4px solid #1f6feb;
+      padding-left: .75rem; margin-bottom: 1.25rem;
+    }
+    h3 { font-size: 1.05rem; color: #d2a679; margin: 1.25rem 0 .5rem; }
+    p  { margin-bottom: .75rem; }
+
+    /* ── 代码块 ── */
+    pre {
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 8px; padding: 1.25rem;
+      overflow-x: auto; font-size: .875rem;
+      line-height: 1.6; margin-bottom: 1rem;
+    }
+    code { font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    pre code { color: #e6edf3; }
+    /* inline code */
+    p code, li code, td code {
+      background: #21262d; border-radius: 4px;
+      padding: .15em .4em; font-size: .85em; color: #79c0ff;
+    }
+
+    /* ── 关键词高亮 ── */
+    .kw  { color: #ff7b72; }   /* keyword  */
+    .tp  { color: #79c0ff; }   /* type     */
+    .cm  { color: #8b949e; }   /* comment  */
+    .str { color: #a5d6ff; }   /* string   */
+    .num { color: #f0883e; }   /* number   */
+    .fn  { color: #d2a679; }   /* function */
+    .ann { color: #b392f0; }   /* annotation */
+
+    /* ── callout ── */
+    .callout {
+      border-left: 4px solid; border-radius: 0 8px 8px 0;
+      padding: .85rem 1rem; margin-bottom: 1rem;
+      background: rgba(255,255,255,.03);
+    }
+    .callout.info    { border-color: #1f6feb; }
+    .callout.warn    { border-color: #d29922; }
+    .callout.danger  { border-color: #f85149; }
+    .callout.tip     { border-color: #3fb950; }
+    .callout-title   { font-weight: 700; margin-bottom: .35rem; font-size: .9rem; }
+    .callout.info    .callout-title { color: #58a6ff; }
+    .callout.warn    .callout-title { color: #e3b341; }
+    .callout.danger  .callout-title { color: #f85149; }
+    .callout.tip     .callout-title { color: #3fb950; }
+
+    /* ── 表格 ── */
+    .table-wrap { overflow-x: auto; margin-bottom: 1rem; }
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: .875rem;
+    }
+    th {
+      background: #21262d; color: #79c0ff;
+      padding: .6rem .9rem; text-align: left;
+      border: 1px solid #30363d;
+    }
+    td { padding: .55rem .9rem; border: 1px solid #21262d; }
+    tr:nth-child(even) td { background: #0d1117; }
+
+    /* ── 对比栏 ── */
+    .compare {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 1rem; margin-bottom: 1rem;
+    }
+    .compare .panel { border-radius: 8px; overflow: hidden; }
+    .compare .panel-title {
+      padding: .4rem .9rem; font-size: .8rem;
+      font-weight: 700; letter-spacing: .05em;
+    }
+    .compare .bad  .panel-title { background:#5a0e0e; color:#f85149; }
+    .compare .good .panel-title { background:#0d2b1a; color:#3fb950; }
+    .compare .panel pre { margin: 0; border-top: none; border-radius: 0; }
+
+    /* ── 树形字节码区块 ── */
+    .tree {
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 8px; padding: 1rem 1.25rem;
+      font-family: "Fira Code", Consolas, monospace;
+      font-size: .82rem; line-height: 2;
+      margin-bottom: 1rem; color: #8b949e;
+    }
+    .tree .hi { color: #f0883e; }
+    .tree .op { color: #79c0ff; }
+    .tree .note { color: #3fb950; }
+
+    /* ── 列表 ── */
+    ul, ol { padding-left: 1.5rem; margin-bottom: .75rem; }
+    li { margin-bottom: .35rem; }
+
+    /* ── 知识联系卡片 ── */
+    .link-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr));
+      gap: .75rem;
+    }
+    .link-card {
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 8px; padding: .75rem 1rem;
+    }
+    .link-card .topic { font-size: .8rem; color: #58a6ff; font-weight: 600; }
+    .link-card .desc  { font-size: .8rem; color: #8b949e; margin-top: .2rem; }
+
+    /* ── 面试考点 ── */
+    .faq details {
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 8px; margin-bottom: .6rem; overflow: hidden;
+    }
+    .faq summary {
+      padding: .75rem 1rem; cursor: pointer;
+      font-weight: 600; color: #e6edf3; list-style: none;
+    }
+    .faq summary::before { content: "▶ "; color: #1f6feb; font-size: .85em; }
+    .faq details[open] summary::before { content: "▼ "; }
+    .faq .ans { padding: .6rem 1rem 1rem 1.75rem; color: #8b949e; font-size: .9rem; }
+    .faq .ans p { color: #8b949e; }
+    .faq .ans pre { font-size: .82rem; }
+
+    /* ── 导航 footer ── */
+    .nav-footer {
+      max-width: 860px; margin: 3rem auto 0;
+      display: flex; justify-content: space-between; align-items: center;
+      border-top: 1px solid #21262d; padding-top: 1.25rem;
+      font-size: .9rem;
+    }
+    .nav-footer a {
+      display: inline-flex; align-items: center; gap: .4rem;
+      padding: .45rem .9rem; border: 1px solid #30363d;
+      border-radius: 6px; color: #c9d1d9;
+      transition: border-color .2s, color .2s;
+    }
+    .nav-footer a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+
+    @media (max-width: 600px) {
+      .compare { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ 页头 ══════════════ -->
+<header class="page-header">
+  <div class="badge">00-Java基础 · basics</div>
+  <h1>17 · 可变参数 varargs</h1>
+  <p>语法糖背后是普通数组——掌握它，才能驾驭它的陷阱与性能成本。</p>
+</header>
+
+<main>
+
+<!-- ══════ 1. 为什么需要 varargs ══════ -->
+<section id="why">
+  <h2>1. 为什么需要 varargs</h2>
+
+  <h3>痛点一：重载爆炸</h3>
+  <p>在 JDK 1.5 之前，如果你想让一个方法接受"任意数量"的整数，只能手写重载：</p>
+  <pre><code><span class="kw">int</span> <span class="fn">sum</span>(<span class="kw">int</span> a) { ... }
+<span class="kw">int</span> <span class="fn">sum</span>(<span class="kw">int</span> a, <span class="kw">int</span> b) { ... }
+<span class="kw">int</span> <span class="fn">sum</span>(<span class="kw">int</span> a, <span class="kw">int</span> b, <span class="kw">int</span> c) { ... }
+<span class="cm">// 传 10 个参数？再写 7 个重载？</span></code></pre>
+
+  <h3>痛点二：数组繁琐</h3>
+  <p>另一种方案是传 <code>int[]</code>，但调用端必须手动构造数组：</p>
+  <pre><code><span class="fn">sum</span>(<span class="kw">new</span> <span class="tp">int</span>[]{<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>});  <span class="cm">// 啰嗦</span></code></pre>
+
+  <p>JDK 1.5 引入 <code>varargs</code>，让编译器帮我们完成"把零散参数打包成数组"这件事：</p>
+  <pre><code><span class="kw">int</span> <span class="fn">sum</span>(<span class="kw">int</span>... nums) {
+    <span class="kw">int</span> total = <span class="num">0</span>;
+    <span class="kw">for</span> (<span class="kw">int</span> n : nums) total += n;
+    <span class="kw">return</span> total;
+}
+
+<span class="fn">sum</span>(<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>);      <span class="cm">// 编译器 → sum(new int[]{1,2,3})</span>
+<span class="fn">sum</span>();             <span class="cm">// 编译器 → sum(new int[]{})</span></code></pre>
+
+  <div class="callout info">
+    <div class="callout-title">设计哲学</div>
+    varargs 本质是一个"调用端语法糖"——方法签名里的 <code>T...</code>
+    会被编译为 <code>T[]</code>，JVM 字节码层面没有任何新指令，完全是编译器的工作。
+  </div>
+</section>
+
+<!-- ══════ 2. 基本语法 ══════ -->
+<section id="syntax">
+  <h2>2. 基本语法</h2>
+
+  <pre><code><span class="cm">// 规则：varargs 只能出现在参数列表最后一位</span>
+<span class="kw">static void</span> <span class="fn">log</span>(<span class="tp">String</span> level, <span class="tp">String</span>... messages) {
+    <span class="kw">for</span> (<span class="tp">String</span> msg : messages) {
+        <span class="tp">System</span>.out.<span class="fn">println</span>(<span class="str">"["</span> + level + <span class="str">"] "</span> + msg);
+    }
+}
+
+<span class="cm">// 三种合法调用形式</span>
+<span class="fn">log</span>(<span class="str">"INFO"</span>);                          <span class="cm">// 零参数 → messages = new String[]{}</span>
+<span class="fn">log</span>(<span class="str">"WARN"</span>, <span class="str">"disk low"</span>);             <span class="cm">// 逐一传参</span>
+<span class="fn">log</span>(<span class="str">"ERROR"</span>, <span class="str">"a"</span>, <span class="str">"b"</span>, <span class="str">"c"</span>);        <span class="cm">// 多个值</span>
+<span class="fn">log</span>(<span class="str">"DEBUG"</span>, <span class="kw">new</span> <span class="tp">String</span>[]{<span class="str">"x"</span>,<span class="str">"y"</span>}); <span class="cm">// 直接传数组也合法</span></code></pre>
+
+  <div class="callout warn">
+    <div class="callout-title">限制</div>
+    <ul>
+      <li>每个方法最多只能有一个 varargs 参数。</li>
+      <li>varargs 必须是最后一个参数，<code>void f(int... a, int b)</code> 编译报错。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════ 3. 字节码真相 ══════ -->
+<section id="bytecode">
+  <h2>3. 字节码真相：每次调用都分配新数组</h2>
+
+  <p>用 <code>javap -c</code> 观察 <code>sum(1, 2, 3)</code> 的调用侧字节码：</p>
+
+  <div class="tree">
+    <span class="op">iconst_3</span>          <span class="note">// 数组长度 3</span><br>
+    <span class="op">newarray</span> <span class="hi">int</span>       <span class="note">// new int[3]</span><br>
+    <span class="op">dup</span><br>
+    <span class="op">iconst_0</span><br>
+    <span class="op">iconst_1</span><br>
+    <span class="op">iastore</span>            <span class="note">// arr[0] = 1</span><br>
+    <span class="op">dup</span><br>
+    <span class="op">iconst_1</span><br>
+    <span class="op">iconst_2</span><br>
+    <span class="op">iastore</span>            <span class="note">// arr[1] = 2</span><br>
+    <span class="op">dup</span><br>
+    <span class="op">iconst_2</span><br>
+    <span class="op">iconst_3</span><br>
+    <span class="op">iastore</span>            <span class="note">// arr[2] = 3</span><br>
+    <span class="op">invokestatic</span> <span class="hi">sum([I)I</span>  <span class="note">// 方法签名里是 int[]</span>
+  </div>
+
+  <p>关键结论：</p>
+  <ul>
+    <li>调用 varargs 方法时，编译器在<strong>调用侧</strong>插入 <code>newarray</code> + <code>iastore</code> 序列。</li>
+    <li>方法签名在 <code>.class</code> 文件中是 <code>int[]</code>，仅用 <code>ACC_VARARGS</code> 标志位区分。</li>
+    <li>每次调用都会分配一个新数组对象（哪怕是空参数 <code>sum()</code> 也会分配 <code>new int[0]</code>）。</li>
+  </ul>
+
+  <div class="callout info">
+    <div class="callout-title">空参数的数组分配</div>
+    JVM 规范保证 <code>new int[0]</code> 是合法对象，不是 null。
+    所以方法体内对 varargs 参数直接 for-each 是安全的，但如果外部显式传 <code>null</code> 则会得到 null（见陷阱一）。
+  </div>
+</section>
+
+<!-- ══════ 4. 与方法重载的关系 ══════ -->
+<section id="overload">
+  <h2>4. 与方法重载的关系</h2>
+
+  <p>Java 重载解析分三轮，varargs 在最后一轮（优先级最低）：</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>轮次</th><th>规则</th><th>示例</th></tr></thead>
+      <tbody>
+        <tr><td>第一轮</td><td>精确匹配（不允许装拆箱、不允许 varargs）</td><td><code>f(1)</code> → <code>f(int)</code></td></tr>
+        <tr><td>第二轮</td><td>允许装拆箱，不允许 varargs</td><td><code>f(1)</code> → <code>f(Integer)</code></td></tr>
+        <tr><td>第三轮</td><td>允许 varargs</td><td><code>f(1)</code> → <code>f(int...)</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <pre><code><span class="kw">static void</span> <span class="fn">f</span>(<span class="kw">int</span> x)      { <span class="tp">System</span>.out.<span class="fn">println</span>(<span class="str">"精确"</span>); }
+<span class="kw">static void</span> <span class="fn">f</span>(<span class="kw">int</span>... xs) { <span class="tp">System</span>.out.<span class="fn">println</span>(<span class="str">"varargs"</span>); }
+
+<span class="fn">f</span>(<span class="num">1</span>);     <span class="cm">// 输出 "精确"——第一轮就命中，varargs 被跳过</span>
+<span class="fn">f</span>(<span class="num">1</span>,<span class="num">2</span>);   <span class="cm">// 输出 "varargs"——只有 varargs 能接受两个 int</span></code></pre>
+
+  <div class="callout warn">
+    <div class="callout-title">常见面试陷阱</div>
+    同时定义 <code>f(int a, int b)</code> 和 <code>f(int... xs)</code>，调用 <code>f(1,2)</code> 时
+    会优先匹配第一个（精确，第一轮），不会产生歧义编译错误——但容易让读者误以为走了 varargs。
+  </div>
+</section>
+
+<!-- ══════ 5. 泛型 varargs 与堆污染 ══════ -->
+<section id="heap-pollution">
+  <h2>5. 泛型 varargs 与堆污染</h2>
+
+  <h3>根因</h3>
+  <p>
+    Java 泛型在运行时会被<strong>类型擦除</strong>；而数组在运行时<strong>保留元素类型</strong>（协变数组）。
+    两者叠加，就会产生"堆污染"（heap pollution）——变量的实际运行时类型与声明类型不符。
+  </p>
+
+  <div class="compare">
+    <div class="panel bad">
+      <div class="panel-title">危险写法</div>
+      <pre><code><span class="ann">@SuppressWarnings</span>(<span class="str">"unchecked"</span>)
+<span class="kw">static</span> &lt;<span class="tp">T</span>&gt; <span class="tp">T</span>[] <span class="fn">toArray</span>(<span class="tp">T</span>... items) {
+    <span class="cm">// 编译器警告：Possible heap pollution</span>
+    <span class="kw">return</span> items;
+    <span class="cm">// items 的实际类型是 Object[],</span>
+    <span class="cm">// 强转给 String[] 时会在外部 ClassCastException</span>
+}
+
+<span class="tp">String</span>[] arr = <span class="fn">toArray</span>(<span class="str">"a"</span>, <span class="str">"b"</span>);
+<span class="cm">// ↑ 运行时 ClassCastException！</span></code></pre>
+    </div>
+    <div class="panel good">
+      <div class="panel-title">安全写法</div>
+      <pre><code><span class="ann">@SafeVarargs</span>
+<span class="kw">static</span> &lt;<span class="tp">T</span>&gt; <span class="tp">List</span>&lt;<span class="tp">T</span>&gt; <span class="fn">listOf</span>(<span class="tp">T</span>... items) {
+    <span class="cm">// 只读，不暴露 items 引用</span>
+    <span class="kw">return</span> <span class="tp">Arrays</span>.<span class="fn">asList</span>(items);
+}
+
+<span class="cm">// 调用侧无 unchecked 警告</span>
+<span class="tp">List</span>&lt;<span class="tp">String</span>&gt; s = <span class="fn">listOf</span>(<span class="str">"a"</span>, <span class="str">"b"</span>);</code></pre>
+    </div>
+  </div>
+
+  <p>堆污染的真正危险不在方法内部，而在于<strong>把 varargs 数组引用泄漏到外部</strong>：</p>
+  <ul>
+    <li>直接 <code>return items</code> → 调用方拿到类型错误的数组引用。</li>
+    <li>把 <code>items</code> 存入 <code>Object[]</code> 字段后在别处强转 → 延迟爆炸。</li>
+  </ul>
+</section>
+
+<!-- ══════ 6. @SafeVarargs ══════ -->
+<section id="safe-varargs">
+  <h2>6. @SafeVarargs 使用规则</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>可用位置</th>
+          <th>要求</th>
+          <th>JDK 案例</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>static</code> 方法</td>
+          <td>方法不能被子类覆盖，所以类型安全可以静态保证</td>
+          <td><code>Arrays.asList(T...)</code></td>
+        </tr>
+        <tr>
+          <td><code>final</code> 实例方法</td>
+          <td>同上，不可覆盖</td>
+          <td><code>Collections.unmodifiableList</code> 等内部用法</td>
+        </tr>
+        <tr>
+          <td><code>private</code> 实例方法</td>
+          <td>JDK 9+ 支持（在模块化后 private 已足够限制）</td>
+          <td><code>List.of</code> 内部私有方法</td>
+        </tr>
+        <tr>
+          <td><strong>不可用</strong>：普通可覆盖实例方法</td>
+          <td>子类可改变行为，编译器无法保证安全</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><strong>前提条件</strong>（你负责保证，编译器不验证）：</p>
+  <ol>
+    <li>方法内部不向 <code>varargs</code> 数组写入任何泛型类型值。</li>
+    <li>不把 <code>varargs</code> 数组引用暴露（return / 赋值给外部变量）给外部代码。</li>
+  </ol>
+
+  <div class="callout tip">
+    <div class="callout-title">经验法则</div>
+    "只读不写、不泄漏引用"——满足这两条就可以加 <code>@SafeVarargs</code>，
+    这也是 JDK 源码中所有使用该注解的地方都遵守的约定。
+  </div>
+</section>
+
+<!-- ══════ 7. 实战：printf/log 模式 ══════ -->
+<section id="practical">
+  <h2>7. 实战：printf / log 参数化模式</h2>
+
+  <p>SLF4J 的参数化日志就是 varargs 的典型用法，避免在 <code>DEBUG</code> 级别关闭时做无意义的字符串拼接：</p>
+
+  <pre><code><span class="cm">/**
+ * 仿 SLF4J 参数化日志
+ * 关键设计：只有真正需要打印时才调用 String.format()
+ */</span>
+<span class="kw">public class</span> <span class="tp">SimpleLogger</span> {
+
+    <span class="kw">private static final boolean</span> DEBUG_ENABLED = <span class="kw">false</span>;
+
+    <span class="cm">// varargs 接收占位符参数，延迟格式化</span>
+    <span class="kw">public static void</span> <span class="fn">debug</span>(<span class="tp">String</span> template, <span class="tp">Object</span>... args) {
+        <span class="kw">if</span> (!DEBUG_ENABLED) <span class="kw">return</span>;  <span class="cm">// 关闭时直接返回，数组虽已分配但格式化被跳过</span>
+        <span class="tp">System</span>.out.<span class="fn">println</span>(<span class="tp">String</span>.<span class="fn">format</span>(template, args));
+    }
+
+    <span class="kw">public static void</span> <span class="fn">main</span>(<span class="tp">String</span>[] args) {
+        <span class="tp">String</span> user = <span class="str">"Alice"</span>;
+        <span class="kw">int</span> age = <span class="num">30</span>;
+        <span class="cm">// 传参写法：清晰，无字符串拼接开销（格式化被延迟）</span>
+        <span class="fn">debug</span>(<span class="str">"user=%s age=%d"</span>, user, age);
+    }
+}</code></pre>
+
+  <div class="callout warn">
+    <div class="callout-title">注意：数组仍会被分配</div>
+    即使 <code>DEBUG_ENABLED=false</code>，调用 <code>debug(...)</code> 时数组对象依然被创建。
+    这正是 SLF4J 推荐两参数快捷方法（<code>debug(msg, arg1, arg2)</code>）以及 JDK 中
+    <code>List.of</code> 提供固定重载的原因——见下一节。
+  </div>
+</section>
+
+<!-- ══════ 8. 性能优化 ══════ -->
+<section id="performance">
+  <h2>8. 性能优化：固定重载覆盖常见情况</h2>
+
+  <p>JDK 的 <code>List.of()</code> 源码（JDK 9+）展示了经典的优化技巧：</p>
+
+  <pre><code><span class="cm">// 源码节选（java.util.List）</span>
+<span class="kw">static</span> &lt;<span class="tp">E</span>&gt; <span class="tp">List</span>&lt;<span class="tp">E</span>&gt; <span class="fn">of</span>()                          { <span class="kw">return</span> ImmutableCollections.emptyList(); }
+<span class="kw">static</span> &lt;<span class="tp">E</span>&gt; <span class="tp">List</span>&lt;<span class="tp">E</span>&gt; <span class="fn">of</span>(<span class="tp">E</span> e1)                      { <span class="kw">return</span> <span class="kw">new</span> ImmutableCollections.List12&lt;&gt;(e1); }
+<span class="kw">static</span> &lt;<span class="tp">E</span>&gt; <span class="tp">List</span>&lt;<span class="tp">E</span>&gt; <span class="fn">of</span>(<span class="tp">E</span> e1, <span class="tp">E</span> e2)               { <span class="kw">return</span> <span class="kw">new</span> ImmutableCollections.List12&lt;&gt;(e1, e2); }
+<span class="cm">// ... 一直到 of(e1..e10) 共 11 个固定重载</span>
+
+<span class="ann">@SafeVarargs</span>
+<span class="kw">static</span> &lt;<span class="tp">E</span>&gt; <span class="tp">List</span>&lt;<span class="tp">E</span>&gt; <span class="fn">of</span>(<span class="tp">E</span>... elements)            { <span class="cm">/* 兜底：11+ 个元素 */</span> }</code></pre>
+
+  <p>好处：</p>
+  <ul>
+    <li>调用 <code>List.of(1, 2)</code> 命中固定重载，<strong>零数组分配</strong>，GC 压力更低。</li>
+    <li>固定重载走重载解析第一轮，比 varargs 的第三轮解析更快。</li>
+    <li>热路径（如框架初始化、高频日志）中的性能差异可被 JMH 测量出来。</li>
+  </ul>
+
+  <div class="callout tip">
+    <div class="callout-title">何时值得做这个优化</div>
+    只有当该方法处于<strong>热路径</strong>（高频调用、低参数量占多数）时才值得复制出固定重载。
+    普通业务代码不必如此，过度优化反而增加维护成本。
+  </div>
+</section>
+
+<!-- ══════ 9. 三大陷阱 ══════ -->
+<section id="traps">
+  <h2>9. 三大陷阱</h2>
+
+  <h3>陷阱一：显式传 null 的歧义</h3>
+  <pre><code><span class="kw">static void</span> <span class="fn">f</span>(<span class="tp">String</span>... args) {
+    <span class="tp">System</span>.out.<span class="fn">println</span>(args == <span class="kw">null</span> ? <span class="str">"null"</span> : args.length);
+}
+
+<span class="fn">f</span>((<span class="tp">String</span>[]) <span class="kw">null</span>); <span class="cm">// args == null → 打印 "null"</span>
+<span class="fn">f</span>((<span class="tp">String</span>)   <span class="kw">null</span>); <span class="cm">// 等价于 f(new String[]{null}) → 打印 1</span>
+<span class="fn">f</span>(<span class="kw">null</span>);             <span class="cm">// 歧义警告：编译器选择把 null 当作 String[] 传入 → 打印 "null"</span></code></pre>
+  <p>裸 <code>null</code> 会被编译器优先解释为 <code>String[]</code> 类型的 null，而不是单个 <code>String</code> 元素。
+     在方法体内必须先判断 <code>args != null</code>。</p>
+
+  <h3>陷阱二：基本类型数组不自动装箱为对象数组</h3>
+  <pre><code><span class="kw">static void</span> <span class="fn">print</span>(<span class="tp">Object</span>... objs) {
+    <span class="kw">for</span> (<span class="tp">Object</span> o : objs) <span class="tp">System</span>.out.<span class="fn">print</span>(o + <span class="str">" "</span>);
+}
+
+<span class="kw">int</span>[] arr = {<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>};
+<span class="fn">print</span>(arr);        <span class="cm">// 输出 "[I@3764951d"（整个 int[] 作为一个 Object）</span>
+<span class="fn">print</span>(<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>);    <span class="cm">// 输出 "1 2 3"（各自装箱为 Integer）</span></code></pre>
+  <p><code>int[]</code> 不是 <code>Object[]</code> 的子类，它整体被当作一个 <code>Object</code> 传入，而不是三个元素。</p>
+
+  <h3>陷阱三：热路径重复调用的 GC 压力</h3>
+  <pre><code><span class="cm">// 每次调用 validate(rules, value) 都分配 new Object[]</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; <span class="num">1_000_000</span>; i++) {
+    <span class="fn">validate</span>(value, rule1, rule2, rule3);  <span class="cm">// 百万次 × new Object[3]</span>
+}
+
+<span class="cm">// 优化：提前构造数组，复用</span>
+<span class="tp">Object</span>[] rules = {rule1, rule2, rule3};
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; <span class="num">1_000_000</span>; i++) {
+    <span class="fn">validate</span>(value, rules);   <span class="cm">// 直接传数组，不再重复分配</span>
+}</code></pre>
+</section>
+
+<!-- ══════ 10. 知识联系 ══════ -->
+<section id="connections">
+  <h2>10. 知识联系</h2>
+
+  <div class="link-grid">
+    <div class="link-card">
+      <div class="topic">数组（Array）</div>
+      <div class="desc">varargs 编译后就是数组；理解数组内存布局才能准确评估 GC 成本。</div>
+    </div>
+    <div class="link-card">
+      <div class="topic">泛型擦除</div>
+      <div class="desc">堆污染根源；擦除使运行时无法还原 T 的真实类型，数组却保留，导致不匹配。</div>
+    </div>
+    <div class="link-card">
+      <div class="topic">方法重载解析</div>
+      <div class="desc">varargs 在第三轮才被考虑；与装箱规则交叉时需要仔细推导优先级。</div>
+    </div>
+    <div class="link-card">
+      <div class="topic">Stream / Collections</div>
+      <div class="desc"><code>Stream.of</code>、<code>List.of</code>、<code>Set.of</code> 都大量使用 varargs + 固定重载优化模式。</div>
+    </div>
+    <div class="link-card">
+      <div class="topic">反射</div>
+      <div class="desc"><code>Method.invoke(obj, args)</code> 的 <code>Object...</code> varargs 在反射调用中也适用堆污染警告。</div>
+    </div>
+    <div class="link-card">
+      <div class="topic">printf / MessageFormat</div>
+      <div class="desc"><code>String.format</code>、<code>printf</code> 均以 <code>Object...</code> 实现；了解 varargs 才能理解其性能特性。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ 11. 面试高频考点 ══════ -->
+<section id="interview">
+  <h2>11. 面试高频考点</h2>
+
+  <div class="faq">
+
+    <details>
+      <summary>varargs 与数组参数有何区别？可以互相重载吗？</summary>
+      <div class="ans">
+        <p>字节码层面两者相同（都是数组），<strong>不能共存为重载</strong>——<code>f(int[])</code> 与 <code>f(int...)</code> 会产生"方法已定义"编译错误。区别仅在调用侧语法：varargs 允许逐一传参，普通数组参数不行。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>调用 varargs 方法时传入 null 会发生什么？</summary>
+      <div class="ans">
+        <p>裸 <code>null</code> 优先被解释为数组类型的 null，方法内部的 <code>for-each</code> 会抛出 <code>NullPointerException</code>。建议方法体内加 <code>if (args == null) return;</code> 防御，或使用 <code>Objects.requireNonNull</code>。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>为什么泛型 varargs 会有编译警告？@SafeVarargs 做了什么？</summary>
+      <div class="ans">
+        <p>泛型擦除后数组实际类型为 <code>Object[]</code>，但声明类型携带泛型信息，两者不一致即"堆污染"。<code>@SafeVarargs</code> 是程序员向编译器的承诺：方法不写入 / 不泄漏该数组引用，请压制警告。<strong>编译器不验证</strong>这个承诺，安全性由开发者自己保证。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>varargs 和方法重载同时存在时，哪个优先？</summary>
+      <div class="ans">
+        <p>精确匹配（第一轮）> 装拆箱（第二轮）> varargs（第三轮）。存在精确匹配时 varargs 永远不会被选中；只有在前两轮均无法匹配时，才进入 varargs 匹配。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>List.of 为什么要写 11 个固定重载，而不是只用 varargs？</summary>
+      <div class="ans">
+        <p>每次调用 varargs 方法都会在堆上分配一个新数组对象。<code>List.of</code> 是高频调用的工厂方法，固定重载（0~10 个元素）可消除数组分配，降低 GC 压力，对 JVM JIT 编译也更友好（可内联）。11 个元素以上才走 varargs 兜底。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>int[] 传给 Object... 参数时发生了什么？</summary>
+      <div class="ans">
+        <p><code>int[]</code> 是引用类型，它本身是 <code>Object</code> 的子类，但<strong>不是</strong> <code>Object[]</code> 的子类。因此整个 <code>int[]</code> 对象作为单个元素传入，方法接收到的是长度为 1 的 <code>Object[]</code>，其唯一元素是那个 <code>int[]</code> 引用。若需要逐元素传入，需先转换为 <code>Integer[]</code>。</p>
+      </div>
+    </details>
+
+  </div>
+</section>
+
+</main>
+
+<!-- ══════════════ 导航 footer ══════════════ -->
+<nav class="nav-footer">
+  <a href="./16-arrays.html">← 16 · 数组（Arrays）</a>
+  <a href="../java-basics-roadmap.html">返回路线图</a>
+  <a href="./18-string.html">18 · String 深入 →</a>
+</nav>
+
+</body>
+</html>

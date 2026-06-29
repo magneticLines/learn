@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>14. JIT 即时编译（C1/C2 / 分层编译）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 性能调优基础
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 性能调优基础</div>
+    <h1>14. JIT 即时编译（C1 / C2 / 分层编译）</h1>
+    <p>Java 为何能从"慢语言"蜕变为接近 C++ 性能？秘密就在 JIT——它在运行时把热点字节码翻译成本地机器码，并结合真实运行数据做出比静态编译更激进的优化。</p>
+  </div>
+
+  <!-- ===== 1. 为什么需要 JIT ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">1. 为什么需要 JIT？</h2>
+
+  <p>Java 的执行路径分三层：<strong>源码 → 字节码 → 机器码</strong>。字节码由 JVM 解释执行，每条指令都要经历"取指→解释→执行"，天然比直接执行机器码慢 10～50 倍。</p>
+
+  <p>解决思路有两个极端：</p>
+  <ul>
+    <li><strong>纯解释执行</strong>（Python 早期）：启动快，但运行慢；</li>
+    <li><strong>AOT（Ahead-of-Time）提前编译</strong>（Go、GraalVM Native Image）：运行快，但启动慢、丢失运行时信息。</li>
+  </ul>
+
+  <p>JIT 走中间路线：<strong>先解释运行，收集真实的调用频率与类型信息，再对热点代码进行编译优化</strong>。这样既保留了快速启动的优势，又能利用运行时 profile 数据做出比 AOT 更激进的优化（例如内联虚方法、消除空检查）。</p>
+
+  <div class="callout info">
+    <strong>直觉类比：</strong>就像一本厚厚的外语书——刚开始你一字一字查词典（解释执行），等某段文字反复出现，你把它整段记住（JIT 编译），之后看到直接念出来，无需再查。
+  </div>
+
+  <!-- ===== 2. HotSpot 的编译器架构 ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">2. HotSpot 的编译器：C1 与 C2</h2>
+
+  <p>HotSpot JVM 内置两个 JIT 编译器，定位截然不同：</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>特性</th>
+        <th>C1（Client Compiler）</th>
+        <th>C2（Server Compiler）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>别名</td>
+        <td>-client，快速编译器</td>
+        <td>-server，优化编译器</td>
+      </tr>
+      <tr>
+        <td>编译速度</td>
+        <td>快（毫秒级）</td>
+        <td>慢（数十毫秒）</td>
+      </tr>
+      <tr>
+        <td>生成代码质量</td>
+        <td>中等</td>
+        <td>极高（接近 C++ -O2）</td>
+      </tr>
+      <tr>
+        <td>主要优化手段</td>
+        <td>基础内联、常量折叠、寄存器分配</td>
+        <td>激进内联、逃逸分析、标量替换、循环展开、向量化</td>
+      </tr>
+      <tr>
+        <td>适合场景</td>
+        <td>GUI / 短命进程，需要快速响应</td>
+        <td>长期运行的服务端应用</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>注意：</strong>C2 使用 C++ 实现，其内部用的是一种称为"Sea of Nodes"的 IR（中间表示）。由于过于复杂，JDK 团队曾多次尝试重写 C2（Project Metropolis、Graal），至今 C2 仍是生产主力。
+  </div>
+
+  <!-- ===== 3. 分层编译 ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">3. 分层编译（Tiered Compilation）</h2>
+
+  <p>Java 7 引入、Java 8 默认开启。分层编译把解释器 + C1 + C2 串成一条流水线，共 5 个层次：</p>
+
+  <div class="tree">
+<span class="hi">Level 0</span>  解释执行（Interpreter）
+  │  收集方法调用次数（invocation counter）与回边次数（back-edge counter）
+  ▼
+<span class="hi">Level 1</span>  C1 编译 — 无 profiling
+  │  最简单的编译，适合只调用少量次数的方法
+  ▼
+<span class="hi">Level 2</span>  C1 编译 — 有有限 profiling（方法调用计数）
+  ▼
+<span class="hi">Level 3</span>  C1 编译 — 完整 profiling（类型 + 分支概率）
+  │  大量收集运行时数据，为 C2 做准备
+  ▼
+<span class="hi">Level 4</span>  C2 编译 — 激进优化，利用 Level 3 收集的 profile
+  </div>
+
+  <p>方法通常经历 <strong>0 → 3 → 4</strong> 的升级路径。如果 C2 编译队列繁忙，则走 <strong>0 → 2 → 3 → 4</strong>，先用 C1 顶上。如果方法很简单（叶方法、getter/setter），可能只停在 Level 1，无需升到 C2。</p>
+
+  <div class="callout tip">
+    <strong>为什么这样设计？</strong>纯 C2 需要等大量 profile 数据才能编译，启动初期吞吐会很低。分层编译让 C1 先快速"接管"热点方法提升性能，C2 在后台慢慢优化，两者各司其职，兼顾了<strong>启动速度</strong>与<strong>峰值吞吐</strong>。
+  </div>
+
+  <!-- ===== 4. 热点探测 ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">4. 热点探测：什么时候触发编译？</h2>
+
+  <p>JVM 用两个计数器决定何时把方法提交给 JIT：</p>
+  <ul>
+    <li><strong>方法调用计数器（invocation counter）</strong>：每次方法被调用 +1；</li>
+    <li><strong>回边计数器（back-edge counter）</strong>：每次循环回跳 +1，用于检测<em>循环热点</em>（OSR 触发点）。</li>
+  </ul>
+
+  <p>两者之和超过阈值（默认 <code>-XX:CompileThreshold=10000</code>，分层编译下由内部动态调整）时，方法被放入编译队列异步编译。</p>
+
+  <h3>OSR（On-Stack Replacement，栈上替换）</h3>
+  <p>如果一个方法里有超大循环，方法调用次数不多但循环执行了数万次，回边计数器会先触发编译。编译完成后，JVM 能在循环<strong>正在执行时</strong>把栈帧替换成编译后版本，这就是 OSR。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — OSR 触发场景示意</span></div>
+    <pre><span class="kw">public static</span> <span class="ty">long</span> <span class="fn">sum</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="ty">long</span> <span class="var">result</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+    <span class="com">// 这个循环只执行一次（方法调用计数=1），但回边计数会飙升</span>
+    <span class="com">// 回边计数超阈值 → OSR 触发 → 循环体被替换为编译后代码</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="ty">long</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">1_000_000_000L</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+        <span class="var">result</span> <span class="punct">+=</span> <span class="var">i</span><span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ===== 5. 核心优化技术 ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">5. JIT 的核心优化技术</h2>
+
+  <h3>5.1 方法内联（Inlining）</h3>
+  <p>把被调用方法的代码直接嵌入调用处，消除栈帧创建与参数传递的开销。这是所有后续优化的基础——内联后代码展平，编译器才能看到更大的分析窗口。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 内联前 vs 内联后（逻辑等价）</span></div>
+    <pre><span class="com">// 内联前：每次调用 add() 都要压栈/弹栈</span>
+<span class="kw">int</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">int</span> <span class="var">a</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">b</span><span class="punct">)</span> <span class="punct">{</span> <span class="kw">return</span> <span class="var">a</span> <span class="punct">+</span> <span class="var">b</span><span class="punct">; }</span>
+<span class="ty">int</span> <span class="var">r</span> <span class="punct">=</span> <span class="fn">add</span><span class="punct">(</span><span class="num">3</span><span class="punct">,</span> <span class="num">4</span><span class="punct">);</span>
+
+<span class="com">// 内联后：编译器直接计算常量，甚至折叠成 7</span>
+<span class="ty">int</span> <span class="var">r</span> <span class="punct">=</span> <span class="num">3</span> <span class="punct">+</span> <span class="num">4</span><span class="punct">;</span>  <span class="com">// → 常量折叠 → r = 7</span></pre>
+  </div>
+
+  <p>控制内联的关键参数：</p>
+  <ul>
+    <li><code>-XX:MaxInlineSize=35</code>：字节码小于 35 字节的方法直接内联；</li>
+    <li><code>-XX:FreqInlineSize=325</code>：热点方法允许内联到 325 字节；</li>
+    <li><code>-XX:MaxInlineLevel=9</code>：最大内联深度 9 层。</li>
+  </ul>
+
+  <h3>5.2 逃逸分析（Escape Analysis）</h3>
+  <p>分析对象的引用是否"逃逸"出当前方法/线程。若未逃逸，JIT 可以做三件事：</p>
+  <ul>
+    <li><strong>栈上分配</strong>：对象分配在栈帧而非堆，随方法返回自动释放，减轻 GC 压力；</li>
+    <li><strong>标量替换</strong>：把对象各字段拆散为局部变量，彻底消除对象头开销；</li>
+    <li><strong>锁消除</strong>：局部对象上的 <code>synchronized</code> 块无需真正加锁。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 逃逸分析示例</span></div>
+    <pre><span class="kw">public</span> <span class="ty">int</span> <span class="fn">compute</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="com">// Point 未逃逸出 compute()，JIT 可将其标量替换为 x=1, y=2 两个 int</span>
+    <span class="ty">Point</span> <span class="var">p</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Point</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="var">p</span><span class="punct">.</span><span class="var">x</span> <span class="punct">+</span> <span class="var">p</span><span class="punct">.</span><span class="var">y</span><span class="punct">;</span>  <span class="com">// 优化后等价于 return 3;</span>
+<span class="punct">}</span>
+
+<span class="kw">public</span> <span class="ty">String</span> <span class="fn">getStr</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="ty">StringBuilder</span> <span class="var">sb</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">StringBuilder</span><span class="punct">();</span>
+    <span class="com">// sb 未逃逸 → synchronized 内部锁被消除（锁消除）</span>
+    <span class="var">sb</span><span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="var">sb</span><span class="punct">.</span><span class="fn">toString</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>5.3 去虚化（Devirtualization）与条件内联</h3>
+  <p>Java 虚方法调用（invokevirtual）需要运行时查找 vtable，无法直接内联。JIT 利用 profile 数据发现"这个虚调用 99% 都是 <code>ArrayList</code> 的实现"，便生成：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>伪代码 — 双态内联（bimorphic inline）</span></div>
+    <pre><span class="kw">if</span> <span class="punct">(</span><span class="var">receiver</span><span class="punct">.</span><span class="fn">getClass</span><span class="punct">() ==</span> <span class="ty">ArrayList</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="com">// 直接内联 ArrayList.size() 实现</span>
+    <span class="kw">return</span> <span class="var">this</span><span class="punct">.</span><span class="var">size</span><span class="punct">;</span>
+<span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+    <span class="com">// 罕见路径：慢路径，走正常 vtable 查找</span>
+    <span class="kw">return</span> <span class="var">receiver</span><span class="punct">.</span><span class="fn">size</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>这是 JIT 比 AOT 更强的关键所在——AOT 不知道运行时的实际类型分布，只能保守处理。</p>
+
+  <h3>5.4 反优化（Deoptimization）</h3>
+  <p>JIT 的激进优化基于"假设"（如单态内联假设类型不会变）。当假设被打破（例如加载了新的子类），JVM 会触发<strong>反优化</strong>：丢弃编译后代码，退回解释执行，重新收集 profile，再重新编译。</p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>频繁触发反优化（Deopt）会导致性能抖动。可通过 <code>-XX:+PrintCompilation</code> 观察带 <code>made not entrant</code> / <code>made zombie</code> 的日志行，结合 JITWatch 工具定位根因。
+  </div>
+
+  <!-- ===== 6. 查看编译日志 ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">6. 查看 JIT 编译日志</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Shell — 常用诊断参数</span></div>
+    <pre><span class="com"># 打印每次 JIT 编译事件</span>
+java <span class="kw">-XX:+PrintCompilation</span> MyApp
+
+<span class="com"># 输出示例（每列含义：时间戳 编号 标志 层级 方法 字节码大小）</span>
+<span class="com">#   88    1       3       java.lang.String::hashCode (55 bytes)</span>
+<span class="com">#  120    2       4       com.example.Foo::compute (35 bytes)</span>
+<span class="com">#  135    1       3  made not entrant  ← 反优化发生</span>
+
+<span class="com"># 同时打印内联决策（配合 -XX:+PrintCompilation 使用）</span>
+java <span class="kw">-XX:+UnlockDiagnosticVMOptions</span> <span class="kw">-XX:+PrintInlining</span> MyApp
+
+<span class="com"># 输出汇编（需要 hsdis 插件）</span>
+java <span class="kw">-XX:+UnlockDiagnosticVMOptions</span> <span class="kw">-XX:+PrintAssembly</span> \
+     <span class="kw">-XX:PrintAssemblyOptions=intel</span> MyApp</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 手动触发 JIT 预热（基准测试必做）</span></div>
+    <pre><span class="com">/**
+ * 为什么要预热：JMH 等基准框架会在正式计时前多次调用目标方法，
+ * 确保 JIT 已将其编译到 Level 4，测量的才是稳定的峰值性能。
+ * 不预热的结果既包含解释执行时间，毫无参考价值。
+ */</span>
+<span class="ann">@Benchmark</span>
+<span class="ann">@Warmup</span><span class="punct">(</span><span class="var">iterations</span> <span class="punct">=</span> <span class="num">5</span><span class="punct">,</span> <span class="var">time</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">)</span>   <span class="com">// 预热 5 轮，每轮 1 秒</span>
+<span class="ann">@Measurement</span><span class="punct">(</span><span class="var">iterations</span> <span class="punct">=</span> <span class="num">5</span><span class="punct">,</span> <span class="var">time</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">)</span>
+<span class="kw">public</span> <span class="ty">int</span> <span class="fn">benchmarkMethod</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">return</span> <span class="var">target</span><span class="punct">.</span><span class="fn">compute</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ===== 7. 常见陷阱 ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">7. 常见陷阱与踩坑指南</h2>
+
+  <h3>陷阱 1：微基准不预热，测出的是解释执行性能</h3>
+  <p>直接在 <code>main</code> 里计时 10 次循环的平均值，前几轮跑的是解释器。必须使用 <strong>JMH</strong> 并配置足够的 warmup。</p>
+
+  <h3>陷阱 2：方法太大，无法内联</h3>
+  <p>一个 600 字节的"上帝方法"永远无法被内联，也限制了调用它的方法的优化深度。保持方法短小是让 JIT 充分发挥的前提。</p>
+
+  <div class="callout warn">
+    <strong>实战规则：</strong>核心热路径上的方法字节码尽量控制在 35 字节（trivial inline threshold）以内；若超过 325 字节则几乎不可能被内联。可用 <code>javap -c</code> 查看字节码大小。
+  </div>
+
+  <h3>陷阱 3：过度多态阻止去虚化</h3>
+  <p>如果一个接口方法在运行时有超过 2 种实现（megamorphic），C2 会放弃去虚化，退化为间接调用，无法内联。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 多态调用导致去虚化失败</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Processor</span><span class="punct">&gt;</span> <span class="var">processors</span> <span class="punct">=</span> <span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span>
+    <span class="kw">new</span> <span class="ty">TypeA</span><span class="punct">(),</span> <span class="kw">new</span> <span class="ty">TypeB</span><span class="punct">(),</span> <span class="kw">new</span> <span class="ty">TypeC</span><span class="punct">()</span>  <span class="com">// 3 种实现 → megamorphic</span>
+<span class="punct">);</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="ty">Processor</span> <span class="var">p</span> <span class="punct">:</span> <span class="var">processors</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="com">// process() 无法内联，因为 JIT 不知道运行时类型</span>
+    <span class="var">p</span><span class="punct">.</span><span class="fn">process</span><span class="punct">();</span>
+<span class="punct">}</span>
+<span class="com">// 优化：若热路径只有 1 种类型，用具体类型变量持有引用</span></pre>
+  </div>
+
+  <h3>陷阱 4：逃逸分析被 JNI / 反射打破</h3>
+  <p>通过反射访问或 JNI 传递对象，JIT 无法证明对象未逃逸，标量替换和栈上分配均失效。</p>
+
+  <h3>陷阱 5：Warmup 阶段 GC 与 JIT 共同抢占 CPU</h3>
+  <p>服务启动初期同时面临解释执行（慢）+ JIT 编译线程（占 CPU）+ GC（分配压力大），三重叠加会导致"启动风暴"。可通过 <code>-XX:CICompilerCount=2</code> 控制编译线程数，或用 <code>AppCDS</code>/<code>AOT</code> 缓存已编译代码缩短预热时间。</p>
+
+  <!-- ===== 8. 面试考点 ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">8. 面试高频考点</h2>
+
+  <table>
+    <thead>
+      <tr><th>问题</th><th>答题要点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>JIT 和 AOT 的区别？</td>
+        <td>JIT 运行时编译、能利用 profile 数据做激进优化（去虚化/内联）、启动慢；AOT 提前编译、启动快、无运行时信息、优化保守</td>
+      </tr>
+      <tr>
+        <td>分层编译有几层？默认哪个版本开启？</td>
+        <td>5 层（0-4），Java 8 默认开启，<code>-XX:+TieredCompilation</code></td>
+      </tr>
+      <tr>
+        <td>C1 和 C2 的主要区别？</td>
+        <td>C1 编译快、优化少，适合短命进程；C2 编译慢、优化激进（逃逸分析、循环展开），适合服务端长期运行</td>
+      </tr>
+      <tr>
+        <td>什么是 OSR？</td>
+        <td>On-Stack Replacement，循环执行过程中将栈帧替换为编译后版本，解决"单次调用的大循环"无法被方法调用计数触发的问题</td>
+      </tr>
+      <tr>
+        <td>逃逸分析能带来哪些优化？</td>
+        <td>栈上分配、标量替换、锁消除</td>
+      </tr>
+      <tr>
+        <td>什么是反优化？何时触发？</td>
+        <td>Deoptimization，当 JIT 基于的假设被打破（如新子类加载、类型 profile 改变）时，丢弃编译代码退回解释执行</td>
+      </tr>
+      <tr>
+        <td>如何排查 JIT 内联失败？</td>
+        <td><code>-XX:+PrintInlining</code> 查看内联决策；方法字节码超过阈值、虚方法 megamorphic、方法含异常处理都可能阻止内联</td>
+      </tr>
+      <tr>
+        <td>为什么 JMH 测试要预热？</td>
+        <td>预热确保目标方法被 JIT 编译到 Level 4，测量的是稳定峰值性能，而非夹杂解释执行的平均值</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 9. 总结 ===== -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">9. 小结</h2>
+
+  <div class="callout tip">
+    <strong>核心思路一句话：</strong>JIT 用"先解释收集数据，再编译利用数据"的策略，在运行时做出比静态编译更好的优化决策。分层编译（C1 快速上线 + C2 深度优化）是这一策略的工程实现；逃逸分析、内联、去虚化是 C2 最有价值的三大优化手段。
+  </div>
+
+  <p>作为开发者，最重要的两点：<strong>①</strong> 核心热路径保持方法短小（助力内联）；<strong>②</strong> 避免在热路径引入过多多态（助力去虚化）。其余的，放心交给 JIT。</p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./13-JVM常用参数.html" class="nav-btn">← 13. JVM 常用参数（-Xmx / -Xms / -XX:+UseG1GC）</a>
+    <a href="./15-OOM排查.html" class="nav-btn next">15. 常见 OOM 场景与排查 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>15. 常见 OOM 场景与排查 — JVM 性能调优基础</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 性能调优基础
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 性能调优基础</div>
+    <h1>15. 常见 OOM 场景与排查</h1>
+    <p>OutOfMemoryError 不是一个错误，而是 JVM 的求救信号——它告诉你内存已经被耗尽，并且 GC 已经竭尽全力仍无能为力。读懂这个信号，才能找到真正的病根。</p>
+  </div>
+
+  <!-- ==================== 1. 为什么会 OOM ==================== -->
+  <h2 style="border-color:#c084fc;">1. 为什么会发生 OOM</h2>
+
+  <p>JVM 内存分为若干区域，每个区域都有自己的上限。<strong>OOM 本质上是某个区域的分配请求无法被满足，且 GC 已无法回收足够空间</strong>。</p>
+
+  <div class="tree">
+    JVM 内存区域
+    ├── <span class="hi">堆（Heap）</span>          ← 对象主战场，-Xmx 控制上限
+    │   ├── 新生代（Eden / S0 / S1）
+    │   └── 老年代（Old Gen）
+    ├── <span class="hi">方法区 / Metaspace</span>  ← 类元数据，-XX:MaxMetaspaceSize
+    ├── 虚拟机栈（每线程一个）     ← 每帧一个栈帧，-Xss 控制单线程栈大小
+    ├── 本地方法栈
+    └── <span class="hi">直接内存（Direct）</span>  ← NIO ByteBuffer.allocateDirect()，-XX:MaxDirectMemorySize
+  </div>
+
+  <p>不同区域耗尽，抛出的 <code>OutOfMemoryError</code> 消息不同，这是排查的第一条线索。</p>
+
+  <table>
+    <thead>
+      <tr><th>OOM 消息</th><th>发生区域</th><th>最常见根因</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Java heap space</code></td><td>堆</td><td>内存泄漏 / 堆太小 / 大对象</td></tr>
+      <tr><td><code>GC overhead limit exceeded</code></td><td>堆</td><td>GC 占用 &gt;98% 时间但回收 &lt;2% 空间</td></tr>
+      <tr><td><code>Metaspace</code></td><td>方法区</td><td>类加载失控（动态代理/CGLib/JSP）</td></tr>
+      <tr><td><code>unable to create new native thread</code></td><td>OS 线程</td><td>线程数超系统限制</td></tr>
+      <tr><td><code>Direct buffer memory</code></td><td>直接内存</td><td>NIO 未释放 / Netty 内存泄漏</td></tr>
+      <tr><td><code>StackOverflowError</code></td><td>虚拟机栈</td><td>无限递归（技术上不属于 OOM，但同类问题）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ==================== 2. 堆 OOM ==================== -->
+  <h2 style="border-color:#c084fc;">2. 堆 OOM：Java heap space</h2>
+
+  <h3>2.1 内存泄漏（最常见）</h3>
+  <p>内存泄漏不是 C/C++ 专利。Java 里的泄漏是：<strong>对象不再被业务使用，但 GC Root 仍然可达</strong>，GC 无法回收。最典型的三种：</p>
+
+  <ul>
+    <li><strong>静态集合持有对象</strong>：<code>static Map</code> 只增不删，随请求累积</li>
+    <li><strong>监听器/回调未注销</strong>：向 EventBus / 消息队列注册，业务结束后忘记移除</li>
+    <li><strong>ThreadLocal 未 remove</strong>：线程池线程复用，ThreadLocal 里的 value 跟着线程永久存活</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — ThreadLocal 泄漏反例 → 正例</span></div>
+    <pre><span class="com">// ❌ 反例：线程池场景下，每次请求写入 ThreadLocal 但不清理</span>
+<span class="kw">private static final</span> <span class="ty">ThreadLocal</span><span class="punct">&lt;</span><span class="ty">LargeContext</span><span class="punct">&gt;</span> <span class="var">ctx</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadLocal</span><span class="punct">&lt;&gt;();</span>
+
+<span class="kw">void</span> <span class="fn">handle</span><span class="punct">(</span><span class="ty">Request</span> <span class="var">req</span><span class="punct">) {</span>
+    <span class="var">ctx</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">LargeContext</span><span class="punct">(</span><span class="var">req</span><span class="punct">));</span>
+    <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="com">// 方法结束，线程回到线程池，LargeContext 无法被回收！</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正例：try-finally 保证清理</span>
+<span class="kw">void</span> <span class="fn">handle</span><span class="punct">(</span><span class="ty">Request</span> <span class="var">req</span><span class="punct">) {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="var">ctx</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">LargeContext</span><span class="punct">(</span><span class="var">req</span><span class="punct">));</span>
+        <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">ctx</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">();</span> <span class="com">// 归还线程前必须清理</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>2.2 大对象一次性分配</h3>
+  <p>加载百 MB 的 Excel、一次性 <code>SELECT *</code> 返回百万行数据，直接打爆堆。解法：流式处理（<code>ResultSet</code> 逐行读取 / <code>EasyExcel</code> SAX 模式）。</p>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong><code>String.intern()</code> 在 JDK 6 及之前会把字符串放入 PermGen（永久代），大量 intern 会导致 PermGen OOM。JDK 7+ intern 改为放在堆上，但大量不同字符串 intern 仍会撑大堆。
+  </div>
+
+  <!-- ==================== 3. GC overhead limit exceeded ==================== -->
+  <h2 style="border-color:#c084fc;">3. GC overhead limit exceeded</h2>
+
+  <p>这是 JVM 内置的<strong>熔断保护</strong>：当连续多次 GC、每次 GC 时间占比超过 98%，却只回收了不到 2% 的堆空间，JVM 主动抛出此 OOM，而不是让应用陷入"GC 地狱"（CPU 100%、吞吐量接近 0）。</p>
+
+  <p>本质原因依然是堆内存不足/泄漏，只是 JVM 更早介入。排查方式与 <code>Java heap space</code> 相同：<strong>dump 堆分析存活对象</strong>。</p>
+
+  <div class="callout info">
+    可以用 <code>-XX:-UseGCOverheadLimit</code> 关闭这个保护，但<strong>不推荐</strong>——关掉只会让应用挣扎更久再崩，问题本身没有解决。
+  </div>
+
+  <!-- ==================== 4. Metaspace OOM ==================== -->
+  <h2 style="border-color:#c084fc;">4. Metaspace OOM</h2>
+
+  <h3>4.1 为什么 Metaspace 会耗尽</h3>
+  <p>JDK 8 把方法区从固定大小的 PermGen（永久代）改为 Metaspace（本地内存），默认无上限（受物理内存约束）。<strong>类元数据占用的 Metaspace 只有在类加载器被 GC 回收后才能释放</strong>。</p>
+
+  <p>常见触发场景：</p>
+  <ul>
+    <li><strong>CGLib 动态代理失控</strong>：每次调用没有缓存代理类，导致类爆炸式增长</li>
+    <li><strong>JSP 热部署</strong>：Tomcat 每次修改 JSP 都生成新类，旧类加载器无法卸载</li>
+    <li><strong>Groovy / 脚本引擎</strong>：每次 eval 都创建新类加载器</li>
+    <li><strong>Spring AOP 误用</strong>：在循环中对同一 bean 重复创建代理</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — CGLib 代理泄漏反例</span></div>
+    <pre><span class="com">// ❌ 每次调用都生成一个新的代理类，类加载器持有引用无法卸载</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span> <span class="punct">:</span> <span class="var">orders</span><span class="punct">) {</span>
+    <span class="ty">Enhancer</span> <span class="var">enhancer</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Enhancer</span><span class="punct">();</span>
+    <span class="var">enhancer</span><span class="punct">.</span><span class="fn">setSuperclass</span><span class="punct">(</span><span class="ty">OrderService</span><span class="punct">.</span><span class="kw">class</span><span class="punct">);</span>
+    <span class="var">enhancer</span><span class="punct">.</span><span class="fn">setCallback</span><span class="punct">(</span><span class="var">myInterceptor</span><span class="punct">);</span>
+    <span class="ty">OrderService</span> <span class="var">proxy</span> <span class="punct">= (</span><span class="ty">OrderService</span><span class="punct">)</span> <span class="var">enhancer</span><span class="punct">.</span><span class="fn">create</span><span class="punct">();</span>
+    <span class="var">proxy</span><span class="punct">.</span><span class="fn">process</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正例：代理类应单例复用，在应用启动时创建一次</span>
+<span class="com">// Spring 容器帮你管理，不要手动在业务代码里 new Enhancer</span></pre>
+  </div>
+
+  <h3>4.2 排查 Metaspace 增长</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Shell — 监控已加载类数量</span></div>
+    <pre><span class="com"># jstat 每秒打印一次 Class 加载数</span>
+jstat -class <span class="num">&lt;pid&gt;</span> <span class="num">1000</span>
+
+<span class="com"># 如果 Loaded 数一直单调递增，说明类在持续加载</span>
+<span class="com">Loaded  Bytes  Unloaded  Bytes     Time</span>
+ <span class="num">12345</span>  <span class="num">24.5</span>       <span class="num">0</span>    <span class="num">0.0</span>       <span class="num">3.21</span>
+ <span class="num">12567</span>  <span class="num">25.1</span>       <span class="num">0</span>    <span class="num">0.0</span>       <span class="num">3.25</span>  <span class="com">← Unloaded 始终 0，泄漏！</span></pre>
+  </div>
+
+  <!-- ==================== 5. 线程数 OOM ==================== -->
+  <h2 style="border-color:#c084fc;">5. unable to create new native thread</h2>
+
+  <p>这个 OOM 与堆无关，是 <strong>OS 线程资源耗尽</strong>。每个 Java 线程对应一个 OS 线程，Linux 默认单进程最多 ~1024 个线程（<code>ulimit -u</code>）。</p>
+
+  <p>触发原因：</p>
+  <ul>
+    <li>无界线程池（<code>Executors.newCachedThreadPool()</code> 无限制创建线程）</li>
+    <li>每次请求都 <code>new Thread()</code> 而不使用线程池</li>
+    <li>堆外内存不足（每个线程栈默认 512KB~1MB，堆大了反而挤占线程可用地址空间）</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>反直觉陷阱：</strong>有时候堆设得越大，反而越容易触发此 OOM。原因是 32 位 JVM 进程地址空间只有 4GB，堆占 3GB 后剩余地址空间不足以分配线程栈。JDK 8+ 64 位 JVM 基本不受此限制，但 OS 线程数上限依然存在。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 无界线程池反例 → 正例</span></div>
+    <pre><span class="com">// ❌ 高并发下会创建无数线程</span>
+<span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newCachedThreadPool</span><span class="punct">();</span>
+
+<span class="com">// ✅ 明确上限，超出用队列缓冲，拒绝策略兜底</span>
+<span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+    <span class="num">10</span><span class="punct">,</span>                           <span class="com">// corePoolSize</span>
+    <span class="num">50</span><span class="punct">,</span>                           <span class="com">// maximumPoolSize</span>
+    <span class="num">60L</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>
+    <span class="kw">new</span> <span class="ty">ArrayBlockingQueue</span><span class="punct">&lt;&gt;(</span><span class="num">200</span><span class="punct">),</span>  <span class="com">// 有界队列</span>
+    <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">.</span><span class="ty">CallerRunsPolicy</span><span class="punct">()</span>
+<span class="punct">);</span></pre>
+  </div>
+
+  <!-- ==================== 6. 直接内存 OOM ==================== -->
+  <h2 style="border-color:#c084fc;">6. Direct buffer memory</h2>
+
+  <p><code>ByteBuffer.allocateDirect()</code> 在堆外分配内存，不受 <code>-Xmx</code> 控制，受 <code>-XX:MaxDirectMemorySize</code> 限制（默认等于 <code>-Xmx</code>）。Netty 大量使用直接内存以减少数据拷贝。</p>
+
+  <p>泄漏原因：<code>DirectByteBuffer</code> 依赖 GC 触发 <code>Cleaner</code> 来释放直接内存。<strong>堆对象小、GC 不频繁，直接内存却迅速耗尽</strong>，形成"堆内存很空，直接内存爆了"的诡异现象。</p>
+
+  <div class="callout tip">
+    Netty 提供 <code>-Dio.netty.leakDetection.level=paranoid</code> 开启内存泄漏检测，会在日志中报告哪些 ByteBuf 未被释放——上线前务必在 staging 环境跑一遍。
+  </div>
+
+  <!-- ==================== 7. 通用排查流程 ==================== -->
+  <h2 style="border-color:#c084fc;">7. 通用排查流程</h2>
+
+  <h3>Step 1：读异常消息，确定区域</h3>
+  <p>如上面的对照表，先锁定是堆、Metaspace 还是线程。</p>
+
+  <h3>Step 2：开启 Heap Dump 自动转储</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>JVM 启动参数</span></div>
+    <pre><span class="com"># OOM 时自动 dump，不需要手动抓</span>
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath=/logs/oom-<span class="num">&lt;pid&gt;</span>.hprof</pre>
+  </div>
+
+  <h3>Step 3：用 MAT 或 JProfiler 分析 hprof</h3>
+  <p>打开 Eclipse MAT，执行 <strong>Leak Suspects Report</strong>：工具会自动找出占用内存最多的对象链，90% 的堆泄漏问题靠这一步就能定位。</p>
+
+  <div class="tree">
+    MAT 排查流程
+    ├── 打开 .hprof
+    ├── <span class="hi">Leak Suspects</span>        → 自动定位最大嫌疑对象
+    ├── <span class="hi">Dominator Tree</span>       → 按对象保留大小排序
+    ├── <span class="hi">Histogram</span>            → 按类型统计实例数和大小
+    └── <span class="hi">Path to GC Roots</span>    → 找到是谁持有引用（根因）
+  </div>
+
+  <h3>Step 4：线上实时诊断（不重启）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Shell — 手动触发 Heap Dump</span></div>
+    <pre><span class="com"># jmap（会短暂 STW，谨慎在生产使用）</span>
+jmap -dump:format=b,file=/tmp/heap.hprof <span class="num">&lt;pid&gt;</span>
+
+<span class="com"># 查看当前堆使用摘要（轻量，几乎无影响）</span>
+jmap -heap <span class="num">&lt;pid&gt;</span>
+
+<span class="com"># 实时 GC 监控（每 2 秒打印一次 Full GC 情况）</span>
+jstat -gcutil <span class="num">&lt;pid&gt;</span> <span class="num">2000</span></pre>
+  </div>
+
+  <!-- ==================== 8. 案例串讲 ==================== -->
+  <h2 style="border-color:#c084fc;">8. 真实案例：缓存 + 弱引用的误用</h2>
+
+  <p>某微服务启动后内存缓慢上涨，24 小时后 OOM。Heap Dump 显示老年代被数十万个 <code>byte[]</code> 占满，追溯来源是一个"自以为安全"的本地缓存：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — WeakReference 缓存失效反例</span></div>
+    <pre><span class="com">// 开发者以为用了 WeakReference，GC 压力大时会自动清理</span>
+<span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">WeakReference</span><span class="punct">&lt;</span><span class="ty">byte</span><span class="punct">[]&gt;&gt;</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ConcurrentHashMap</span><span class="punct">&lt;&gt;();</span>
+
+<span class="kw">void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">String</span> <span class="var">key</span><span class="punct">,</span> <span class="kw">byte</span><span class="punct">[]</span> <span class="var">data</span><span class="punct">) {</span>
+    <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="kw">new</span> <span class="ty">WeakReference</span><span class="punct">&lt;&gt;(</span><span class="var">data</span><span class="punct">));</span>
+<span class="punct">}</span>
+
+<span class="com">// 问题：WeakReference 的 value（byte[]）会被 GC，但</span>
+<span class="com">// Map 的 Key（String）和 WeakReference 壳子本身不会！</span>
+<span class="com">// 随着 key 不断增加，Map 本身无限膨胀 → OOM</span></pre>
+  </div>
+
+  <p>正确做法是使用 <strong>Guava Cache</strong> 或 <strong>Caffeine</strong>，它们提供基于容量/时间的自动淘汰，并且内部正确处理了 Entry 的回收。</p>
+
+  <!-- ==================== 9. 面试考点 ==================== -->
+  <h2 style="border-color:#c084fc;">9. 面试高频考点</h2>
+
+  <table>
+    <thead>
+      <tr><th>问题</th><th>关键答点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Java 有哪几种 OOM？</td>
+        <td>堆（heap space / GC overhead）、Metaspace、线程（native thread）、直接内存、StackOverflow（非 OOM 但同类）</td>
+      </tr>
+      <tr>
+        <td>内存泄漏 vs 内存溢出</td>
+        <td>泄漏（leak）是根因：对象可达但无用；溢出（overflow/OOM）是结果：空间耗尽。泄漏持续累积最终导致溢出</td>
+      </tr>
+      <tr>
+        <td>ThreadLocal 为什么会泄漏？</td>
+        <td>Entry 的 key 是 WeakReference（可被 GC），但 value 是强引用。key 被回收后 value 成为孤儿，线程不销毁则永久存活。线程池场景必须 remove()</td>
+      </tr>
+      <tr>
+        <td>如何在不重启的情况下排查 OOM？</td>
+        <td>jmap dump → MAT 分析；或提前加 <code>-XX:+HeapDumpOnOutOfMemoryError</code>；Arthas 的 <code>memory</code> 命令可实时查看各区占用</td>
+      </tr>
+      <tr>
+        <td>Metaspace 与 PermGen 区别？</td>
+        <td>PermGen 固定大小在 JVM 进程内存；Metaspace 使用本地内存，默认无上限，避免了 PermGen 频繁调优的痛点，但仍需设 <code>-XX:MaxMetaspaceSize</code> 防止无限增长</td>
+      </tr>
+      <tr>
+        <td>堆设越大越好吗？</td>
+        <td>不是。堆越大：① GC 停顿时间越长；② 在 32 位 JVM 中挤占线程栈地址空间；③ 掩盖了真正的内存泄漏，让问题更难排查</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ==================== 10. 快速预防清单 ==================== -->
+  <h2 style="border-color:#c084fc;">10. 快速预防清单</h2>
+
+  <ul>
+    <li>启动参数加 <code>-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/logs/</code>，让 OOM 现场可复现</li>
+    <li>线程池必须有界：禁用 <code>newCachedThreadPool()</code>，明确 <code>maximumPoolSize</code> 和有界队列</li>
+    <li>ThreadLocal 在 finally 块中 <code>remove()</code></li>
+    <li>本地缓存用 Caffeine，设置 <code>maximumSize</code> 和 <code>expireAfterWrite</code></li>
+    <li>Metaspace 设上限：<code>-XX:MaxMetaspaceSize=256m</code>，防止动态代理失控吃光内存</li>
+    <li>大数据读写使用流式 API（EasyExcel、JdbcTemplate <code>queryForStream</code>），杜绝一次性加载全量数据</li>
+    <li>Netty 项目开启 <code>-Dio.netty.leakDetection.level=simple</code> 至少在测试环境验证</li>
+  </ul>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./14-JIT即时编译.html" class="nav-btn">← 14. JIT 即时编译（C1/C2 / 分层编译）</a>
+    <a href="./16-jstack-jmap-jstat.html" class="nav-btn next">16. jstack / jmap / jstat 使用 →</a>
+  </div>
+
+</div>
+</body>
+</html>

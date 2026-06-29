@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>18. Files 与 Path（NIO.2）</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: inherit; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+    .nav-btn.next:hover { background: #16653422; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / 核心类库 / IO
+  </div>
+
+  <div class="hero">
+    <div class="tag">核心类库 · IO</div>
+    <h1>18. Files 与 Path（NIO.2）</h1>
+    <p>Java 7 引入的现代文件系统 API，彻底取代了残缺不全的 <code>java.io.File</code>，用声明式、链式的方式处理路径与文件操作。</p>
+  </div>
+
+  <!-- ① 为什么需要 NIO.2 -->
+  <h2>为什么要重新设计？File 的七宗罪</h2>
+  <p>在 Java 7 之前，<code>java.io.File</code> 是唯一的文件操作入口，但它有几个致命缺陷：</p>
+  <ul>
+    <li><strong>方法失败无提示</strong>：<code>file.delete()</code> / <code>file.mkdir()</code> 只返回 <code>boolean</code>，失败原因完全不可知。</li>
+    <li><strong>不支持符号链接</strong>：无法区分真实文件与软链接。</li>
+    <li><strong>不可变路径难以操作</strong>：拼接路径要手写字符串，跨平台分隔符问题一团糟。</li>
+    <li><strong>缺少元数据能力</strong>：无法读取文件权限、所有者、创建时间等属性。</li>
+    <li><strong>遍历目录很麻烦</strong>：需要递归手写，没有流式 API。</li>
+    <li><strong>原子操作缺失</strong>：移动文件、创建临时文件等不保证原子性。</li>
+  </ul>
+  <p>NIO.2（JSR-203）的解法是将<strong>「路径」与「文件操作」彻底分离</strong>：<code>Path</code> 只负责描述位置，<code>Files</code> 工具类负责所有 I/O 动作，并在失败时抛出携带原因的 <code>IOException</code> 子类。</p>
+
+  <!-- ② Path 核心概念 -->
+  <h2>Path：描述位置，而非文件本身</h2>
+  <p><code>Path</code> 是一个接口（<code>java.nio.file.Path</code>），代表文件系统中的一条路径。它<strong>不要求路径实际存在</strong>，更像一个"地址字符串的智能封装"。</p>
+
+  <div class="tree">
+    java.nio.file<br>
+    ├── <span class="hi">Path</span>          ← 接口，描述路径<br>
+    ├── <span class="hi">Files</span>         ← 工具类，执行操作<br>
+    ├── <span class="hi">Paths</span>         ← 工厂类，创建 Path（Java 11+ 可用 Path.of）<br>
+    ├── FileSystem    ← 抽象文件系统（本地 / ZIP 等）<br>
+    └── FileSystems   ← FileSystem 工厂
+  </div>
+
+  <h3>创建 Path</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>创建 Path 的三种方式</span><span>Java</span></div>
+    <pre><span class="com">// 方式 1：Paths.of（推荐，Java 11+）</span>
+<span class="ty">Path</span> <span class="var">p1</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/home/user/docs/readme.txt"</span><span class="punct">);</span>
+
+<span class="com">// 方式 2：Paths.get（Java 7+，功能等价）</span>
+<span class="ty">Path</span> <span class="var">p2</span> <span class="punct">=</span> <span class="ty">Paths</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="str">"/home/user"</span><span class="punct">,</span> <span class="str">"docs"</span><span class="punct">,</span> <span class="str">"readme.txt"</span><span class="punct">);</span>
+
+<span class="com">// 方式 3：从旧 File 对象转换（兼容遗留代码）</span>
+<span class="ty">Path</span> <span class="var">p3</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">File</span><span class="punct">(</span><span class="str">"/home/user/docs/readme.txt"</span><span class="punct">).</span><span class="fn">toPath</span><span class="punct">();</span>
+
+<span class="com">// 反向转换：Path → File（与旧 API 互操作）</span>
+<span class="ty">File</span> <span class="var">f</span> <span class="punct">=</span> <span class="var">p1</span><span class="punct">.</span><span class="fn">toFile</span><span class="punct">();</span></pre>
+  </div>
+
+  <h3>路径的常用操作</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Path 的解析与拼接</span><span>Java</span></div>
+    <pre><span class="ty">Path</span> <span class="var">base</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/home/user/docs/readme.txt"</span><span class="punct">);</span>
+
+<span class="com">// 获取各部分</span>
+<span class="var">base</span><span class="punct">.</span><span class="fn">getFileName</span><span class="punct">();</span>   <span class="com">// readme.txt</span>
+<span class="var">base</span><span class="punct">.</span><span class="fn">getParent</span><span class="punct">();</span>     <span class="com">// /home/user/docs</span>
+<span class="var">base</span><span class="punct">.</span><span class="fn">getRoot</span><span class="punct">();</span>       <span class="com">// /（Windows 上是 C:\）</span>
+<span class="var">base</span><span class="punct">.</span><span class="fn">getNameCount</span><span class="punct">();</span>  <span class="com">// 4（home, user, docs, readme.txt）</span>
+<span class="var">base</span><span class="punct">.</span><span class="fn">getName</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>      <span class="com">// home</span>
+
+<span class="com">// 路径拼接：resolve = 在当前路径后追加</span>
+<span class="ty">Path</span> <span class="var">dir</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/home/user"</span><span class="punct">);</span>
+<span class="ty">Path</span> <span class="var">full</span> <span class="punct">=</span> <span class="var">dir</span><span class="punct">.</span><span class="fn">resolve</span><span class="punct">(</span><span class="str">"docs/readme.txt"</span><span class="punct">);</span>  <span class="com">// /home/user/docs/readme.txt</span>
+
+<span class="com">// 相对路径：relativize = 从 this 出发怎么走到 other</span>
+<span class="ty">Path</span> <span class="var">from</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/home/user"</span><span class="punct">);</span>
+<span class="ty">Path</span> <span class="var">to</span>   <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/home/user/docs/readme.txt"</span><span class="punct">);</span>
+<span class="var">from</span><span class="punct">.</span><span class="fn">relativize</span><span class="punct">(</span><span class="var">to</span><span class="punct">);</span>  <span class="com">// docs/readme.txt</span>
+
+<span class="com">// 规范化：消除 . 和 ..</span>
+<span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/home/user/../user/./docs"</span><span class="punct">).</span><span class="fn">normalize</span><span class="punct">();</span>  <span class="com">// /home/user/docs</span>
+
+<span class="com">// 转为绝对路径（相对路径 + 当前工作目录）</span>
+<span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"docs/readme.txt"</span><span class="punct">).</span><span class="fn">toAbsolutePath</span><span class="punct">();</span>
+
+<span class="com">// 真实路径：跟踪符号链接，文件必须存在</span>
+<span class="ty">Path</span> <span class="var">real</span> <span class="punct">=</span> <span class="var">p1</span><span class="punct">.</span><span class="fn">toRealPath</span><span class="punct">();</span>  <span class="com">// 抛 IOException 如果不存在</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>设计直觉：</strong><code>resolve()</code> 类似字符串拼接，但如果参数是<strong>绝对路径</strong>，则直接返回参数本身——这和 URL 解析行为一致，是"合并路径"的标准语义。
+  </div>
+
+  <!-- ③ Files 工具类 -->
+  <h2>Files：文件操作的瑞士军刀</h2>
+  <p><code>java.nio.file.Files</code> 是一个全静态工具类，覆盖了文件的读写、复制、移动、删除、遍历等几乎所有操作，并在失败时抛出具体异常（如 <code>NoSuchFileException</code>、<code>FileAlreadyExistsException</code>）。</p>
+
+  <h3>读写文件：小文件一行搞定</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Files 读写小文件</span><span>Java</span></div>
+    <pre><span class="ty">Path</span> <span class="var">file</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"data.txt"</span><span class="punct">);</span>
+
+<span class="com">// 写入（覆盖）</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">writeString</span><span class="punct">(</span><span class="var">file</span><span class="punct">,</span> <span class="str">"Hello, NIO.2!"</span><span class="punct">,</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">);</span>
+
+<span class="com">// 追加写入</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">writeString</span><span class="punct">(</span><span class="var">file</span><span class="punct">,</span> <span class="str">"\nAppended line"</span><span class="punct">,</span>
+    <span class="ty">StandardOpenOption</span><span class="punct">.</span><span class="var">APPEND</span><span class="punct">);</span>
+
+<span class="com">// 写入字节数组</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">write</span><span class="punct">(</span><span class="var">file</span><span class="punct">,</span> <span class="str">"bytes"</span><span class="punct">.</span><span class="fn">getBytes</span><span class="punct">());</span>
+
+<span class="com">// 写入多行</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">lines</span> <span class="punct">=</span> <span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"line1"</span><span class="punct">,</span> <span class="str">"line2"</span><span class="punct">,</span> <span class="str">"line3"</span><span class="punct">);</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">write</span><span class="punct">(</span><span class="var">file</span><span class="punct">,</span> <span class="var">lines</span><span class="punct">);</span>
+
+<span class="com">// ---- 读取 ----</span>
+
+<span class="com">// 读取全部内容为字符串</span>
+<span class="ty">String</span> <span class="var">content</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">readString</span><span class="punct">(</span><span class="var">file</span><span class="punct">);</span>
+
+<span class="com">// 读取全部行（适合小文件）</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">allLines</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">readAllLines</span><span class="punct">(</span><span class="var">file</span><span class="punct">,</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">);</span>
+
+<span class="com">// 读取为字节数组</span>
+<span class="kw">byte</span><span class="punct">[]</span> <span class="var">bytes</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">readAllBytes</span><span class="punct">(</span><span class="var">file</span><span class="punct">);</span>
+
+<span class="com">// 流式读取大文件（惰性加载，记得关闭）</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">Stream</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">stream</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">lines</span><span class="punct">(</span><span class="var">file</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="var">stream</span><span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="var">l</span> <span class="punct">-&gt;</span> <span class="var">l</span><span class="punct">.</span><span class="fn">startsWith</span><span class="punct">(</span><span class="str">"ERROR"</span><span class="punct">))</span>
+          <span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">::</span><span class="fn">println</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>大文件禁用 readAllLines / readString！</strong>它们会把整个文件加载进堆内存。处理日志、CSV 等大文件时务必用 <code>Files.lines()</code>，它返回惰性 Stream，逐行读取。
+  </div>
+
+  <h3>获取 BufferedReader / InputStream（与旧 API 桥接）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>与流式 API 互操作</span><span>Java</span></div>
+    <pre><span class="com">// 获取 BufferedReader（可传给需要 Reader 的 API）</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">BufferedReader</span> <span class="var">br</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">newBufferedReader</span><span class="punct">(</span><span class="var">file</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="var">br</span><span class="punct">.</span><span class="fn">lines</span><span class="punct">().</span><span class="fn">forEach</span><span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">::</span><span class="fn">println</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 获取 BufferedWriter</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">BufferedWriter</span> <span class="var">bw</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">newBufferedWriter</span><span class="punct">(</span><span class="var">file</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="var">bw</span><span class="punct">.</span><span class="fn">write</span><span class="punct">(</span><span class="str">"content"</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 获取 InputStream（处理二进制）</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">InputStream</span> <span class="var">is</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">newInputStream</span><span class="punct">(</span><span class="var">file</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="com">// 传给 ImageIO.read(is) / ObjectInputStream 等</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ④ 目录与文件管理 -->
+  <h2>目录与文件管理</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>创建、复制、移动、删除</span><span>Java</span></div>
+    <pre><span class="ty">Path</span> <span class="var">src</span>  <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/tmp/a.txt"</span><span class="punct">);</span>
+<span class="ty">Path</span> <span class="var">dest</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/tmp/backup/a.txt"</span><span class="punct">);</span>
+
+<span class="com">// 创建单层目录</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">createDirectory</span><span class="punct">(</span><span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/tmp/newdir"</span><span class="punct">));</span>
+
+<span class="com">// 创建多层目录（类似 mkdir -p）</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">createDirectories</span><span class="punct">(</span><span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/tmp/a/b/c"</span><span class="punct">));</span>
+
+<span class="com">// 复制文件（目标存在时默认抛异常）</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">copy</span><span class="punct">(</span><span class="var">src</span><span class="punct">,</span> <span class="var">dest</span><span class="punct">);</span>
+
+<span class="com">// 复制并覆盖目标文件</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">copy</span><span class="punct">(</span><span class="var">src</span><span class="punct">,</span> <span class="var">dest</span><span class="punct">,</span> <span class="ty">StandardCopyOption</span><span class="punct">.</span><span class="var">REPLACE_EXISTING</span><span class="punct">);</span>
+
+<span class="com">// 移动文件（原子性取决于文件系统）</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">move</span><span class="punct">(</span><span class="var">src</span><span class="punct">,</span> <span class="var">dest</span><span class="punct">,</span> <span class="ty">StandardCopyOption</span><span class="punct">.</span><span class="var">ATOMIC_MOVE</span><span class="punct">);</span>
+
+<span class="com">// 删除（文件不存在时抛 NoSuchFileException）</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">delete</span><span class="punct">(</span><span class="var">src</span><span class="punct">);</span>
+
+<span class="com">// 安静删除（不存在也不报错，返回 boolean）</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">deleteIfExists</span><span class="punct">(</span><span class="var">src</span><span class="punct">);</span>
+
+<span class="com">// 创建临时文件（系统临时目录）</span>
+<span class="ty">Path</span> <span class="var">tmp</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">createTempFile</span><span class="punct">(</span><span class="str">"prefix-"</span><span class="punct">,</span> <span class="str">".tmp"</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>ATOMIC_MOVE 的本质：</strong>在同一文件系统内，移动操作只是修改目录项指针，内核保证原子性。跨文件系统时会退化为复制+删除，<code>AtomicMoveNotSupportedException</code> 会被抛出。这是安全地替换配置文件（先写临时文件，再原子移动）的标准范式。
+  </div>
+
+  <!-- ⑤ 检测与元数据 -->
+  <h2>状态检测与文件属性</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>Files 状态检测</span><span>Java</span></div>
+    <pre><span class="ty">Path</span> <span class="var">p</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/tmp/data.csv"</span><span class="punct">);</span>
+
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">exists</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>                  <span class="com">// 存在？</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">notExists</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>               <span class="com">// 注意：!exists ≠ notExists（文件系统不可达时两者都 false）</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">isDirectory</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">isRegularFile</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">isSymbolicLink</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">isReadable</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>
+<span class="ty">Files</span><span class="punct">.</span><span class="fn">isHidden</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>
+
+<span class="com">// 文件大小（字节）</span>
+<span class="kw">long</span> <span class="var">size</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">size</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>
+
+<span class="com">// 最后修改时间</span>
+<span class="ty">FileTime</span> <span class="var">modified</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">getLastModifiedTime</span><span class="punct">(</span><span class="var">p</span><span class="punct">);</span>
+
+<span class="com">// 一次性读取所有 POSIX 属性（Linux/macOS）</span>
+<span class="ty">PosixFileAttributes</span> <span class="var">attrs</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">readAttributes</span><span class="punct">(</span>
+    <span class="var">p</span><span class="punct">,</span> <span class="ty">PosixFileAttributes</span><span class="punct">.</span><span class="kw">class</span><span class="punct">);</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">attrs</span><span class="punct">.</span><span class="fn">owner</span><span class="punct">().</span><span class="fn">getName</span><span class="punct">());</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="ty">PosixFilePermissions</span><span class="punct">.</span><span class="fn">toString</span><span class="punct">(</span><span class="var">attrs</span><span class="punct">.</span><span class="fn">permissions</span><span class="punct">()));</span>  <span class="com">// rwxr-xr-x</span></pre>
+  </div>
+
+  <!-- ⑥ 目录遍历 -->
+  <h2>目录遍历：list / walk / find</h2>
+  <p>NIO.2 提供了三个层次的目录遍历，都返回 <code>Stream&lt;Path&gt;</code>，用完必须关闭（try-with-resources）。</p>
+
+  <table>
+    <thead>
+      <tr><th>方法</th><th>深度</th><th>典型用途</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Files.list(dir)</code></td><td>仅当前层</td><td>列出目录条目（不递归）</td></tr>
+      <tr><td><code>Files.walk(dir, depth)</code></td><td>指定深度</td><td>递归遍历所有文件</td></tr>
+      <tr><td><code>Files.find(dir, depth, BiPredicate)</code></td><td>指定深度</td><td>带条件的递归搜索</td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>三种遍历方式示例</span><span>Java</span></div>
+    <pre><span class="ty">Path</span> <span class="var">root</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/project/src"</span><span class="punct">);</span>
+
+<span class="com">// 1. list：只列当前目录，类似 ls</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">Stream</span><span class="punct">&lt;</span><span class="ty">Path</span><span class="punct">&gt;</span> <span class="var">entries</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">list</span><span class="punct">(</span><span class="var">root</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="var">entries</span><span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="ty">Files</span><span class="punct">::</span><span class="fn">isDirectory</span><span class="punct">)</span>
+           <span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">::</span><span class="fn">println</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 2. walk：深度优先递归，找出所有 .java 文件</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">Stream</span><span class="punct">&lt;</span><span class="ty">Path</span><span class="punct">&gt;</span> <span class="var">all</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">walk</span><span class="punct">(</span><span class="var">root</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="kw">long</span> <span class="var">count</span> <span class="punct">=</span> <span class="var">all</span>
+        <span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="var">p</span> <span class="punct">-&gt;</span> <span class="var">p</span><span class="punct">.</span><span class="fn">toString</span><span class="punct">().</span><span class="fn">endsWith</span><span class="punct">(</span><span class="str">".java"</span><span class="punct">))</span>
+        <span class="punct">.</span><span class="fn">count</span><span class="punct">();</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"共 "</span> <span class="punct">+</span> <span class="var">count</span> <span class="punct">+</span> <span class="str">" 个 Java 文件"</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 3. find：带属性条件搜索（比 walk + filter 更高效，属性已预取）</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">Stream</span><span class="punct">&lt;</span><span class="ty">Path</span><span class="punct">&gt;</span> <span class="var">found</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">find</span><span class="punct">(</span><span class="var">root</span><span class="punct">,</span> <span class="num">10</span><span class="punct">,</span>
+        <span class="punct">(</span><span class="var">p</span><span class="punct">,</span> <span class="var">attr</span><span class="punct">)</span> <span class="punct">-&gt;</span> <span class="var">attr</span><span class="punct">.</span><span class="fn">isRegularFile</span><span class="punct">()</span>
+                  <span class="punct">&amp;&amp;</span> <span class="var">attr</span><span class="punct">.</span><span class="fn">size</span><span class="punct">()</span> <span class="punct">&gt;</span> <span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">))</span> <span class="punct">{</span>  <span class="com">// 大于 1MB</span>
+    <span class="var">found</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">::</span><span class="fn">println</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>Stream 必须关闭！</strong><code>Files.walk()</code> 等方法在底层持有目录流句柄（<code>DirectoryStream</code>），若不关闭会导致文件描述符泄漏。务必用 try-with-resources。
+  </div>
+
+  <!-- ⑦ FileVisitor -->
+  <h2>FileVisitor：递归删除 / 复制目录树</h2>
+  <p>对于"删除非空目录"这类需要在遍历的同时执行操作的场景，<code>FileVisitor</code> 是最合适的工具。<code>SimpleFileVisitor</code> 是它的默认空实现，按需覆盖即可。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>递归删除目录（FileVisitor）</span><span>Java</span></div>
+    <pre><span class="kw">public static void</span> <span class="fn">deleteDirectory</span><span class="punct">(</span><span class="ty">Path</span> <span class="var">dir</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+    <span class="ty">Files</span><span class="punct">.</span><span class="fn">walkFileTree</span><span class="punct">(</span><span class="var">dir</span><span class="punct">,</span> <span class="kw">new</span> <span class="ty">SimpleFileVisitor</span><span class="punct">&lt;</span><span class="ty">Path</span><span class="punct">&gt;()</span> <span class="punct">{</span>
+
+        <span class="ann">@Override</span>
+        <span class="kw">public</span> <span class="ty">FileVisitResult</span> <span class="fn">visitFile</span><span class="punct">(</span><span class="ty">Path</span> <span class="var">file</span><span class="punct">,</span> <span class="ty">BasicFileAttributes</span> <span class="var">attrs</span><span class="punct">)</span>
+                <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+            <span class="ty">Files</span><span class="punct">.</span><span class="fn">delete</span><span class="punct">(</span><span class="var">file</span><span class="punct">);</span>
+            <span class="kw">return</span> <span class="ty">FileVisitResult</span><span class="punct">.</span><span class="var">CONTINUE</span><span class="punct">;</span>
+        <span class="punct">}</span>
+
+        <span class="ann">@Override</span>
+        <span class="kw">public</span> <span class="ty">FileVisitResult</span> <span class="fn">postVisitDirectory</span><span class="punct">(</span><span class="ty">Path</span> <span class="var">dir</span><span class="punct">,</span> <span class="ty">IOException</span> <span class="var">exc</span><span class="punct">)</span>
+                <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+            <span class="com">// 子文件都删完了，再删目录本身</span>
+            <span class="ty">Files</span><span class="punct">.</span><span class="fn">delete</span><span class="punct">(</span><span class="var">dir</span><span class="punct">);</span>
+            <span class="kw">return</span> <span class="ty">FileVisitResult</span><span class="punct">.</span><span class="var">CONTINUE</span><span class="punct">;</span>
+        <span class="punct">}</span>
+    <span class="punct">});</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ⑧ WatchService -->
+  <h2>WatchService：监听目录变更事件</h2>
+  <p>NIO.2 提供了操作系统级的目录监听机制（Linux 的 inotify、macOS 的 kqueue、Windows 的 ReadDirectoryChangesW），比定时轮询高效得多。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>监听目录文件变化</span><span>Java</span></div>
+    <pre><span class="ty">Path</span> <span class="var">watchDir</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/tmp/watch-me"</span><span class="punct">);</span>
+
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">WatchService</span> <span class="var">watcher</span> <span class="punct">=</span> <span class="ty">FileSystems</span><span class="punct">.</span><span class="fn">getDefault</span><span class="punct">().</span><span class="fn">newWatchService</span><span class="punct">())</span> <span class="punct">{</span>
+
+    <span class="var">watchDir</span><span class="punct">.</span><span class="fn">register</span><span class="punct">(</span><span class="var">watcher</span><span class="punct">,</span>
+        <span class="ty">StandardWatchEventKinds</span><span class="punct">.</span><span class="var">ENTRY_CREATE</span><span class="punct">,</span>
+        <span class="ty">StandardWatchEventKinds</span><span class="punct">.</span><span class="var">ENTRY_DELETE</span><span class="punct">,</span>
+        <span class="ty">StandardWatchEventKinds</span><span class="punct">.</span><span class="var">ENTRY_MODIFY</span><span class="punct">);</span>
+
+    <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="ty">WatchKey</span> <span class="var">key</span> <span class="punct">=</span> <span class="var">watcher</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>  <span class="com">// 阻塞等待事件</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="ty">WatchEvent</span><span class="punct">&lt;?&gt;</span> <span class="var">event</span> <span class="punct">:</span> <span class="var">key</span><span class="punct">.</span><span class="fn">pollEvents</span><span class="punct">())</span> <span class="punct">{</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">event</span><span class="punct">.</span><span class="fn">kind</span><span class="punct">()</span> <span class="punct">+</span> <span class="str">": "</span> <span class="punct">+</span> <span class="var">event</span><span class="punct">.</span><span class="fn">context</span><span class="punct">());</span>
+        <span class="punct">}</span>
+        <span class="kw">boolean</span> <span class="var">valid</span> <span class="punct">=</span> <span class="var">key</span><span class="punct">.</span><span class="fn">reset</span><span class="punct">();</span>  <span class="com">// 必须 reset，否则不再收到事件</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">valid</span><span class="punct">)</span> <span class="kw">break</span><span class="punct">;</span>           <span class="com">// 目录被删除，退出</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ⑨ 与旧 API 对比 -->
+  <h2>NIO.2 vs 旧 java.io.File：全面对比</h2>
+  <table>
+    <thead>
+      <tr><th>能力</th><th>java.io.File</th><th>NIO.2（Files + Path）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>失败处理</td><td>返回 boolean，原因不明</td><td>抛具体 IOException 子类</td></tr>
+      <tr><td>符号链接</td><td>不支持</td><td>完整支持（toRealPath 等）</td></tr>
+      <tr><td>文件元数据</td><td>仅 lastModified / length</td><td>POSIX 权限、所有者、创建时间等</td></tr>
+      <tr><td>路径操作</td><td>字符串拼接</td><td>resolve / relativize / normalize</td></tr>
+      <tr><td>目录遍历</td><td>listFiles()，需手写递归</td><td>walk / find / list，返回 Stream</td></tr>
+      <tr><td>原子移动</td><td>不支持</td><td>ATOMIC_MOVE</td></tr>
+      <tr><td>目录监听</td><td>无</td><td>WatchService（OS 级事件）</td></tr>
+      <tr><td>跨文件系统</td><td>仅本地</td><td>可插拔 FileSystem（ZIP、内存等）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ⑩ 常见陷阱 -->
+  <h2>常见陷阱与面试考点</h2>
+
+  <h3>陷阱 1：exists 与 notExists 不是互反</h3>
+  <p>当文件系统不可达（权限拒绝、网络挂载断开）时，<code>Files.exists(p)</code> 返回 <code>false</code>，<code>Files.notExists(p)</code> 也返回 <code>false</code>。两个方法都无法确定，应捕获异常而非依赖返回值。</p>
+
+  <h3>陷阱 2：Stream 未关闭导致文件描述符泄漏</h3>
+  <p><code>Files.walk()</code>、<code>Files.list()</code>、<code>Files.lines()</code> 返回的 Stream 底层持有 OS 句柄，<strong>必须用 try-with-resources 关闭</strong>，或显式调用 <code>stream.close()</code>。</p>
+
+  <h3>陷阱 3：resolve 传入绝对路径会覆盖前缀</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>resolve 绝对路径陷阱</span><span>Java</span></div>
+    <pre><span class="ty">Path</span> <span class="var">base</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"/home/user"</span><span class="punct">);</span>
+
+<span class="com">// 预期：/home/user/docs —— 实际也是这个（相对路径正常）</span>
+<span class="var">base</span><span class="punct">.</span><span class="fn">resolve</span><span class="punct">(</span><span class="str">"docs"</span><span class="punct">);</span>  <span class="com">// /home/user/docs ✓</span>
+
+<span class="com">// 危险：参数是绝对路径，base 被完全忽略！</span>
+<span class="var">base</span><span class="punct">.</span><span class="fn">resolve</span><span class="punct">(</span><span class="str">"/etc/passwd"</span><span class="punct">);</span>  <span class="com">// /etc/passwd ← 不是你想要的</span></pre>
+  </div>
+
+  <h3>陷阱 4：copy 不递归，delete 不能删非空目录</h3>
+  <p><code>Files.copy()</code> 只复制单个文件或空目录（不递归），<code>Files.delete()</code> 只能删除空目录。需要递归操作时使用 <code>walkFileTree</code>。</p>
+
+  <h3>面试高频考点</h3>
+  <ul>
+    <li><strong>Path 是接口还是类？</strong>接口，具体实现由各平台的 <code>FileSystem</code> 提供（如 <code>UnixPath</code>）。</li>
+    <li><strong>Files.lines() 为什么比 readAllLines() 好？</strong>前者是惰性 Stream，后者全量加载到内存。大文件用前者。</li>
+    <li><strong>如何原子地更新配置文件？</strong>先写临时文件，再用 <code>Files.move(tmp, target, ATOMIC_MOVE)</code>。</li>
+    <li><strong>normalize() 和 toRealPath() 的区别？</strong><code>normalize()</code> 纯字符串操作，不访问文件系统；<code>toRealPath()</code> 访问文件系统、跟踪符号链接，文件不存在时抛异常。</li>
+    <li><strong>WatchService 的事件丢失问题？</strong>事件队列满时会产生 <code>OVERFLOW</code> 事件，高频变更场景需自行节流。</li>
+  </ul>
+
+  <!-- ⑪ 综合实战 -->
+  <h2>综合实战：安全的配置文件更新</h2>
+  <p>先写临时文件，再原子移动——避免在写到一半时程序崩溃导致配置损坏。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>原子写入配置文件</span><span>Java</span></div>
+    <pre><span class="kw">public static void</span> <span class="fn">saveConfig</span><span class="punct">(</span><span class="ty">Path</span> <span class="var">configFile</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">content</span><span class="punct">)</span>
+        <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+
+    <span class="com">// 1. 在同一目录下创建临时文件（保证同一文件系统，支持 ATOMIC_MOVE）</span>
+    <span class="ty">Path</span> <span class="var">dir</span> <span class="punct">=</span> <span class="var">configFile</span><span class="punct">.</span><span class="fn">getParent</span><span class="punct">();</span>
+    <span class="ty">Path</span> <span class="var">tmp</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">createTempFile</span><span class="punct">(</span><span class="var">dir</span><span class="punct">,</span> <span class="str">".tmp-"</span><span class="punct">,</span> <span class="str">".cfg"</span><span class="punct">);</span>
+
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="com">// 2. 写入临时文件</span>
+        <span class="ty">Files</span><span class="punct">.</span><span class="fn">writeString</span><span class="punct">(</span><span class="var">tmp</span><span class="punct">,</span> <span class="var">content</span><span class="punct">,</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">);</span>
+
+        <span class="com">// 3. 原子替换目标文件（目标已存在也没问题）</span>
+        <span class="ty">Files</span><span class="punct">.</span><span class="fn">move</span><span class="punct">(</span><span class="var">tmp</span><span class="punct">,</span> <span class="var">configFile</span><span class="punct">,</span>
+            <span class="ty">StandardCopyOption</span><span class="punct">.</span><span class="var">REPLACE_EXISTING</span><span class="punct">,</span>
+            <span class="ty">StandardCopyOption</span><span class="punct">.</span><span class="var">ATOMIC_MOVE</span><span class="punct">);</span>
+
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 写入失败：清理临时文件，不影响原配置</span>
+        <span class="ty">Files</span><span class="punct">.</span><span class="fn">deleteIfExists</span><span class="punct">(</span><span class="var">tmp</span><span class="punct">);</span>
+        <span class="kw">throw</span> <span class="var">e</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <hr>
+
+  <div class="callout tip">
+    <strong>知识连接：</strong>NIO.2 的 <code>FileSystem</code> 是可插拔的抽象——<code>FileSystems.newFileSystem(zipPath, ...)</code> 可以把 ZIP 文件当目录操作，<code>Path</code>、<code>Files</code> 的所有 API 都能无缝用于 ZIP 内部文件，这正是 Java 模块系统（JPMS）内部读取 JAR 资源的底层机制。
+  </div>
+
+  <div class="nav-footer">
+    <a href="./17-BufferedReader.html" class="nav-btn">← 17. BufferedReader / BufferedWriter</a>
+    <a href="./19-序列化.html" class="nav-btn next">19. 序列化与反序列化 →</a>
+  </div>
+
+</div>
+</body>
+</html>

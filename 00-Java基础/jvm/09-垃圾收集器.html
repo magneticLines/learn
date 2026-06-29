@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>09. 垃圾收集器（Serial / Parallel / CMS / G1 / ZGC）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 垃圾回收
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 垃圾回收</div>
+    <h1>09. 垃圾收集器</h1>
+    <p>Serial · Parallel · CMS · G1 · ZGC —— 从单线程到亚毫秒停顿的演进史</p>
+  </div>
+
+  <!-- ① 为什么需要收集器 -->
+  <h2 style="border-color:#c084fc;">为什么需要多种垃圾收集器？</h2>
+  <p>
+    上一篇讲了 GC 算法（标记清除 / 复制 / 标记整理），它们是<strong>理论蓝图</strong>；
+    垃圾收集器是算法的<strong>工程实现</strong>，需要在三个相互冲突的目标之间取舍：
+  </p>
+  <ul>
+    <li><strong>吞吐量（Throughput）</strong>：单位时间内 GC 之外的有效计算占比，批处理任务追求这个</li>
+    <li><strong>停顿时间（Latency / Pause）</strong>：单次 STW（Stop-The-World）的最长时间，在线服务追求这个</li>
+    <li><strong>内存占用（Footprint）</strong>：GC 本身的额外内存消耗，嵌入式 / 资源受限场景追求这个</li>
+  </ul>
+  <p>这三者构成 GC 的"不可能三角"——不同收集器选择了不同的优先级，这就是为什么 JDK 要提供一个"工具箱"而不是唯一答案。</p>
+
+  <div class="callout info">
+    <strong>STW 是什么？</strong><br>
+    Stop-The-World：JVM 暂停所有用户线程，只跑 GC 线程。就像超市关门盘点库存，盘点期间顾客不能进出。
+    几乎所有收集器都有 STW，差别在于<strong>哪个阶段 STW、STW 多久</strong>。
+  </div>
+
+  <!-- ② 演进全景 -->
+  <h2 style="border-color:#c084fc;">收集器演进全景</h2>
+  <div class="tree">
+JDK 1.3  <span class="hi">Serial</span>          单线程，Client VM 默认<br>
+JDK 1.4  <span class="hi">Parallel Scavenge</span>  多线程新生代，吞吐量优先<br>
+         <span class="hi">ParNew</span>             多线程新生代，配合 CMS<br>
+JDK 1.4  <span class="hi">CMS</span>               并发标记清除，低停顿先驱<br>
+JDK 7u4  <span class="hi">G1</span>               Region 化堆，平衡吞吐+停顿<br>
+JDK 11   <span class="hi">ZGC</span>              着色指针，亚毫秒停顿<br>
+JDK 12   <span class="hi">Shenandoah</span>       Red Hat 贡献，同类低停顿<br>
+  </div>
+  <p>JDK 9 起 CMS 被标记为 deprecated，JDK 14 正式移除。JDK 9 起 G1 成为默认收集器。</p>
+
+  <!-- ③ 各收集器详解 -->
+  <h2 style="border-color:#c084fc;">Serial 收集器</h2>
+  <h3>设计思路</h3>
+  <p>
+    单线程 GC，回收时<strong>全程 STW</strong>。听起来很落后，但它有存在价值：
+    单核 CPU（容器 / 树莓派 / 嵌入式）上没有线程切换开销，实际表现并不差；
+    内存占比极低（几 MB），适合堆不超过 100 MB 的场景。
+  </p>
+  <ul>
+    <li>新生代：<strong>复制算法</strong>（Serial 本体）</li>
+    <li>老年代：<strong>标记整理算法</strong>（Serial Old，配套使用）</li>
+  </ul>
+  <div class="callout tip">
+    <strong>启用参数：</strong><code>-XX:+UseSerialGC</code>
+  </div>
+
+  <hr>
+
+  <h2 style="border-color:#c084fc;">Parallel（吞吐量优先）收集器</h2>
+  <h3>设计思路</h3>
+  <p>
+    多线程版 Serial。GC 线程数默认等于 CPU 核数（可用 <code>-XX:ParallelGCThreads</code> 调整）。
+    目标是<strong>最大化吞吐量</strong>，允许较长的单次停顿。适合批处理、数据分析等"不在意瞬时抖动"的场景。
+  </p>
+  <ul>
+    <li><strong>Parallel Scavenge</strong>：新生代，复制算法，暴露 <code>-XX:MaxGCPauseMillis</code> 和 <code>-XX:GCTimeRatio</code></li>
+    <li><strong>Parallel Old</strong>：老年代，标记整理，JDK 6 引入，取代 Serial Old 成为 Parallel Scavenge 的最佳搭档</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JVM 参数</span><span>shell</span></div>
+    <pre><span class="com"># 吞吐量优先，允许最大停顿 200ms，GC 时间不超过总时间的 1/(1+19)=5%</span>
+<span class="var">-XX:+UseParallelGC</span>
+<span class="var">-XX:MaxGCPauseMillis=200</span>
+<span class="var">-XX:GCTimeRatio=19</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：MaxGCPauseMillis 不是硬上限</strong><br>
+    设置越小，JVM 会把堆调小来"凑"停顿时间，但堆小了反而 GC 更频繁，吞吐量下降。
+    不要随手设成 <code>-XX:MaxGCPauseMillis=1</code>，那只会适得其反。
+  </div>
+
+  <hr>
+
+  <h2 style="border-color:#c084fc;">CMS（Concurrent Mark Sweep）收集器</h2>
+  <h3>设计思路：第一次真正并发</h3>
+  <p>
+    CMS 的核心思想是：<strong>把大部分标记工作移到与用户线程并发执行的阶段</strong>，
+    STW 只保留必要的短暂时刻。这是 Java 低延迟 GC 的开山之作。
+  </p>
+
+  <h3>四个阶段</h3>
+  <table>
+    <thead>
+      <tr><th>阶段</th><th>是否 STW</th><th>做什么</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>初始标记</strong>（Initial Mark）</td><td>STW（极短）</td><td>只标记 GC Roots 直接关联的对象</td></tr>
+      <tr><td><strong>并发标记</strong>（Concurrent Mark）</td><td>并发</td><td>从 GC Roots 出发遍历整个对象图，与用户线程同时跑</td></tr>
+      <tr><td><strong>重新标记</strong>（Remark）</td><td>STW（稍长）</td><td>修正并发标记期间用户线程引起的引用变化（增量更新算法）</td></tr>
+      <tr><td><strong>并发清除</strong>（Concurrent Sweep）</td><td>并发</td><td>清除死亡对象，与用户线程同时跑</td></tr>
+    </tbody>
+  </table>
+
+  <h3>三大致命缺陷</h3>
+  <ul>
+    <li><strong>浮动垃圾（Floating Garbage）</strong>：并发清除阶段用户线程还在产生垃圾，这批垃圾只能等下次 GC，因此 CMS 必须在老年代未满时提前触发（默认 68%），否则触发 Concurrent Mode Failure，退化为 Serial Old 全停顿</li>
+    <li><strong>内存碎片</strong>：标记清除算法不整理内存，长期运行后大对象无处安置，触发 Full GC</li>
+    <li><strong>CPU 敏感</strong>：并发阶段与用户线程抢 CPU，低核数机器吞吐量下降明显（默认占用 (CPU数+3)/4 个线程）</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>CMS 常用参数</span><span>shell</span></div>
+    <pre><span class="var">-XX:+UseConcMarkSweepGC</span>
+<span class="com"># 老年代使用率达到 70% 时提前触发（默认 68%）</span>
+<span class="var">-XX:CMSInitiatingOccupancyFraction=70</span>
+<span class="com"># Full GC 后压缩内存，缓解碎片（但 Full GC 会更慢）</span>
+<span class="var">-XX:+UseCMSCompactAtFullCollection</span></pre>
+  </div>
+
+  <hr>
+
+  <h2 style="border-color:#c084fc;">G1（Garbage First）收集器</h2>
+  <h3>设计思路：打破"物理分代"</h3>
+  <p>
+    CMS 的问题本质是：老年代是一块连续大区域，碎片无法避免。
+    G1 的解法是把堆切成大小相等的 <strong>Region</strong>（默认 1~32 MB，共约 2048 个），
+    每个 Region 在逻辑上可以扮演 Eden / Survivor / Old / Humongous（大对象） 任意角色，
+    随时可以换角色。
+  </p>
+  <p>
+    "Garbage First"这个名字来自策略：<strong>优先回收垃圾最多的 Region</strong>，
+    用最少的停顿时间换取最大的释放量——这也是它能提供"可预期停顿"的原因。
+  </p>
+
+  <div class="tree">
+堆内存（例如 4GB）<br>
+┌──────────────────────────────────────────┐<br>
+│  E  │  E  │  S  │  O  │  O  │  H  │ ... │<br>
+│     │     │     │     │     │(大对象)│    │<br>
+└──────────────────────────────────────────┘<br>
+  E=Eden  S=Survivor  O=Old  H=Humongous<br>
+  Region 之间不必物理相邻
+  </div>
+
+  <h3>四个阶段（混合 GC 模式）</h3>
+  <table>
+    <thead>
+      <tr><th>阶段</th><th>是否 STW</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>初始标记</td><td>STW（短）</td><td>标记 GC Roots，附着在 Minor GC 上执行</td></tr>
+      <tr><td>并发标记</td><td>并发</td><td>遍历全堆对象图，使用 SATB（原始快照）维护一致性</td></tr>
+      <tr><td>最终标记</td><td>STW（短）</td><td>处理 SATB 缓冲区，完成并发阶段遗留的标记</td></tr>
+      <tr><td>筛选回收</td><td>STW</td><td>计算各 Region 的回收价值，选出"性价比最高"的一批，复制存活对象，释放整个 Region</td></tr>
+    </tbody>
+  </table>
+
+  <h3>关键数据结构：RSet（Remembered Set）</h3>
+  <p>
+    因为 Region 之间存在跨 Region 引用（老年代 Region 指向年轻代 Region），
+    G1 为每个 Region 维护一个 RSet，记录"谁引用了我"。
+    回收某个 Region 时只需扫描它的 RSet，而不必扫描整个堆——这是 G1 能做到局部回收的基石。
+  </p>
+
+  <div class="callout warn">
+    <strong>陷阱：RSet 的内存开销</strong><br>
+    RSet 本身要占堆内存的 5%~20%。如果堆很小（&lt;4 GB），G1 的额外开销可能比 Parallel GC 还重，
+    JDK 9 起 G1 虽然是默认，但堆小于 1 GB 的容器场景反而要考虑换回 Parallel 或 Serial。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>G1 常用参数</span><span>shell</span></div>
+    <pre><span class="var">-XX:+UseG1GC</span>
+<span class="com"># 期望停顿目标（软目标，G1 会尽力但不保证）</span>
+<span class="var">-XX:MaxGCPauseMillis=200</span>
+<span class="com"># Region 大小，建议让 JVM 自动计算（2 的幂次，1-32MB）</span>
+<span class="var">-XX:G1HeapRegionSize=4m</span>
+<span class="com"># 触发并发标记的堆使用比例（默认 45%）</span>
+<span class="var">-XX:InitiatingHeapOccupancyPercent=45</span></pre>
+  </div>
+
+  <hr>
+
+  <h2 style="border-color:#c084fc;">ZGC（Z Garbage Collector）</h2>
+  <h3>设计思路：停顿时间与堆大小无关</h3>
+  <p>
+    G1 的停顿时间在大堆（几十 GB）下仍会达到数百毫秒。ZGC 的目标更激进：
+    <strong>无论堆多大，GC 停顿不超过 10ms（JDK 16 后通常 &lt;1ms）</strong>。
+  </p>
+  <p>
+    ZGC 实现这个目标的核心武器是<strong>着色指针（Colored Pointer）</strong> +
+    <strong>读屏障（Load Barrier）</strong>，把几乎所有工作都移到并发阶段，
+    STW 只剩三次极短暂停（均为毫秒级甚至微秒级）。
+  </p>
+
+  <h3>着色指针：把元数据藏进指针里</h3>
+  <p>
+    64 位系统的指针实际只用 42~44 位表示地址，高位剩余比特被 ZGC 用来存储对象的 GC 元信息：
+  </p>
+  <div class="tree">
+64 位指针：<br>
+[ 18位未用 | <span class="hi">Finalizable(1)</span> | <span class="hi">Remapped(1)</span> | <span class="hi">Marked1(1)</span> | <span class="hi">Marked0(1)</span> | 42位对象地址 ]<br>
+<br>
+这 4 个颜色位 = 对象当前处于哪个 GC 阶段
+  </div>
+  <p>
+    好处：无需额外的标记位数组，颜色随指针走，并发阶段通过<strong>读屏障</strong>在访问对象时顺便检查和修正颜色，
+    完全不需要 STW 来统一更新所有引用。
+  </p>
+
+  <h3>ZGC 并发阶段</h3>
+  <table>
+    <thead>
+      <tr><th>阶段</th><th>STW？</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Pause Mark Start</td><td>STW（&lt;1ms）</td><td>标记 GC Roots</td></tr>
+      <tr><td>Concurrent Mark</td><td>并发</td><td>遍历对象图，更新颜色位</td></tr>
+      <tr><td>Pause Mark End</td><td>STW（&lt;1ms）</td><td>处理弱引用等收尾工作</td></tr>
+      <tr><td>Concurrent Relocate</td><td>并发</td><td>把存活对象复制到新 Region，读屏障负责转发旧地址访问</td></tr>
+      <tr><td>Pause Relocate Start</td><td>STW（&lt;1ms）</td><td>扫描 Roots 中指向被迁移对象的引用</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>ZGC vs Shenandoah</strong><br>
+    两者目标一致（亚毫秒停顿），但实现路径不同：ZGC 用着色指针，Shenandoah 用 Brooks Forwarding Pointer（每个对象头多一个转发指针）。
+    ZGC 是 Oracle 官方维护的，进入 JDK 主线；Shenandoah 是 Red Hat 贡献的，同样在 OpenJDK 主线。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ZGC 参数</span><span>shell</span></div>
+    <pre><span class="com"># JDK 15 起 ZGC 正式生产可用（不再需要 -XX:+UnlockExperimentalVMOptions）</span>
+<span class="var">-XX:+UseZGC</span>
+<span class="com"># JDK 21 引入 Generational ZGC，分代后吞吐量进一步提升</span>
+<span class="var">-XX:+UseZGC -XX:+ZGenerational</span>
+<span class="com"># 同样支持 MaxGCPauseMillis（但 ZGC 本身就极短，通常无需设置）</span>
+<span class="var">-XX:MaxGCPauseMillis=5</span></pre>
+  </div>
+
+  <!-- ④ 横向对比 -->
+  <h2 style="border-color:#c084fc;">五大收集器横向对比</h2>
+  <table>
+    <thead>
+      <tr><th>收集器</th><th>线程模型</th><th>老年代算法</th><th>STW 停顿</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Serial</strong></td><td>单线程</td><td>标记整理</td><td>全程 STW</td><td>单核 / 小堆 / 嵌入式</td></tr>
+      <tr><td><strong>Parallel</strong></td><td>多线程</td><td>标记整理</td><td>全程 STW（短）</td><td>批处理 / 高吞吐</td></tr>
+      <tr><td><strong>CMS</strong></td><td>并发</td><td>标记清除</td><td>两次短 STW</td><td>低延迟 Web（已废弃）</td></tr>
+      <tr><td><strong>G1</strong></td><td>并发+并行</td><td>复制（Region）</td><td>可预期停顿</td><td>大堆（4G+）通用</td></tr>
+      <tr><td><strong>ZGC</strong></td><td>全并发</td><td>复制</td><td>&lt;10ms（通常 &lt;1ms）</td><td>超大堆 / 极低延迟</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ⑤ 如何选择 -->
+  <h2 style="border-color:#c084fc;">实战选择指南</h2>
+  <ul>
+    <li><strong>堆 &lt; 1 GB + 单核容器</strong>：<code>-XX:+UseSerialGC</code>，开销最小</li>
+    <li><strong>批处理 / 计算型任务</strong>：<code>-XX:+UseParallelGC</code>，最大化 CPU 有效使用率</li>
+    <li><strong>普通 Web 服务（JDK 9+）</strong>：G1 默认即可，酌情调 <code>MaxGCPauseMillis=100~200</code></li>
+    <li><strong>超低延迟（P99 &lt; 50ms）+ 大堆</strong>：ZGC（JDK 15+），尤其是 JDK 21 Generational ZGC</li>
+    <li><strong>老系统 JDK 8</strong>：G1 稳定可用；CMS 可用但别新起项目</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>监控先于调优</strong><br>
+    在改收集器之前，先用 <code>-Xlog:gc*:file=gc.log:time,uptime:filecount=5,filesize=20m</code>
+    采集 GC 日志，用 GCEasy / GCViewer 分析真实瓶颈，否则盲目换收集器可能适得其反。
+  </div>
+
+  <!-- ⑥ 代码示例：触发 GC 观察行为 -->
+  <h2 style="border-color:#c084fc;">代码示例：观察收集器行为</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>GcObserveDemo.java</span><span>Java</span></div>
+    <pre><span class="com">// 运行参数：-Xms64m -Xmx64m -XX:+UseG1GC -Xlog:gc*</span>
+<span class="kw">public class</span> <span class="ty">GcObserveDemo</span> <span class="punct">{</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">byte</span><span class="punct">[]&gt;</span> <span class="var">list</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">100</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+            <span class="com">// 每次分配 1MB，模拟对象创建</span>
+            <span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="kw">byte</span><span class="punct">[</span><span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">]);</span>
+
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">i</span> <span class="punct">%</span> <span class="num">10</span> <span class="punct">==</span> <span class="num">9</span><span class="punct">) {</span>
+                <span class="com">// 每 10 次清除一半，模拟短命对象</span>
+                <span class="var">list</span><span class="punct">.</span><span class="fn">subList</span><span class="punct">(</span><span class="num">0</span><span class="punct">,</span> <span class="var">list</span><span class="punct">.</span><span class="fn">size</span><span class="punct">() /</span> <span class="num">2</span><span class="punct">).</span><span class="fn">clear</span><span class="punct">();</span>
+            <span class="punct">}</span>
+            <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">50</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>
+    运行时切换 <code>-XX:+UseSerialGC</code> / <code>-XX:+UseG1GC</code> / <code>-XX:+UseZGC</code>，
+    观察 GC 日志里的 Pause 时长和 GC 频率，直觉上感受三者的差距。
+  </p>
+
+  <!-- ⑦ 常见陷阱 -->
+  <h2 style="border-color:#c084fc;">常见陷阱 &amp; 误区</h2>
+
+  <h3>陷阱 1：堆设得越大越好</h3>
+  <p>
+    堆越大，单次 Full GC 时 STW 越长（尤其 Serial / Parallel / CMS）。
+    比如 32 GB 堆用 CMS，一次 Remark 可能停顿 2~3 秒。G1 / ZGC 才真正做到了"大堆不怕"。
+  </p>
+
+  <h3>陷阱 2：CMS 的 Concurrent Mode Failure</h3>
+  <p>
+    并发清除阶段老年代满了，JVM 应急退化为 Serial Old 做一次完整的 STW Full GC，
+    停顿时间从几十毫秒突变为几秒。根本原因：<code>CMSInitiatingOccupancyFraction</code> 设太高，
+    或晋升速度超过并发清除速度。
+  </p>
+
+  <h3>陷阱 3：G1 的 Humongous 对象</h3>
+  <p>
+    大于 Region 一半的对象直接进 Humongous Region，由老年代管理，
+    不经历年轻代的短命淘汰。如果频繁分配大对象（如大 byte[]），
+    会导致频繁触发并发标记周期。解法：增大 <code>G1HeapRegionSize</code>，或减少大对象分配。
+  </p>
+
+  <h3>陷阱 4：ZGC 在低版本 JDK 上是实验特性</h3>
+  <p>
+    JDK 11~14 的 ZGC 需要 <code>-XX:+UnlockExperimentalVMOptions</code>；
+    JDK 15 起才正式 GA。用 JDK 11 的同学注意加实验标志，否则 JVM 拒绝启动。
+  </p>
+
+  <!-- ⑧ 面试考点 -->
+  <h2 style="border-color:#c084fc;">面试高频考点</h2>
+  <ol>
+    <li>
+      <strong>CMS 为什么会产生浮动垃圾？如何解决？</strong><br>
+      并发清除阶段用户线程仍在运行，新产生的垃圾无法在本次 GC 中清除。
+      解法：调低 <code>CMSInitiatingOccupancyFraction</code>，提前触发 GC；或直接换 G1。
+    </li>
+    <li>
+      <strong>G1 和 CMS 的本质区别是什么？</strong><br>
+      CMS 是老年代收集器（需配合 ParNew），不整理内存（标记清除），会碎片化；
+      G1 是全堆收集器，基于 Region + 复制算法，无碎片，且能提供可预期停顿目标。
+    </li>
+    <li>
+      <strong>ZGC 怎么做到停顿不超过 10ms 的？</strong><br>
+      着色指针 + 读屏障，把对象图遍历、对象迁移全部移到并发阶段，
+      STW 只剩三个极短的 Root 扫描点，且停顿时间与堆大小无关（O(GC Root) 而非 O(堆大小)）。
+    </li>
+    <li>
+      <strong>默认收集器是什么？各 JDK 版本有何变化？</strong><br>
+      JDK 8：Parallel（服务端）/ Serial（客户端）；JDK 9+：G1；JDK 21 起推荐 ZGC（Generational）。
+    </li>
+    <li>
+      <strong>RSet 是什么？为什么 G1 需要它？</strong><br>
+      Remembered Set，记录"哪些 Region 的对象引用了我"。
+      G1 每次只回收部分 Region，如果没有 RSet 就必须扫描全堆才能判断一个对象是否存活，
+      RSet 把这个代价降到 O(引用者 Region 数量)。
+    </li>
+  </ol>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./08-GC算法.html" class="nav-btn">← 08. 常用 GC 算法（标记清除 / 复制 / 标记整理）</a>
+    <a href="./10-类加载流程.html" class="nav-btn next">10. 类加载流程（加载 / 验证 / 准备 / 解析 / 初始化） →</a>
+  </div>
+
+</div>
+</body>
+</html>

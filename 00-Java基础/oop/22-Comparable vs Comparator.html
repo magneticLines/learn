@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>22. Comparable vs Comparator — Java 学习</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: inherit; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    .tree .hi { color: #fb923c; }
+    p code, li code { color: #fb923c; }
+    h2 { color: #fb923c; border-left-color: #fb923c; }
+    .hero .tag { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next:hover { background: #7c2d1222; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / 面向对象 / Object 通用方法
+  </div>
+
+  <div class="hero">
+    <div class="tag">面向对象 · Object 通用方法</div>
+    <h1>22. Comparable vs Comparator</h1>
+    <p>Java 排序的两条路：内置自然顺序 vs 外挂灵活策略——搞清楚两者的设计哲学，才能在正确的场景选对工具。</p>
+  </div>
+
+  <!-- ===== 1. 为什么需要比较接口 ===== -->
+  <h2>为什么需要比较接口？</h2>
+  <p>
+    Java 集合框架（<code>Collections.sort</code>、<code>TreeSet</code>、<code>PriorityQueue</code>……）需要知道两个对象谁大谁小，
+    但 JDK 不可能提前知道你的业务对象（比如 <code>Student</code>、<code>Order</code>）应该按什么排序。
+    因此设计了两个"合同接口"，把比较逻辑交给调用方来实现。
+  </p>
+  <p>
+    这是经典的<strong>策略模式</strong>思想：把"如何比较"这个可变行为抽取出来，外置为接口，让算法（排序）与数据（对象）解耦。
+  </p>
+
+  <!-- ===== 2. Comparable：内置自然顺序 ===== -->
+  <h2>Comparable：内置自然顺序</h2>
+  <p>
+    <code>java.lang.Comparable&lt;T&gt;</code> 只有一个方法：<code>compareTo(T o)</code>。
+    实现它意味着：<strong>这个类的对象天生就有一种"标准"排序方式</strong>。
+    JDK 内置类型如 <code>Integer</code>、<code>String</code>、<code>LocalDate</code> 都实现了它。
+  </p>
+
+  <div class="callout info">
+    <strong>约定：</strong>
+    <code>compareTo</code> 返回负数（this &lt; o）、0（this == o）、正数（this &gt; o）。
+    强烈建议与 <code>equals</code> 保持一致：<code>a.compareTo(b) == 0</code> 应当与 <code>a.equals(b)</code> 相同，否则在 <code>TreeSet</code> 等有序集合里会出现奇怪行为。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Student.java — 实现 Comparable</span></div>
+    <pre><span class="com">// 学生按学号升序排列 —— 这是"自然顺序"，写死在类里</span>
+<span class="kw">public class</span> <span class="ty">Student</span> <span class="kw">implements</span> <span class="ty">Comparable</span><span class="punct">&lt;</span><span class="ty">Student</span><span class="punct">&gt; {</span>
+    <span class="kw">private final int</span>    <span class="var">id</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">name</span><span class="punct">;</span>
+    <span class="kw">private final double</span> <span class="var">gpa</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">Student</span><span class="punct">(</span><span class="kw">int</span> <span class="var">id</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">name</span><span class="punct">,</span> <span class="kw">double</span> <span class="var">gpa</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">id</span> <span class="punct">=</span> <span class="var">id</span><span class="punct">;</span> <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="var">name</span><span class="punct">;</span> <span class="kw">this</span><span class="punct">.</span><span class="var">gpa</span> <span class="punct">=</span> <span class="var">gpa</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public int</span> <span class="fn">compareTo</span><span class="punct">(</span><span class="ty">Student</span> <span class="var">other</span><span class="punct">) {</span>
+        <span class="com">// 直接用 Integer.compare 避免 id1 - id2 的整数溢出陷阱</span>
+        <span class="kw">return</span> <span class="ty">Integer</span><span class="punct">.</span><span class="fn">compare</span><span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">id</span><span class="punct">,</span> <span class="var">other</span><span class="punct">.</span><span class="var">id</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">toString</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="str">"Student{"</span> <span class="punct">+</span> <span class="var">id</span> <span class="punct">+</span> <span class="str">", "</span> <span class="punct">+</span> <span class="var">name</span> <span class="punct">+</span> <span class="str">", GPA="</span> <span class="punct">+</span> <span class="var">gpa</span> <span class="punct">+</span> <span class="str">'}'</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>使用自然顺序排序</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Student</span><span class="punct">&gt;</span> <span class="var">list</span> <span class="punct">=</span> <span class="ty">Arrays</span><span class="punct">.</span><span class="fn">asList</span><span class="punct">(</span>
+    <span class="kw">new</span> <span class="ty">Student</span><span class="punct">(</span><span class="num">3</span><span class="punct">,</span> <span class="str">"Charlie"</span><span class="punct">,</span> <span class="num">3.5</span><span class="punct">),</span>
+    <span class="kw">new</span> <span class="ty">Student</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="str">"Alice"</span><span class="punct">,</span>   <span class="num">3.9</span><span class="punct">),</span>
+    <span class="kw">new</span> <span class="ty">Student</span><span class="punct">(</span><span class="num">2</span><span class="punct">,</span> <span class="str">"Bob"</span><span class="punct">,</span>     <span class="num">3.7</span><span class="punct">)</span>
+<span class="punct">);</span>
+
+<span class="ty">Collections</span><span class="punct">.</span><span class="fn">sort</span><span class="punct">(</span><span class="var">list</span><span class="punct">);</span>  <span class="com">// 自动调用 compareTo，按 id 升序</span>
+<span class="com">// 输出：[Student{1, Alice, GPA=3.9}, Student{2, Bob, GPA=3.7}, Student{3, Charlie, GPA=3.5}]</span>
+
+<span class="com">// TreeSet 也依赖自然顺序去重和排序</span>
+<span class="ty">TreeSet</span><span class="punct">&lt;</span><span class="ty">Student</span><span class="punct">&gt;</span> <span class="var">set</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">TreeSet</span><span class="punct">&lt;&gt;(</span><span class="var">list</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- ===== 3. Comparator：外置灵活策略 ===== -->
+  <h2>Comparator：外置灵活策略</h2>
+  <p>
+    <code>java.util.Comparator&lt;T&gt;</code> 是一个独立的比较器对象。它不修改被比较类，只是在外部提供一种比较规则。
+    这解决了 <code>Comparable</code> 的根本局限：<strong>一个类只能有一种自然顺序，但业务上可能需要多种排序方式</strong>。
+  </p>
+  <p>
+    同样是 <code>Student</code>，有时需要按 GPA 降序，有时按姓名字母序——这些都不应该写死到类里。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>匿名类写法（Java 7 及以前常见）</span></div>
+    <pre><span class="ty">Comparator</span><span class="punct">&lt;</span><span class="ty">Student</span><span class="punct">&gt;</span> <span class="var">byGpaDesc</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Comparator</span><span class="punct">&lt;</span><span class="ty">Student</span><span class="punct">&gt;() {</span>
+    <span class="ann">@Override</span>
+    <span class="kw">public int</span> <span class="fn">compare</span><span class="punct">(</span><span class="ty">Student</span> <span class="var">a</span><span class="punct">,</span> <span class="ty">Student</span> <span class="var">b</span><span class="punct">) {</span>
+        <span class="com">// 注意：降序要反过来，用 b 和 a 的顺序</span>
+        <span class="kw">return</span> <span class="ty">Double</span><span class="punct">.</span><span class="fn">compare</span><span class="punct">(</span><span class="var">b</span><span class="punct">.</span><span class="fn">getGpa</span><span class="punct">(),</span> <span class="var">a</span><span class="punct">.</span><span class="fn">getGpa</span><span class="punct">());</span>
+    <span class="punct">}</span>
+<span class="punct">};</span>
+
+<span class="var">list</span><span class="punct">.</span><span class="fn">sort</span><span class="punct">(</span><span class="var">byGpaDesc</span><span class="punct">);</span>  <span class="com">// 按 GPA 从高到低</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Lambda + Comparator 链式 API（Java 8+，推荐）</span></div>
+    <pre><span class="com">// 单字段：按姓名字母升序</span>
+<span class="ty">Comparator</span><span class="punct">&lt;</span><span class="ty">Student</span><span class="punct">&gt;</span> <span class="var">byName</span> <span class="punct">=</span>
+    <span class="ty">Comparator</span><span class="punct">.</span><span class="fn">comparing</span><span class="punct">(</span><span class="ty">Student</span><span class="punct">::</span><span class="fn">getName</span><span class="punct">);</span>
+
+<span class="com">// 多字段：先按 GPA 降序，GPA 相同再按姓名升序</span>
+<span class="ty">Comparator</span><span class="punct">&lt;</span><span class="ty">Student</span><span class="punct">&gt;</span> <span class="var">complex</span> <span class="punct">=</span>
+    <span class="ty">Comparator</span><span class="punct">.</span><span class="fn">comparingDouble</span><span class="punct">(</span><span class="ty">Student</span><span class="punct">::</span><span class="fn">getGpa</span><span class="punct">)</span>
+              <span class="punct">.</span><span class="fn">reversed</span><span class="punct">()</span>
+              <span class="punct">.</span><span class="fn">thenComparing</span><span class="punct">(</span><span class="ty">Student</span><span class="punct">::</span><span class="fn">getName</span><span class="punct">);</span>
+
+<span class="var">list</span><span class="punct">.</span><span class="fn">sort</span><span class="punct">(</span><span class="var">complex</span><span class="punct">);</span>
+
+<span class="com">// null 安全：把 null 排到最后</span>
+<span class="ty">Comparator</span><span class="punct">&lt;</span><span class="ty">Student</span><span class="punct">&gt;</span> <span class="var">nullSafe</span> <span class="punct">=</span>
+    <span class="ty">Comparator</span><span class="punct">.</span><span class="fn">nullsLast</span><span class="punct">(</span><span class="ty">Comparator</span><span class="punct">.</span><span class="fn">comparing</span><span class="punct">(</span><span class="ty">Student</span><span class="punct">::</span><span class="fn">getName</span><span class="punct">));</span></pre>
+  </div>
+
+  <!-- ===== 4. 核心对比 ===== -->
+  <h2>核心对比</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th><code>Comparable</code></th>
+        <th><code>Comparator</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>包</td>
+        <td><code>java.lang</code></td>
+        <td><code>java.util</code></td>
+      </tr>
+      <tr>
+        <td>方法</td>
+        <td><code>compareTo(T o)</code></td>
+        <td><code>compare(T a, T b)</code></td>
+      </tr>
+      <tr>
+        <td>实现位置</td>
+        <td>类本身（侵入式）</td>
+        <td>外部独立对象（非侵入）</td>
+      </tr>
+      <tr>
+        <td>排序种数</td>
+        <td>只能一种（自然顺序）</td>
+        <td>无限种，按需创建</td>
+      </tr>
+      <tr>
+        <td>能否修改源码</td>
+        <td>必须能修改（或继承）</td>
+        <td>不需要（适合第三方类）</td>
+      </tr>
+      <tr>
+        <td>典型使用方</td>
+        <td><code>TreeSet</code>、<code>Collections.sort(list)</code></td>
+        <td><code>list.sort(cmp)</code>、<code>new TreeSet&lt;&gt;(cmp)</code>、<code>Stream.sorted(cmp)</code></td>
+      </tr>
+      <tr>
+        <td>Java 8 增强</td>
+        <td>无</td>
+        <td><code>comparing / thenComparing / reversed / nullsFirst / nullsLast</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 5. 设计哲学 ===== -->
+  <h2>设计哲学：为什么要分两个接口？</h2>
+  <p>
+    初学者常问：为什么不合并成一个？答案藏在<strong>职责分离</strong>原则里：
+  </p>
+  <ul>
+    <li><code>Comparable</code> 表达的是"这个类本身的排序语义"——就像 <code>equals</code> 和 <code>hashCode</code> 一样，是类的内在特性。</li>
+    <li><code>Comparator</code> 表达的是"某一特定场景下的排序策略"——它是外部视角，与类的定义无关。</li>
+    <li>第三方库的类（如 <code>java.sql.Timestamp</code>）你无法修改，只能用 <code>Comparator</code>。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>类比理解：</strong>人的身份证按出生日期排（自然顺序，<code>Comparable</code>）；但图书馆可以按书名、按出版年、按借阅量排（多种外部策略，<code>Comparator</code>）。
+  </div>
+
+  <!-- ===== 6. 常见陷阱 ===== -->
+  <h2>常见陷阱</h2>
+
+  <h3>陷阱 1：用减法代替 compare</h3>
+  <p>
+    新手常写 <code>return this.id - other.id</code>，在绝大多数情况下能工作，但存在<strong>整数溢出</strong>风险。
+    当 <code>this.id = Integer.MAX_VALUE</code>、<code>other.id = -1</code> 时，减法结果溢出为负数，导致排序错误。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 vs 正例</span></div>
+    <pre><span class="com">// ❌ 危险：整数溢出</span>
+<span class="kw">return this</span><span class="punct">.</span><span class="var">id</span> <span class="punct">-</span> <span class="var">other</span><span class="punct">.</span><span class="var">id</span><span class="punct">;</span>
+
+<span class="com">// ✅ 安全：使用静态工具方法</span>
+<span class="kw">return</span> <span class="ty">Integer</span><span class="punct">.</span><span class="fn">compare</span><span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">id</span><span class="punct">,</span> <span class="var">other</span><span class="punct">.</span><span class="var">id</span><span class="punct">);</span></pre>
+  </div>
+
+  <h3>陷阱 2：compareTo 与 equals 不一致</h3>
+  <p>
+    <code>BigDecimal("1.0")</code> 和 <code>BigDecimal("1.00")</code> 的 <code>equals</code> 返回 <code>false</code>（精度不同），但 <code>compareTo</code> 返回 <code>0</code>。
+    这导致 <code>TreeSet&lt;BigDecimal&gt;</code> 认为它们是同一个元素（只保留一个），而 <code>HashSet</code> 认为是两个。
+  </p>
+  <div class="callout warn">
+    如果你的类进入 <code>TreeSet</code> / <code>TreeMap</code>，请确保 <code>compareTo == 0</code> 当且仅当 <code>equals == true</code>，否则行为违反 Set/Map 语义。
+  </div>
+
+  <h3>陷阱 3：Comparator 违反传递性</h3>
+  <p>
+    比较器必须满足三个数学性质：<strong>反对称性</strong>（<code>cmp(a,b) == -cmp(b,a)</code>）、<strong>传递性</strong>、<strong>一致性</strong>。
+    违反这些性质会导致 <code>Arrays.sort</code> 在 Java 7+ 中抛出 <code>IllegalArgumentException: Comparison method violates its general contract!</code>。
+  </p>
+
+  <h3>陷阱 4：reversed() 之后 thenComparing 顺序问题</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>链式调用的执行顺序</span></div>
+    <pre><span class="com">// 先按 GPA 升序，reversed 变为降序，再按 name 升序</span>
+<span class="ty">Comparator</span><span class="punct">.</span><span class="fn">comparingDouble</span><span class="punct">(</span><span class="ty">Student</span><span class="punct">::</span><span class="fn">getGpa</span><span class="punct">)</span>
+          <span class="punct">.</span><span class="fn">reversed</span><span class="punct">()</span>               <span class="com">// 只翻转 GPA 这一层</span>
+          <span class="punct">.</span><span class="fn">thenComparing</span><span class="punct">(</span><span class="ty">Student</span><span class="punct">::</span><span class="fn">getName</span><span class="punct">);</span>
+
+<span class="com">// ❌ 常见误解：下面写法会把整个比较器翻转，name 也变成降序</span>
+<span class="ty">Comparator</span><span class="punct">.</span><span class="fn">comparingDouble</span><span class="punct">(</span><span class="ty">Student</span><span class="punct">::</span><span class="fn">getGpa</span><span class="punct">)</span>
+          <span class="punct">.</span><span class="fn">thenComparing</span><span class="punct">(</span><span class="ty">Student</span><span class="punct">::</span><span class="fn">getName</span><span class="punct">)</span>
+          <span class="punct">.</span><span class="fn">reversed</span><span class="punct">();</span>               <span class="com">// 两个字段全部翻转</span></pre>
+  </div>
+
+  <!-- ===== 7. 与集合框架的联系 ===== -->
+  <h2>与集合框架的联系</h2>
+  <div class="tree">
+    排序相关 API
+    ├── <span class="hi">Collections.sort(list)</span>          → 要求元素实现 Comparable
+    ├── <span class="hi">list.sort(comparator)</span>           → 传入 Comparator，更灵活
+    ├── <span class="hi">Arrays.sort(arr)</span>               → 基本类型用双轴快排；对象类型用 TimSort + Comparable
+    ├── <span class="hi">new TreeSet&lt;&gt;()</span>               → 依赖元素的 Comparable（无参构造）
+    ├── <span class="hi">new TreeSet&lt;&gt;(comparator)</span>     → 传入 Comparator 覆盖自然顺序
+    ├── <span class="hi">new PriorityQueue&lt;&gt;(comparator)</span> → 堆排序，需要 Comparator
+    └── <span class="hi">stream.sorted(comparator)</span>      → Stream 管道排序
+  </div>
+
+  <p>
+    值得注意：<code>TreeMap</code> / <code>TreeSet</code> 用比较器判断 key 相等（<code>compareTo == 0</code>），而不是 <code>equals</code>。
+    这与 <code>HashMap</code> / <code>HashSet</code> 用 <code>hashCode + equals</code> 判断相等形成鲜明对比。
+  </p>
+
+  <!-- ===== 8. 实战：对第三方类排序 ===== -->
+  <h2>实战：对第三方类排序</h2>
+  <p>
+    假设你拿到一个无法修改的第三方类 <code>Product</code>，需要在不同页面用不同排序——这正是 <code>Comparator</code> 最典型的使用场景。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>对第三方 Product 类多维度排序</span></div>
+    <pre><span class="com">// 第三方类，无法修改，没有实现 Comparable</span>
+<span class="kw">class</span> <span class="ty">Product</span> <span class="punct">{</span>
+    <span class="ty">String</span> <span class="var">name</span><span class="punct">;</span> <span class="kw">double</span> <span class="var">price</span><span class="punct">;</span> <span class="kw">int</span> <span class="var">sales</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="com">// 按价格升序（商品详情页）</span>
+<span class="ty">Comparator</span><span class="punct">&lt;</span><span class="ty">Product</span><span class="punct">&gt;</span> <span class="var">cheapFirst</span> <span class="punct">=</span>
+    <span class="ty">Comparator</span><span class="punct">.</span><span class="fn">comparingDouble</span><span class="punct">(</span><span class="var">p</span> <span class="punct">-&gt;</span> <span class="var">p</span><span class="punct">.</span><span class="var">price</span><span class="punct">);</span>
+
+<span class="com">// 按销量降序（热销榜）</span>
+<span class="ty">Comparator</span><span class="punct">&lt;</span><span class="ty">Product</span><span class="punct">&gt;</span> <span class="var">hotFirst</span> <span class="punct">=</span>
+    <span class="ty">Comparator</span><span class="punct">.</span><span class="fn">comparingInt</span><span class="punct">((</span><span class="ty">Product</span> <span class="var">p</span><span class="punct">)</span> <span class="punct">-&gt;</span> <span class="var">p</span><span class="punct">.</span><span class="var">sales</span><span class="punct">).</span><span class="fn">reversed</span><span class="punct">();</span>
+
+<span class="com">// 综合排序：先按销量降序，再按价格升序</span>
+<span class="ty">Comparator</span><span class="punct">&lt;</span><span class="ty">Product</span><span class="punct">&gt;</span> <span class="var">comprehensive</span> <span class="punct">=</span>
+    <span class="ty">Comparator</span><span class="punct">.</span><span class="fn">comparingInt</span><span class="punct">((</span><span class="ty">Product</span> <span class="var">p</span><span class="punct">)</span> <span class="punct">-&gt;</span> <span class="var">p</span><span class="punct">.</span><span class="var">sales</span><span class="punct">).</span><span class="fn">reversed</span><span class="punct">()</span>
+              <span class="punct">.</span><span class="fn">thenComparingDouble</span><span class="punct">(</span><span class="var">p</span> <span class="punct">-&gt;</span> <span class="var">p</span><span class="punct">.</span><span class="var">price</span><span class="punct">);</span>
+
+<span class="var">products</span><span class="punct">.</span><span class="fn">sort</span><span class="punct">(</span><span class="var">comprehensive</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- ===== 9. 面试考点 ===== -->
+  <h2>面试高频考点</h2>
+  <ul>
+    <li><strong>两者区别？何时用哪个？</strong> —— <code>Comparable</code> 是类的内置自然顺序，一个类只有一种；<code>Comparator</code> 是外置策略，可以有多种，适合不能修改源码或需要多种排序的场景。</li>
+    <li><strong><code>compareTo</code> 返回值的约定？</strong> —— 负数/0/正数，分别对应小于/等于/大于；不要用减法，有整数溢出风险。</li>
+    <li><strong><code>TreeSet</code> 是用 <code>equals</code> 还是 <code>compareTo</code> 判断重复？</strong> —— 用 <code>compareTo</code>（或 <code>Comparator.compare</code>），返回 0 即视为同一个元素。</li>
+    <li><strong><code>BigDecimal</code> 的 <code>equals</code> 和 <code>compareTo</code> 不一致，在集合里有何表现？</strong> —— <code>HashSet</code> 认为 <code>1.0</code> 和 <code>1.00</code> 是两个，<code>TreeSet</code> 认为是同一个。</li>
+    <li><strong>如何实现多字段排序？</strong> —— Java 8 <code>Comparator.comparing().thenComparing()</code> 链式调用。</li>
+    <li><strong>Comparator 违反约定会怎样？</strong> —— Java 7+ TimSort 检测到违反传递性会抛 <code>IllegalArgumentException</code>。</li>
+  </ul>
+
+  <!-- ===== 10. 小结 ===== -->
+  <h2>小结</h2>
+  <div class="callout info">
+    <strong>选型口诀：</strong><br>
+    类有"天然"排序（如 id、日期）且你能改源码 → <code>Comparable</code>；<br>
+    需要多种排序、或无法改源码 → <code>Comparator</code>；<br>
+    两者可以共存：类实现 <code>Comparable</code> 定义默认顺序，同时在需要时传入 <code>Comparator</code> 覆盖。
+  </div>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./21-toString.html" class="nav-btn">← 21. toString()</a>
+    <a href="./23-clone与深浅拷贝.html" class="nav-btn next">23. clone() 与深浅拷贝 →</a>
+  </div>
+
+</div>
+</body>
+</html>

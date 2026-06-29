@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>11. try-catch-finally 与 try-with-resources</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: inherit; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+    .nav-btn.next:hover { background: #16653422; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / 核心类库 / 异常处理
+  </div>
+
+  <div class="hero">
+    <div class="tag">核心类库 · 异常处理</div>
+    <h1>try-catch-finally 与 try-with-resources</h1>
+    <p>从资源泄漏到自动关闭——理解 Java 异常处理的两个核心语法，以及 JVM 在背后做了什么。</p>
+  </div>
+
+  <!-- ───────────────────────────── 1. 为什么需要 try-catch-finally ───────────────────────────── -->
+  <h2>1. 为什么需要 finally？</h2>
+  <p>
+    Java 的异常机制让我们可以将"正常逻辑"与"错误处理"分开写。但有一类代码天生<strong>必须执行</strong>——比如关闭文件、释放数据库连接、解锁互斥量——无论 try 块是否抛出异常。<code>finally</code> 就是为了解决这个问题而存在的。
+  </p>
+  <p>
+    设想没有 <code>finally</code> 的世界：你要在每一个可能的出口（正常返回、每个 catch 分支、嵌套 catch……）都写一遍清理逻辑。这不只是冗余，更是灾难——任何一处遗漏都会导致资源泄漏。<code>finally</code> 把"出口守卫"这一职责统一到了一个地方。
+  </p>
+
+  <h3>基础结构</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>try-catch-finally 骨架</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="com">// 可能抛出异常的危险代码</span>
+    <span class="ty">InputStream</span> <span class="var">in</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="str">"data.txt"</span><span class="punct">);</span>
+    <span class="var">in</span><span class="punct">.</span><span class="fn">read</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">FileNotFoundException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="com">// 处理"文件不存在"这一具体情况</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">err</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"文件未找到: "</span> <span class="punct">+</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="com">// 处理其他 IO 错误（父类放后面）</span>
+    <span class="var">e</span><span class="punct">.</span><span class="fn">printStackTrace</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="com">// 无论如何都会执行——即使 catch 里又抛了异常</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"清理资源"</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>catch 顺序很重要：</strong>子类异常必须写在父类前面。如果把 <code>IOException</code> 写在 <code>FileNotFoundException</code> 前，编译器会报"已捕获异常"错误，因为后者是前者的子类，永远到不了第二个 catch。
+  </div>
+
+  <!-- ───────────────────────────── 2. finally 的执行时机 ───────────────────────────── -->
+  <h2>2. finally 的执行时机与底层机制</h2>
+  <p>
+    <code>finally</code> 几乎在所有情况下都会执行。JVM 实现上，Java 编译器并不是插入一条"跳转到 finally"的指令，而是将 <code>finally</code> 块的字节码<strong>复制</strong>到每个可能的出口路径之后（称为 inline copying）。这意味着 finally 块实际上被内联了多份。
+  </p>
+
+  <h3>finally 一定会执行吗？三个例外</h3>
+  <ul>
+    <li><code>System.exit()</code> 被调用——JVM 进程直接终止，finally 不会执行</li>
+    <li>JVM 崩溃（如 SIGSEGV、OOM 导致的 kill）</li>
+    <li>线程被强制 kill（<code>Thread.stop()</code>，已废弃，但理论上存在）</li>
+  </ul>
+
+  <h3>陷阱一：finally 中的 return 会吞掉异常</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>危险：finally 里 return</span></div>
+    <pre><span class="kw">public static int</span> <span class="fn">danger</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="str">"出错了"</span><span class="punct">);</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="com">// ⚠️ 这个 return 会"压制"上面的异常，调用方根本看不到异常！</span>
+        <span class="kw">return</span> <span class="num">42</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方：</span>
+<span class="kw">int</span> <span class="var">result</span> <span class="punct">=</span> <span class="fn">danger</span><span class="punct">();</span>  <span class="com">// 返回 42，异常被静默吞掉！</span></pre>
+  </div>
+  <div class="callout warn">
+    <strong>规则：finally 块中永远不要写 return、throw，也不要修改方法返回值。</strong>这是 Java 界公认的坏味道，会导致异常被静默吞掉，极难调试。
+  </div>
+
+  <h3>陷阱二：finally 中的异常会覆盖原始异常</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>finally 抛出新异常时原始异常消失</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="str">"原始异常"</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="com">// 如果这里也抛出异常，"原始异常"就永远丢失了</span>
+    <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="str">"finally 里的异常"</span><span class="punct">);</span>
+<span class="punct">}</span>
+<span class="com">// 调用方只能看到 "finally 里的异常"，原始异常的堆栈已消失</span></pre>
+  </div>
+
+  <!-- ───────────────────────────── 3. 传统方式的痛点 ───────────────────────────── -->
+  <h2>3. 传统 finally 关闭资源的痛点</h2>
+  <p>
+    在 Java 7 之前，正确关闭多个资源需要非常繁琐的嵌套结构。来看一个"教科书级正确但极丑陋"的写法：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java（Java 6 写法）</span><span>正确但丑陋的双资源关闭</span></div>
+    <pre><span class="ty">InputStream</span> <span class="var">in</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+<span class="ty">OutputStream</span> <span class="var">out</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">in</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="str">"src.txt"</span><span class="punct">);</span>
+    <span class="var">out</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileOutputStream</span><span class="punct">(</span><span class="str">"dst.txt"</span><span class="punct">);</span>
+    <span class="com">// ... 复制逻辑 ...</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="com">// 必须分别 try，否则 in.close() 抛异常会导致 out 永远不关</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">in</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">try</span> <span class="punct">{</span> <span class="var">in</span><span class="punct">.</span><span class="fn">close</span><span class="punct">();</span> <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">ignored</span><span class="punct">)</span> <span class="punct">{}</span>
+    <span class="punct">}</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">out</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">try</span> <span class="punct">{</span> <span class="var">out</span><span class="punct">.</span><span class="fn">close</span><span class="punct">();</span> <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">ignored</span><span class="punct">)</span> <span class="punct">{}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// 两个资源、代码已经膨胀成这样；三个资源呢？</span></pre>
+  </div>
+  <p>这段代码有两个核心问题：</p>
+  <ol>
+    <li><strong>冗长易错：</strong>每加一个资源都要多写一段 null 检查 + 嵌套 try-catch</li>
+    <li><strong>异常信息丢失：</strong>如果 <code>close()</code> 抛出了异常，被 <code>ignored</code> 静默掉了，调试时找不到根因</li>
+  </ol>
+
+  <!-- ───────────────────────────── 4. try-with-resources ───────────────────────────── -->
+  <h2>4. try-with-resources（Java 7+）</h2>
+  <p>
+    Java 7 引入 <code>try-with-resources</code>，用语法糖彻底解决资源关闭问题。凡是实现了 <code>AutoCloseable</code> 接口（只有一个方法：<code>void close() throws Exception</code>）的对象，都可以放入 <code>try()</code> 括号中，JVM 保证在 try 块结束后<strong>自动调用 close()</strong>，顺序与声明顺序相反。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java 7+</span><span>try-with-resources 等价改写</span></div>
+    <pre><span class="com">// 简洁版：编译器自动插入 close() 调用</span>
+<span class="kw">try</span> <span class="punct">(</span>
+    <span class="ty">InputStream</span>  <span class="var">in</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="str">"src.txt"</span><span class="punct">);</span>
+    <span class="ty">OutputStream</span> <span class="var">out</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileOutputStream</span><span class="punct">(</span><span class="str">"dst.txt"</span><span class="punct">)</span>
+<span class="punct">)</span> <span class="punct">{</span>
+    <span class="com">// 复制逻辑</span>
+    <span class="var">in</span><span class="punct">.</span><span class="fn">transferTo</span><span class="punct">(</span><span class="var">out</span><span class="punct">);</span>
+<span class="punct">}</span>
+<span class="com">// out.close() 先被调用，然后 in.close()（逆序）</span>
+<span class="com">// 无论是否抛出异常，都会自动关闭，无需手写 finally</span></pre>
+  </div>
+
+  <h3>编译器生成的等价字节码逻辑（伪代码）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>伪代码</span><span>编译器展开后的真实逻辑</span></div>
+    <pre><span class="ty">Throwable</span> <span class="var">primaryEx</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+<span class="ty">InputStream</span> <span class="var">in</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="str">"src.txt"</span><span class="punct">);</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">in</span><span class="punct">.</span><span class="fn">read</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Throwable</span> <span class="var">t</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="var">primaryEx</span> <span class="punct">=</span> <span class="var">t</span><span class="punct">;</span>
+    <span class="kw">throw</span> <span class="var">t</span><span class="punct">;</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">in</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">primaryEx</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="kw">try</span> <span class="punct">{</span>
+                <span class="var">in</span><span class="punct">.</span><span class="fn">close</span><span class="punct">();</span>
+            <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Throwable</span> <span class="var">closeEx</span><span class="punct">)</span> <span class="punct">{</span>
+                <span class="com">// 关键：close() 抛出的异常被"抑制"，附加到原始异常上</span>
+                <span class="var">primaryEx</span><span class="punct">.</span><span class="fn">addSuppressed</span><span class="punct">(</span><span class="var">closeEx</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+            <span class="var">in</span><span class="punct">.</span><span class="fn">close</span><span class="punct">();</span>  <span class="com">// 没有原始异常，直接 close</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>Suppressed Exception（抑制异常）：</strong>这是 try-with-resources 最精妙的设计。<code>close()</code> 抛出的异常不会覆盖原始异常，而是通过 <code>Throwable.addSuppressed()</code> 附加在原始异常上。调试时用 <code>e.getSuppressed()</code> 或直接看堆栈中的 <code>Suppressed:</code> 行，信息完整保留，一条都不会丢失。
+  </div>
+
+  <!-- ───────────────────────────── 5. 实现 AutoCloseable ───────────────────────────── -->
+  <h2>5. 自定义资源类实现 AutoCloseable</h2>
+  <p>
+    任何需要"用完即关"的资源都应实现 <code>AutoCloseable</code>。常见场景：数据库连接、Redis 连接、文件句柄、线程池、网络 Socket。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>自定义可自动关闭的资源</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">DatabaseConnection</span> <span class="kw">implements</span> <span class="ty">AutoCloseable</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">url</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">DatabaseConnection</span><span class="punct">(</span><span class="ty">String</span> <span class="var">url</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">url</span> <span class="punct">=</span> <span class="var">url</span><span class="punct">;</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"连接已建立: "</span> <span class="punct">+</span> <span class="var">url</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">query</span><span class="punct">(</span><span class="ty">String</span> <span class="var">sql</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"执行: "</span> <span class="punct">+</span> <span class="var">sql</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">close</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="com">// close() 可以抛 Exception（AutoCloseable），也可以只抛 IOException（Closeable）</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"连接已关闭: "</span> <span class="punct">+</span> <span class="var">url</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 使用方：</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="ty">DatabaseConnection</span> <span class="var">conn</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">DatabaseConnection</span><span class="punct">(</span><span class="str">"jdbc:mysql://localhost/db"</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="var">conn</span><span class="punct">.</span><span class="fn">query</span><span class="punct">(</span><span class="str">"SELECT * FROM users"</span><span class="punct">);</span>
+<span class="punct">}</span>
+<span class="com">// 输出：连接已建立 → 执行 → 连接已关闭</span></pre>
+  </div>
+
+  <h3>AutoCloseable vs Closeable</h3>
+  <table>
+    <tr>
+      <th>接口</th>
+      <th>引入版本</th>
+      <th><code>close()</code> 签名</th>
+      <th>适用场景</th>
+    </tr>
+    <tr>
+      <td><code>AutoCloseable</code></td>
+      <td>Java 7</td>
+      <td><code>void close() throws Exception</code></td>
+      <td>通用资源（数据库、网络）</td>
+    </tr>
+    <tr>
+      <td><code>Closeable</code></td>
+      <td>Java 5</td>
+      <td><code>void close() throws IOException</code></td>
+      <td>IO 流（是 AutoCloseable 的子接口）</td>
+    </tr>
+  </table>
+  <p>
+    <code>Closeable</code> 继承了 <code>AutoCloseable</code>，所以所有 IO 流（<code>InputStream</code>、<code>OutputStream</code>、<code>Reader</code>、<code>Writer</code>）天然支持 try-with-resources。
+  </p>
+
+  <!-- ───────────────────────────── 6. Java 9 增强 ───────────────────────────── -->
+  <h2>6. Java 9 增强：引用已有变量</h2>
+  <p>
+    Java 9 之前，<code>try()</code> 括号内只能声明新变量。Java 9 开始，<strong>已经声明为 effectively final 的变量</strong>也可以直接放入括号，不必重新赋值。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java 9+</span><span>引用已有的 effectively final 变量</span></div>
+    <pre><span class="ty">InputStream</span> <span class="var">in</span>  <span class="punct">=</span> <span class="fn">openInputStream</span><span class="punct">();</span>   <span class="com">// 外部已赋值</span>
+<span class="ty">OutputStream</span> <span class="var">out</span> <span class="punct">=</span> <span class="fn">openOutputStream</span><span class="punct">();</span>
+
+<span class="com">// Java 9+：直接引用，不需要在括号内重新赋值</span>
+<span class="kw">try</span> <span class="punct">(</span><span class="var">in</span><span class="punct">;</span> <span class="var">out</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="var">in</span><span class="punct">.</span><span class="fn">transferTo</span><span class="punct">(</span><span class="var">out</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ───────────────────────────── 7. multi-catch ───────────────────────────── -->
+  <h2>7. multi-catch（Java 7+）</h2>
+  <p>
+    同一个 <code>catch</code> 块处理多种不相关的异常类型，避免重复代码：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java 7+</span><span>multi-catch 语法</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="com">// 可能抛出多种异常的操作</span>
+    <span class="fn">riskyOperation</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">SQLException</span> <span class="punct">|</span> <span class="ty">IOException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="com">// e 的编译期类型是两者的公共父类（这里是 Exception）</span>
+    <span class="com">// e 在这里是 effectively final，不能重新赋值</span>
+    <span class="var">logger</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"操作失败"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+  <div class="callout info">
+    <strong>注意：</strong>multi-catch 中的异常类型不能有继承关系。如果写 <code>catch (Exception | IOException e)</code>，编译器会报错，因为 <code>IOException</code> 已经被 <code>Exception</code> 覆盖了。
+  </div>
+
+  <!-- ───────────────────────────── 8. 执行顺序与面试考点 ───────────────────────────── -->
+  <h2>8. 执行顺序全景图</h2>
+  <div class="tree">
+    try 块正常执行
+    ├── 无异常 → [finally] → 方法正常返回
+    └── 抛出异常
+        ├── 有匹配的 catch → [catch 块] → [finally] → 继续执行（或重抛）
+        └── 无匹配的 catch → [finally] → 异常继续向上传播
+
+    try-with-resources 额外步骤：
+    finally 执行前 → <span class="hi">按声明逆序自动调用 close()</span>
+    close() 异常 → <span class="hi">addSuppressed() 到原始异常，不丢失</span>
+  </div>
+
+  <h3>高频面试题</h3>
+  <table>
+    <tr>
+      <th>问题</th>
+      <th>答案要点</th>
+    </tr>
+    <tr>
+      <td>finally 一定执行吗？</td>
+      <td>绝大多数情况是。<code>System.exit()</code>、JVM 崩溃、线程强制 kill 除外</td>
+    </tr>
+    <tr>
+      <td>finally 中 return，方法返回什么？</td>
+      <td>finally 的 return 值。原始异常会被静默吞掉（生产禁忌）</td>
+    </tr>
+    <tr>
+      <td>try-with-resources 关闭顺序？</td>
+      <td>与声明顺序相反（栈式关闭，后开先关）</td>
+    </tr>
+    <tr>
+      <td>close() 抛异常会怎样？</td>
+      <td>通过 <code>addSuppressed()</code> 附加到原始异常，不覆盖原始异常</td>
+    </tr>
+    <tr>
+      <td>Closeable 和 AutoCloseable 的区别？</td>
+      <td>Closeable 是子接口，close() 只抛 IOException；AutoCloseable 抛 Exception</td>
+    </tr>
+    <tr>
+      <td>try 可以没有 catch 只有 finally 吗？</td>
+      <td>可以。常见于只需确保清理、不关心具体异常类型的场景</td>
+    </tr>
+  </table>
+
+  <!-- ───────────────────────────── 9. 与其他知识的联系 ───────────────────────────── -->
+  <h2>9. 与其他知识的联系</h2>
+  <ul>
+    <li><strong>JDBC：</strong>Connection、Statement、ResultSet 都实现了 <code>AutoCloseable</code>，Spring 的 <code>JdbcTemplate</code> 内部也大量使用 try-with-resources 确保连接归还连接池</li>
+    <li><strong>并发：</strong><code>Lock.unlock()</code> 应在 finally 中调用（不实现 AutoCloseable），这是 Java 并发编程的惯用法：<code>lock.lock(); try { ... } finally { lock.unlock(); }</code></li>
+    <li><strong>NIO / Files：</strong>Java 7 的 <code>Files.newInputStream()</code> 返回的流同样实现了 AutoCloseable，与 try-with-resources 完美配合</li>
+    <li><strong>Lombok：</strong><code>@Cleanup</code> 注解本质上是在字节码层面插入类似 try-with-resources 的关闭逻辑</li>
+    <li><strong>设计模式：</strong>try-with-resources 是"模板方法模式"的语言级实现——框架（JVM）控制流程骨架，用户只填充 try 块内容</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>最佳实践总结：</strong>凡是涉及外部资源（文件、网络、数据库），优先使用 try-with-resources；finally 块只用于不实现 AutoCloseable 的清理逻辑（如释放锁）；永远不要在 finally 中写 return 或抛出新异常。
+  </div>
+
+  <hr>
+
+  <div class="nav-footer">
+    <a href="./10-checked异常.html" class="nav-btn">← 10. checked vs unchecked 异常</a>
+    <a href="./12-自定义异常.html" class="nav-btn next">12. 自定义异常 →</a>
+  </div>
+
+</div>
+</body>
+</html>

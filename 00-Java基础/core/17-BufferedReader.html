@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>17. BufferedReader / BufferedWriter — Java 学习</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: inherit; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+    .nav-btn.next:hover { background: #16653422; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / 核心类库 / IO
+  </div>
+
+  <div class="hero">
+    <div class="tag">核心类库 · IO</div>
+    <h1>BufferedReader / BufferedWriter</h1>
+    <p>缓冲流的设计哲学：用一次大 I/O 换掉千万次小 I/O，彻底消除系统调用开销。</p>
+  </div>
+
+  <!-- 1. 为什么需要缓冲 -->
+  <h2>为什么需要缓冲流？</h2>
+  <p>
+    上一节讲到 <code>FileReader</code> 每次调用 <code>read()</code> 都会触发一次操作系统的 <strong>系统调用（syscall）</strong>，
+    从用户态切换到内核态再切回来，开销极大。假设读取一个 1 MB 的文件，每次只读 1 个字符（2 字节），
+    需要约 <strong>50 万次</strong>系统调用。
+  </p>
+  <p>
+    缓冲流的思路很朴素：<strong>在 JVM 堆内存里开一块缓冲区（默认 8192 字节）</strong>，
+    一次从操作系统拿 8192 个字符填满缓冲区，后续的 <code>read()</code> 调用都从内存缓冲区取，
+    直到缓冲区耗尽才再发起一次 syscall。这样 50 万次 syscall 就压缩成了约 <strong>128 次</strong>。
+  </p>
+
+  <div class="callout info">
+    <strong>类比：</strong>你要从仓库搬 1000 件货到车间。每次拿一件来回跑 1000 趟 vs. 推一辆小车每次搬 50 件只跑 20 趟——缓冲区就是那辆小车。
+  </div>
+
+  <!-- 2. 类层次 -->
+  <h2>类层次结构</h2>
+  <p><code>BufferedReader</code> 和 <code>BufferedWriter</code> 都是<strong>装饰器（Decorator）模式</strong>的典型实现，它们本身不做任何真实 I/O，只包装已有的 <code>Reader</code> / <code>Writer</code>。</p>
+
+  <div class="tree">
+java.io.Reader<br>
+├── java.io.BufferedReader   <span class="hi">← 本节主角</span><br>
+│   └── java.io.LineNumberReader<br>
+└── java.io.InputStreamReader<br>
+&nbsp;&nbsp;&nbsp;&nbsp;└── java.io.FileReader<br>
+<br>
+java.io.Writer<br>
+├── java.io.BufferedWriter   <span class="hi">← 本节主角</span><br>
+└── java.io.OutputStreamWriter<br>
+&nbsp;&nbsp;&nbsp;&nbsp;└── java.io.FileWriter
+  </div>
+
+  <div class="callout tip">
+    <strong>装饰器模式要点：</strong>BufferedReader 构造函数接受任意 Reader，这意味着它能包装 FileReader、InputStreamReader、StringReader……一律适用，无需为每种流单独写缓冲逻辑。
+  </div>
+
+  <!-- 3. 核心 API -->
+  <h2>核心 API 速览</h2>
+
+  <table>
+    <thead>
+      <tr><th>方法</th><th>说明</th><th>返回值</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>read()</code></td><td>读单个字符，从缓冲区取</td><td><code>int</code>（-1 表示 EOF）</td></tr>
+      <tr><td><code>read(char[], off, len)</code></td><td>批量读入字符数组</td><td>实际读取字符数</td></tr>
+      <tr><td><code>readLine()</code></td><td>读一整行，不含行终止符</td><td><code>String</code>（null 表示 EOF）</td></tr>
+      <tr><td><code>lines()</code></td><td>返回行的惰性 Stream（Java 8+）</td><td><code>Stream&lt;String&gt;</code></td></tr>
+      <tr><td><code>ready()</code></td><td>缓冲区是否有数据可立即读取</td><td><code>boolean</code></td></tr>
+      <tr><td><code>mark(n)</code> / <code>reset()</code></td><td>标记 + 回退，最多回退 n 字符</td><td><code>void</code></td></tr>
+      <tr><td><code>write(String)</code></td><td>写字符串到缓冲区</td><td><code>void</code></td></tr>
+      <tr><td><code>newLine()</code></td><td>写平台无关的换行符</td><td><code>void</code></td></tr>
+      <tr><td><code>flush()</code></td><td>强制将缓冲区内容写出到底层流</td><td><code>void</code></td></tr>
+    </tbody>
+  </table>
+
+  <!-- 4. 基本使用 -->
+  <h2>基本用法：逐行读文件</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BasicRead.java</span><span>经典写法（Java 7+ try-with-resources）</span></div>
+    <pre><span class="kw">import</span> java<span class="punct">.</span>io<span class="punct">.*;</span>
+
+<span class="kw">public class</span> <span class="ty">BasicRead</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+        <span class="com">// 装饰链：FileReader → BufferedReader</span>
+        <span class="com">// try-with-resources 保证 close() 被调用，从外到内依次关闭</span>
+        <span class="kw">try</span> <span class="punct">(</span><span class="ty">BufferedReader</span> <span class="var">br</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BufferedReader</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">FileReader</span><span class="punct">(</span><span class="str">"data.txt"</span><span class="punct">)))</span> <span class="punct">{</span>
+            <span class="ty">String</span> <span class="var">line</span><span class="punct">;</span>
+            <span class="com">// readLine() 返回 null 表示到达文件末尾</span>
+            <span class="kw">while</span> <span class="punct">((</span><span class="var">line</span> <span class="punct">=</span> <span class="var">br</span><span class="punct">.</span><span class="fn">readLine</span><span class="punct">()) !=</span> <span class="kw">null</span><span class="punct">)</span> <span class="punct">{</span>
+                <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">line</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：readLine() 丢失行终止符。</strong>返回的字符串不包含 <code>\n</code> 或 <code>\r\n</code>。
+    如果你要原样还原文件内容，需要自己拼回换行符，否则写出的文件会丢失最后一行的换行。
+  </div>
+
+  <!-- 5. Java 8 Stream API -->
+  <h2>Java 8+ 写法：lines() Stream</h2>
+  <p><code>lines()</code> 返回的是<strong>惰性求值（lazy）</strong>的 Stream，不会把整个文件一次性读入内存，非常适合处理大文件。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StreamRead.java</span><span>Java 8 函数式风格</span></div>
+    <pre><span class="kw">import</span> java<span class="punct">.</span>io<span class="punct">.*;</span>
+<span class="kw">import</span> java<span class="punct">.</span>nio<span class="punct">.</span>file<span class="punct">.*;</span>
+
+<span class="kw">public class</span> <span class="ty">StreamRead</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+        <span class="com">// Files.newBufferedReader 会自动使用 UTF-8（Java 11+），更推荐</span>
+        <span class="kw">try</span> <span class="punct">(</span><span class="ty">BufferedReader</span> <span class="var">br</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">newBufferedReader</span><span class="punct">(</span><span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"data.txt"</span><span class="punct">)))</span> <span class="punct">{</span>
+            <span class="var">br</span><span class="punct">.</span><span class="fn">lines</span><span class="punct">()</span>
+              <span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="var">l</span> <span class="punct">-&gt;</span> <span class="var">l</span><span class="punct">.</span><span class="fn">startsWith</span><span class="punct">(</span><span class="str">"ERROR"</span><span class="punct">))</span>    <span class="com">// 筛选错误行</span>
+              <span class="punct">.</span><span class="fn">limit</span><span class="punct">(</span><span class="num">100</span><span class="punct">)</span>                         <span class="com">// 只取前 100 条，不会读完整个文件</span>
+              <span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">::</span><span class="fn">println</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="com">// close() 自动关闭底层流，Stream 中途不再消费时也安全</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 6. BufferedWriter -->
+  <h2>BufferedWriter：写文件</h2>
+  <p>
+    写操作的瓶颈同样在 syscall。<code>BufferedWriter</code> 把小块写操作先攒在缓冲区，
+    等缓冲区满或显式调用 <code>flush()</code> / <code>close()</code> 时才真正写入磁盘。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BasicWrite.java</span><span>写文件标准用法</span></div>
+    <pre><span class="kw">import</span> java<span class="punct">.</span>io<span class="punct">.*;</span>
+<span class="kw">import</span> java<span class="punct">.</span>nio<span class="punct">.</span>file<span class="punct">.*;</span>
+<span class="kw">import</span> java<span class="punct">.</span>nio<span class="punct">.</span>charset<span class="punct">.*;</span>
+
+<span class="kw">public class</span> <span class="ty">BasicWrite</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+        <span class="com">// Files.newBufferedWriter 支持 OpenOption，这里 APPEND 模式追加写入</span>
+        <span class="kw">try</span> <span class="punct">(</span><span class="ty">BufferedWriter</span> <span class="var">bw</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">newBufferedWriter</span><span class="punct">(</span>
+                <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"output.txt"</span><span class="punct">),</span>
+                <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">,</span>
+                <span class="ty">StandardOpenOption</span><span class="punct">.</span><span class="var">CREATE</span><span class="punct">,</span>
+                <span class="ty">StandardOpenOption</span><span class="punct">.</span><span class="var">APPEND</span><span class="punct">))</span> <span class="punct">{</span>
+
+            <span class="var">bw</span><span class="punct">.</span><span class="fn">write</span><span class="punct">(</span><span class="str">"第一行内容"</span><span class="punct">);</span>
+            <span class="var">bw</span><span class="punct">.</span><span class="fn">newLine</span><span class="punct">();</span>  <span class="com">// 平台无关换行：Windows=\r\n，Unix=\n</span>
+            <span class="var">bw</span><span class="punct">.</span><span class="fn">write</span><span class="punct">(</span><span class="str">"第二行内容"</span><span class="punct">);</span>
+            <span class="var">bw</span><span class="punct">.</span><span class="fn">newLine</span><span class="punct">();</span>
+            <span class="com">// close() 会自动 flush，但长时间不关闭的场景需要手动 flush()</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>最常见的坑：忘记 flush / close，文件内容为空！</strong><br>
+    如果程序崩溃或流未关闭，缓冲区里的数据就永远停在内存里，文件是空的或不完整的。
+    <strong>必须</strong>用 try-with-resources 确保 close() 一定执行。
+  </div>
+
+  <!-- 7. 自定义缓冲区大小 -->
+  <h2>自定义缓冲区大小</h2>
+  <p>构造函数的第二个参数可指定缓冲区字节数，默认 <strong>8192</strong>（8 KB）。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>CustomBuffer.java</span></div>
+    <pre><span class="com">// 对于读取超大日志文件，可以把缓冲区放大，减少 syscall 次数</span>
+<span class="ty">BufferedReader</span> <span class="var">br</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BufferedReader</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">FileReader</span><span class="punct">(</span><span class="str">"huge.log"</span><span class="punct">),</span> <span class="num">65536</span><span class="punct">);</span>
+<span class="com">// 64 KB 缓冲区：一次 syscall 能取 64K 字符，适合顺序读取大文件</span>
+
+<span class="com">// 对于网络流（每次数据包 ~1.5KB），太大的缓冲区反而增加延迟</span>
+<span class="ty">BufferedReader</span> <span class="var">netBr</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BufferedReader</span><span class="punct">(</span><span class="var">socket</span><span class="punct">.</span><span class="fn">getReader</span><span class="punct">(),</span> <span class="num">4096</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- 8. mark/reset -->
+  <h2>mark / reset：可回退读取</h2>
+  <p>
+    <code>BufferedReader</code> 支持 <code>mark()</code> + <code>reset()</code>，
+    因为数据已在内存缓冲区里，回退只是移动指针，不需要重新 I/O。
+    而 <code>FileReader</code> 本身不支持 mark（底层 OS 文件流不可随机回退）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>MarkReset.java</span><span>peek 下一行而不消耗它</span></div>
+    <pre><span class="kw">try</span> <span class="punct">(</span><span class="ty">BufferedReader</span> <span class="var">br</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BufferedReader</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">FileReader</span><span class="punct">(</span><span class="str">"data.txt"</span><span class="punct">)))</span> <span class="punct">{</span>
+    <span class="com">// markSupported() 返回 true，才能安全使用 mark/reset</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">br</span><span class="punct">.</span><span class="fn">markSupported</span><span class="punct">())</span> <span class="punct">{</span>
+        <span class="var">br</span><span class="punct">.</span><span class="fn">mark</span><span class="punct">(</span><span class="num">512</span><span class="punct">);</span>         <span class="com">// 记录当前位置，允许回退最多 512 字符</span>
+        <span class="ty">String</span> <span class="var">peek</span> <span class="punct">=</span> <span class="var">br</span><span class="punct">.</span><span class="fn">readLine</span><span class="punct">();</span>  <span class="com">// 偷看一行</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">peek</span><span class="punct">.</span><span class="fn">startsWith</span><span class="punct">(</span><span class="str">"#"</span><span class="punct">))</span> <span class="punct">{</span>
+            <span class="var">br</span><span class="punct">.</span><span class="fn">reset</span><span class="punct">();</span>       <span class="com">// 是注释行，回退重读</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 9. 字符编码 -->
+  <h2>字符编码：最容易踩坑的地方</h2>
+  <p>
+    <code>new FileReader("file.txt")</code> 使用的是 <strong>JVM 默认字符集</strong>（由 <code>file.encoding</code> 系统属性决定），
+    在不同操作系统上可能是 UTF-8、GBK、ISO-8859-1 等。
+    这是乱码问题的根源之一。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Encoding.java</span><span>正确指定编码的三种写法</span></div>
+    <pre><span class="kw">import</span> java<span class="punct">.</span>nio<span class="punct">.</span>charset<span class="punct">.*;</span>
+<span class="kw">import</span> java<span class="punct">.</span>nio<span class="punct">.</span>file<span class="punct">.*;</span>
+
+<span class="com">// ✗ 反例：依赖平台默认编码，跨平台乱码</span>
+<span class="ty">BufferedReader</span> <span class="var">bad</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BufferedReader</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">FileReader</span><span class="punct">(</span><span class="str">"file.txt"</span><span class="punct">));</span>
+
+<span class="com">// ✓ 方式一：InputStreamReader 明确指定编码（老代码兼容性好）</span>
+<span class="ty">BufferedReader</span> <span class="var">br1</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BufferedReader</span><span class="punct">(</span>
+    <span class="kw">new</span> <span class="ty">InputStreamReader</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="str">"file.txt"</span><span class="punct">),</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">));</span>
+
+<span class="com">// ✓ 方式二：Java 11 新增 FileReader(File, Charset)，更简洁</span>
+<span class="ty">BufferedReader</span> <span class="var">br2</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BufferedReader</span><span class="punct">(</span>
+    <span class="kw">new</span> <span class="ty">FileReader</span><span class="punct">(</span><span class="str">"file.txt"</span><span class="punct">,</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">));</span>
+
+<span class="com">// ✓ 方式三：NIO Files 工厂方法，最推荐（Java 7+）</span>
+<span class="ty">BufferedReader</span> <span class="var">br3</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">newBufferedReader</span><span class="punct">(</span><span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"file.txt"</span><span class="punct">),</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- 10. PrintWriter 对比 -->
+  <h2>BufferedWriter vs PrintWriter</h2>
+  <p>两者都能写文本，但设计目标不同，选错会踩坑：</p>
+
+  <table>
+    <thead>
+      <tr><th>特性</th><th>BufferedWriter</th><th>PrintWriter</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>主要设计目标</td><td>提升 I/O 性能（缓冲）</td><td>格式化输出（printf 风格）</td></tr>
+      <tr><td>异常处理</td><td>抛出 <code>IOException</code>，强迫处理</td><td>吞掉异常，通过 <code>checkError()</code> 查询</td></tr>
+      <tr><td><code>println()</code></td><td>没有此方法</td><td>有，自带换行</td></tr>
+      <tr><td>自动 flush</td><td>不支持</td><td>构造时可开启 auto-flush</td></tr>
+      <tr><td>适合场景</td><td>性能敏感的文件写入</td><td>控制台输出、日志格式化</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>PrintWriter 的隐患：</strong>它会默默吞掉 IOException（仅设置内部 error 标志位），
+    程序看起来正常运行，但文件实际没写成功。生产代码处理文件时请优先用 BufferedWriter。
+  </div>
+
+  <!-- 11. 综合实战 -->
+  <h2>综合实战：文件内容替换</h2>
+  <p>用 BufferedReader 读原文件，用 BufferedWriter 写临时文件，最后 rename——这是编辑文件的标准模式。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ReplaceInFile.java</span><span>原子性文件替换</span></div>
+    <pre><span class="kw">import</span> java<span class="punct">.</span>io<span class="punct">.*;</span>
+<span class="kw">import</span> java<span class="punct">.</span>nio<span class="punct">.</span>file<span class="punct">.*;</span>
+<span class="kw">import</span> java<span class="punct">.</span>nio<span class="punct">.</span>charset<span class="punct">.*;</span>
+
+<span class="kw">public class</span> <span class="ty">ReplaceInFile</span> <span class="punct">{</span>
+
+    <span class="kw">public static void</span> <span class="fn">replaceAll</span><span class="punct">(</span><span class="ty">Path</span> <span class="var">src</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">from</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">to</span><span class="punct">)</span>
+            <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+
+        <span class="ty">Path</span> <span class="var">tmp</span> <span class="punct">=</span> <span class="var">src</span><span class="punct">.</span><span class="fn">resolveSibling</span><span class="punct">(</span><span class="var">src</span><span class="punct">.</span><span class="fn">getFileName</span><span class="punct">() +</span> <span class="str">".tmp"</span><span class="punct">);</span>
+
+        <span class="kw">try</span> <span class="punct">(</span><span class="ty">BufferedReader</span> <span class="var">reader</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">newBufferedReader</span><span class="punct">(</span><span class="var">src</span><span class="punct">,</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">);</span>
+             <span class="ty">BufferedWriter</span> <span class="var">writer</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">newBufferedWriter</span><span class="punct">(</span><span class="var">tmp</span><span class="punct">,</span>  <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">))</span> <span class="punct">{</span>
+
+            <span class="ty">String</span> <span class="var">line</span><span class="punct">;</span>
+            <span class="kw">while</span> <span class="punct">((</span><span class="var">line</span> <span class="punct">=</span> <span class="var">reader</span><span class="punct">.</span><span class="fn">readLine</span><span class="punct">()) !=</span> <span class="kw">null</span><span class="punct">)</span> <span class="punct">{</span>
+                <span class="var">writer</span><span class="punct">.</span><span class="fn">write</span><span class="punct">(</span><span class="var">line</span><span class="punct">.</span><span class="fn">replace</span><span class="punct">(</span><span class="var">from</span><span class="punct">,</span> <span class="var">to</span><span class="punct">));</span>
+                <span class="var">writer</span><span class="punct">.</span><span class="fn">newLine</span><span class="punct">();</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+
+        <span class="com">// 原子性替换：rename 在同一文件系统上是原子操作</span>
+        <span class="com">// REPLACE_EXISTING 保证覆盖原文件，不留残留临时文件</span>
+        <span class="ty">Files</span><span class="punct">.</span><span class="fn">move</span><span class="punct">(</span><span class="var">tmp</span><span class="punct">,</span> <span class="var">src</span><span class="punct">,</span> <span class="ty">StandardCopyOption</span><span class="punct">.</span><span class="var">REPLACE_EXISTING</span><span class="punct">,</span>
+                   <span class="ty">StandardCopyOption</span><span class="punct">.</span><span class="var">ATOMIC_MOVE</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 12. 底层原理 -->
+  <h2>底层原理：缓冲区的内部结构</h2>
+  <p>
+    查看 JDK 源码（<code>java.io.BufferedReader</code>）：内部维护一个 <code>char[] cb</code> 数组，
+    以及 <code>nChars</code>（缓冲区有效字符数）和 <code>nextChar</code>（下一次读取的位置）两个指针。
+  </p>
+
+  <div class="tree">
+  缓冲区状态示意（cb.length = 8192）<br>
+  <br>
+  ┌──────────────────────────────────────────────────────────────┐<br>
+  │  H  e  l  l  o  \n  W  o  r  l  d  \n  │ &lt;未填充区&gt;      │<br>
+  └──────────────────────────────────────────────────────────────┘<br>
+  &nbsp; ↑                   ↑                  ↑<br>
+  &nbsp; 0              <span class="hi">nextChar</span>=6       <span class="hi">nChars</span>=12         8191<br>
+  <br>
+  每次 readLine() 从 nextChar 开始扫描到 \n，<br>
+  不需要 syscall，直接返回内存中的切片。
+  </div>
+
+  <p>
+    当 <code>nextChar &gt;= nChars</code> 时，才调用 <code>fill()</code>，
+    此方法通过底层 <code>Reader.read(cb, ...)</code> 触发一次真实 I/O，重新填满缓冲区。
+  </p>
+
+  <!-- 13. 常见陷阱汇总 -->
+  <h2>常见陷阱汇总</h2>
+
+  <ul>
+    <li><strong>未关闭流：</strong>没有 try-with-resources，BufferedWriter 缓冲区数据永久丢失，文件为空或残缺。</li>
+    <li><strong>编码未指定：</strong><code>new FileReader(path)</code> 依赖平台默认编码，跨操作系统必现乱码。</li>
+    <li><strong>readLine() 丢换行符：</strong>用它做文件复制时，最后一行如果原本无换行，复制后也没有，但中间行会多一个 newLine()，内容可能偏移。</li>
+    <li><strong>多线程共享一个 BufferedReader：</strong>不是线程安全的，两个线程同时读会导致 <code>nextChar</code> 指针竞争，数据错乱。</li>
+    <li><strong>mark 边界溢出：</strong>mark(n) 表示"允许回退最多 n 个字符"，若两次 mark/reset 之间读取超过 n 个字符，reset() 会抛 <code>IOException: Mark invalid</code>。</li>
+    <li><strong>过大文件用 readLine 拼接：</strong><code>lines().collect(Collectors.joining())</code> 会把整个文件读进内存，大文件直接 OOM。应流式处理，不 collect。</li>
+  </ul>
+
+  <!-- 14. 面试考点 -->
+  <h2>面试高频考点</h2>
+
+  <div class="callout tip">
+    <strong>Q1：BufferedReader 的缓冲区大小默认是多少？为什么是这个值？</strong><br>
+    默认 8192 字节（8 KB），与大多数操作系统的页大小（4 KB）或磁盘扇区（512 B）对齐，
+    一次 I/O 能读满一到两个内存页，性价比最高。
+  </div>
+
+  <div class="callout tip">
+    <strong>Q2：BufferedReader 用了什么设计模式？</strong><br>
+    装饰器模式（Decorator）。它与 FilterReader 同属装饰器体系，
+    通过组合而非继承来扩展 Reader 的功能，符合"对扩展开放、对修改封闭"的开闭原则。
+  </div>
+
+  <div class="callout tip">
+    <strong>Q3：为什么关闭外层 BufferedWriter 就够了，不需要单独关闭 FileWriter？</strong><br>
+    BufferedWriter.close() 内部会先调 flush()，再调用被包装的 Writer.close()，
+    形成链式关闭。try-with-resources 会调用最外层的 close()，底层资源自动释放。
+  </div>
+
+  <div class="callout tip">
+    <strong>Q4：BufferedReader.readLine() 如何判断行尾？</strong><br>
+    识别三种终止符：<code>\n</code>（Unix）、<code>\r</code>（旧 Mac）、<code>\r\n</code>（Windows）。
+    三种都能识别，返回的字符串均不含这些字符。
+  </div>
+
+  <div class="callout tip">
+    <strong>Q5：lines() Stream 和 readLine() while 循环有什么本质区别？</strong><br>
+    两者底层都调用 readLine()，性能相同。区别在于 lines() 是惰性的，
+    可以和 filter/limit/map 等操作组合，不会一次性把所有行加载进内存；
+    while 循环每次都必须执行循环体，无法提前短路退出（除非 break）。
+  </div>
+
+  <hr />
+
+  <h2>与其他知识的联系</h2>
+  <ul>
+    <li><strong>装饰器模式：</strong>整个 java.io 包是装饰器模式的教科书级实现，理解了 Buffered 系列，其他如 DataInputStream、GZIPOutputStream 都是同一套思路。</li>
+    <li><strong>NIO.2（下一节）：</strong><code>Files.newBufferedReader/Writer</code> 是推荐的工厂方法，背后依然是 BufferedReader/Writer，但 API 更简洁、编码更安全。</li>
+    <li><strong>操作系统 I/O：</strong>缓冲的本质是减少 read(2)/write(2) 系统调用，与操作系统的 page cache、mmap 都是同一层次的优化思路。</li>
+    <li><strong>Java Stream（java.util.stream）：</strong><code>lines()</code> 返回的 Stream 是惰性求值的，与集合 Stream 的行为完全一致，但数据源是 I/O 而非内存集合。</li>
+  </ul>
+
+  <div class="nav-footer">
+    <a href="./16-字节流与字符流.html" class="nav-btn">← 16. 字节流与字符流（InputStream / Reader 体系）</a>
+    <a href="./18-Files与Path.html" class="nav-btn next">18. Files 与 Path（NIO.2） →</a>
+  </div>
+
+</div>
+</body>
+</html>

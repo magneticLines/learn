@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>03. 栈帧结构（局部变量表 / 操作数栈）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 内存模型
+  </div>
+
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 内存模型</div>
+    <h1>03. 栈帧结构</h1>
+    <p>局部变量表、操作数栈、动态链接、返回地址——方法调用的最小执行单元。</p>
+  </div>
+
+  <!-- ① 为什么要设计栈帧 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">为什么要设计栈帧？</h2>
+  <p>
+    JVM 是一台<strong>基于栈的虚拟机</strong>。每次调用一个方法，JVM 就在当前线程的虚拟机栈上压入一块专属的内存区域——这就是<strong>栈帧（Stack Frame）</strong>。
+    方法执行完毕（正常返回或抛出异常）后，栈帧被弹出销毁。
+  </p>
+  <p>
+    这种设计解决了两个核心问题：
+  </p>
+  <ul>
+    <li><strong>隔离性</strong>：每次方法调用拥有独立的局部变量空间，递归调用不会相互污染数据。</li>
+    <li><strong>确定性</strong>：栈帧大小在编译期（<code>.class</code> 文件）就已确定，JVM 无需运行时动态分配，执行效率高且内存布局可预测。</li>
+  </ul>
+
+  <div class="callout info">
+    类比：可以把虚拟机栈想象成一摞托盘。每次调用方法就新拿一个托盘（栈帧）放在最上面，托盘上摆着该方法专属的"食材"（变量）和"操作台"（操作数栈）。方法结束就撤走最上面的托盘，回到下面那个托盘继续工作。
+  </div>
+
+  <!-- ② 栈帧结构全貌 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">栈帧的四大组成部分</h2>
+
+  <div class="tree">
+    Stack Frame（栈帧）<br>
+    ├── <span class="hi">局部变量表（Local Variable Table）</span><br>
+    ├── <span class="hi">操作数栈（Operand Stack）</span><br>
+    ├── 动态链接（Dynamic Linking）<br>
+    └── 方法返回地址（Return Address）
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>组成部分</th>
+        <th>作用</th>
+        <th>大小确定时机</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>局部变量表</td>
+        <td>存放方法参数 + 方法内局部变量</td>
+        <td>编译期（<code>max_locals</code>）</td>
+      </tr>
+      <tr>
+        <td>操作数栈</td>
+        <td>字节码指令的运算"草稿纸"</td>
+        <td>编译期（<code>max_stack</code>）</td>
+      </tr>
+      <tr>
+        <td>动态链接</td>
+        <td>指向运行时常量池中该方法的符号引用，用于虚方法分派</td>
+        <td>运行期动态解析</td>
+      </tr>
+      <tr>
+        <td>返回地址</td>
+        <td>记录调用者 PC，方法返回后恢复执行</td>
+        <td>进入方法时记录</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ③ 局部变量表 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">局部变量表（Local Variable Table）</h2>
+  <p>
+    局部变量表是一个<strong>以 Slot 为单位的数组</strong>。每个 Slot 占 32 位（4 字节）。
+    <code>long</code> 和 <code>double</code> 占 2 个连续 Slot，其余类型（包括引用类型）占 1 个 Slot。
+  </p>
+  <p>
+    Slot 的分配遵循固定规则：
+  </p>
+  <ul>
+    <li>实例方法：<strong>Slot 0 固定是 <code>this</code></strong>，从 Slot 1 开始按声明顺序排列参数，然后是局部变量。</li>
+    <li>静态方法：没有 <code>this</code>，从 Slot 0 开始排参数。</li>
+    <li>局部变量的 Slot 可以<strong>复用</strong>：当一个变量的作用域结束后，它的 Slot 可被后续变量占用，节省空间。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java 源码</span><span>示例方法</span></div>
+    <pre><span class="kw">public</span> <span class="kw">class</span> <span class="ty">FrameDemo</span> <span class="punct">{</span>
+
+    <span class="com">// 实例方法：Slot0=this, Slot1=a, Slot2=b（long 占 Slot2+3）, Slot4=result</span>
+    <span class="kw">public</span> <span class="ty">int</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">int</span> <span class="var">a</span><span class="punct">,</span> <span class="ty">long</span> <span class="var">b</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="ty">int</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">a</span> <span class="punct">+</span> <span class="punct">(</span><span class="ty">int</span><span class="punct">)</span> <span class="var">b</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// Slot 复用：i 和 j 的作用域不重叠，JVM 可让它们共享同一个 Slot</span>
+    <span class="kw">public</span> <span class="kw">void</span> <span class="fn">slotReuse</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="punct">{</span>
+            <span class="ty">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">10</span><span class="punct">;</span>   <span class="com">// Slot1，出了花括号作用域即可释放</span>
+        <span class="punct">}</span>
+        <span class="ty">int</span> <span class="var">j</span> <span class="punct">=</span> <span class="num">20</span><span class="punct">;</span>     <span class="com">// 复用 Slot1，max_locals 不会因此变成 2</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：局部变量没有默认值！</strong><br>
+    类的成员变量在对象创建时会被 JVM 零值初始化（int→0，引用→null），但局部变量没有这个待遇。
+    使用未赋值的局部变量会直接导致编译错误，而不是像 C/C++ 那样产生随机值，这是 Java 语言规范的显式保护。
+  </div>
+
+  <!-- ④ 操作数栈 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">操作数栈（Operand Stack）</h2>
+  <p>
+    操作数栈是字节码指令的<strong>运算工作区</strong>，是一个后进先出（LIFO）的栈结构。
+    字节码指令不像 x86 汇编那样直接操作寄存器，而是统一通过压栈（push）和弹栈（pop）完成计算。
+  </p>
+  <p>
+    为什么选择栈而不是寄存器？因为 JVM 是<strong>跨平台的</strong>。寄存器数量因 CPU 架构不同而差异巨大（x86 只有 8 个通用寄存器，ARM 有 16 个），基于栈的设计使得字节码与底层硬件完全解耦，一套字节码可以在任何平台上执行。
+  </p>
+
+  <h3>字节码执行追踪：a + b</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java 源码</span><span>int add(int a, int b)</span></div>
+    <pre><span class="kw">public</span> <span class="ty">int</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">int</span> <span class="var">a</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">b</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">return</span> <span class="var">a</span> <span class="punct">+</span> <span class="var">b</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>字节码（javap -c 输出）</span><span>逐步拆解</span></div>
+    <pre><span class="com">// Slot0=this, Slot1=a, Slot2=b</span>
+<span class="kw">iload_1</span>   <span class="com">// 把局部变量表 Slot1（a）压入操作数栈   → 栈: [a]</span>
+<span class="kw">iload_2</span>   <span class="com">// 把局部变量表 Slot2（b）压入操作数栈   → 栈: [a, b]</span>
+<span class="kw">iadd</span>      <span class="com">// 弹出栈顶两个 int，相加，结果压栈      → 栈: [a+b]</span>
+<span class="kw">ireturn</span>   <span class="com">// 弹出栈顶值作为返回值，栈帧销毁</span></pre>
+  </div>
+
+  <p>操作数栈的深度（<code>max_stack</code>）在编译期就由 <code>javac</code> 精确计算好，写入 <code>.class</code> 文件的 <code>Code</code> 属性中。JVM 在分配栈帧时直接按此值开辟空间，没有任何运行时开销。</p>
+
+  <!-- ⑤ 方法调用全流程图 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">方法调用时栈帧的完整生命周期</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java 源码</span><span>两层调用栈</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">CallDemo</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="ty">int</span> <span class="var">x</span> <span class="punct">=</span> <span class="fn">square</span><span class="punct">(</span><span class="num">5</span><span class="punct">);</span>   <span class="com">// 调用 square，压入新栈帧</span>
+        <span class="com">// square 返回后，x=25，继续执行</span>
+    <span class="punct">}</span>
+
+    <span class="kw">static int</span> <span class="fn">square</span><span class="punct">(</span><span class="ty">int</span> <span class="var">n</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">return</span> <span class="var">n</span> <span class="punct">*</span> <span class="var">n</span><span class="punct">;</span>         <span class="com">// 执行完毕，弹出栈帧，返回值压入调用方操作数栈</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="tree">
+    调用 square(5) 时虚拟机栈快照（栈顶在上）：<br>
+    <br>
+    ┌────────────────────────────────┐  ← 当前帧（square）<br>
+    │ <span class="hi">局部变量表:</span> Slot0=n(5)          │<br>
+    │ <span class="hi">操作数栈:</span>  [5, 5] → iadd → [25]│<br>
+    │ 返回地址:   main PC#4           │<br>
+    └────────────────────────────────┘<br>
+    ┌────────────────────────────────┐  ← 调用方帧（main）<br>
+    │ 局部变量表: Slot0=args, Slot1=x │<br>
+    │ 操作数栈:  等待 square 返回值   │<br>
+    └────────────────────────────────┘
+  </div>
+
+  <!-- ⑥ 动态链接与返回地址 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">动态链接 &amp; 方法返回地址</h2>
+
+  <h3>动态链接（Dynamic Linking）</h3>
+  <p>
+    每个栈帧都持有一个指向运行时常量池（Runtime Constant Pool）中<strong>该方法符号引用</strong>的指针。
+    这个指针主要服务于<strong>虚方法分派</strong>：当调用 <code>invokeVirtual</code> 指令时，JVM 通过动态链接找到对象实际类型的方法表，实现多态。
+  </p>
+
+  <h3>方法返回地址（Return Address）</h3>
+  <p>
+    方法执行完毕有两种出口：
+  </p>
+  <ul>
+    <li><strong>正常返回</strong>：执行 <code>return</code> 指令，将返回值（如果有）压入调用方的操作数栈，恢复调用方 PC 继续执行。</li>
+    <li><strong>异常退出</strong>：抛出未被捕获的异常，此时没有返回值，PC 由异常表（Exception Table）决定跳转位置。</li>
+  </ul>
+
+  <!-- ⑦ 实战：用 javap 观察栈帧信息 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">用 javap 亲眼看到栈帧数据</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Shell</span><span>反编译查看 Code 属性</span></div>
+    <pre><span class="com"># 编译</span>
+javac FrameDemo.java
+
+<span class="com"># 查看字节码详情（包含 max_stack / max_locals / LocalVariableTable）</span>
+javap -v FrameDemo</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>javap -v 输出片段</span><span>add(int, long) 方法</span></div>
+    <pre><span class="kw">Code</span><span class="punct">:</span>
+  <span class="var">stack</span><span class="punct">=</span><span class="num">3</span><span class="punct">,</span> <span class="var">locals</span><span class="punct">=</span><span class="num">5</span><span class="punct">,</span> <span class="var">args_size</span><span class="punct">=</span><span class="num">3</span>   <span class="com">// max_stack=3, max_locals=5（this+a+long占2+result）</span>
+     <span class="num">0</span><span class="punct">:</span> <span class="kw">iload_1</span>
+     <span class="num">1</span><span class="punct">:</span> <span class="kw">lload_2</span>
+     <span class="num">2</span><span class="punct">:</span> <span class="kw">l2i</span>
+     <span class="num">3</span><span class="punct">:</span> <span class="kw">iadd</span>
+     <span class="num">4</span><span class="punct">:</span> <span class="kw">istore</span>    <span class="num">4</span>
+     <span class="num">6</span><span class="punct">:</span> <span class="kw">iload</span>     <span class="num">4</span>
+     <span class="num">8</span><span class="punct">:</span> <span class="kw">ireturn</span>
+<span class="kw">LocalVariableTable</span><span class="punct">:</span>
+  <span class="var">Start</span>  <span class="var">Length</span>  <span class="var">Slot</span>  <span class="var">Name</span>    <span class="var">Signature</span>
+      <span class="num">0</span>       <span class="num">9</span>     <span class="num">0</span>  <span class="str">this</span>    <span class="str">LFrameDemo;</span>
+      <span class="num">0</span>       <span class="num">9</span>     <span class="num">1</span>  <span class="str">a</span>       <span class="str">I</span>
+      <span class="num">0</span>       <span class="num">9</span>     <span class="num">2</span>  <span class="str">b</span>       <span class="str">J</span>          <span class="com">// J = long，占 Slot2+3</span>
+      <span class="num">6</span>       <span class="num">3</span>     <span class="num">4</span>  <span class="str">result</span>  <span class="str">I</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <code>-g</code> 编译选项（<code>javac -g FrameDemo.java</code>）会在 <code>.class</code> 文件中保留完整的 <code>LocalVariableTable</code>，调试器（IDEA、jdb）才能显示变量名。生产环境通常用 <code>-g:none</code> 去掉以缩小包体积。
+  </div>
+
+  <!-- ⑧ StackOverflowError -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">StackOverflowError 的本质</h2>
+  <p>
+    虚拟机栈的深度是有限的（默认通常 512 KB～1 MB，可用 <code>-Xss</code> 调整）。
+    无限递归或超深调用链会不断压入新栈帧，最终超过栈的最大深度，JVM 抛出 <code>StackOverflowError</code>。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java 源码</span><span>复现 StackOverflowError</span></div>
+    <pre><span class="com">// 反例：无终止条件的递归</span>
+<span class="kw">public void</span> <span class="fn">infinite</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="fn">infinite</span><span class="punct">();</span>  <span class="com">// 每次调用都压入新栈帧，最终 StackOverflowError</span>
+<span class="punct">}</span>
+
+<span class="com">// 正例：尾递归改迭代（JVM 不优化尾调用，必须手动改）</span>
+<span class="kw">public int</span> <span class="fn">factorial</span><span class="punct">(</span><span class="ty">int</span> <span class="var">n</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="ty">int</span> <span class="var">result</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="ty">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;=</span> <span class="var">n</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="var">result</span> <span class="punct">*=</span> <span class="var">i</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>  <span class="com">// 只有一个栈帧，O(1) 栈空间</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>注意：JVM 不做尾调用优化（TCO）</strong><br>
+    Scala 的 <code>@tailrec</code> 是编译器层面的语法糖，把尾递归转成字节码层的循环。纯 Java 语言层面的递归在字节码上仍会逐帧压栈，写深递归时务必手动改迭代。
+  </div>
+
+  <!-- ⑨ 面试考点 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">面试高频考点</h2>
+
+  <table>
+    <thead>
+      <tr><th>问题</th><th>核心回答</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>局部变量表的 Slot 是什么？long/double 为何占 2 个？</td>
+        <td>Slot 是 32 位存储单元。long/double 是 64 位类型，需要 2 个连续 Slot 存储，且不保证原子性（Java 内存模型对 32 位操作才保证原子性）。</td>
+      </tr>
+      <tr>
+        <td>实例方法的 Slot 0 是什么？</td>
+        <td>固定是 <code>this</code> 引用。静态方法没有隐式 <code>this</code>，所以 Slot 0 从参数开始。</td>
+      </tr>
+      <tr>
+        <td>操作数栈和 CPU 寄存器有什么关系？</td>
+        <td>JIT 编译器（C1/C2）会将操作数栈的操作映射为真实的寄存器指令，解释执行时才实际用内存模拟栈操作。</td>
+      </tr>
+      <tr>
+        <td>栈帧大小何时确定？</td>
+        <td>编译期由 <code>javac</code> 确定并写入 <code>.class</code> 的 <code>Code</code> 属性（<code>max_stack</code> + <code>max_locals</code>），JVM 在方法入口直接按此值分配，零运行时开销。</td>
+      </tr>
+      <tr>
+        <td>StackOverflowError vs OutOfMemoryError（对栈而言）</td>
+        <td>线程请求的栈深度超过 JVM 允许的最大值 → <code>StackOverflowError</code>；JVM 无法为新线程申请足够的栈内存（整体内存不足）→ <code>OutOfMemoryError</code>。</td>
+      </tr>
+      <tr>
+        <td>如何调整栈大小？</td>
+        <td><code>-Xss256k</code>（每线程虚拟机栈大小）。增大可容纳更深递归，但线程数多时总内存占用也线性增长。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ⑩ 小结 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">小结</h2>
+  <ul>
+    <li><strong>栈帧</strong>是方法调用的最小执行单元，随方法入栈/出栈，天然隔离各次调用。</li>
+    <li><strong>局部变量表</strong>以 Slot 数组存储参数和局部变量，编译期固定大小，实例方法 Slot 0 恒为 <code>this</code>，<strong>局部变量没有默认值</strong>。</li>
+    <li><strong>操作数栈</strong>是字节码指令的运算"草稿纸"，基于栈的设计保证了字节码跨平台，JIT 编译后会映射到真实寄存器。</li>
+    <li><strong>动态链接</strong>支持多态分派，<strong>返回地址</strong>保证方法结束后能正确回到调用方。</li>
+    <li>栈深度有限，<strong>无限递归</strong>导致 <code>StackOverflowError</code>，生产中应改用迭代或限制递归深度。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-堆内存分代.html" class="nav-btn">← 02. 堆内存分代（Eden / Survivor / Old Gen）</a>
+    <a href="./04-对象内存布局.html" class="nav-btn next">04. 对象内存布局（Header / Instance Data / Padding） →</a>
+  </div>
+
+</div>
+</body>
+</html>

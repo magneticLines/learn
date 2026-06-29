@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>08. 常用 GC 算法（标记清除 / 复制 / 标记整理）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+    /* 内存图示 */
+    .mem-diagram { font-family: "Fira Code", Consolas, monospace; font-size: 0.8rem; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 20px; margin: 16px 0; overflow-x: auto; }
+    .mem-row { display: flex; gap: 4px; margin-bottom: 6px; align-items: center; }
+    .mem-label { width: 70px; font-size: 0.75rem; color: #475569; flex-shrink: 0; text-align: right; padding-right: 10px; }
+    .mem-cell { width: 36px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 600; flex-shrink: 0; }
+    .cell-alive  { background: #1e3a5f; border: 1px solid #3b82f6; color: #93c5fd; }
+    .cell-dead   { background: #3b1111; border: 1px solid #7f1d1d; color: #f87171; }
+    .cell-free   { background: #1a1f2e; border: 1px solid #2d3148; color: #374151; }
+    .cell-copy   { background: #1f2d1f; border: 1px solid #15803d; color: #86efac; }
+    .cell-frag   { background: #2d2004; border: 1px solid #92400e; color: #fbbf24; }
+    .arrow-down  { text-align: center; color: #475569; font-size: 1.1rem; margin: 4px 0; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 垃圾回收
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 垃圾回收</div>
+    <h1>08. 常用 GC 算法</h1>
+    <p>标记-清除、复制、标记-整理——三种基础算法各自解决什么问题，又带来哪些新问题？</p>
+  </div>
+
+  <!-- 1. 为什么需要 GC 算法 -->
+  <h2 style="border-color:#c084fc;">为什么需要专门设计 GC 算法？</h2>
+  <p>上一节的可达性分析告诉 JVM「谁该死」，但还没回答「怎么死、怎么收尸」。回收内存看似简单：把对象删掉就好。但真实堆内存有几 GB，对象几百万个，删掉之后还要保证：</p>
+  <ul>
+    <li><strong>空间能被复用</strong>——不能出现越回收越碎的情况</li>
+    <li><strong>分配足够快</strong>——新对象分配是高频操作，慢一点点都影响吞吐</li>
+    <li><strong>STW 尽量短</strong>——Stop-The-World 期间所有业务线程暂停，用户感知到卡顿</li>
+  </ul>
+  <p>三种基础算法分别在不同维度上做出了取舍，现代 GC（G1、ZGC）都是在这三种算法之上组合演进的。</p>
+
+  <!-- 2. 标记-清除 -->
+  <h2 style="border-color:#c084fc;">算法一：标记-清除（Mark-Sweep）</h2>
+
+  <h3>原理</h3>
+  <p>分两个阶段：</p>
+  <ol>
+    <li><strong>标记阶段</strong>：从 GC Roots 出发，遍历对象图，给所有可达对象打上「存活」标记。</li>
+    <li><strong>清除阶段</strong>：线性扫描整个堆，把<strong>没有标记</strong>的对象所占内存归还到空闲列表（Free List）。</li>
+  </ol>
+
+  <div class="mem-diagram">
+    <div style="color:#64748b; font-size:0.75rem; margin-bottom:10px;">堆内存示意（A/C/E 存活，B/D/F 死亡）</div>
+    <div class="mem-row">
+      <span class="mem-label">回收前</span>
+      <div class="mem-cell cell-alive">A</div>
+      <div class="mem-cell cell-dead">B</div>
+      <div class="mem-cell cell-alive">C</div>
+      <div class="mem-cell cell-dead">D</div>
+      <div class="mem-cell cell-alive">E</div>
+      <div class="mem-cell cell-dead">F</div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+    </div>
+    <div class="arrow-down">↓ 清除</div>
+    <div class="mem-row">
+      <span class="mem-label">回收后</span>
+      <div class="mem-cell cell-alive">A</div>
+      <div class="mem-cell cell-frag">空</div>
+      <div class="mem-cell cell-alive">C</div>
+      <div class="mem-cell cell-frag">空</div>
+      <div class="mem-cell cell-alive">E</div>
+      <div class="mem-cell cell-frag">空</div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+    </div>
+    <div style="color:#475569; font-size:0.72rem; margin-top:8px;">橙色 = 碎片空闲块，蓝色 = 存活对象</div>
+  </div>
+
+  <h3>优点</h3>
+  <ul>
+    <li>实现简单，不需要移动对象，引用地址不变</li>
+    <li>存活对象多时（老年代场景）不需要大量复制</li>
+  </ul>
+
+  <h3>缺点：内存碎片</h3>
+  <p>清除后形成大量<strong>不连续的碎片</strong>。下次分配一个大对象时，即使总空闲量足够，也可能找不到连续的内存块，被迫提前触发 GC 甚至 OOM。</p>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>内存碎片不是「浪费」，而是「不可用」。空闲列表里有 100 个 16 字节的碎片 = 1600 字节，但分配 2000 字节的数组会直接失败。这就是为什么 CMS（使用标记-清除）在运行一段时间后需要做一次 Full GC 来整理碎片。
+  </div>
+
+  <!-- 3. 复制算法 -->
+  <h2 style="border-color:#c084fc;">算法二：复制（Copying）</h2>
+
+  <h3>原理</h3>
+  <p>把堆内存一分为二：<strong>From 区</strong>（当前使用）和 <strong>To 区</strong>（保持空白）。GC 时将 From 中所有存活对象<strong>依次复制</strong>到 To 区，复制完成后直接清空整个 From 区，然后交换 From/To 角色。</p>
+
+  <div class="mem-diagram">
+    <div style="color:#64748b; font-size:0.75rem; margin-bottom:10px;">复制算法执行过程</div>
+    <div class="mem-row">
+      <span class="mem-label">From 区</span>
+      <div class="mem-cell cell-alive">A</div>
+      <div class="mem-cell cell-dead">B</div>
+      <div class="mem-cell cell-alive">C</div>
+      <div class="mem-cell cell-dead">D</div>
+      <div class="mem-cell cell-alive">E</div>
+    </div>
+    <div class="mem-row">
+      <span class="mem-label">To 区</span>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+    </div>
+    <div class="arrow-down">↓ 复制存活对象</div>
+    <div class="mem-row">
+      <span class="mem-label">From 区</span>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+    </div>
+    <div class="mem-row">
+      <span class="mem-label">To 区</span>
+      <div class="mem-cell cell-copy">A</div>
+      <div class="mem-cell cell-copy">C</div>
+      <div class="mem-cell cell-copy">E</div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+    </div>
+    <div style="color:#475569; font-size:0.72rem; margin-top:8px;">绿色 = 紧凑排列的存活对象，To 区剩余空间可用 bump-the-pointer 极速分配</div>
+  </div>
+
+  <h3>优点</h3>
+  <ul>
+    <li><strong>无碎片</strong>：存活对象紧凑排列，新对象分配只需移动一个指针（bump-the-pointer），极快</li>
+    <li><strong>GC 开销与存活对象成正比</strong>：死亡对象越多，GC 越快（新生代正好符合：大多数对象朝生夕死）</li>
+  </ul>
+
+  <h3>缺点：空间浪费 50%</h3>
+  <p>任何时刻只有一半内存可用。这在老年代是不可接受的——存活对象占比高，复制代价巨大且空间浪费严重。</p>
+
+  <h3>HotSpot 的改进：Eden + Survivor</h3>
+  <p>HotSpot 针对新生代的「大多数对象短命」特性做了优化，不是五五开，而是按 <strong>8:1:1</strong> 划分 Eden、Survivor From、Survivor To 三个区。每次只有 10% 的空间闲置，空间利用率提升到 90%。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>新生代内存布局（默认比例）</span></div>
+    <pre><span class="com">// -XX:SurvivorRatio=8  （默认值）</span>
+<span class="com">// 新生代总大小 = Eden(80%) + S0(10%) + S1(10%)</span>
+<span class="com">//
+// 分配流程：</span>
+<span class="com">// 1. 新对象优先进 Eden</span>
+<span class="com">// 2. Eden 满 → Minor GC：存活对象复制到 S1，Eden+S0 清空</span>
+<span class="com">// 3. 年龄 >= 15（默认）→ 晋升老年代</span>
+<span class="com">// 4. S1 放不下的对象直接晋升老年代（动态年龄判断）</span>
+
+<span class="kw">new</span> <span class="ty">Object</span><span class="punct">()</span>  <span class="com">// → Eden</span>
+<span class="com">// Minor GC 后存活 → Survivor（年龄+1）</span>
+<span class="com">// 若干次 Minor GC → 老年代</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么新生代特别适合复制算法？</strong><br>
+    IBM 研究表明，98% 的 Java 对象在第一次 Minor GC 前就死亡。存活率极低，意味着每次 GC 只需复制很少的对象，速度极快。这是复制算法在新生代大放异彩的根本原因。
+  </div>
+
+  <!-- 4. 标记-整理 -->
+  <h2 style="border-color:#c084fc;">算法三：标记-整理（Mark-Compact）</h2>
+
+  <h3>原理</h3>
+  <p>前半段与标记-清除相同（标记存活对象），但清理阶段不是「就地清除」，而是将所有存活对象<strong>向一端滑动</strong>，然后清理掉边界另一侧的所有内存。</p>
+
+  <div class="mem-diagram">
+    <div style="color:#64748b; font-size:0.75rem; margin-bottom:10px;">标记-整理执行过程</div>
+    <div class="mem-row">
+      <span class="mem-label">整理前</span>
+      <div class="mem-cell cell-alive">A</div>
+      <div class="mem-cell cell-dead">B</div>
+      <div class="mem-cell cell-alive">C</div>
+      <div class="mem-cell cell-dead">D</div>
+      <div class="mem-cell cell-alive">E</div>
+      <div class="mem-cell cell-dead">F</div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+    </div>
+    <div class="arrow-down">↓ 滑动存活对象</div>
+    <div class="mem-row">
+      <span class="mem-label">整理后</span>
+      <div class="mem-cell cell-alive">A</div>
+      <div class="mem-cell cell-alive">C</div>
+      <div class="mem-cell cell-alive">E</div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+      <div class="mem-cell cell-free"></div>
+    </div>
+    <div style="color:#475569; font-size:0.72rem; margin-top:8px;">存活对象紧凑，右侧形成大块连续空闲区</div>
+  </div>
+
+  <h3>优点</h3>
+  <ul>
+    <li><strong>无碎片</strong>：整理后内存连续，新对象分配同样可用 bump-the-pointer</li>
+    <li><strong>不需要额外空间</strong>：在原区域内移动，不像复制算法需要 50% 备用区</li>
+  </ul>
+
+  <h3>缺点：移动对象代价高</h3>
+  <p>移动存活对象后，所有指向这些对象的引用（栈帧里的局部变量、其他对象的字段等）都必须<strong>同步更新</strong>为新地址。这需要再次扫描整个堆来修正引用，STW 时间比标记-清除更长，适合老年代的 Full GC（低频、彻底）。</p>
+
+  <div class="callout info">
+    <strong>为什么老年代适合标记-整理？</strong><br>
+    老年代存活率高（大量长生命周期对象），用复制算法要复制大量对象且浪费空间；用标记-清除会产生碎片导致大对象分配失败。标记-整理是唯一既不浪费空间、又不产生碎片的选择，代价是 STW 时间稍长，但 Full GC 本就是低频操作，可以接受。
+  </div>
+
+  <!-- 5. 三种算法对比 -->
+  <h2 style="border-color:#c084fc;">三种算法横向对比</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th>标记-清除</th>
+        <th>复制</th>
+        <th>标记-整理</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>内存碎片</strong></td>
+        <td>有（严重）</td>
+        <td>无</td>
+        <td>无</td>
+      </tr>
+      <tr>
+        <td><strong>空间利用率</strong></td>
+        <td>高（100%）</td>
+        <td>低（50%）</td>
+        <td>高（100%）</td>
+      </tr>
+      <tr>
+        <td><strong>分配速度</strong></td>
+        <td>慢（空闲列表查找）</td>
+        <td>极快（指针碰撞）</td>
+        <td>快（指针碰撞）</td>
+      </tr>
+      <tr>
+        <td><strong>STW 时长</strong></td>
+        <td>短</td>
+        <td>短（存活少时）</td>
+        <td>长（需修正引用）</td>
+      </tr>
+      <tr>
+        <td><strong>适合场景</strong></td>
+        <td>存活率高、追求低 STW</td>
+        <td>存活率低（新生代）</td>
+        <td>存活率高（老年代）</td>
+      </tr>
+      <tr>
+        <td><strong>代表使用</strong></td>
+        <td>CMS 并发清除阶段</td>
+        <td>新生代 Minor GC</td>
+        <td>Serial Old、Parallel Old</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 6. 分代收集 -->
+  <h2 style="border-color:#c084fc;">分代收集：算法的组合使用</h2>
+  <p>没有任何一种算法能在所有场景下最优。HotSpot 的解法是<strong>分代收集（Generational Collection）</strong>：按对象生命周期将堆划分为新生代和老年代，对不同区域使用不同算法。</p>
+
+  <div class="tree">
+    <span class="hi">堆</span>
+    ├── <span class="hi">新生代</span>（Young Generation）  → 使用 <span style="color:#86efac;">复制算法</span>
+    │   ├── Eden（80%）
+    │   ├── Survivor From（10%）
+    │   └── Survivor To（10%）
+    └── <span class="hi">老年代</span>（Old Generation）    → 使用 <span style="color:#fbbf24;">标记-整理</span> 或 <span style="color:#f87171;">标记-清除</span>
+  </div>
+
+  <p>分代假设（Generational Hypothesis）是分代收集的理论基石：<strong>大多数对象都是朝生夕死的，少数对象会存活很长时间</strong>。这个假设在 Java 应用中高度成立，使得复制算法在新生代能以极低代价完成 GC。</p>
+
+  <!-- 7. 写屏障与 Card Table 小插曲 -->
+  <h2 style="border-color:#c084fc;">跨代引用：写屏障与 Card Table</h2>
+  <p>分代收集引入了新问题：<strong>老年代对象引用新生代对象</strong>时，Minor GC 必须扫描老年代才能找到所有 GC Roots，这完全抵消了分代带来的好处。</p>
+  <p>HotSpot 的解法是 <strong>Card Table + 写屏障（Write Barrier）</strong>：</p>
+  <ul>
+    <li>把老年代堆内存按 512 字节分为一个个「卡片（Card）」</li>
+    <li>任何写操作修改老年代字段时，写屏障把对应 Card 标记为「脏」（dirty）</li>
+    <li>Minor GC 只需扫描脏 Card，而非整个老年代</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>写屏障伪代码（JVM 内部逻辑，非 Java 代码）</span></div>
+    <pre><span class="com">// 每次执行 obj.field = ref 时，JIT 插入如下逻辑：</span>
+<span class="kw">void</span> <span class="fn">writeBarrier</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">obj</span><span class="punct">,</span> <span class="ty">Object</span> <span class="var">ref</span><span class="punct">) {</span>
+    <span class="var">obj</span><span class="punct">.</span><span class="var">field</span> <span class="punct">=</span> <span class="var">ref</span><span class="punct">;</span>          <span class="com">// 真正的写操作</span>
+
+    <span class="com">// 写屏障：如果 obj 在老年代，标记对应 Card 为脏</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="fn">isOldGen</span><span class="punct">(</span><span class="var">obj</span><span class="punct">)) {</span>
+        <span class="var">cardTable</span><span class="punct">[</span><span class="fn">addressOf</span><span class="punct">(</span><span class="var">obj</span><span class="punct">)</span> <span class="punct">/</span> <span class="num">512</span><span class="punct">]</span> <span class="punct">=</span> <span class="num">DIRTY</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 8. 陷阱与面试考点 -->
+  <h2 style="border-color:#c084fc;">陷阱与面试高频考点</h2>
+
+  <h3>陷阱 1：复制算法「浪费一半内存」是误解</h3>
+  <p>HotSpot 新生代用 8:1:1 的 Eden+S0+S1 方案，实际浪费仅 10%（S0 或 S1 中始终有一个闲置）。只有在极端情况下（Survivor 放不下），才会借用老年代空间（Handle Promotion）。</p>
+
+  <h3>陷阱 2：标记-整理比标记-清除慢不是绝对的</h3>
+  <p>标记-整理修正引用确实需要额外时间，但它消除了碎片，使后续分配更快，还减少了未来 GC 次数（不会因碎片导致提前触发 GC）。单次 GC 慢，但整体吞吐可能更高。</p>
+
+  <h3>陷阱 3：GC 算法 ≠ 垃圾收集器</h3>
+  <p>算法是思想，收集器是实现。一个收集器可以组合多种算法：G1 对年轻代用复制，对老年代用标记-整理；CMS 的并发清除阶段用标记-清除，但 Full GC 退化时用标记-整理。</p>
+
+  <div class="callout info">
+    <strong>面试高频题汇总</strong>
+    <ul style="margin-top:8px; margin-left:16px;">
+      <li>标记-清除的缺点是什么？为什么会产生碎片？</li>
+      <li>复制算法为什么适合新生代？新生代为什么是 8:1:1 而不是 1:1？</li>
+      <li>标记-整理为什么比标记-清除 STW 更长？</li>
+      <li>分代收集的理论基础是什么？新生代和老年代分别用什么算法？</li>
+      <li>什么是 Card Table？它解决了什么问题？</li>
+      <li>Minor GC 和 Full GC 的区别？什么时候触发 Full GC？</li>
+    </ul>
+  </div>
+
+  <!-- 9. 触发条件小结 -->
+  <h2 style="border-color:#c084fc;">Minor GC vs Full GC 触发条件</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>GC 类型</th>
+        <th>触发条件</th>
+        <th>算法</th>
+        <th>STW 时长</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Minor GC</strong></td>
+        <td>Eden 区满</td>
+        <td>复制算法</td>
+        <td>短（毫秒级）</td>
+      </tr>
+      <tr>
+        <td><strong>Major GC</strong></td>
+        <td>老年代空间不足</td>
+        <td>标记-整理 / 标记-清除</td>
+        <td>长（通常是 Minor 的 10x）</td>
+      </tr>
+      <tr>
+        <td><strong>Full GC</strong></td>
+        <td>老年代满、显式 <code>System.gc()</code>、元空间满、空间担保失败</td>
+        <td>整堆收集</td>
+        <td>最长，影响最大</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>生产建议：</strong>避免在代码中调用 <code>System.gc()</code>——它仅是建议，但在大多数 JVM 实现中会触发 Full GC，造成长时间 STW。可以用 <code>-XX:+DisableExplicitGC</code> 参数禁止显式 GC。
+  </div>
+
+  <hr>
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./07-可达性分析.html" class="nav-btn">← 07. 可达性分析与 GC Roots</a>
+    <a href="./09-垃圾收集器.html" class="nav-btn next">09. 垃圾收集器（Serial / Parallel / CMS / G1 / ZGC） →</a>
+  </div>
+
+</div>
+</body>
+</html>

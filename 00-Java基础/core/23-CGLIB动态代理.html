@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>23. CGLIB 动态代理（vs JDK 动态代理）</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: inherit; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+    .nav-btn.next:hover { background: #16653422; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / 核心类库 / 反射与动态代理
+  </div>
+
+  <div class="hero">
+    <div class="tag">核心类库 · 反射与动态代理</div>
+    <h1>23. CGLIB 动态代理（vs JDK 动态代理）</h1>
+    <p>JDK 代理要求目标类实现接口；CGLIB 通过继承生成子类绕过这一限制——这正是 Spring AOP 能增强任意 Bean 的底层秘密。</p>
+  </div>
+
+  <!-- ─── 1. 为什么需要 CGLIB ─── -->
+  <h2>1. JDK 代理的局限 → CGLIB 的诞生动机</h2>
+  <p>上一节我们看到，JDK 动态代理的核心是 <code>java.lang.reflect.Proxy</code>，它生成的代理类<strong>必须实现至少一个接口</strong>。原因很简单：Proxy 生成的字节码继承自 <code>Proxy</code> 类，Java 不支持多重继承，所以只能通过接口建立"契约"。</p>
+  <p>但现实中大量的类根本没有接口——尤其是 Spring 管理的 Service、Controller。为了给这些类织入切面逻辑，Spring 引入了 <strong>CGLIB（Code Generation Library）</strong>，它的思路是：<strong>不依赖接口，而是在运行时生成目标类的子类</strong>，在子类中拦截父类方法。</p>
+
+  <div class="callout info">
+    <strong>一句话概括区别：</strong>JDK 代理是"基于接口的委托"，CGLIB 是"基于继承的子类化"。两种方式都不修改原始字节码，都在运行时生成新类。
+  </div>
+
+  <!-- ─── 2. CGLIB 核心原理 ─── -->
+  <h2>2. CGLIB 的核心原理：ASM + 字节码继承</h2>
+  <p>CGLIB 底层直接调用 <strong>ASM</strong>（一个极低层的字节码操作库）生成 <code>.class</code> 字节码并加载到 JVM。整个调用链如下：</p>
+
+  <div class="tree">
+    调用者<br>
+    &nbsp;&nbsp;└─ <span class="hi">ProxyBean$$EnhancerByCGLIB$$xxxxxx</span>  ← 运行期生成的子类<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ MethodInterceptor.intercept()      ← 你写的拦截逻辑<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ invokeSuper()                    ← 调用父类（真实目标）的方法
+  </div>
+
+  <p>生成的子类会对每个<strong>非 final、非 private 的方法</strong>生成两份实现：一份走 <code>MethodInterceptor</code> 拦截链，一份通过 <code>FastClass</code> 直接调用父类原始逻辑（避免反射开销）。</p>
+
+  <h3>FastClass 是什么？</h3>
+  <p>CGLIB 自己发明了 <code>FastClass</code> 机制：为目标类的每个方法预先生成一个"索引 → 方法体"的分发器，调用时用 <code>int index</code> 查表而非 <code>Method.invoke()</code>，<strong>省去了反射的安全检查开销</strong>，这是 CGLIB 在某些场景下比 JDK 代理更快的原因。</p>
+
+  <!-- ─── 3. 代码演示 ─── -->
+  <h2>3. 最小可运行示例</h2>
+  <p>先引入依赖（Spring 已内嵌 CGLIB，独立使用时单独引）：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>pom.xml</span><span>Maven</span></div>
+    <pre><span class="punct">&lt;</span><span class="ty">dependency</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">groupId</span><span class="punct">&gt;</span>cglib<span class="punct">&lt;/</span><span class="ty">groupId</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">artifactId</span><span class="punct">&gt;</span>cglib<span class="punct">&lt;/</span><span class="ty">artifactId</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">version</span><span class="punct">&gt;</span>3.3.0<span class="punct">&lt;/</span><span class="ty">version</span><span class="punct">&gt;</span>
+<span class="punct">&lt;/</span><span class="ty">dependency</span><span class="punct">&gt;</span></pre>
+  </div>
+
+  <h3>目标类（无接口）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">createOrder</span><span class="punct">(</span><span class="ty">String</span> <span class="var">item</span><span class="punct">) {</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"[真实方法] 创建订单: "</span> <span class="punct">+</span> <span class="var">item</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="str">"ORDER-"</span> <span class="punct">+</span> <span class="var">item</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// final 方法：CGLIB 无法拦截，子类覆盖不了父类的 final 方法</span>
+    <span class="kw">public final void</span> <span class="fn">cancelOrder</span><span class="punct">() {</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"[真实方法] 取消订单"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>MethodInterceptor 实现</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>LogInterceptor.java</span><span>Java</span></div>
+    <pre><span class="kw">import</span> <span class="ty">net.sf.cglib.proxy.MethodInterceptor</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">net.sf.cglib.proxy.MethodProxy</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.lang.reflect.Method</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">LogInterceptor</span> <span class="kw">implements</span> <span class="ty">MethodInterceptor</span> <span class="punct">{</span>
+
+    <span class="com">/**
+     * @param obj    CGLIB 生成的子类实例（即代理对象本身）
+     * @param method 被拦截的方法（反射 Method 对象）
+     * @param args   方法参数
+     * @param proxy  CGLIB 的 MethodProxy，可绕过反射直接调父类方法
+     */</span>
+    <span class="ann">@Override</span>
+    <span class="kw">public</span> <span class="ty">Object</span> <span class="fn">intercept</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">obj</span><span class="punct">,</span> <span class="ty">Method</span> <span class="var">method</span><span class="punct">,</span>
+                             <span class="ty">Object</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">,</span> <span class="ty">MethodProxy</span> <span class="var">proxy</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Throwable</span> <span class="punct">{</span>
+
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"[前置增强] 方法: "</span> <span class="punct">+</span> <span class="var">method</span><span class="punct">.</span><span class="fn">getName</span><span class="punct">());</span>
+        <span class="kw">long</span> <span class="var">start</span> <span class="punct">=</span> <span class="ty">System</span><span class="punct">.</span><span class="fn">currentTimeMillis</span><span class="punct">();</span>
+
+        <span class="com">// 关键：用 invokeSuper 而非 method.invoke(obj, args)
+        // invokeSuper 走 FastClass 路径，不会触发二次代理，也无反射开销</span>
+        <span class="ty">Object</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">proxy</span><span class="punct">.</span><span class="fn">invokeSuper</span><span class="punct">(</span><span class="var">obj</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span>
+
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"[后置增强] 耗时: "</span> <span class="punct">+</span> <span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="fn">currentTimeMillis</span><span class="punct">() -</span> <span class="var">start</span><span class="punct">)</span> <span class="punct">+</span> <span class="str">"ms"</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>创建代理并使用</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>CglibDemo.java</span><span>Java</span></div>
+    <pre><span class="kw">import</span> <span class="ty">net.sf.cglib.proxy.Enhancer</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">CglibDemo</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="ty">Enhancer</span> <span class="var">enhancer</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Enhancer</span><span class="punct">();</span>
+        <span class="var">enhancer</span><span class="punct">.</span><span class="fn">setSuperclass</span><span class="punct">(</span><span class="ty">OrderService</span><span class="punct">.</span><span class="kw">class</span><span class="punct">);</span>  <span class="com">// 设置父类（目标类）</span>
+        <span class="var">enhancer</span><span class="punct">.</span><span class="fn">setCallback</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">LogInterceptor</span><span class="punct">());</span> <span class="com">// 设置拦截器</span>
+
+        <span class="com">// 生成子类并实例化；CGLIB 调用父类无参构造器</span>
+        <span class="ty">OrderService</span> <span class="var">proxy</span> <span class="punct">= (</span><span class="ty">OrderService</span><span class="punct">)</span> <span class="var">enhancer</span><span class="punct">.</span><span class="fn">create</span><span class="punct">();</span>
+
+        <span class="var">proxy</span><span class="punct">.</span><span class="fn">createOrder</span><span class="punct">(</span><span class="str">"iPhone"</span><span class="punct">);</span>  <span class="com">// 会被拦截</span>
+        <span class="var">proxy</span><span class="punct">.</span><span class="fn">cancelOrder</span><span class="punct">();</span>            <span class="com">// final 方法，不会被拦截！</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>运行输出：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>输出</span></div>
+    <pre>[前置增强] 方法: createOrder
+[真实方法] 创建订单: iPhone
+[后置增强] 耗时: 1ms
+[真实方法] 取消订单</pre>
+  </div>
+
+  <!-- ─── 4. invokeSuper vs invoke ─── -->
+  <h2>4. invokeSuper vs invoke：一个致命的易错点</h2>
+  <p>在 <code>MethodInterceptor.intercept()</code> 中，你有两种方式调用目标方法：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>对比</span><span>Java</span></div>
+    <pre><span class="com">// ✅ 正确：invokeSuper 直接调父类字节码，不再经过代理拦截</span>
+<span class="var">proxy</span><span class="punct">.</span><span class="fn">invokeSuper</span><span class="punct">(</span><span class="var">obj</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span>
+
+<span class="com">// ❌ 危险：method.invoke(obj, args) 中 obj 是代理对象本身
+// 代理方法再调代理方法 → StackOverflowError（无限递归）</span>
+<span class="var">method</span><span class="punct">.</span><span class="fn">invoke</span><span class="punct">(</span><span class="var">obj</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>在 CGLIB 的 <code>intercept</code> 方法里，<code>obj</code> 是代理子类实例，不是原始目标对象。如果用 <code>method.invoke(obj, args)</code>，等于在代理上再次触发拦截，造成无限递归栈溢出。<strong>务必使用 <code>proxy.invokeSuper(obj, args)</code></strong>。
+  </div>
+
+  <!-- ─── 5. 与 JDK 代理对比 ─── -->
+  <h2>5. CGLIB vs JDK 动态代理：全维度对比</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th>JDK 动态代理</th>
+        <th>CGLIB 动态代理</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>依赖</td>
+        <td>JDK 内置，无需额外依赖</td>
+        <td>需要 cglib.jar（Spring 已内嵌）</td>
+      </tr>
+      <tr>
+        <td>目标类要求</td>
+        <td><strong>必须实现接口</strong></td>
+        <td>无需接口，任意类均可</td>
+      </tr>
+      <tr>
+        <td>代理机制</td>
+        <td>实现同一接口（委托）</td>
+        <td>继承目标类（子类化）</td>
+      </tr>
+      <tr>
+        <td>final 类/方法</td>
+        <td>不受影响（接口方法不能是 final）</td>
+        <td><strong>无法代理 final 类或 final 方法</strong></td>
+      </tr>
+      <tr>
+        <td>调用目标方法</td>
+        <td><code>method.invoke(target, args)</code>（反射）</td>
+        <td><code>proxy.invokeSuper()</code>（FastClass，更快）</td>
+      </tr>
+      <tr>
+        <td>代理对象类型</td>
+        <td>接口类型，不是原始类的实例</td>
+        <td>原始类的子类实例（<code>instanceof</code> 为 true）</td>
+      </tr>
+      <tr>
+        <td>构造器要求</td>
+        <td>无要求</td>
+        <td>目标类需有可访问的无参构造器（默认）</td>
+      </tr>
+      <tr>
+        <td>生成类数量</td>
+        <td>1 个代理类</td>
+        <td>代理子类 + 2 个 FastClass（目标类一个、代理类一个）</td>
+      </tr>
+      <tr>
+        <td>Spring 默认策略</td>
+        <td>目标类有接口时使用（Spring Boot 2.x 前）</td>
+        <td>Spring Boot 2.x 起默认使用 CGLIB</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>Spring Boot 2.x 的重要变化：</strong>从 Spring Boot 2.0 开始，<code>spring.aop.proxy-target-class</code> 默认为 <code>true</code>，即<strong>即使目标类有接口也优先用 CGLIB</strong>。原因是团队踩了太多"同一个 Bean 在有接口和无接口时行为不一致"的坑。
+  </div>
+
+  <!-- ─── 6. 内存模型：生成的类长什么样 ─── -->
+  <h2>6. 生成的子类长什么样</h2>
+  <p>可以用 <code>-Dcglib.debugLocation=/tmp/cglib</code> JVM 参数把 CGLIB 生成的 <code>.class</code> 文件落盘，用 javap 反编译后大致结构如下：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反编译伪代码（示意）</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderService$$EnhancerByCGLIB$$a1b2c3</span>
+        <span class="kw">extends</span> <span class="ty">OrderService</span>            <span class="com">// 继承目标类</span>
+        <span class="kw">implements</span> <span class="ty">Factory</span> <span class="punct">{</span>           <span class="com">// CGLIB 内部接口</span>
+
+    <span class="kw">private</span> <span class="ty">MethodInterceptor</span> <span class="var">CGLIB$CALLBACK_0</span><span class="punct">;</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">createOrder</span><span class="punct">(</span><span class="ty">String</span> <span class="var">item</span><span class="punct">) {</span>
+        <span class="ty">MethodInterceptor</span> <span class="var">cb</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">CGLIB$CALLBACK_0</span><span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">cb</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="com">// 走拦截链</span>
+            <span class="kw">return</span> <span class="punct">(</span><span class="ty">String</span><span class="punct">)</span> <span class="var">cb</span><span class="punct">.</span><span class="fn">intercept</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">CGLIB$createOrder$0$Method</span><span class="punct">,</span>
+                                         <span class="kw">new</span> <span class="ty">Object</span><span class="punct">[] {</span><span class="var">item</span><span class="punct">},</span> <span class="var">CGLIB$createOrder$0$Proxy</span><span class="punct">);</span>
+        <span class="punct">}</span>
+        <span class="com">// 无拦截器时直接调父类</span>
+        <span class="kw">return super</span><span class="punct">.</span><span class="fn">createOrder</span><span class="punct">(</span><span class="var">item</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// final cancelOrder() 不会被 override，直接继承父类实现</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ─── 7. 与 Spring AOP 的关系 ─── -->
+  <h2>7. 与 Spring AOP 的关系</h2>
+  <p>Spring AOP 并不直接暴露 CGLIB API，而是在 <code>ProxyFactory</code> 内部做了封装：</p>
+
+  <div class="tree">
+    <span class="hi">@Transactional / @Aspect</span><br>
+    &nbsp;&nbsp;└─ Spring 解析切点，构建 Advisor 链<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <span class="hi">ProxyFactory.getProxy()</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 有接口 且 proxy-target-class=false → JdkDynamicAopProxy<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 无接口 或 proxy-target-class=true → <span class="hi">ObjenesisCglibAopProxy</span>
+  </div>
+
+  <p><code>ObjenesisCglibAopProxy</code> 是 Spring 对 CGLIB 的包装，额外集成了 <strong>Objenesis</strong>——一个可以<strong>不调用构造器直接实例化对象</strong>的库，解决了"目标类没有无参构造器时 CGLIB 崩溃"的问题。</p>
+
+  <div class="callout info">
+    <strong>知识联系：</strong><code>@Transactional</code> 失效的经典场景——在同一个类内部方法 A 调方法 B（B 上有 <code>@Transactional</code>），事务不生效。本质原因是内部调用走的是 <code>this.B()</code>，绕过了 CGLIB 生成的代理子类，直接执行父类原始方法，拦截器从未介入。
+  </div>
+
+  <!-- ─── 8. 常见陷阱 ─── -->
+  <h2>8. 常见陷阱汇总</h2>
+  <ul>
+    <li><strong>final 类/方法无法被代理：</strong>CGLIB 子类无法 override final 方法，也无法继承 final 类。若目标类或方法被声明 final，AOP 切面静默失效——没有报错，只是增强不生效，极难排查。</li>
+    <li><strong>内部调用穿透代理：</strong>同类中 <code>this.method()</code> 绕过代理，导致 <code>@Transactional</code>、<code>@Cacheable</code> 等注解失效。解决方案：注入自身代理（<code>@Autowired ApplicationContext</code> 取自身），或改用 AspectJ 编译期织入。</li>
+    <li><strong>构造器被调用两次：</strong>早期版本 CGLIB 创建代理时会调用目标类构造器，若构造器有副作用（如初始化数据库连接）则出问题。Spring 引入 Objenesis 后此问题已消除。</li>
+    <li><strong>代理对象不能强转为 final 字段类型：</strong>若目标类实现了接口，而你把代理对象赋给接口类型变量没有问题，但若声明为具体类类型且用 JDK 代理，运行时 ClassCastException。</li>
+    <li><strong>序列化问题：</strong>CGLIB 生成的子类类名含 <code>$$</code>，若把代理对象序列化传输，反序列化端没有该类则失败。不要序列化 Spring Bean。</li>
+  </ul>
+
+  <!-- ─── 9. 性能对比 ─── -->
+  <h2>9. 性能：CGLIB 一定比 JDK 代理快吗？</h2>
+  <p>这是个常见误解。现实情况更复杂：</p>
+  <ul>
+    <li><strong>代理对象创建：</strong>CGLIB 生成字节码 + 加载类，<strong>首次创建显著慢于 JDK 代理</strong>（JDK 代理只需一次 <code>Proxy.newProxyInstance</code>）。CGLIB 会缓存生成的类，后续创建同类代理会快很多。</li>
+    <li><strong>方法调用：</strong>JDK 21 之前，CGLIB 的 FastClass 确实比反射 <code>Method.invoke()</code> 快；但 JDK 17+ 的 JIT 对反射的优化已极为激进，实际差距在微基准测试中几乎可以忽略。</li>
+    <li><strong>内存占用：</strong>CGLIB 生成 3 个类（代理类 + 2 个 FastClass），JDK 代理只生成 1 个，CGLIB 在类数量多时 Metaspace 压力更大。</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>结论：</strong>不要因为"CGLIB 性能好"而刻意选择它。在 Spring 体系下跟随框架默认策略即可；自行选择时，有接口优先 JDK 代理（更符合 OOP 设计），无接口才用 CGLIB。
+  </div>
+
+  <!-- ─── 10. 面试高频考点 ─── -->
+  <h2>10. 面试高频考点</h2>
+
+  <h3>Q1：Spring 什么时候用 JDK 代理，什么时候用 CGLIB？</h3>
+  <p>Spring Boot 2.x 之后，默认 <code>proxy-target-class=true</code>，<strong>始终使用 CGLIB</strong>。若设置为 false，则：有接口用 JDK，无接口用 CGLIB。可通过 <code>@EnableAspectJAutoProxy(proxyTargetClass=false)</code> 切换。</p>
+
+  <h3>Q2：CGLIB 代理为什么不能代理 final 方法？</h3>
+  <p>CGLIB 通过继承生成子类并 override 方法来插入拦截逻辑。Java 中 <code>final</code> 方法禁止被子类覆盖，编译器和 JVM 都会强制执行这一约束，所以 CGLIB 根本无法在子类中生成 override 版本，该方法就会直接继承父类实现，拦截器永远不会被调用。</p>
+
+  <h3>Q3：@Transactional 为什么在同类内部调用时失效？</h3>
+  <p>因为 Spring 的事务是通过 AOP 代理实现的，代理对象包了一层拦截逻辑。类内部 <code>this.method()</code> 中的 <code>this</code> 指向<strong>原始对象</strong>，不是代理对象，调用链直接进入目标方法，拦截器从未介入，事务边界自然不存在。</p>
+
+  <h3>Q4：MethodProxy.invokeSuper 和 Method.invoke 的区别？</h3>
+  <p><code>invokeSuper</code> 通过 FastClass（预生成的索引分发器）直接调父类字节码，<strong>不走反射，不会触发二次代理</strong>。<code>method.invoke(obj, args)</code> 若 <code>obj</code> 是代理对象，则触发再次拦截，导致无限递归栈溢出。</p>
+
+  <h3>Q5：Objenesis 解决了什么问题？</h3>
+  <p>早期 CGLIB 需要调用目标类的<strong>无参构造器</strong>来实例化代理对象。一旦目标类没有无参构造器，代理创建失败。Objenesis 通过 JVM 底层 API（<code>sun.misc.Unsafe</code> 或 <code>ReflectionFactory</code>）绕过构造器直接分配内存，让 Spring AOP 可以代理任意类。</p>
+
+  <hr>
+
+  <div class="nav-footer">
+    <a href="./22-JDK动态代理.html" class="nav-btn">← 22. JDK 动态代理</a>
+    <a href="../java-roadmap.html" class="nav-btn next">路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

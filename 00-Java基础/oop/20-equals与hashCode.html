@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>20. equals() 与 hashCode() 契约 — Java 面向对象</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: inherit; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    .tree .hi { color: #fb923c; }
+    p code, li code { color: #fb923c; }
+    h2 { color: #fb923c; border-left-color: #fb923c; }
+    .hero .tag { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next:hover { background: #7c2d1222; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / 面向对象 / Object 通用方法
+  </div>
+
+  <div class="hero">
+    <span class="tag">面向对象 · Object 通用方法</span>
+    <h1>20. equals() 与 hashCode() 契约</h1>
+    <p>Java 中最容易踩坑的一对方法。一旦违反它们之间的契约，HashMap、HashSet 会静默出错，且极难排查。</p>
+  </div>
+
+  <!-- ========== 1. 为什么需要这两个方法 ========== -->
+  <h2>1. 先搞清楚：== 解决不了什么问题</h2>
+
+  <p>Java 中 <code>==</code> 比较的是<strong>引用（内存地址）</strong>，而不是对象的业务含义。两个内容完全相同的 <code>String</code>、<code>User</code> 对象，用 <code>==</code> 比较永远是 <code>false</code>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：用 == 比较对象</span><span>Java</span></div>
+    <pre><span class="ty">String</span> <span class="var">a</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">String</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>
+<span class="ty">String</span> <span class="var">b</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">String</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>
+
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">b</span><span class="punct">);</span>       <span class="com">// false：两个不同堆对象</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">b</span><span class="punct">));</span>  <span class="com">// true：String 已覆写 equals，比较内容</span></pre>
+  </div>
+
+  <p><code>Object.equals()</code> 的默认实现就是 <code>==</code>，所以<strong>自定义类必须覆写 equals</strong> 才能表达"业务上相等"的语义。</p>
+
+  <!-- ========== 2. equals 契约 ========== -->
+  <h2>2. equals() 的五条契约</h2>
+
+  <p>《Effective Java》条目 11 明确规定，覆写 <code>equals</code> 必须满足：</p>
+
+  <table>
+    <thead>
+      <tr><th>性质</th><th>含义</th><th>常见违反场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>自反性</strong></td>
+        <td><code>x.equals(x)</code> 必须为 <code>true</code></td>
+        <td>几乎不会违反，除非故意写 bug</td>
+      </tr>
+      <tr>
+        <td><strong>对称性</strong></td>
+        <td><code>x.equals(y)</code> 与 <code>y.equals(x)</code> 结果相同</td>
+        <td>子类与父类混用 instanceof，导致单向相等</td>
+      </tr>
+      <tr>
+        <td><strong>传递性</strong></td>
+        <td>x=y, y=z 则 x=z</td>
+        <td>继承中加入新字段，导致三角不等式破坏</td>
+      </tr>
+      <tr>
+        <td><strong>一致性</strong></td>
+        <td>多次调用结果相同（对象未变化时）</td>
+        <td>equals 里依赖可变外部状态（如时间戳）</td>
+      </tr>
+      <tr>
+        <td><strong>非空性</strong></td>
+        <td><code>x.equals(null)</code> 必须为 <code>false</code></td>
+        <td>没有 null 检查，直接调用参数方法导致 NPE</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ========== 3. 正确覆写 equals ========== -->
+  <h2>3. 如何正确覆写 equals()</h2>
+
+  <p>以一个 <code>Point</code> 类为例，演示标准写法：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：标准 equals 写法</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Point</span> <span class="punct">{</span>
+    <span class="kw">private final int</span> <span class="var">x</span><span class="punct">;</span>
+    <span class="kw">private final int</span> <span class="var">y</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">Point</span><span class="punct">(</span><span class="kw">int</span> <span class="var">x</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">y</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">x</span> <span class="punct">=</span> <span class="var">x</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">y</span> <span class="punct">=</span> <span class="var">y</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public boolean</span> <span class="fn">equals</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">) {</span>
+        <span class="com">// 步骤 1：自引用优化，同一对象直接返回 true</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="kw">this</span> <span class="punct">==</span> <span class="var">o</span><span class="punct">)</span> <span class="kw">return true</span><span class="punct">;</span>
+
+        <span class="com">// 步骤 2：null 检查 + 类型检查（同时满足非空性和对称性）</span>
+        <span class="com">// 用 getClass() 而非 instanceof，防止子类破坏对称性</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">o</span> <span class="punct">==</span> <span class="kw">null</span> <span class="punct">||</span> <span class="fn">getClass</span><span class="punct">() !=</span> <span class="var">o</span><span class="punct">.</span><span class="fn">getClass</span><span class="punct">())</span> <span class="kw">return false</span><span class="punct">;</span>
+
+        <span class="com">// 步骤 3：强转后逐字段比较</span>
+        <span class="ty">Point</span> <span class="var">that</span> <span class="punct">= (</span><span class="ty">Point</span><span class="punct">)</span> <span class="var">o</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="kw">this</span><span class="punct">.</span><span class="var">x</span> <span class="punct">==</span> <span class="var">that</span><span class="punct">.</span><span class="var">x</span>
+            <span class="punct">&amp;&amp;</span> <span class="kw">this</span><span class="punct">.</span><span class="var">y</span> <span class="punct">==</span> <span class="var">that</span><span class="punct">.</span><span class="var">y</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>getClass() vs instanceof</strong><br>
+    用 <code>instanceof</code> 时，子类实例可以等于父类实例（单向），但父类实例不能等于子类实例，导致<strong>对称性破坏</strong>。用 <code>getClass()</code> 则严格要求运行时类型完全一致。除非你的类本身就是为继承设计的值类型（如 <code>AbstractSet</code>），否则优先用 <code>getClass()</code>。
+  </div>
+
+  <!-- ========== 4. hashCode 契约 ========== -->
+  <h2>4. hashCode() 契约：与 equals 的绑定关系</h2>
+
+  <p>Java 规范要求 <code>equals</code> 和 <code>hashCode</code> 满足：</p>
+
+  <div class="tree">
+    <span class="hi">规则 1</span>：同一对象多次调用 hashCode()，返回值必须一致（运行期内）<br>
+    <span class="hi">规则 2</span>：<strong>equals() 为 true 的两个对象，hashCode() 必须相等</strong><br>
+    <span class="hi">规则 3</span>：equals() 为 false 的两个对象，hashCode() 可以相等（允许哈希碰撞）<br>
+    <br>
+    逆否命题（常考）：hashCode() 不等 → equals() 一定为 false
+  </div>
+
+  <p>规则 2 是契约的核心。<strong>只覆写 equals 不覆写 hashCode，是 Java 开发中最常见的 bug 之一。</strong></p>
+
+  <h3>为什么违反规则 2 会导致 HashMap 出错？</h3>
+
+  <p>HashMap 的查找逻辑分两步：先用 <code>hashCode()</code> 定位桶，再用 <code>equals()</code> 在桶内找元素。如果 equals 相等但 hashCode 不等，两个"相同"的键会落到不同的桶，永远找不到对方：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：只覆写 equals，不覆写 hashCode</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BadKey</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">id</span><span class="punct">;</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public boolean</span> <span class="fn">equals</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(!(</span><span class="var">o</span> <span class="kw">instanceof</span> <span class="ty">BadKey</span><span class="punct">))</span> <span class="kw">return false</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="var">id</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">((</span><span class="ty">BadKey</span><span class="punct">)</span><span class="var">o</span><span class="punct">.</span><span class="var">id</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="com">// 没有覆写 hashCode()！继承自 Object，基于内存地址</span>
+<span class="punct">}</span>
+
+<span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">BadKey</span><span class="punct">,</span> <span class="ty">String</span><span class="punct">&gt;</span> <span class="var">map</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+<span class="ty">BadKey</span> <span class="var">k1</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BadKey</span><span class="punct">(</span><span class="str">"001"</span><span class="punct">);</span>
+<span class="ty">BadKey</span> <span class="var">k2</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BadKey</span><span class="punct">(</span><span class="str">"001"</span><span class="punct">);</span>
+
+<span class="var">map</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">k1</span><span class="punct">,</span> <span class="str">"Alice"</span><span class="punct">);</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">map</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">k2</span><span class="punct">));</span>  <span class="com">// 输出 null！k1.equals(k2) 为 true，但 hashCode 不同</span>
+<span class="com">// 原因：k2 的 hashCode 指向另一个桶，那个桶里什么都没有</span></pre>
+  </div>
+
+  <!-- ========== 5. 正确覆写 hashCode ========== -->
+  <h2>5. 如何正确覆写 hashCode()</h2>
+
+  <h3>方法一：Objects.hash()（推荐，简洁）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Point 类完整实现（加上 hashCode）</span><span>Java</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.Objects</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">Point</span> <span class="punct">{</span>
+    <span class="kw">private final int</span> <span class="var">x</span><span class="punct">;</span>
+    <span class="kw">private final int</span> <span class="var">y</span><span class="punct">;</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public boolean</span> <span class="fn">equals</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="kw">this</span> <span class="punct">==</span> <span class="var">o</span><span class="punct">)</span> <span class="kw">return true</span><span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">o</span> <span class="punct">==</span> <span class="kw">null</span> <span class="punct">||</span> <span class="fn">getClass</span><span class="punct">() !=</span> <span class="var">o</span><span class="punct">.</span><span class="fn">getClass</span><span class="punct">())</span> <span class="kw">return false</span><span class="punct">;</span>
+        <span class="ty">Point</span> <span class="var">that</span> <span class="punct">= (</span><span class="ty">Point</span><span class="punct">)</span> <span class="var">o</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="var">x</span> <span class="punct">==</span> <span class="var">that</span><span class="punct">.</span><span class="var">x</span> <span class="punct">&amp;&amp;</span> <span class="var">y</span> <span class="punct">==</span> <span class="var">that</span><span class="punct">.</span><span class="var">y</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public int</span> <span class="fn">hashCode</span><span class="punct">() {</span>
+        <span class="com">// 将参与 equals 的所有字段都传入 Objects.hash()</span>
+        <span class="com">// 内部用 31 为乘子的多项式滚动哈希，平衡性能与分布</span>
+        <span class="kw">return</span> <span class="ty">Objects</span><span class="punct">.</span><span class="fn">hash</span><span class="punct">(</span><span class="var">x</span><span class="punct">,</span> <span class="var">y</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>方法二：手写（理解原理）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>手写 hashCode — 31 乘子法</span><span>Java</span></div>
+    <pre><span class="ann">@Override</span>
+<span class="kw">public int</span> <span class="fn">hashCode</span><span class="punct">() {</span>
+    <span class="kw">int</span> <span class="var">result</span> <span class="punct">=</span> <span class="num">17</span><span class="punct">;</span>               <span class="com">// 任意非零奇数作为初始值</span>
+    <span class="var">result</span> <span class="punct">=</span> <span class="num">31</span> <span class="punct">*</span> <span class="var">result</span> <span class="punct">+</span> <span class="var">x</span><span class="punct">;</span>      <span class="com">// 31 是奇质数，JIT 可优化为位运算：(result &lt;&lt; 5) - result</span>
+    <span class="var">result</span> <span class="punct">=</span> <span class="num">31</span> <span class="punct">*</span> <span class="var">result</span> <span class="punct">+</span> <span class="var">y</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么选 31？</strong><br>
+    31 是奇质数，乘以奇数不会导致信息因溢出而丢失（偶数乘可能使低位全为 0）。
+    同时 <code>31 * n = (n &lt;&lt; 5) - n</code>，现代 JIT 会自动优化为位移运算，性能极好。
+    这也是 JDK 中 <code>String.hashCode()</code> 采用 31 的原因。
+  </div>
+
+  <!-- ========== 6. 字段类型的处理 ========== -->
+  <h2>6. 不同字段类型的处理技巧</h2>
+
+  <table>
+    <thead>
+      <tr><th>字段类型</th><th>equals 比较方式</th><th>hashCode 贡献方式</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>基本类型（int/long/...）</td>
+        <td><code>==</code></td>
+        <td>直接使用（long 需 <code>(int)(f ^ f&gt;&gt;&gt;32)</code>）</td>
+      </tr>
+      <tr>
+        <td>float</td>
+        <td><code>Float.compare(a, b) == 0</code></td>
+        <td><code>Float.floatToIntBits(f)</code></td>
+      </tr>
+      <tr>
+        <td>double</td>
+        <td><code>Double.compare(a, b) == 0</code></td>
+        <td><code>(int)(Double.doubleToLongBits(f) ^ ...&gt;&gt;&gt;32)</code></td>
+      </tr>
+      <tr>
+        <td>引用类型（非数组）</td>
+        <td><code>Objects.equals(a, b)</code>（处理 null）</td>
+        <td><code>Objects.hashCode(f)</code>（null 返回 0）</td>
+      </tr>
+      <tr>
+        <td>数组</td>
+        <td><code>Arrays.equals(a, b)</code></td>
+        <td><code>Arrays.hashCode(a)</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>float/double 不能用 == 比较！</strong><br>
+    浮点数有精度问题，<code>0.1 + 0.2 == 0.3</code> 为 <code>false</code>。
+    应用 <code>Float.compare()</code> 或 <code>Double.compare()</code>，它们内部转换为 IEEE 754 位模式再比较，语义更正确。
+    同理 <code>NaN != NaN</code>，也需要这两个方法处理。
+  </div>
+
+  <!-- ========== 7. 继承中的陷阱 ========== -->
+  <h2>7. 继承中的对称性陷阱</h2>
+
+  <p>这是契约中最难处理的场景。假设 <code>ColorPoint extends Point</code>：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：子类用 instanceof 破坏对称性</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ColorPoint</span> <span class="kw">extends</span> <span class="ty">Point</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">Color</span> <span class="var">color</span><span class="punct">;</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public boolean</span> <span class="fn">equals</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(!(</span><span class="var">o</span> <span class="kw">instanceof</span> <span class="ty">ColorPoint</span><span class="punct">))</span> <span class="kw">return false</span><span class="punct">;</span>  <span class="com">// 问题在这里</span>
+        <span class="kw">return super</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">o</span><span class="punct">)</span> <span class="punct">&amp;&amp;</span> <span class="var">color</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">((</span><span class="ty">ColorPoint</span><span class="punct">)</span><span class="var">o</span><span class="punct">.</span><span class="var">color</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="ty">Point</span> <span class="var">p</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Point</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">);</span>
+<span class="ty">ColorPoint</span> <span class="var">cp</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ColorPoint</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">,</span> <span class="ty">Color</span><span class="punct">.</span><span class="var">RED</span><span class="punct">);</span>
+
+<span class="com">// Point.equals 用 getClass()，所以 p.equals(cp) = false（类不同）</span>
+<span class="com">// ColorPoint.equals 用 instanceof，cp.equals(p) 也是 false（p 不是 ColorPoint）</span>
+<span class="com">// 结果：虽然看起来"对称"，但语义不自洽</span></pre>
+  </div>
+
+  <p><strong>《Effective Java》的推荐方案</strong>：继承值类型时，优先用<strong>组合代替继承</strong>，再提供视图方法：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：组合代替继承，绕开对称性难题</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ColorPoint</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">Point</span> <span class="var">point</span><span class="punct">;</span>   <span class="com">// 组合，不继承</span>
+    <span class="kw">private final</span> <span class="ty">Color</span> <span class="var">color</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">Point</span> <span class="fn">asPoint</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">point</span><span class="punct">; }</span>  <span class="com">// 提供视图方法</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public boolean</span> <span class="fn">equals</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="kw">this</span> <span class="punct">==</span> <span class="var">o</span><span class="punct">)</span> <span class="kw">return true</span><span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(!(</span><span class="var">o</span> <span class="kw">instanceof</span> <span class="ty">ColorPoint</span><span class="punct">))</span> <span class="kw">return false</span><span class="punct">;</span>
+        <span class="ty">ColorPoint</span> <span class="var">that</span> <span class="punct">= (</span><span class="ty">ColorPoint</span><span class="punct">)</span> <span class="var">o</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="var">point</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">that</span><span class="punct">.</span><span class="var">point</span><span class="punct">)</span> <span class="punct">&amp;&amp;</span> <span class="var">color</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">that</span><span class="punct">.</span><span class="var">color</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public int</span> <span class="fn">hashCode</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="ty">Objects</span><span class="punct">.</span><span class="fn">hash</span><span class="punct">(</span><span class="var">point</span><span class="punct">,</span> <span class="var">color</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ========== 8. 与集合框架的联系 ========== -->
+  <h2>8. 与集合框架的联系</h2>
+
+  <p>理解这个契约，能解释集合框架的很多行为：</p>
+
+  <table>
+    <thead>
+      <tr><th>集合类</th><th>依赖</th><th>违反契约的后果</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>HashMap</code> / <code>HashSet</code></td>
+        <td>hashCode + equals</td>
+        <td>put 进去用相等 key 找不到；HashSet 存入重复元素</td>
+      </tr>
+      <tr>
+        <td><code>TreeMap</code> / <code>TreeSet</code></td>
+        <td>Comparable / Comparator</td>
+        <td>不依赖 equals，但 compareTo 与 equals 不一致时行为怪异</td>
+      </tr>
+      <tr>
+        <td><code>ArrayList</code></td>
+        <td>equals（用于 contains/remove）</td>
+        <td>contains 找不到"相等"的元素</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>HashSet 去重依赖 hashCode + equals 双重保障</strong><br>
+    向 <code>HashSet</code> 添加元素时，先算 <code>hashCode</code> 定位桶，桶中已有元素再用 <code>equals</code> 判断是否重复。
+    两者缺一不可：只覆写 equals 不覆写 hashCode，相同元素会进入不同桶，Set 无法去重。
+  </div>
+
+  <!-- ========== 9. 可变对象的风险 ========== -->
+  <h2>9. 不要用可变字段作为 key</h2>
+
+  <p>如果一个对象被放入 <code>HashMap</code>/<code>HashSet</code> 后，其参与 <code>hashCode</code> 计算的字段发生了变化，这个对象就会"消失"在集合里——因为它现在的哈希值与存入时不同，查找时去错了桶：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：可变对象作 HashMap key 导致内存泄漏</span><span>Java</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">key</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;(</span><span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">));</span>
+<span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;,</span> <span class="ty">String</span><span class="punct">&gt;</span> <span class="var">map</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+<span class="var">map</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="str">"value"</span><span class="punct">);</span>
+
+<span class="var">key</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="num">3</span><span class="punct">);</span>  <span class="com">// 修改 key！hashCode 变了</span>
+
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">map</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">));</span>    <span class="com">// null：去了新的桶，什么都没有</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">map</span><span class="punct">.</span><span class="fn">size</span><span class="punct">());</span>      <span class="com">// 1：entry 还在，但永远找不到了</span></pre>
+  </div>
+
+  <p>这是一种隐性的<strong>内存泄漏</strong>：对象存入集合后无法删除，GC 也无法回收。<strong>HashMap 的 key 应当是不可变对象</strong>（如 <code>String</code>、基本类型包装类、自定义 final 类）。</p>
+
+  <!-- ========== 10. IDE 生成 vs 手写 vs Record ========== -->
+  <h2>10. 三种实现方式对比</h2>
+
+  <table>
+    <thead>
+      <tr><th>方式</th><th>优点</th><th>缺点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>IDE 自动生成</td>
+        <td>快速，覆盖所有字段，不易遗漏</td>
+        <td>字段变更后忘记重新生成，导致逻辑过时</td>
+      </tr>
+      <tr>
+        <td><code>Objects.hash() / Objects.equals()</code></td>
+        <td>简洁，空安全，推荐日常使用</td>
+        <td>有轻微装箱开销（基本类型会被 varargs 装箱）</td>
+      </tr>
+      <tr>
+        <td>Lombok <code>@EqualsAndHashCode</code></td>
+        <td>注解驱动，零样板</td>
+        <td>继承场景需配置 <code>callSuper=true</code>，否则忘记父类字段</td>
+      </tr>
+      <tr>
+        <td>Java 14+ <code>record</code></td>
+        <td>编译器自动生成，语义最清晰</td>
+        <td>不可变类，不适合需要 setter 的场景</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>record 是最佳实践</strong><br>
+    JDK 16 正式发布的 <code>record</code> 会自动生成基于所有组件字段的 <code>equals()</code>、<code>hashCode()</code>、<code>toString()</code>，且字段天然不可变，彻底规避可变对象作 key 的风险。新项目中值对象优先考虑 <code>record</code>。
+  </div>
+
+  <!-- ========== 11. 面试考点 ========== -->
+  <h2>11. 面试高频考点</h2>
+
+  <ul>
+    <li><strong>为什么覆写 equals 必须覆写 hashCode？</strong> — 因为 HashMap/HashSet 先用 hashCode 定位桶，再用 equals 比较；只覆写 equals 会让逻辑相等的对象散落在不同桶中。</li>
+    <li><strong>两个对象 hashCode 相同，equals 一定为 true 吗？</strong> — 不一定。哈希碰撞允许 hashCode 相同但 equals 为 false（规则 3）。反过来，equals 为 true 则 hashCode 必须相同（规则 2）。</li>
+    <li><strong>String 的 hashCode 是怎么计算的？</strong> — <code>s[0]*31^(n-1) + s[1]*31^(n-2) + ... + s[n-1]</code>，31 为乘子，首次调用后缓存在 <code>hash</code> 字段（懒计算）。</li>
+    <li><strong>为什么 HashMap 的 key 要用不可变对象？</strong> — 可变对象作 key，修改字段后 hashCode 变化，对象在 HashMap 中"消失"，无法 get/remove，形成内存泄漏。</li>
+    <li><strong>null 作为 HashMap key 时发生什么？</strong> — HashMap 允许一个 null key，固定放在 0 号桶（<code>hash(null) = 0</code>）。</li>
+  </ul>
+
+  <hr>
+
+  <div class="callout warn">
+    <strong>核心口诀：equals 相等 → hashCode 必须相等；hashCode 相等 → equals 不一定相等。</strong><br>
+    两个方法必须同时覆写，参与 equals 的字段必须全部参与 hashCode 的计算。
+  </div>
+
+  <div class="nav-footer">
+    <a href="./19-Record类.html" class="nav-btn">← 19. Record 类（JDK 14+）</a>
+    <a href="./21-toString.html" class="nav-btn next">21. toString() →</a>
+  </div>
+
+</div>
+</body>
+</html>

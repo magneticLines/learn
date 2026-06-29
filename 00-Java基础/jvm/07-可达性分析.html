@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>07. 可达性分析与 GC Roots — JVM 学习笔记</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 垃圾回收
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 垃圾回收</div>
+    <h1>07. 可达性分析与 GC Roots</h1>
+    <p>理解 JVM 判断"对象是否存活"的核心算法，以及哪些对象构成 GC 扫描的起点。</p>
+  </div>
+
+  <!-- ======================== 1. 为什么不用引用计数 ======================== -->
+  <h2 style="border-color:#c084fc;">为什么不用引用计数？</h2>
+
+  <p>判断一个对象是否可以被回收，最直觉的方案是<strong>引用计数法</strong>：每个对象维护一个计数器，有引用 +1，引用失效 -1，计数为 0 即可回收。CPython 就用这种方式。</p>
+  <p>但它有一个<strong>无法回避的致命缺陷</strong>——<strong>循环引用</strong>：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>循环引用导致内存泄漏</span><span>Java</span></div>
+    <pre><span class="ty">Object</span> <span class="var">a</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+<span class="ty">Object</span> <span class="var">b</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+
+<span class="com">// a 持有 b，b 持有 a</span>
+<span class="var">a</span><span class="punct">.</span><span class="var">ref</span> <span class="punct">=</span> <span class="var">b</span><span class="punct">;</span>
+<span class="var">b</span><span class="punct">.</span><span class="var">ref</span> <span class="punct">=</span> <span class="var">a</span><span class="punct">;</span>
+
+<span class="com">// 栈变量置 null，外部已无路径能访问到 a / b</span>
+<span class="var">a</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+<span class="var">b</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+
+<span class="com">// 引用计数法：a.count=1, b.count=1，永远不会为 0 → 永远不被回收</span></pre>
+  </div>
+
+  <p>Java 选择了另一条路：<strong>可达性分析（Reachability Analysis）</strong>。不问"有没有人引用你"，而问<strong>"从根出发，能不能走到你"</strong>。走不到的对象，即便彼此引用，也一律判为垃圾。</p>
+
+  <!-- ======================== 2. 可达性分析原理 ======================== -->
+  <h2 style="border-color:#c084fc;">可达性分析原理</h2>
+
+  <p>可达性分析本质上是一次<strong>图的遍历</strong>（DFS / BFS）。把堆内存中所有对象想象成一张有向图，节点是对象，边是引用关系。JVM 选定一组<strong>绝对可信的起点</strong>——称为 <strong>GC Roots</strong>——从这些节点出发遍历引用链。遍历结束后：</p>
+
+  <ul>
+    <li><strong>被访问到的对象</strong> → 存活，不回收</li>
+    <li><strong>未被访问到的对象</strong> → 不可达，判定为垃圾，可以回收</li>
+  </ul>
+
+  <div class="tree">
+<span class="hi">GC Roots</span>
+  ├── Thread Stack (局部变量 obj1)
+  │     └── <span class="hi">Object A</span>  ← 可达
+  │           └── <span class="hi">Object B</span>  ← 可达
+  │
+  └── Static Field (MyClass.cache)
+        └── <span class="hi">Object C</span>  ← 可达
+
+  Object D ──→ Object E   <span class="com">（互相引用，但从 GC Roots 无路径到达）</span>
+  Object E ──→ Object D   ← <span style="color:#f87171;">不可达，均可回收</span>
+  </div>
+
+  <div class="callout info">
+    这个设计的本质是：<strong>从"程序当前运行时真正能用到的对象"反向定义存活</strong>。只要程序的任何执行路径都无法再访问到某对象，它就是死对象，无论引用计数是多少。
+  </div>
+
+  <!-- ======================== 3. GC Roots 有哪些 ======================== -->
+  <h2 style="border-color:#c084fc;">GC Roots 有哪些？</h2>
+
+  <p>GC Roots 是那些<strong>不存储在堆上，或生命周期由 JVM 直接管理</strong>的引用集合。HotSpot JVM 主要包括以下几类：</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>GC Root 类型</th>
+        <th>说明</th>
+        <th>典型场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>虚拟机栈中的引用</strong></td>
+        <td>每个线程的栈帧里，局部变量表中的对象引用</td>
+        <td>方法参数、局部变量 <code>Object obj = new ...</code></td>
+      </tr>
+      <tr>
+        <td><strong>本地方法栈中的引用</strong></td>
+        <td>JNI（Native 方法）中引用的 Java 对象</td>
+        <td><code>native</code> 方法持有的 Java 对象</td>
+      </tr>
+      <tr>
+        <td><strong>方法区中类静态属性</strong></td>
+        <td>类的 <code>static</code> 字段所引用的对象</td>
+        <td><code>static List&lt;User&gt; cache = new ArrayList&lt;&gt;()</code></td>
+      </tr>
+      <tr>
+        <td><strong>方法区中常量引用</strong></td>
+        <td>运行时常量池中的引用（如字符串常量）</td>
+        <td><code>static final String NAME = "hello"</code></td>
+      </tr>
+      <tr>
+        <td><strong>JVM 内部引用</strong></td>
+        <td>基本数据类型对应的 Class 对象、常驻异常类、系统类加载器等</td>
+        <td><code>NullPointerException</code>、<code>Integer.class</code></td>
+      </tr>
+      <tr>
+        <td><strong>被同步锁持有的对象</strong></td>
+        <td><code>synchronized</code> 正在加锁的对象</td>
+        <td><code>synchronized(obj) { ... }</code> 期间 obj 不可回收</td>
+      </tr>
+      <tr>
+        <td><strong>跨代/跨区引用</strong></td>
+        <td>老年代引用新生代对象（记录在 Remembered Set）</td>
+        <td>Minor GC 时需扫描老年代对新生代的引用</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>注意"临时性"</strong>：GC Roots 不是固定的，而是 GC 发生那一瞬间的快照。方法返回后，其栈帧里的局部变量自动从 GC Roots 中消失；静态字段赋 <code>null</code> 后，其引用的对象也会离开 GC Roots 体系。
+  </div>
+
+  <!-- ======================== 4. Stop The World 与 OopMap ======================== -->
+  <h2 style="border-color:#c084fc;">Stop-The-World 与 OopMap</h2>
+
+  <p>可达性分析有一个隐藏难题：<strong>在遍历引用链期间，如果应用线程还在跑，对象引用关系随时在变化</strong>——就像你在数一堆移动的小球，数着数着球跑了或者又变多了，根本数不准。</p>
+  <p>HotSpot 的解法是在<strong>安全点（Safepoint）</strong>让所有线程暂停（Stop-The-World，STW），确保引用关系静止后再扫描。</p>
+
+  <p>为了快速找到所有引用（而不是扫描整个栈/寄存器），JVM 在 JIT 编译时会记录一张叫 <strong>OopMap</strong> 的表，精确标记"哪个位置存放着对象引用"：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OopMap 的作用示意（概念性）</span><span>伪代码</span></div>
+    <pre><span class="com">// JIT 编译某个方法时，在安全点记录：</span>
+<span class="com">// 栈偏移 +8  是一个引用 (Object)</span>
+<span class="com">// 栈偏移 +16 是一个引用 (String)</span>
+<span class="com">// 寄存器 rbx  是一个引用 (List)</span>
+
+<span class="com">// GC 时直接查表，精确找到所有根引用</span>
+<span class="com">// 无需逐字节扫描栈，大幅降低 STW 时间</span></pre>
+  </div>
+
+  <div class="callout tip">
+    OopMap 是 HotSpot 能做到精确式 GC（Exact GC）的关键。相比之下，保守式 GC 需要把每个内存位置都当成"可能是引用"来对待，既慢又不能移动对象。
+  </div>
+
+  <!-- ======================== 5. 两次标记与 finalize ======================== -->
+  <h2 style="border-color:#c084fc;">两次标记与 finalize() 的"缓刑"机制</h2>
+
+  <p>不可达 ≠ 立刻死亡。JVM 给了对象一次"救赎"的机会，整个流程分两次标记：</p>
+
+  <ol>
+    <li><strong>第一次标记</strong>：可达性分析后，不可达的对象被标记，同时检查它是否有必要执行 <code>finalize()</code>（即是否重写了 finalize 且还没执行过）。</li>
+    <li><strong>放入 F-Queue</strong>：有必要执行 finalize 的对象放进一个队列，由低优先级的 Finalizer 线程异步执行（JVM 不保证等待其完成）。</li>
+    <li><strong>第二次标记</strong>：如果对象在 finalize() 中把自己重新挂到了某个 GC Root 可达的引用链上，它就逃过了这次回收。否则，真正死亡。</li>
+  </ol>
+
+  <div class="code-block">
+    <div class="cb-header"><span>finalize 自救演示（反例，勿在生产用）</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">FinalizeEscape</span> <span class="punct">{</span>
+    <span class="kw">static</span> <span class="ty">FinalizeEscape</span> <span class="var">saved</span><span class="punct">;</span>  <span class="com">// 静态字段 = GC Root</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">protected void</span> <span class="fn">finalize</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">Throwable</span> <span class="punct">{</span>
+        <span class="com">// 把自己挂到 GC Root 可达的链上 → 逃过本轮回收</span>
+        <span class="ty">FinalizeEscape</span><span class="punct">.</span><span class="var">saved</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="ty">FinalizeEscape</span> <span class="var">obj</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FinalizeEscape</span><span class="punct">();</span>
+        <span class="var">obj</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="fn">gc</span><span class="punct">();</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">500</span><span class="punct">);</span>
+        <span class="com">// 第一次 GC 后 saved != null，对象被救了</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">saved</span> <span class="punct">!=</span> <span class="kw">null</span> <span class="punct">?</span> <span class="str">"活了"</span> <span class="punct">:</span> <span class="str">"死了"</span><span class="punct">);</span>
+
+        <span class="var">saved</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="fn">gc</span><span class="punct">();</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">500</span><span class="punct">);</span>
+        <span class="com">// 第二次 GC：finalize 已执行过，不再调用 → 对象真正死亡</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">saved</span> <span class="punct">!=</span> <span class="kw">null</span> <span class="punct">?</span> <span class="str">"活了"</span> <span class="punct">:</span> <span class="str">"死了"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>finalize() 是过时机制，Java 9 已废弃（@Deprecated），Java 18 标记为 removal。</strong> 它执行时机不确定、异常会被忽略、每个对象只会执行一次，极易导致资源泄漏和诡异 bug。资源清理请用 <code>try-with-resources</code> + <code>AutoCloseable</code>，或 <code>Cleaner</code>（Java 9+）。
+  </div>
+
+  <!-- ======================== 6. 实际扫描范围优化 ======================== -->
+  <h2 style="border-color:#c084fc;">实际扫描的优化：记忆集与卡表</h2>
+
+  <p>理论上每次 GC 都要从所有 GC Roots 出发扫描整个堆，代价极高。实际上 JVM 分代收集时，<strong>Minor GC 只扫描新生代</strong>，但老年代对象也可能引用新生代对象——如果忽略这些引用，会误判新生代对象不可达。</p>
+
+  <p>解法是<strong>记忆集（Remembered Set）</strong>：记录从非收集区域指向收集区域的引用。HotSpot 用<strong>卡表（Card Table）</strong>实现：</p>
+
+  <ul>
+    <li>将整个堆按 512 字节分成一张张"卡页"</li>
+    <li>某老年代卡页中存在跨代引用时，该卡页标记为"脏"（dirty）</li>
+    <li>Minor GC 时只扫描脏卡页，而非全部老年代，大幅降低 GC 成本</li>
+  </ul>
+
+  <div class="callout info">
+    G1 GC 将堆拆成等大的 Region，每个 Region 都维护自己的 Remembered Set，记录其他 Region 对自己的引用。这样 G1 可以选择性地只回收部分 Region，进一步控制 STW 时间。
+  </div>
+
+  <!-- ======================== 7. 陷阱与误区 ======================== -->
+  <h2 style="border-color:#c084fc;">常见陷阱与误区</h2>
+
+  <h3>陷阱 1：以为局部变量超出作用域就会被 GC</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>代码块退出 ≠ 立刻 GC</span><span>Java</span></div>
+    <pre><span class="kw">void</span> <span class="fn">method</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="punct">{</span>
+        <span class="ty">byte</span><span class="punct">[]</span> <span class="var">chunk</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">byte</span><span class="punct">[</span><span class="num">10</span> <span class="punct">*</span> <span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">];</span>
+        <span class="com">// 代码块结束，chunk 不再可用</span>
+    <span class="punct">}</span>
+    <span class="com">// 但 JIT 优化可能仍保留 slot，不一定马上释放引用</span>
+    <span class="com">// 主动 chunk = null 在某些场景下可以帮助 GC 更早回收</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="fn">gc</span><span class="punct">();</span>  <span class="com">// 也只是"建议"，不保证立刻执行</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 2：静态集合持有对象导致内存泄漏</h3>
+  <p>静态字段是 GC Root，其引用链上的所有对象永远可达。把大量临时对象放进静态集合却不清理，是最常见的 Java 内存泄漏模式。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>静态集合内存泄漏（反例 → 正例）</span><span>Java</span></div>
+    <pre><span class="com">// 反例：cache 是 GC Root，放进去的对象永远不会被回收</span>
+<span class="kw">static</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">byte</span><span class="punct">[]&gt;</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="kw">void</span> <span class="fn">onRequest</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="var">cache</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">byte</span><span class="punct">[</span><span class="num">1024</span><span class="punct">]);</span>  <span class="com">// OOM 只是时间问题</span>
+<span class="punct">}</span>
+
+<span class="com">// 正例：用 WeakReference 或带容量限制的 LRU Cache</span>
+<span class="kw">static</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">WeakReference</span><span class="punct">&lt;</span><span class="ty">byte</span><span class="punct">[]&gt;&gt;</span> <span class="var">safeCache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+<span class="com">// GC 时 WeakReference 的 referent 可以被回收，不阻止 GC</span></pre>
+  </div>
+
+  <h3>陷阱 3：ThreadLocal 未 remove 导致内存泄漏</h3>
+  <p><code>ThreadLocalMap</code> 的 Key 是 <code>WeakReference</code>（ThreadLocal 对象），但 Value 是强引用。ThreadLocal 被 GC 后，Key 为 null，但 Value 仍无法被回收——在线程池场景下（线程长期存活），这些 Value 永远是 GC Root 可达的，造成泄漏。<strong>用完必须调 <code>ThreadLocal.remove()</code></strong>。</p>
+
+  <!-- ======================== 8. 面试高频考点 ======================== -->
+  <h2 style="border-color:#c084fc;">面试高频考点</h2>
+
+  <table>
+    <thead>
+      <tr><th>问题</th><th>关键答案</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>引用计数法有什么缺点？Java 为什么不用？</td>
+        <td>无法解决<strong>循环引用</strong>。Java 用可达性分析，从 GC Roots 出发遍历引用链，循环引用的孤岛仍会被回收。</td>
+      </tr>
+      <tr>
+        <td>哪些对象可以作为 GC Roots？</td>
+        <td>虚拟机栈局部变量、本地方法栈 JNI 引用、静态字段、运行时常量池引用、同步锁持有对象、JVM 内部引用、跨代引用（Remembered Set）。</td>
+      </tr>
+      <tr>
+        <td>可达性分析为什么需要 STW？</td>
+        <td>确保分析期间对象引用关系不变。否则"对象消失"（已访问的对象引用被断开）或"浮动垃圾"（新增不可达对象）会影响正确性。</td>
+      </tr>
+      <tr>
+        <td>对象一定要经历两次标记才会被回收吗？</td>
+        <td>如果对象没有重写 <code>finalize()</code>（或已执行过），第一次标记后直接回收，不进 F-Queue。只有重写且首次触发才有"两次标记"流程。</td>
+      </tr>
+      <tr>
+        <td>Minor GC 时会扫描老年代吗？</td>
+        <td>不全扫，只扫描<strong>卡表中被标记为脏的卡页</strong>（存在跨代引用的老年代区域），以此处理老年代→新生代的引用。</td>
+      </tr>
+      <tr>
+        <td>System.gc() 能保证立刻触发 GC 吗？</td>
+        <td>不能，只是向 JVM 发出建议。加 <code>-XX:+DisableExplicitGC</code> 后甚至完全无效。生产代码不应依赖 <code>System.gc()</code>。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ======================== 9. 总结 ======================== -->
+  <h2 style="border-color:#c084fc;">总结</h2>
+
+  <ul>
+    <li>可达性分析解决了引用计数无法处理循环引用的根本缺陷，是 JVM 判断对象存活的核心算法。</li>
+    <li>GC Roots 是程序"当前真正在用"的对象入口，包括栈帧局部变量、静态字段、JNI 引用等。</li>
+    <li>OopMap 让 JVM 在安全点能精确、高效地找到所有根引用，支撑了精确式 GC 和对象移动。</li>
+    <li>finalize() 提供了一次自救机会，但机制脆弱，已被废弃，不要在生产代码中依赖它。</li>
+    <li>静态集合、ThreadLocal 未清理是最常见的"对象意外可达"内存泄漏根源。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./06-引用类型.html" class="nav-btn">← 06. 引用类型（强 / 软 / 弱 / 虚）</a>
+    <a href="./08-GC算法.html" class="nav-btn next">08. 常用 GC 算法（标记清除 / 复制 / 标记整理） →</a>
+  </div>
+
+</div>
+</body>
+</html>

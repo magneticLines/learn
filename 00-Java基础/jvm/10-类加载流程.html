@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>10. 类加载流程 — JVM 学习</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 类加载
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 类加载</div>
+    <h1>10. 类加载流程</h1>
+    <p>加载 → 验证 → 准备 → 解析 → 初始化，五个阶段把 .class 字节码变成 JVM 内存中可用的类型</p>
+  </div>
+
+  <!-- ===================== 1. 为什么需要类加载 ===================== -->
+  <h2 style="border-color:#c084fc;">为什么需要类加载？</h2>
+  <p>
+    C/C++ 在编译时就把所有代码链接为一个可执行文件，运行时直接寻址调用。<br/>
+    Java 选择了另一条路：<strong>运行时动态加载</strong>。你写的 <code>.java</code> 文件
+    被 <code>javac</code> 编译成 <code>.class</code> 字节码，字节码本身并不包含任何内存地址，
+    只有在真正被用到时，JVM 才把它"加工"成可运行的类型信息，并完成符号引用到直接地址的绑定。
+  </p>
+  <p>这个设计带来了三大好处：</p>
+  <ul>
+    <li><strong>按需加载，节省内存</strong>：只有真正被用到的类才会进入内存</li>
+    <li><strong>热替换/热部署</strong>：OSGi、Tomcat、Spring DevTools 底层均依赖自定义类加载器实现不重启替换 class</li>
+    <li><strong>安全隔离</strong>：不同 ClassLoader 加载的类彼此隔离，Tomcat 用此隔离多个 WebApp</li>
+  </ul>
+
+  <!-- ===================== 2. 五阶段总览 ===================== -->
+  <h2 style="border-color:#c084fc;">五阶段总览</h2>
+
+  <div class="tree">
+    <span class="hi">加载（Loading）</span>
+      ──  读取字节流，在堆中创建 Class 对象
+    <span class="hi">验证（Verification）</span>
+      ── 校验字节码合法性
+    <span class="hi">准备（Preparation）</span>
+      ── 为静态变量分配内存并赋<strong>零值</strong>
+    <span class="hi">解析（Resolution）</span>
+      ── 符号引用 → 直接引用
+    <span class="hi">初始化（Initialization）</span>
+      ── 执行 &lt;clinit&gt;，赋程序员写的值
+  </div>
+
+  <div class="callout info">
+    <strong>术语：连接（Linking）</strong> = 验证 + 准备 + 解析，三个阶段合称连接阶段。
+    JVM 规范要求加载在连接之前，但验证/准备/解析三者之间允许交叉进行。
+  </div>
+
+  <!-- ===================== 3. 阶段详解 ===================== -->
+  <h2 style="border-color:#c084fc;">各阶段详解</h2>
+
+  <!-- 3.1 加载 -->
+  <h3>① 加载（Loading）</h3>
+  <p>JVM 需要完成三件事：</p>
+  <ol>
+    <li>通过类的全限定名获取其字节流（可以来自 jar、网络、数据库、动态生成……）</li>
+    <li>将字节流所代表的静态存储结构转化为方法区的运行时数据结构</li>
+    <li>在 Java 堆中生成一个代表这个类的 <code>java.lang.Class</code> 对象，作为方法区数据的访问入口</li>
+  </ol>
+  <p>
+    <strong>关键理解</strong>：字节流的来源 JVM 并不限制，这正是自定义 ClassLoader 的切入口——
+    你可以从加密 jar、远程 URL、甚至内存里的字节数组里读取字节流。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>自定义 ClassLoader 示例（加载阶段入口）</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ByteArrayClassLoader</span> <span class="kw">extends</span> <span class="ty">ClassLoader</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">byte</span><span class="punct">[]&gt;</span> <span class="var">classBytes</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">ByteArrayClassLoader</span><span class="punct">(</span><span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">byte</span><span class="punct">[]&gt;</span> <span class="var">classBytes</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">classBytes</span> <span class="punct">=</span> <span class="var">classBytes</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">protected</span> <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="fn">findClass</span><span class="punct">(</span><span class="ty">String</span> <span class="var">name</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">ClassNotFoundException</span> <span class="punct">{</span>
+        <span class="ty">byte</span><span class="punct">[]</span> <span class="var">bytes</span> <span class="punct">=</span> <span class="var">classBytes</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">bytes</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">)</span> <span class="kw">throw new</span> <span class="ty">ClassNotFoundException</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+        <span class="com">// defineClass 才是真正触发"加载"阶段的 JVM 原生方法</span>
+        <span class="kw">return</span> <span class="fn">defineClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">, </span><span class="var">bytes</span><span class="punct">, </span><span class="num">0</span><span class="punct">, </span><span class="var">bytes</span><span class="punct">.</span><span class="var">length</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 3.2 验证 -->
+  <h3>② 验证（Verification）</h3>
+  <p>
+    字节码来源不受限制，JVM 必须保证"任何人提交的字节码都不能破坏 JVM 自身的安全"。
+    验证阶段就是这道安全门，分四道检查：
+  </p>
+  <table>
+    <tr>
+      <th>子阶段</th>
+      <th>检查内容</th>
+      <th>举例</th>
+    </tr>
+    <tr>
+      <td>文件格式验证</td>
+      <td>魔数、版本号、常量池类型</td>
+      <td><code>0xCAFEBABE</code> 开头；版本号不超过当前 JDK</td>
+    </tr>
+    <tr>
+      <td>元数据验证</td>
+      <td>类继承语义合法性</td>
+      <td>final 类不能被继承；父类必须是 <code>Object</code> 或合法类</td>
+    </tr>
+    <tr>
+      <td>字节码验证</td>
+      <td>指令序列的语义合法性</td>
+      <td>操作数栈溢出；类型转换不合法（int 赋给引用类型）</td>
+    </tr>
+    <tr>
+      <td>符号引用验证</td>
+      <td>引用的类/方法/字段是否存在且可访问</td>
+      <td>调用了 private 方法；字段类型不匹配</td>
+    </tr>
+  </table>
+  <div class="callout tip">
+    <strong>可以关掉吗？</strong> 可以。生产环境信任 jar 时加 <code>-Xverify:none</code>（JDK 13+
+    改为 <code>-XX:-BytecodeVerificationLocal</code>）可跳过验证，加快启动速度，但有安全风险。
+  </div>
+
+  <!-- 3.3 准备 -->
+  <h3>③ 准备（Preparation）</h3>
+  <p>
+    为<strong>类变量（static 字段）</strong>在方法区分配内存，并赋<strong>零值</strong>——
+    注意：不是你代码里写的初始值，而是数据类型的默认值。
+  </p>
+  <table>
+    <tr><th>数据类型</th><th>零值</th></tr>
+    <tr><td><code>int / short / byte / char</code></td><td><code>0</code></td></tr>
+    <tr><td><code>long</code></td><td><code>0L</code></td></tr>
+    <tr><td><code>float / double</code></td><td><code>0.0</code></td></tr>
+    <tr><td><code>boolean</code></td><td><code>false</code></td></tr>
+    <tr><td>引用类型</td><td><code>null</code></td></tr>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>准备 vs 初始化的分工</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Config</span> <span class="punct">{</span>
+    <span class="com">// 准备阶段：value = 0（零值）</span>
+    <span class="com">// 初始化阶段：value = 100（执行赋值指令）</span>
+    <span class="kw">static int</span> <span class="var">value</span> <span class="punct">=</span> <span class="num">100</span><span class="punct">;</span>
+
+    <span class="com">// 例外：static final 常量在准备阶段直接赋 42，不等到初始化</span>
+    <span class="com">// 因为 ConstantValue 属性在编译期就确定了</span>
+    <span class="kw">static final int</span> <span class="var">MAX</span> <span class="punct">=</span> <span class="num">42</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>常见陷阱</strong>：<code>static final</code> 的基本类型或 String 字面量，
+    准备阶段就会赋实际值；但 <code>static final</code> 引用类型（如 <code>static final Object obj = new Object()</code>）
+    仍要等到初始化阶段，因为 <code>new</code> 是运行时行为。
+  </div>
+
+  <!-- 3.4 解析 -->
+  <h3>④ 解析（Resolution）</h3>
+  <p>
+    字节码里的所有调用（类引用、方法引用、字段引用）在编译期都只是<strong>符号引用</strong>——
+    即一个字符串 + 描述符，例如 <code>"com/example/Foo.bar:(I)V"</code>。
+    运行时内存布局才确定，解析阶段把符号引用替换为<strong>直接引用</strong>（内存地址/偏移量）。
+  </p>
+  <p>解析的目标分为七类：</p>
+  <ul>
+    <li>类或接口引用</li>
+    <li>字段引用</li>
+    <li>类方法引用</li>
+    <li>接口方法引用</li>
+    <li>方法类型（<code>MethodType</code>）</li>
+    <li>方法句柄（<code>MethodHandle</code>）</li>
+    <li>调用点限定符（<code>invokedynamic</code>，lambda 底层）</li>
+  </ul>
+  <div class="callout info">
+    <strong>解析可以延迟</strong>：JVM 规范允许"在字节码指令执行前再解析"，
+    HotSpot 正是如此——首次执行某条指令时才解析对应的符号引用，这叫<strong>延迟解析（Lazy Resolution）</strong>。
+  </div>
+
+  <!-- 3.5 初始化 -->
+  <h3>⑤ 初始化（Initialization）</h3>
+  <p>
+    初始化阶段才真正执行 Java 代码，本质是执行编译器合成的 <code>&lt;clinit&gt;</code> 方法。
+    它由<strong>所有 static 变量赋值语句</strong>和<strong>静态代码块</strong>按源码顺序合并而来。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>clinit 顺序演示</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Order</span> <span class="punct">{</span>
+    <span class="kw">static int</span> <span class="var">a</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>         <span class="com">// clinit 第1步</span>
+
+    <span class="kw">static</span> <span class="punct">{</span>
+        <span class="var">a</span> <span class="punct">=</span> <span class="num">2</span><span class="punct">;</span>                <span class="com">// clinit 第2步</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"static block, a="</span> <span class="punct">+</span> <span class="var">a</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">static int</span> <span class="var">b</span> <span class="punct">=</span> <span class="var">a</span> <span class="punct">*</span> <span class="num">10</span><span class="punct">;</span>     <span class="com">// clinit 第3步，此时 a=2，所以 b=20</span>
+
+    <span class="com">// 最终：a=2, b=20</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>触发初始化的六种"主动引用"（JVM 规范强制要求）：</strong></p>
+  <ol>
+    <li>遇到 <code>new</code>、<code>getstatic</code>、<code>putstatic</code>、<code>invokestatic</code> 指令</li>
+    <li>使用 <code>java.lang.reflect</code> 对类进行反射调用</li>
+    <li>初始化子类时，父类尚未初始化</li>
+    <li>虚拟机启动时指定的主类（含 <code>main()</code> 的类）</li>
+    <li>JDK 7+：<code>java.lang.invoke.MethodHandle</code> 解析结果为 <code>REF_getStatic</code> 等句柄时</li>
+    <li>JDK 8+：接口定义了 <code>default</code> 方法，其实现类初始化时该接口也会初始化</li>
+  </ol>
+
+  <div class="callout warn">
+    <strong>被动引用不触发初始化（高频考点）</strong>
+    <ul style="margin-top:8px;">
+      <li>子类访问父类的静态字段：只初始化父类，不初始化子类</li>
+      <li>通过数组定义引用类：<code>MyClass[] arr = new MyClass[10]</code> 不触发 <code>MyClass</code> 初始化</li>
+      <li>访问 <code>static final</code> 常量（编译期已内联到调用方字节码）</li>
+    </ul>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>被动引用反例验证</span><span>Java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Parent</span> <span class="punct">{</span>
+    <span class="kw">static int</span> <span class="var">x</span> <span class="punct">=</span> <span class="num">10</span><span class="punct">;</span>
+    <span class="kw">static</span> <span class="punct">{</span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"Parent init"</span><span class="punct">); }</span>
+<span class="punct">}</span>
+
+<span class="kw">class</span> <span class="ty">Child</span> <span class="kw">extends</span> <span class="ty">Parent</span> <span class="punct">{</span>
+    <span class="kw">static</span> <span class="punct">{</span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"Child init"</span><span class="punct">); }</span>
+<span class="punct">}</span>
+
+<span class="com">// 输出只有 "Parent init"，Child 不会被初始化</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="ty">Child</span><span class="punct">.</span><span class="var">x</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- ===================== 4. clinit 与 init 的区别 ===================== -->
+  <h2 style="border-color:#c084fc;"><code>&lt;clinit&gt;</code> vs <code>&lt;init&gt;</code></h2>
+  <table>
+    <tr>
+      <th>对比项</th>
+      <th><code>&lt;clinit&gt;</code></th>
+      <th><code>&lt;init&gt;</code></th>
+    </tr>
+    <tr>
+      <td>对应 Java 结构</td>
+      <td>static 变量 + static 代码块</td>
+      <td>实例变量 + 构造器 + 实例初始化块</td>
+    </tr>
+    <tr>
+      <td>执行时机</td>
+      <td>类初始化阶段，每个类只执行一次</td>
+      <td>每次 <code>new</code> 时执行</td>
+    </tr>
+    <tr>
+      <td>线程安全</td>
+      <td>JVM 保证加锁互斥，多线程安全</td>
+      <td>需要开发者自己保证</td>
+    </tr>
+    <tr>
+      <td>可以没有</td>
+      <td>是（无 static 变量/块时编译器不生成）</td>
+      <td>否（至少有默认无参构造器）</td>
+    </tr>
+    <tr>
+      <td>父类关系</td>
+      <td>父类 <code>&lt;clinit&gt;</code> 先执行</td>
+      <td>父类 <code>&lt;init&gt;</code> 先执行（super()）</td>
+    </tr>
+  </table>
+
+  <!-- ===================== 5. 线程安全与死锁 ===================== -->
+  <h2 style="border-color:#c084fc;">初始化的线程安全与死锁陷阱</h2>
+  <p>
+    JVM 保证 <code>&lt;clinit&gt;</code> 在多线程下只执行一次，内部通过类对象上的锁实现。
+    但如果静态初始化块里有<strong>耗时操作或阻塞调用</strong>，其他线程会卡住——
+    这是 JVM 层面的隐式锁，极难排查。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>静态初始化死锁（真实案例）</span><span>Java</span></div>
+    <pre><span class="com">// 反例：两个类互相在 static 块里触发对方初始化</span>
+<span class="kw">class</span> <span class="ty">A</span> <span class="punct">{</span>
+    <span class="kw">static</span> <span class="ty">B</span> <span class="var">b</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">B</span><span class="punct">();</span>   <span class="com">// 初始化 A 时，触发 B 的初始化</span>
+<span class="punct">}</span>
+<span class="kw">class</span> <span class="ty">B</span> <span class="punct">{</span>
+    <span class="kw">static</span> <span class="ty">A</span> <span class="var">a</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">A</span><span class="punct">();</span>   <span class="com">// 初始化 B 时，触发 A 的初始化</span>
+<span class="punct">}</span>
+<span class="com">// 结果：循环依赖 → 两个线程分别持有 A/B 的类锁等待对方，死锁！</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>最佳实践</strong>：static 块中避免调用其他类的方法，尤其是可能触发另一个类初始化的方法。
+    如确实需要，改用懒加载（<code>Holder</code> 模式或 <code>lazy val</code>）。
+  </div>
+
+  <!-- ===================== 6. 完整流程图 ===================== -->
+  <h2 style="border-color:#c084fc;">完整流程图（文字版）</h2>
+  <div class="tree">
+<span class="hi">① 加载</span>：ClassLoader.loadClass() → defineClass() → 堆中 Class 对象
+    ↓
+<span class="hi">② 验证</span>：文件格式 → 元数据 → 字节码 → 符号引用  （抛 VerifyError）
+    ↓
+<span class="hi">③ 准备</span>：static 字段 → 零值  （static final 常量直接赋实际值）
+    ↓
+<span class="hi">④ 解析</span>：符号引用 → 直接引用  （可延迟到首次使用）
+    ↓
+<span class="hi">⑤ 初始化</span>：执行 &lt;clinit&gt;，按源码顺序执行 static 赋值 + static 块
+    ↓
+    类可用（可被 new、被反射调用……）
+  </div>
+
+  <!-- ===================== 7. 面试考点 ===================== -->
+  <h2 style="border-color:#c084fc;">高频面试考点</h2>
+
+  <h3>Q1：准备阶段赋零值，初始化阶段赋实际值，这两步为什么要分开？</h3>
+  <p>
+    准备阶段在连接期，此时 JVM 还没有执行任何 Java 代码，方法区结构刚建好。
+    先赋零值可以<strong>保证类字段绝不会有"未初始化"的垃圾值</strong>，即使初始化阶段因异常中断，
+    程序也不会读到不可预期的内存内容，这是 JVM 的一种安全保障。
+  </p>
+
+  <h3>Q2：接口有 &lt;clinit&gt; 吗？</h3>
+  <p>
+    有，但只有在接口中定义了 <code>static final</code> 且赋值不是编译期常量（如 <code>= new Foo()</code>）
+    或有 <code>default</code> 方法时才会生成 <code>&lt;clinit&gt;</code>。
+    接口的 <code>&lt;clinit&gt;</code> 执行<strong>不要求</strong>父接口先初始化（与类不同）。
+  </p>
+
+  <h3>Q3：Class.forName() 和 ClassLoader.loadClass() 有什么区别？</h3>
+  <table>
+    <tr>
+      <th>方法</th>
+      <th>是否触发初始化</th>
+      <th>典型使用场景</th>
+    </tr>
+    <tr>
+      <td><code>Class.forName("xxx")</code></td>
+      <td><strong>是</strong>（默认）</td>
+      <td>JDBC 驱动注册（靠静态块注册到 DriverManager）</td>
+    </tr>
+    <tr>
+      <td><code>Class.forName("xxx", false, cl)</code></td>
+      <td>否</td>
+      <td>只想拿到 Class 对象，不执行初始化</td>
+    </tr>
+    <tr>
+      <td><code>ClassLoader.loadClass("xxx")</code></td>
+      <td><strong>否</strong></td>
+      <td>框架懒加载，Spring Bean 延迟实例化</td>
+    </tr>
+  </table>
+
+  <h3>Q4：static 字段的初始化顺序是怎样的？</h3>
+  <p>
+    父类 <code>&lt;clinit&gt;</code> 先于子类执行；同一类内部，
+    <code>static</code> 变量赋值和 <code>static</code> 代码块按<strong>源码从上到下</strong>的顺序执行。
+  </p>
+
+  <h3>Q5：用 JVM 参数观察类加载过程</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>常用 JVM 参数</span><span>Shell</span></div>
+    <pre><span class="com"># 打印所有被加载的类</span>
+java <span class="str">-verbose:class</span> MyApp
+
+<span class="com"># 打印类加载/卸载信息（HotSpot）</span>
+java <span class="str">-XX:+TraceClassLoading</span> <span class="str">-XX:+TraceClassUnloading</span> MyApp
+
+<span class="com"># 跳过字节码验证（慎用）</span>
+java <span class="str">-Xverify:none</span> MyApp</pre>
+  </div>
+
+  <hr />
+
+  <!-- ===================== 8. 小结 ===================== -->
+  <h2 style="border-color:#c084fc;">小结</h2>
+  <ul>
+    <li><strong>加载</strong>：ClassLoader 读字节流，堆中创建 Class 对象——来源不限</li>
+    <li><strong>验证</strong>：四道门禁，确保字节码安全合法</li>
+    <li><strong>准备</strong>：static 字段赋零值；static final 编译期常量直接赋实际值</li>
+    <li><strong>解析</strong>：符号引用 → 直接引用，HotSpot 采用延迟解析</li>
+    <li><strong>初始化</strong>：执行 <code>&lt;clinit&gt;</code>，JVM 保证线程安全；六种主动引用触发，三种被动引用不触发</li>
+  </ul>
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./09-垃圾收集器.html" class="nav-btn">← 09. 垃圾收集器（Serial / Parallel / CMS / G1 / ZGC）</a>
+    <a href="./11-双亲委派模型.html" class="nav-btn next">11. 双亲委派模型 →</a>
+  </div>
+
+</div>
+</body>
+</html>

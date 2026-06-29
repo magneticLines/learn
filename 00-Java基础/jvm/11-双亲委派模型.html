@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>11. 双亲委派模型 — JVM 类加载</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 类加载
+  </div>
+
+  <!-- 标题区 -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 类加载</div>
+    <h1>11. 双亲委派模型</h1>
+    <p>类加载器的信任体系——为什么 <code>java.lang.String</code> 永远只有一个？</p>
+  </div>
+
+  <!-- ① 是什么 -->
+  <h2 style="border-color:#c084fc;">什么是双亲委派模型</h2>
+  <p>
+    双亲委派（Parent Delegation Model）是 JVM 类加载器之间的一条<strong>协作约定</strong>：
+    当一个类加载器收到加载请求时，它不会自己先去尝试加载，而是<strong>先把请求委托给父加载器</strong>，
+    父加载器再向上委托，直到最顶层的启动类加载器（Bootstrap ClassLoader）。
+    只有当父加载器无法完成加载（在自己的搜索范围内找不到该类）时，子加载器才会尝试自己加载。
+  </p>
+  <p>这条规则来自 JDK 1.2，写在 <code>java.lang.ClassLoader#loadClass()</code> 里，不是 JVM 规范强制要求，而是一个被广泛遵循的<strong>设计惯例</strong>。</p>
+
+  <!-- 加载器层级 -->
+  <h2 style="border-color:#c084fc;">三层类加载器结构</h2>
+
+  <div class="tree">
+<span class="hi">Bootstrap ClassLoader</span>（C++ 实现，无 Java 对象）
+  负责加载 <span class="hi">$JAVA_HOME/lib</span>（rt.jar、core libraries）
+  │
+  └── <span class="hi">Extension ClassLoader</span>（JDK 8）/ Platform ClassLoader（JDK 9+）
+        负责加载 <span class="hi">$JAVA_HOME/lib/ext</span> 或 <code>java.ext.dirs</code>
+        │
+        └── <span class="hi">Application ClassLoader</span>（也叫 System ClassLoader）
+              负责加载 <span class="hi">classpath</span> 上的应用类
+              │
+              └── 用户自定义 ClassLoader（可继续向下扩展）
+  </div>
+
+  <div class="callout info">
+    <strong>JDK 9 模块化后的变化：</strong>
+    Extension ClassLoader 被重命名为 Platform ClassLoader，负责加载平台模块（java.se 等）。
+    Bootstrap ClassLoader 加载 java.base 等核心模块。整体双亲委派逻辑不变，但边界从 jar 文件变为模块。
+  </div>
+
+  <!-- ② 为什么这么设计 -->
+  <h2 style="border-color:#c084fc;">为什么这么设计——解决了什么问题</h2>
+
+  <h3>问题 1：安全性 / 防篡改</h3>
+  <p>
+    假设没有双亲委派，任何人都可以写一个自己的 <code>java.lang.String</code> 并让应用加载器加载它。
+    恶意代码可以借此替换核心类、窃取密码、绕过安全检查。
+    有了委派机制，<code>java.lang.String</code> 的请求永远会被委托到 Bootstrap ClassLoader，
+    它只会从 JDK 的 <code>rt.jar</code> 里加载，<strong>用户写的同名类根本没机会被加载</strong>。
+  </p>
+
+  <h3>问题 2：类的唯一性 / 避免重复加载</h3>
+  <p>
+    JVM 里"同一个类"的判断依据是：<strong>类全限定名 + 加载它的 ClassLoader</strong>。
+    如果 <code>java.lang.Object</code> 被 Bootstrap 和 AppClassLoader 各加载一次，它们就是两个不同的类——
+    你的对象无法赋给 <code>Object</code> 类型变量，<code>instanceof</code> 也会失效。
+    双亲委派保证同一个类名在整个 JVM 生命周期里只被加载一次（由最顶层能处理的加载器负责）。
+  </p>
+
+  <h3>问题 3：稳定基础库</h3>
+  <p>
+    JDK 核心类（<code>java.lang.*</code>、<code>java.util.*</code>）由 Bootstrap 加载，
+    任何第三方库都无法意外覆盖它们，整个平台的行为可预期。
+  </p>
+
+  <!-- ③ 源码实现 -->
+  <h2 style="border-color:#c084fc;">源码：loadClass() 如何实现委派</h2>
+  <p>来看 JDK 8 <code>java.lang.ClassLoader</code> 的核心逻辑（已精简注释）：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ClassLoader.java（JDK 8，精简版）</span></div>
+    <pre><span class="kw">protected</span> <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="fn">loadClass</span><span class="punct">(</span><span class="ty">String</span> <span class="var">name</span><span class="punct">,</span> <span class="kw">boolean</span> <span class="var">resolve</span><span class="punct">)</span>
+        <span class="kw">throws</span> <span class="ty">ClassNotFoundException</span> <span class="punct">{</span>
+
+    <span class="com">// 1. 先查缓存：同一类只加载一次</span>
+    <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="var">c</span> <span class="punct">=</span> <span class="fn">findLoadedClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">parent</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">) {</span>
+                <span class="com">// 2. 有父加载器 → 先委托父加载器</span>
+                <span class="var">c</span> <span class="punct">=</span> <span class="var">parent</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="kw">false</span><span class="punct">);</span>
+            <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+                <span class="com">// 3. 父为 null → 委托给 Bootstrap ClassLoader（C++ 层）</span>
+                <span class="var">c</span> <span class="punct">=</span> <span class="fn">findBootstrapClassOrNull</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">ClassNotFoundException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="com">// 父加载器找不到 → 捕获异常，不向上抛，让子加载器自己尝试</span>
+        <span class="punct">}</span>
+
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="com">// 4. 父加载器也加载不了 → 自己尝试（findClass 是子类覆写的扩展点）</span>
+            <span class="var">c</span> <span class="punct">=</span> <span class="fn">findClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">resolve</span><span class="punct">) {</span>
+        <span class="fn">resolveClass</span><span class="punct">(</span><span class="var">c</span><span class="punct">);</span>  <span class="com">// 链接阶段（可选）</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="var">c</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>扩展点设计：</strong>
+    JDK 把 <code>loadClass()</code>（委派逻辑）和 <code>findClass()</code>（实际加载逻辑）分开。
+    自定义类加载器<strong>只需覆写 findClass()</strong>，委派逻辑由父类的 loadClass() 保证，
+    这是模板方法模式的经典应用。
+  </div>
+
+  <!-- ④ 自定义类加载器示例 -->
+  <h2 style="border-color:#c084fc;">自定义类加载器：只覆写 findClass</h2>
+  <p>假设我们要从磁盘某个目录加载加密过的 .class 文件（简单 XOR 解密）：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>MyClassLoader.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">MyClassLoader</span> <span class="kw">extends</span> <span class="ty">ClassLoader</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">baseDir</span><span class="punct">;</span>
+    <span class="kw">private static final</span> <span class="kw">byte</span> <span class="var">XOR_KEY</span> <span class="punct">=</span> <span class="num">0x42</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">MyClassLoader</span><span class="punct">(</span><span class="ty">String</span> <span class="var">baseDir</span><span class="punct">) {</span>
+        <span class="com">// 显式将 AppClassLoader 设为父加载器（默认行为，这里明写更清晰）</span>
+        <span class="kw">super</span><span class="punct">(</span><span class="ty">ClassLoader</span><span class="punct">.</span><span class="fn">getSystemClassLoader</span><span class="punct">());</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">baseDir</span> <span class="punct">=</span> <span class="var">baseDir</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">protected</span> <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="fn">findClass</span><span class="punct">(</span><span class="ty">String</span> <span class="var">name</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">ClassNotFoundException</span> <span class="punct">{</span>
+        <span class="com">// 只有父加载器（AppCL → ExtCL → Bootstrap）都找不到时，才会进到这里</span>
+        <span class="ty">String</span> <span class="var">path</span> <span class="punct">=</span> <span class="var">baseDir</span> <span class="punct">+</span> <span class="str">"/"</span> <span class="punct">+</span> <span class="var">name</span><span class="punct">.</span><span class="fn">replace</span><span class="punct">(</span><span class="str">'.'</span><span class="punct">,</span> <span class="str">'/'</span><span class="punct">)</span> <span class="punct">+</span> <span class="str">".xclass"</span><span class="punct">;</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">byte</span><span class="punct">[]</span> <span class="var">raw</span>  <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">readAllBytes</span><span class="punct">(</span><span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="var">path</span><span class="punct">));</span>
+            <span class="kw">byte</span><span class="punct">[]</span> <span class="var">data</span> <span class="punct">=</span> <span class="fn">decrypt</span><span class="punct">(</span><span class="var">raw</span><span class="punct">);</span>
+            <span class="kw">return</span> <span class="fn">defineClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="var">data</span><span class="punct">,</span> <span class="num">0</span><span class="punct">,</span> <span class="var">data</span><span class="punct">.</span><span class="var">length</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">throw new</span> <span class="ty">ClassNotFoundException</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private byte</span><span class="punct">[]</span> <span class="fn">decrypt</span><span class="punct">(</span><span class="kw">byte</span><span class="punct">[]</span> <span class="var">data</span><span class="punct">) {</span>
+        <span class="kw">byte</span><span class="punct">[]</span> <span class="var">out</span> <span class="punct">=</span> <span class="kw">new</span> <span class="kw">byte</span><span class="punct">[</span><span class="var">data</span><span class="punct">.</span><span class="var">length</span><span class="punct">];</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">data</span><span class="punct">.</span><span class="var">length</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span>
+            <span class="var">out</span><span class="punct">[</span><span class="var">i</span><span class="punct">]</span> <span class="punct">=</span> <span class="punct">(</span><span class="kw">byte</span><span class="punct">) (</span><span class="var">data</span><span class="punct">[</span><span class="var">i</span><span class="punct">]</span> <span class="punct">^</span> <span class="var">XOR_KEY</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">out</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ⑤ 类相等性 -->
+  <h2 style="border-color:#c084fc;">类的相等性：加载器不同 → 类不同</h2>
+  <p>这是最容易被忽视的隐患：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ClassIdentityDemo.java</span></div>
+    <pre><span class="ty">MyClassLoader</span> <span class="var">cl1</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">MyClassLoader</span><span class="punct">(</span><span class="str">"/tmp/classes"</span><span class="punct">);</span>
+<span class="ty">MyClassLoader</span> <span class="var">cl2</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">MyClassLoader</span><span class="punct">(</span><span class="str">"/tmp/classes"</span><span class="punct">);</span>
+
+<span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="var">c1</span> <span class="punct">=</span> <span class="var">cl1</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="str">"com.example.Foo"</span><span class="punct">);</span>
+<span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="var">c2</span> <span class="punct">=</span> <span class="var">cl2</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="str">"com.example.Foo"</span><span class="punct">);</span>
+
+<span class="com">// 两个类加载器各自加载了同名类 → 是两个不同的 Class 对象</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">c1</span> <span class="punct">==</span> <span class="var">c2</span><span class="punct">);</span>              <span class="com">// false</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">c1</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">c2</span><span class="punct">));</span>         <span class="com">// false</span>
+
+<span class="ty">Object</span> <span class="var">obj1</span> <span class="punct">=</span> <span class="var">c1</span><span class="punct">.</span><span class="fn">newInstance</span><span class="punct">();</span>
+<span class="com">// obj1 instanceof c2 → 编译不过；强转 c2.cast(obj1) → ClassCastException!</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>经典陷阱：</strong>
+    Tomcat 等容器里每个 Web 应用有自己的类加载器，如果 <code>Foo.class</code> 被两个 WebApp 各自加载，
+    它们的 <code>Class</code> 对象就不相等。在共享的 Filter / Listener 里做类型转换会抛 <code>ClassCastException</code>，
+    即使全限定名完全一样。
+  </div>
+
+  <!-- ⑥ 各加载器对比 -->
+  <h2 style="border-color:#c084fc;">三层加载器对比</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>加载器</th>
+        <th>实现语言</th>
+        <th>负责加载</th>
+        <th>获取方式</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Bootstrap</td>
+        <td>C++</td>
+        <td><code>$JAVA_HOME/lib</code>（rt.jar 等核心类）</td>
+        <td><code>null</code>（Java 层无对象）</td>
+      </tr>
+      <tr>
+        <td>Extension / Platform</td>
+        <td>Java</td>
+        <td><code>$JAVA_HOME/lib/ext</code> / 平台模块</td>
+        <td><code>ClassLoader.getPlatformClassLoader()</code>（JDK9+）</td>
+      </tr>
+      <tr>
+        <td>Application</td>
+        <td>Java</td>
+        <td>classpath 上的应用类</td>
+        <td><code>ClassLoader.getSystemClassLoader()</code></td>
+      </tr>
+      <tr>
+        <td>自定义</td>
+        <td>Java</td>
+        <td>用户自定义路径（网络、数据库、加密文件…）</td>
+        <td>直接 new</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ⑦ 委派过程可视化 -->
+  <h2 style="border-color:#c084fc;">委派过程完整示例</h2>
+  <p>加载 <code>com.example.MyService</code> 时，发生了什么：</p>
+
+  <div class="tree">
+AppClassLoader.<span class="hi">loadClass</span>("com.example.MyService")
+  │  缓存未命中
+  ↓
+  委托 ExtClassLoader.<span class="hi">loadClass</span>("com.example.MyService")
+    │  缓存未命中
+    ↓
+    委托 Bootstrap <span class="hi">findBootstrapClassOrNull</span>("com.example.MyService")
+      → 找不到（不在 rt.jar 里）→ 返回 null
+    ↑
+    ExtClassLoader 自己 <span class="hi">findClass</span> → lib/ext 里也没有 → 抛 CNFE
+  ↑
+AppClassLoader 捕获 CNFE，自己 <span class="hi">findClass</span>
+  → 在 classpath 里找到 → 加载成功 ✓
+  </div>
+
+  <hr />
+
+  <!-- ⑧ 陷阱 -->
+  <h2 style="border-color:#c084fc;">常见陷阱</h2>
+
+  <h3>陷阱 1：误覆写 loadClass() 而不是 findClass()</h3>
+  <p>
+    如果你覆写了 <code>loadClass()</code> 但忘记调用 <code>super.loadClass()</code>，
+    就彻底绕过了双亲委派，可能导致核心类被重复加载或篡改。
+    <strong>除非你明确想打破委派（如 OSGi、热部署），否则只覆写 findClass()。</strong>
+  </p>
+
+  <h3>陷阱 2：获取 Bootstrap ClassLoader 得到 null</h3>
+  <p>
+    <code>String.class.getClassLoader()</code> 返回 <code>null</code>，
+    因为 Bootstrap ClassLoader 是 C++ 实现，Java 层没有对应对象。
+    不要以为拿到 null 就是出错了——这是预期行为。
+  </p>
+
+  <h3>陷阱 3：线程上下文类加载器（TCCL）打破委派</h3>
+  <p>
+    SPI（如 JDBC、JNDI）的接口由 Bootstrap 加载，实现类在 classpath 由 AppClassLoader 加载。
+    Bootstrap 无法向下委托，所以 JDK 通过 <strong>Thread.currentThread().getContextClassLoader()</strong>
+    绕过委派，让父加载器能够"反向"用子加载器加载实现类。这是双亲委派的第一次官方破坏，下一节详讲。
+  </p>
+
+  <h3>陷阱 4：热部署 / OSGI 里的类泄漏</h3>
+  <p>
+    自定义加载器加载的类，只有在加载器本身被 GC 时才会卸载。
+    如果有静态变量或线程持有对旧加载器的引用，就会发生<strong>类加载器泄漏（Metaspace OOM）</strong>，
+    这是频繁热部署的 Tomcat 应用最常见的内存问题之一。
+  </p>
+
+  <hr />
+
+  <!-- ⑨ 面试高频考点 -->
+  <h2 style="border-color:#c084fc;">面试高频考点</h2>
+
+  <table>
+    <thead>
+      <tr><th>问题</th><th>关键答点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>双亲委派的好处？</td>
+        <td>安全性（核心类不可被替换）、唯一性（同名类只加载一次）、稳定性</td>
+      </tr>
+      <tr>
+        <td>能不能自己写 <code>java.lang.String</code>？</td>
+        <td>写了也没用，会被委托到 Bootstrap，加载的是 JDK 里的那个。<br/>若强行用 <code>defineClass</code> 绕过，JVM 会抛 <code>SecurityException</code>（禁止自定义 java.* 包）</td>
+      </tr>
+      <tr>
+        <td>如何自定义类加载器？</td>
+        <td>继承 <code>ClassLoader</code>，覆写 <code>findClass()</code>，调用 <code>defineClass()</code></td>
+      </tr>
+      <tr>
+        <td>两个类什么情况下相等？</td>
+        <td>全限定名相同 <strong>且</strong> 由同一个 ClassLoader 实例加载</td>
+      </tr>
+      <tr>
+        <td>如何获取各层 ClassLoader？</td>
+        <td><code>getSystemClassLoader()</code> / <code>getPlatformClassLoader()</code> / <code>null</code>（Bootstrap）</td>
+      </tr>
+      <tr>
+        <td>双亲委派可以被打破吗？</td>
+        <td>可以：①覆写 loadClass；②线程上下文类加载器（SPI）；③OSGi 网状模型；④JDK 9 模块层。下节详讲。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ⑩ 小结 -->
+  <h2 style="border-color:#c084fc;">小结</h2>
+  <ul>
+    <li>双亲委派是"先问父，父不行再自己干"的加载策略，不是 JVM 规范而是惯例约定。</li>
+    <li>核心实现在 <code>ClassLoader.loadClass()</code>；扩展点是 <code>findClass()</code>。</li>
+    <li>它保障了核心类的安全性与唯一性，防止 <code>java.lang.Object</code> 被用户替换。</li>
+    <li>类的身份 = 全限定名 + ClassLoader，两者缺一不可，跨加载器的强转是常见陷阱。</li>
+    <li>SPI、热部署、OSGi 都需要打破委派，这是下一节的主题。</li>
+  </ul>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./10-类加载流程.html" class="nav-btn">← 10. 类加载流程（加载 / 验证 / 准备 / 解析 / 初始化）</a>
+    <a href="./12-破坏双亲委派.html" class="nav-btn next">12. 破坏双亲委派的场景（SPI / Tomcat） →</a>
+  </div>
+
+</div>
+</body>
+</html>

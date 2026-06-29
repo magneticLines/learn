@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>16. jstack / jmap / jstat 使用 — JVM 性能调优基础</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 性能调优基础
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 性能调优基础</div>
+    <h1>jstack / jmap / jstat 使用</h1>
+    <p>JDK 自带的三把"手术刀"——不依赖任何第三方工具，在生产环境直接诊断线程死锁、内存泄漏和 GC 压力。</p>
+  </div>
+
+  <!-- ===== 1. 为什么需要这三个工具 ===== -->
+  <h2 style="border-color:#c084fc;">为什么需要这三个工具</h2>
+  <p>
+    线上出故障时，大多数情况下你既没有 IDE，也不能随便重启。JDK 从很早期就内置了一套诊断命令，它们通过 <strong>JVM 暴露的 Attach API</strong> 与目标进程通信，做到"不停机、不侵入、零依赖"。
+  </p>
+  <p>三个工具各司其职：</p>
+  <ul>
+    <li><strong>jstack</strong>：拍下所有线程的快照（Thread Dump），定位死锁、CPU 飙高的线程</li>
+    <li><strong>jmap</strong>：查看堆内存分布或导出堆转储文件（Heap Dump），定位内存泄漏</li>
+    <li><strong>jstat</strong>：持续采样 GC、类加载等统计数据，感知 GC 压力趋势</li>
+  </ul>
+  <div class="callout info">
+    三个工具都需要 <strong>PID（进程号）</strong>。先用 <code>jps -l</code> 找到目标 Java 进程，再传给对应命令。
+  </div>
+
+  <hr/>
+
+  <!-- ===== 2. jstack ===== -->
+  <h2 style="border-color:#c084fc;">jstack —— 线程快照</h2>
+
+  <h3>设计动机</h3>
+  <p>
+    Java 线程出问题时，问题的本质是"某个线程在做什么"——是在等锁？在死循环？在 I/O 阻塞？
+    jstack 把 JVM 内部所有线程的<strong>调用栈 + 锁状态</strong>一次性打印出来，就像给程序拍了一张 X 光片。
+  </p>
+
+  <h3>基础用法</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Shell</span><span>查找 PID 并打印线程快照</span></div>
+    <pre><span class="com"># 找到目标进程 PID</span>
+<span class="fn">jps</span> <span class="var">-l</span>
+<span class="com"># 输出示例：</span>
+<span class="com"># 12345 com.example.MyApp</span>
+
+<span class="com"># 打印线程快照（标准输出）</span>
+<span class="fn">jstack</span> <span class="num">12345</span>
+
+<span class="com"># 强制模式：即使 JVM 处于挂起状态也尽量输出（谨慎使用）</span>
+<span class="fn">jstack</span> <span class="var">-F</span> <span class="num">12345</span>
+
+<span class="com"># 保存到文件，方便后续分析</span>
+<span class="fn">jstack</span> <span class="num">12345</span> <span class="kw">&gt;</span> thread-dump-<span class="fn">$(</span><span class="var">date +%H%M%S</span><span class="fn">)</span>.txt</pre>
+  </div>
+
+  <h3>死锁场景复现与分析</h3>
+  <p>下面是一个经典死锁：线程 A 持有锁 1 等锁 2，线程 B 持有锁 2 等锁 1。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>DeadlockDemo.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">DeadlockDemo</span> <span class="punct">{</span>
+    <span class="kw">static final</span> <span class="ty">Object</span> <span class="var">lock1</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+    <span class="kw">static final</span> <span class="ty">Object</span> <span class="var">lock2</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 线程 A：先拿 lock1，再拿 lock2</span>
+        <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lock1</span><span class="punct">) {</span>
+                <span class="fn">sleep</span><span class="punct">(</span><span class="num">100</span><span class="punct">);</span>
+                <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lock2</span><span class="punct">) { }</span>
+            <span class="punct">}</span>
+        <span class="punct">},</span> <span class="str">"Thread-A"</span><span class="punct">).start();</span>
+
+        <span class="com">// 线程 B：先拿 lock2，再拿 lock1 —— 顺序相反，必然死锁</span>
+        <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lock2</span><span class="punct">) {</span>
+                <span class="fn">sleep</span><span class="punct">(</span><span class="num">100</span><span class="punct">);</span>
+                <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lock1</span><span class="punct">) { }</span>
+            <span class="punct">}</span>
+        <span class="punct">},</span> <span class="str">"Thread-B"</span><span class="punct">).start();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>运行后执行 <code>jstack &lt;pid&gt;</code>，输出末尾会看到：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Thread Dump 片段</span><span>jstack 自动识别死锁</span></div>
+    <pre><span class="ann">Found one Java-level deadlock:</span>
+<span class="com">=============================</span>
+<span class="str">"Thread-A"</span><span class="punct">:</span>
+  waiting to lock <span class="var">monitor 0x...（lock2）</span>
+  which is held by <span class="str">"Thread-B"</span>
+
+<span class="str">"Thread-B"</span><span class="punct">:</span>
+  waiting to lock <span class="var">monitor 0x...（lock1）</span>
+  which is held by <span class="str">"Thread-A"</span>
+
+<span class="com">Java stack information for the threads listed above:</span>
+<span class="str">"Thread-A"</span><span class="punct">:</span>
+  at <span class="fn">DeadlockDemo.lambda$main$0</span><span class="punct">(</span>DeadlockDemo.java<span class="punct">:</span><span class="num">9</span><span class="punct">)</span>
+  <span class="var">- waiting to lock &lt;0x...&gt; (lock2)</span>
+  <span class="var">- locked &lt;0x...&gt; (lock1)</span></pre>
+  </div>
+
+  <h3>CPU 飙高排查套路（高频面试题）</h3>
+  <p>步骤如下：</p>
+  <ol>
+    <li>用 <code>top</code> 找到 CPU 最高的 Java 进程 PID</li>
+    <li><code>top -H -p &lt;pid&gt;</code> 找到 CPU 最高的<strong>线程 TID</strong>（十进制）</li>
+    <li>把 TID 转为十六进制：<code>printf "%x\n" &lt;tid&gt;</code></li>
+    <li><code>jstack &lt;pid&gt; | grep -A 30 "&lt;十六进制&gt;"</code> 找到该线程的调用栈</li>
+  </ol>
+  <div class="callout tip">
+    jstack 输出里每个线程头部的 <code>nid=0x...</code> 就是该线程在操作系统层面的 TID（十六进制）。通过它可以精确对应 top 里看到的线程。
+  </div>
+
+  <hr/>
+
+  <!-- ===== 3. jmap ===== -->
+  <h2 style="border-color:#c084fc;">jmap —— 堆内存分析</h2>
+
+  <h3>设计动机</h3>
+  <p>
+    内存泄漏的本质是"对象不断增长但永远不被回收"。jmap 让你看清楚<strong>堆里到底装了多少个什么对象</strong>，
+    或者把整个堆序列化成文件，用 MAT / VisualVM 等工具离线分析引用链，找到泄漏根源。
+  </p>
+
+  <h3>常用命令</h3>
+  <table>
+    <thead>
+      <tr><th>命令</th><th>作用</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>jmap -heap &lt;pid&gt;</code></td>
+        <td>打印堆内存配置与使用情况</td>
+        <td>各区域容量、已用、GC 算法</td>
+      </tr>
+      <tr>
+        <td><code>jmap -histo &lt;pid&gt;</code></td>
+        <td>对象实例数量统计（轻量）</td>
+        <td>不 STW，适合快速扫一眼</td>
+      </tr>
+      <tr>
+        <td><code>jmap -histo:live &lt;pid&gt;</code></td>
+        <td>只统计存活对象（先触发 Full GC）</td>
+        <td>会 STW，生产慎用</td>
+      </tr>
+      <tr>
+        <td><code>jmap -dump:format=b,file=heap.hprof &lt;pid&gt;</code></td>
+        <td>导出堆转储文件</td>
+        <td>文件大，会 STW，配合 MAT 分析</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Shell</span><span>典型 jmap 使用流程</span></div>
+    <pre><span class="com"># 快速看一下堆的使用率和 GC 算法</span>
+<span class="fn">jmap</span> <span class="var">-heap</span> <span class="num">12345</span>
+
+<span class="com"># 看实例数量排行（按字节数降序），快速锁定嫌疑类</span>
+<span class="fn">jmap</span> <span class="var">-histo</span> <span class="num">12345</span> <span class="kw">|</span> <span class="fn">head</span> <span class="var">-30</span>
+
+<span class="com"># 导出 Heap Dump（生产环境建议加 live，减少文件体积）</span>
+<span class="fn">jmap</span> <span class="var">-dump:live,format=b,file=/tmp/heap.hprof</span> <span class="num">12345</span>
+
+<span class="com"># 用 MAT（Eclipse Memory Analyzer）打开 heap.hprof 做引用链分析</span></pre>
+  </div>
+
+  <h3>-histo 输出解读</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>输出示例</span><span>jmap -histo</span></div>
+    <pre> <span class="var">num</span>     <span class="var">#instances</span>          <span class="var">#bytes</span>  <span class="var">class name</span>
+<span class="com">----------------------------------------------</span>
+   <span class="num">1</span>:        <span class="num">580312</span>        <span class="num">46424960</span>  [<span class="ty">B</span>          <span class="com">← byte[]，常见于字符串底层</span>
+   <span class="num">2</span>:        <span class="num">521000</span>        <span class="num">41680000</span>  <span class="ty">java.lang.String</span>
+   <span class="num">3</span>:         <span class="num">98765</span>        <span class="num">15802400</span>  <span class="ty">com.example.UserSession</span>  <span class="com">← 业务类排前面需警惕</span></pre>
+  </div>
+  <p>
+    关注点：<strong>业务类（你自己写的类）出现在前几名</strong>，往往就是泄漏源。
+    <code>[B</code> 代表 byte 数组，<code>[C</code> 代表 char 数组，<code>[Ljava.lang.Object;</code> 代表 Object 数组。
+  </p>
+
+  <div class="callout warn">
+    <strong>生产环境陷阱：</strong>jmap -dump 会导致 STW（Stop The World），堆越大停顿越长。8 GB 堆可能停顿 10–30 秒。
+    建议通过 JVM 参数 <code>-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/</code> 让 JVM 在 OOM 时自动 dump，避免手动触发。
+  </div>
+
+  <hr/>
+
+  <!-- ===== 4. jstat ===== -->
+  <h2 style="border-color:#c084fc;">jstat —— GC 统计监控</h2>
+
+  <h3>设计动机</h3>
+  <p>
+    GC 问题往往是<strong>趋势性</strong>的——不是某一刻的瞬间值，而是"老年代以每秒 10 MB 的速度增长，1 小时后必然 Full GC"。
+    jstat 以固定间隔采样，帮你看清楚这条趋势线。
+  </p>
+
+  <h3>常用选项</h3>
+  <table>
+    <thead>
+      <tr><th>选项</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>-gc</code></td><td>各代容量、已用空间、GC 次数和耗时</td></tr>
+      <tr><td><code>-gcutil</code></td><td>各代使用率（百分比），更直观</td></tr>
+      <tr><td><code>-gccause</code></td><td>gcutil + 上次 GC 触发原因</td></tr>
+      <tr><td><code>-gcnew</code></td><td>只看新生代（Eden/S0/S1）</td></tr>
+      <tr><td><code>-gcold</code></td><td>只看老年代</td></tr>
+      <tr><td><code>-class</code></td><td>类加载数量统计</td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Shell</span><span>每 1 秒打印一次 GC 概览，共 20 次</span></div>
+    <pre><span class="com"># 语法：jstat -&lt;option&gt; &lt;pid&gt; [间隔ms] [次数]</span>
+<span class="fn">jstat</span> <span class="var">-gcutil</span> <span class="num">12345</span> <span class="num">1000</span> <span class="num">20</span></pre>
+  </div>
+
+  <h3>gcutil 输出解读</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>输出示例</span><span>jstat -gcutil（列含义注释）</span></div>
+    <pre>  <span class="var">S0</span>     <span class="var">S1</span>     <span class="var">E</span>      <span class="var">O</span>      <span class="var">M</span>     <span class="var">CCS</span>    <span class="var">YGC</span>     <span class="var">YGCT</span>    <span class="var">FGC</span>    <span class="var">FGCT</span>     <span class="var">GCT</span>
+  <span class="num">0.00</span>  <span class="num">42.31</span>  <span class="num">78.54</span>  <span class="num">63.20</span>  <span class="num">95.81</span>  <span class="num">90.12</span>    <span class="num">128</span>     <span class="num">2.341</span>     <span class="num">3</span>    <span class="num">1.023</span>     <span class="num">3.364</span>
+<span class="com">
+  S0/S1  = Survivor 0/1 使用率（%）
+  E      = Eden 使用率（%）
+  O      = Old（老年代）使用率（%）  ← 持续涨 = 内存泄漏警报
+  M      = Metaspace 使用率（%）
+  YGC    = Young GC 总次数
+  YGCT   = Young GC 总耗时（秒）
+  FGC    = Full GC 总次数           ← 频繁 = 严重问题
+  FGCT   = Full GC 总耗时（秒）
+  GCT    = 所有 GC 总耗时（秒）</span></pre>
+  </div>
+
+  <h3>关键判断规则</h3>
+  <ul>
+    <li><strong>O 列持续上升，不回落</strong>：老年代内存泄漏，用 jmap 进一步分析</li>
+    <li><strong>YGC 频率极高（几秒一次）</strong>：新生代太小或对象分配速率过快</li>
+    <li><strong>FGC 次数增加</strong>：严重信号，每次 Full GC 都会 STW，影响响应时间</li>
+    <li><strong>M 列接近 100%</strong>：Metaspace 不足，可能类加载器泄漏（动态代理/反射过多）</li>
+  </ul>
+
+  <div class="callout tip">
+    实际排查时，连续采样 5–10 分钟，把输出重定向到文件，再绘图观察趋势，比看瞬间值有效得多。
+  </div>
+
+  <hr/>
+
+  <!-- ===== 5. 三工具协作实战 ===== -->
+  <h2 style="border-color:#c084fc;">三工具协作：实战排查流程</h2>
+  <p>下面是一个完整的"内存持续增长 → OOM"排查路径：</p>
+
+  <div class="tree">
+<span class="hi">Step 1</span>  jps -l                        找到目标进程 PID
+<span class="hi">Step 2</span>  jstat -gcutil &lt;pid&gt; 2000 30   观察老年代 O 列是否持续上涨
+<span class="hi">Step 3</span>  jmap -histo &lt;pid&gt; | head -20  快速看对象数量排行，锁定嫌疑类
+<span class="hi">Step 4</span>  jmap -dump:live,format=b,file=/tmp/heap.hprof &lt;pid&gt;
+                                       导出存活对象堆转储
+<span class="hi">Step 5</span>  MAT / VisualVM 打开 heap.hprof
+         → Dominator Tree 找到大对象
+         → Path to GC Roots 分析为何无法回收
+<span class="hi">Step 6</span>  jstack &lt;pid&gt;                   同时检查有无线程积压/死锁导致对象持有
+  </div>
+
+  <hr/>
+
+  <!-- ===== 6. 常见陷阱 ===== -->
+  <h2 style="border-color:#c084fc;">常见陷阱</h2>
+
+  <h3>陷阱 1：在容器/Docker 里找不到进程</h3>
+  <p>
+    容器内运行的 Java 进程，宿主机用 <code>jps</code> 可能看不到，或看到但无法 attach。
+    原因：Attach API 依赖 <code>/tmp/.java_pidXXX</code> 文件，容器有独立 PID namespace。
+    <strong>解法</strong>：在容器内执行 jstack/jmap，或使用 <code>nsenter</code> 进入容器的 namespace。
+  </p>
+
+  <h3>陷阱 2：jmap -dump 卡死生产</h3>
+  <p>
+    对大堆执行 dump 会触发 STW，期间所有请求超时。<strong>强烈建议</strong>提前配置
+    <code>-XX:+HeapDumpOnOutOfMemoryError</code>，让 JVM 在 OOM 时自动保存，
+    而不是手动在高峰期执行。
+  </p>
+
+  <h3>陷阱 3：jstack 输出的线程状态误读</h3>
+  <p>线程状态 <code>WAITING</code> 不代表有问题，线程池的 worker 线程在没有任务时就是 WAITING。
+  真正需要关注的是 <code>BLOCKED</code>（等锁）和 <code>RUNNABLE</code> 但 CPU 飙高的线程。</p>
+
+  <h3>陷阱 4：jstat 数据 "看起来正常" 但 GC 日志说有问题</h3>
+  <p>
+    jstat 是采样的，两次采样之间可能发生了多次 GC。GC 次数的<strong>增量</strong>才有意义，
+    瞬时快照的 O 列值只是一个参考。建议同时开启 GC 日志（<code>-Xlog:gc*</code>）作为更精确的数据源。
+  </p>
+
+  <hr/>
+
+  <!-- ===== 7. 面试考点 ===== -->
+  <h2 style="border-color:#c084fc;">面试高频考点</h2>
+
+  <table>
+    <thead>
+      <tr><th>问题</th><th>核心答案</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>线上 CPU 100%，如何排查？</td>
+        <td>top → top -H -p 找线程 TID → printf 转十六进制 → jstack grep nid 找调用栈</td>
+      </tr>
+      <tr>
+        <td>如何判断内存泄漏？</td>
+        <td>jstat -gcutil 观察 O 列持续上涨不回落；Full GC 后 O 列仍高</td>
+      </tr>
+      <tr>
+        <td>jmap -histo 与 -dump 的区别？</td>
+        <td>histo 只统计计数，轻量；dump 导出全量对象图，重量级、会 STW</td>
+      </tr>
+      <tr>
+        <td>如何不重启获取 OOM 时的 Heap Dump？</td>
+        <td>启动参数加 <code>-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/</code></td>
+      </tr>
+      <tr>
+        <td>jstack 能检测到 ReentrantLock 死锁吗？</td>
+        <td>能，但需要线程调用了 <code>lock()</code> 并在 await，jstack 会显示 LockSupport.park 调用栈；synchronized 死锁会额外打印 "Found one Java-level deadlock"</td>
+      </tr>
+      <tr>
+        <td>jstat -gcutil 中 YGC 很高但 FGC 为 0，说明什么？</td>
+        <td>对象晋升老年代速度慢，新生代回收及时，整体健康；但若 YGC 过于频繁（每秒多次），需考虑扩大新生代</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr/>
+
+  <!-- ===== 8. 工具对比 ===== -->
+  <h2 style="border-color:#c084fc;">与其他工具对比</h2>
+  <table>
+    <thead>
+      <tr><th>工具</th><th>优势</th><th>劣势</th><th>适合场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>jstack / jmap / jstat</td>
+        <td>JDK 自带，无依赖，生产直接用</td>
+        <td>命令行，分析能力有限</td>
+        <td>线上快速诊断</td>
+      </tr>
+      <tr>
+        <td>VisualVM</td>
+        <td>图形界面，可远程连接，集成分析</td>
+        <td>需要 JMX 端口开放，有安全风险</td>
+        <td>开发/测试环境</td>
+      </tr>
+      <tr>
+        <td>Arthas</td>
+        <td>功能更强（热更新、方法追踪），交互式</td>
+        <td>需要额外部署 jar</td>
+        <td>线上深度诊断</td>
+      </tr>
+      <tr>
+        <td>MAT (Eclipse)</td>
+        <td>Heap Dump 分析极强，能找泄漏根因</td>
+        <td>只能离线分析 hprof 文件</td>
+        <td>内存泄漏根因分析</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>经验法则：</strong>快速判断用 jstack/jstat，根因挖掘用 jmap + MAT，日常监控用 Prometheus + JVM Exporter，在线动态调试用 Arthas。
+  </div>
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./15-OOM排查.html" class="nav-btn">← 15. 常见 OOM 场景与排查</a>
+    <a href="../java-roadmap.html" class="nav-btn next">路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

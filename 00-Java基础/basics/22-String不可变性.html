@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>22. String 不可变性与常量池 — Java 基础</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: inherit; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next:hover { background: #7f1d1d22; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / 语言基础 / 字符串
+  </div>
+
+  <div class="hero">
+    <div class="tag">语言基础 · 字符串</div>
+    <h1>22. String 不可变性与常量池</h1>
+    <p>String 是 Java 中使用最频繁的类，却藏着最多被误解的细节——不可变性的设计哲学、常量池的复用机制、intern() 的边界行为，每一条都是面试的高频地带。</p>
+  </div>
+
+  <!-- ===== 1. 为什么 String 要设计成不可变 ===== -->
+  <h2>1. 为什么 String 要设计成不可变？</h2>
+
+  <p>Java 的 <code>String</code> 是 <strong>不可变对象（Immutable Object）</strong>。一旦创建，字符序列就永远不变。这不是偶然，而是有意为之的权衡。</p>
+
+  <h3>原因一：安全性</h3>
+  <p>网络连接、文件路径、数据库 URL——这些都是字符串。如果 String 可变，攻击者可以在权限检查之后、实际使用之前偷偷改掉字符串内容，构成安全漏洞（TOCTOU 攻击）。</p>
+
+  <h3>原因二：线程安全零成本</h3>
+  <p>不可变对象天然是线程安全的。多个线程共享同一个 <code>String</code> 实例，无需任何同步开销，直接复用。</p>
+
+  <h3>原因三：支撑常量池（String Pool）</h3>
+  <p>正因为内容不可变，JVM 才敢让多个引用指向同一个对象。如果 String 可变，复用就会造成"改了 A 也影响了 B"的灾难。</p>
+
+  <h3>原因四：hashCode 可以缓存</h3>
+  <p>String 内部缓存了 <code>hash</code> 字段，第一次计算后就不再重算。这让 <code>String</code> 作为 <code>HashMap</code> 的 key 极其高效。</p>
+
+  <div class="callout info">
+    <strong>设计哲学：</strong>不可变性是"一次付出（构造时复制），永久受益（安全、缓存、共享）"的典型范式。Josh Bloch 在《Effective Java》中将其列为第一推荐的设计原则。
+  </div>
+
+  <!-- ===== 2. String 的内部结构 ===== -->
+  <h2>2. String 的内部结构</h2>
+
+  <p>看 JDK 源码（以 JDK 11+ 的 Compact Strings 实现为例）：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>String.java（JDK 11+，精简）</span></div>
+    <pre><span class="kw">public final class</span> <span class="ty">String</span> <span class="kw">implements</span> <span class="ty">Serializable</span><span class="punct">,</span> <span class="ty">Comparable</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;,</span> <span class="ty">CharSequence</span> <span class="punct">{</span>
+
+    <span class="com">// 核心：字节数组，不是 char[]（JDK 9 引入 Compact Strings 优化）</span>
+    <span class="kw">private final byte</span><span class="punct">[]</span> <span class="var">value</span><span class="punct">;</span>
+
+    <span class="com">// 编码标志：LATIN1(0) 或 UTF16(1)</span>
+    <span class="kw">private final byte</span> <span class="var">coder</span><span class="punct">;</span>
+
+    <span class="com">// 缓存的 hashCode，默认 0 表示未计算</span>
+    <span class="kw">private int</span> <span class="var">hash</span><span class="punct">;</span>
+
+    <span class="com">// final 字段 + private 数组 = 外部无法修改内容</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>三重防护确保不可变：<strong>类是 <code>final</code>（不能被继承覆写）</strong>、<strong><code>value</code> 数组是 <code>private final</code>（引用不可变）</strong>、<strong>没有任何方法暴露数组本身（内容不可修改）</strong>。</p>
+
+  <div class="callout tip">
+    <strong>JDK 9 优化：</strong>JDK 8 及以前用 <code>char[]</code>（每个字符 2 字节），JDK 9 改为 <code>byte[]</code>。纯 ASCII 字符串只占 1 字节/字符，内存减半。这是在不改变 API 的前提下做的透明优化，也只有不可变性才能保证这种底层替换的安全性。
+  </div>
+
+  <!-- ===== 3. 字符串常量池 ===== -->
+  <h2>3. 字符串常量池（String Pool）</h2>
+
+  <p>常量池是 JVM 维护的一块<strong>字符串缓存区</strong>，存放字符串字面量（literal）和通过 <code>intern()</code> 手动放入的字符串。其本质是一个 <code>HashSet&lt;String&gt;</code>，保证内容相同的字符串只存一份。</p>
+
+  <h3>内存位置的演变</h3>
+
+  <div class="tree">
+JDK 6：常量池在 <span class="hi">PermGen（永久代）</span>，大小固定，OOM 风险高
+JDK 7：常量池迁移到 <span class="hi">堆（Heap）</span>，受 GC 管理，可回收
+JDK 8：PermGen 彻底移除，改用 <span class="hi">Metaspace（本地内存）</span>，常量池仍在堆
+  </div>
+
+  <h3>字面量 vs new 的区别</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StringPool.java</span></div>
+    <pre><span class="ty">String</span> <span class="var">a</span> <span class="punct">=</span> <span class="str">"hello"</span><span class="punct">;</span>          <span class="com">// 指向常量池中的对象</span>
+<span class="ty">String</span> <span class="var">b</span> <span class="punct">=</span> <span class="str">"hello"</span><span class="punct">;</span>          <span class="com">// 复用同一个池对象</span>
+<span class="ty">String</span> <span class="var">c</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">String</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span> <span class="com">// 强制在堆上新建对象，绕过常量池</span>
+
+<span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">b</span><span class="punct">);</span>   <span class="com">// true  — 同一个对象</span>
+<span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">c</span><span class="punct">);</span>   <span class="com">// false — 堆对象 vs 池对象</span>
+<span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">c</span><span class="punct">));</span> <span class="com">// true  — 内容相同</span></pre>
+  </div>
+
+  <p>用内存图理解：</p>
+
+  <div class="tree">
+栈                       堆
+────                     ──────────────────────────────
+a ──────────────────────► [ String Pool: "hello" ] ◄── b
+c ──► [ Heap: "hello" ]
+                          (c 的内容也是 "hello"，但是独立的对象)
+  </div>
+
+  <!-- ===== 4. intern() ===== -->
+  <h2>4. intern() 的作用与风险</h2>
+
+  <p><code>intern()</code> 是手动将字符串纳入常量池的方法：如果池中已有相同内容的字符串，返回池中的引用；否则将当前对象放入池中并返回。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>intern() 演示</span></div>
+    <pre><span class="ty">String</span> <span class="var">c</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">String</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>  <span class="com">// 堆上新对象</span>
+<span class="ty">String</span> <span class="var">d</span> <span class="punct">=</span> <span class="var">c</span><span class="punct">.</span><span class="fn">intern</span><span class="punct">();</span>           <span class="com">// 返回池中的 "hello"</span>
+<span class="ty">String</span> <span class="var">a</span> <span class="punct">=</span> <span class="str">"hello"</span><span class="punct">;</span>
+
+<span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">d</span><span class="punct">);</span>    <span class="com">// true — d 现在指向池对象</span>
+<span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">c</span><span class="punct">);</span>    <span class="com">// false — c 仍是堆对象</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>风险：</strong>大量调用 <code>intern()</code> 会将字符串塞入常量池，JDK 7+ 虽在堆上但依然不会被普通 GC 回收（需要 Full GC），极端情况会导致内存暴涨。日志、用户输入等动态字符串绝对不要 intern()。
+  </div>
+
+  <!-- ===== 5. 编译期优化 ===== -->
+  <h2>5. 编译期常量折叠</h2>
+
+  <p>编译器对<strong>纯字面量拼接</strong>会在编译期直接计算结果，因此结果也进常量池。但凡涉及变量，就会退化为运行期拼接（生成新堆对象）。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>编译期折叠 vs 运行期拼接</span></div>
+    <pre><span class="ty">String</span> <span class="var">a</span> <span class="punct">=</span> <span class="str">"hello"</span><span class="punct">;</span>
+<span class="ty">String</span> <span class="var">b</span> <span class="punct">=</span> <span class="str">"hel"</span> <span class="punct">+</span> <span class="str">"lo"</span><span class="punct">;</span>    <span class="com">// 编译期折叠为 "hello"，进常量池</span>
+<span class="ty">String</span> <span class="var">prefix</span> <span class="punct">=</span> <span class="str">"hel"</span><span class="punct">;</span>
+<span class="ty">String</span> <span class="var">c</span> <span class="punct">=</span> <span class="var">prefix</span> <span class="punct">+</span> <span class="str">"lo"</span><span class="punct">;</span>  <span class="com">// 运行期拼接（变量参与），堆上新对象</span>
+
+<span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">b</span><span class="punct">);</span>  <span class="com">// true</span>
+<span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">c</span><span class="punct">);</span>  <span class="com">// false</span>
+
+<span class="com">// 特例：final 变量视为编译期常量</span>
+<span class="kw">final</span> <span class="ty">String</span> <span class="var">fp</span> <span class="punct">=</span> <span class="str">"hel"</span><span class="punct">;</span>
+<span class="ty">String</span> <span class="var">d</span> <span class="punct">=</span> <span class="var">fp</span> <span class="punct">+</span> <span class="str">"lo"</span><span class="punct">;</span>       <span class="com">// 编译期折叠，等价于 "hello"</span>
+<span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">d</span><span class="punct">);</span>  <span class="com">// true</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>原理：</strong><code>final</code> 修饰的局部变量（且初始化为字面量）在字节码层面是常量，编译器可以内联它的值，因此参与的拼接也能被折叠。
+  </div>
+
+  <!-- ===== 6. == 与 equals ===== -->
+  <h2>6. == 与 equals 的区别</h2>
+
+  <p>这是最高频的 String 面试陷阱，必须牢记本质区别：</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>比较方式</th>
+        <th>比较的是什么</th>
+        <th>适用场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>==</code></td>
+        <td>引用地址（是否同一个对象）</td>
+        <td>只在明确要比较引用时使用</td>
+      </tr>
+      <tr>
+        <td><code>.equals()</code></td>
+        <td>字符序列内容</td>
+        <td><strong>几乎所有业务场景</strong></td>
+      </tr>
+      <tr>
+        <td><code>.equalsIgnoreCase()</code></td>
+        <td>内容，忽略大小写</td>
+        <td>用户输入、命令解析</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>经典 NullPointerException 陷阱：</strong><code>str.equals("hello")</code> 当 <code>str</code> 为 null 时抛 NPE。正确写法是把常量写左边：<code>"hello".equals(str)</code>，或用 <code>Objects.equals(str, "hello")</code>。
+  </div>
+
+  <!-- ===== 7. 不可变性与 StringBuilder ===== -->
+  <h2>7. 不可变性带来的性能问题与解决方案</h2>
+
+  <p>正因为 String 不可变，每次"修改"都会创建新对象。循环拼接时会产生大量临时对象，造成 GC 压力：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：循环拼接（O(n²) 时间复杂度）</span></div>
+    <pre><span class="com">// 每次 += 都创建新的 String 对象，旧对象立刻变垃圾</span>
+<span class="ty">String</span> <span class="var">result</span> <span class="punct">=</span> <span class="str">""</span><span class="punct">;</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">10000</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+    <span class="var">result</span> <span class="punct">+=</span> <span class="var">i</span><span class="punct">;</span>  <span class="com">// 等价于 result = new String(result + i)，极慢！</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：StringBuilder（O(n) 时间复杂度）</span></div>
+    <pre><span class="com">// StringBuilder 内部是可变 char[]，追加操作不产生临时对象</span>
+<span class="ty">StringBuilder</span> <span class="var">sb</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">StringBuilder</span><span class="punct">();</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">10000</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+    <span class="var">sb</span><span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="var">i</span><span class="punct">);</span>
+<span class="punct">}</span>
+<span class="ty">String</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">sb</span><span class="punct">.</span><span class="fn">toString</span><span class="punct">();</span>  <span class="com">// 最后一次性转为 String</span></pre>
+  </div>
+
+  <p>三者对比：</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>类</th>
+        <th>可变</th>
+        <th>线程安全</th>
+        <th>适用场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>String</code></td>
+        <td>否</td>
+        <td>是（天然）</td>
+        <td>常量、配置、少量拼接</td>
+      </tr>
+      <tr>
+        <td><code>StringBuilder</code></td>
+        <td>是</td>
+        <td>否</td>
+        <td><strong>单线程</strong>频繁拼接（首选）</td>
+      </tr>
+      <tr>
+        <td><code>StringBuffer</code></td>
+        <td>是</td>
+        <td>是（synchronized）</td>
+        <td>多线程共享拼接（少见）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>编译器的聪明之处：</strong>简单的 <code>a + b + c</code>（非循环）编译器会自动优化为 <code>StringBuilder.append()</code>，所以不必手动改写。只有循环内的拼接才需要显式使用 StringBuilder。
+  </div>
+
+  <!-- ===== 8. 知识关联 ===== -->
+  <h2>8. 关联知识：与其他核心机制的连接</h2>
+
+  <h3>与 HashMap 的关联</h3>
+  <p>String 是最常用的 HashMap key，不可变性确保了 <code>hashCode()</code> 返回值永远稳定，且缓存机制让多次 hash 查找极快。如果用可变对象做 key 并在放入后修改其内容，hash 值变化会导致永远找不到这个 key——这是一个典型的 Map 使用陷阱。</p>
+
+  <h3>与类加载的关联</h3>
+  <p>JVM 类加载器也依赖 String 来标识类名路径，不可变性防止类名在加载过程中被篡改，保证类加载的安全性。</p>
+
+  <h3>与 switch 的关联</h3>
+  <p>Java 7 开始 switch 支持 String，底层实现先比较 <code>hashCode()</code>，再用 <code>equals()</code> 二次确认，正是利用了 String 不可变 hashCode 的特性。</p>
+
+  <!-- ===== 9. 面试高频 ===== -->
+  <h2>9. 面试高频考点总结</h2>
+
+  <div class="callout info">
+    <strong>Q1：<code>String s = new String("abc")</code> 创建了几个对象？</strong><br/>
+    最多 2 个：如果常量池中已有 "abc"，则只创建堆上 1 个；如果常量池中没有，则同时在常量池创建 1 个 + 堆上 1 个，共 2 个。
+  </div>
+
+  <div class="callout info">
+    <strong>Q2：为什么 String 不能被继承（final class）？</strong><br/>
+    防止子类覆写方法来绕过不可变性约束（比如覆写 <code>charAt()</code> 返回修改后的值），确保任何 String 引用指向的对象行为一致。
+  </div>
+
+  <div class="callout info">
+    <strong>Q3：<code>s1 == s2</code> 结果为 true/false 的临界条件？</strong><br/>
+    true 的条件：都来自字面量或编译期常量折叠，或都经过 <code>intern()</code> 后指向池中同一对象。false 的条件：任意一个是通过 <code>new</code> 创建的、或是运行期拼接出的字符串。
+  </div>
+
+  <div class="callout warn">
+    <strong>Q4：能用反射修改 String 的内容吗？</strong><br/>
+    技术上可以——通过反射访问 <code>value</code> 字节数组并修改，但这会破坏常量池共享机制（修改一个引用会影响所有共享这个常量的地方），属于严重的反模式，仅作面试知识点了解，生产代码绝对禁止。
+  </div>
+
+  <!-- ===== 常见陷阱 ===== -->
+  <h2>10. 常见陷阱速查</h2>
+
+  <ul>
+    <li>用 <code>==</code> 比较字符串内容（应用 <code>.equals()</code>）</li>
+    <li>对可能为 null 的字符串调用 <code>.equals()</code>（应把常量写左边，或用 <code>Objects.equals()</code>）</li>
+    <li>在循环中用 <code>+=</code> 拼接字符串（应用 <code>StringBuilder</code>）</li>
+    <li>对大量动态字符串滥用 <code>intern()</code>（会导致常量池膨胀）</li>
+    <li>认为 <code>new String("abc")</code> 和 <code>"abc"</code> 等价（前者绕过常量池，浪费内存）</li>
+    <li>修改 <code>final String</code> 变量后期望 <code>==</code> 结果改变（<code>final</code> 只保证引用不变，不影响常量折叠已发生的比较）</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./21-数组vs ArrayList.html" class="nav-btn">← 21. 数组 vs ArrayList 的取舍</a>
+    <a href="./23-String常用方法.html" class="nav-btn next">23. String 常用方法 →</a>
+  </div>
+
+</div>
+</body>
+</html>

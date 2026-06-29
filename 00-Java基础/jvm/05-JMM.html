@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>05. Java 内存模型 JMM（happens-before / 指令重排）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 内存模型
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 内存模型</div>
+    <h1>05. Java 内存模型 JMM<br><span style="color:#94a3b8;font-size:1.1rem;font-weight:400;">happens-before / 指令重排</span></h1>
+    <p>JMM 是 Java 并发的基石——它定义了多线程程序中变量读写的可见性规则，以及编译器 / CPU 被允许做哪些重排优化。</p>
+  </div>
+
+  <!-- 1. 为什么需要 JMM -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">1. 为什么需要 JMM？</h2>
+  <p>现代计算机为了榨干性能，做了三件让并发变复杂的事：</p>
+  <ul>
+    <li><strong>多级缓存（L1/L2/L3）</strong>：每个 CPU 核心有自己的私有缓存，写入主内存是延迟的。</li>
+    <li><strong>编译器重排序</strong>：JIT / javac 在不改变单线程语义的前提下，可以调整指令顺序提升流水线效率。</li>
+    <li><strong>CPU 乱序执行（Out-of-Order Execution）</strong>：CPU 会自动打乱指令执行顺序，只保证最终结果在本核上"看起来"正确。</li>
+  </ul>
+  <p>这三件事在单线程下完全透明，但一旦多线程共享数据，<strong>线程 A 写入的值，线程 B 未必能即时看到</strong>，甚至看到的顺序可能与 A 的书写顺序不同。</p>
+
+  <div class="callout info">
+    <strong>JMM 的本质</strong>：不是描述硬件如何运作，而是给 Java 程序员一份<strong>契约</strong>——
+    "只要你遵守这些规则，JVM 保证无论底层怎么优化，你的程序跨平台都有确定的语义。"
+  </div>
+
+  <h3>直观类比</h3>
+  <p>把主内存想象成公司的共享文档，每个线程是一名员工，手边有一份本地草稿（工作内存 / CPU 缓存）。
+  员工可以先在草稿上改，<strong>何时同步到共享文档、何时从共享文档刷新，JMM 给出了明确的时机规定</strong>。</p>
+
+  <!-- 2. 主内存与工作内存 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">2. 主内存与工作内存</h2>
+  <p>JMM 将内存划分为两个抽象层次：</p>
+
+  <div class="tree">
+    <span class="hi">主内存（Main Memory）</span>
+    ├── 所有线程共享的变量（堆上的实例/静态字段）
+    └── 线程间通信的唯一合法渠道
+
+    <span class="hi">工作内存（Working Memory）</span>（每线程私有）
+    ├── 主内存变量的副本（即 CPU 寄存器 + 缓存抽象）
+    ├── 本地变量、操作数栈
+    └── 不能被其他线程直接访问
+  </div>
+
+  <p>线程对变量的所有操作（读取、赋值）都必须在工作内存中完成，不能直接读写主内存。
+  线程间的值传递必须经过主内存这个"中介"。</p>
+
+  <div class="callout warn">
+    <strong>陷阱</strong>：工作内存 ≠ JVM 运行时数据区的某一块。它是一个抽象概念，对应的物理实现可能是 L1 缓存、寄存器或写缓冲区。
+  </div>
+
+  <!-- 3. 指令重排序 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">3. 指令重排序（Reordering）</h2>
+  <p>重排序分三类，层层叠加：</p>
+
+  <table>
+    <thead>
+      <tr><th>类型</th><th>发生位置</th><th>典型手段</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>编译器重排序</td><td>javac / JIT</td><td>调整字节码指令顺序</td></tr>
+      <tr><td>指令级并行重排序</td><td>CPU 流水线</td><td>乱序执行（OoO）</td></tr>
+      <tr><td>内存系统重排序</td><td>写缓冲区 / 缓存</td><td>写操作延迟刷入主内存</td></tr>
+    </tbody>
+  </table>
+
+  <h3>经典问题：双重检查锁（DCL）</h3>
+  <p>在没有 <code>volatile</code> 的情况下，下面的单例代码在多核环境下是危险的：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 有问题的 DCL（反例）</span></div>
+    <pre><span class="com">// ❌ 错误：instance = new Singleton() 并非原子操作</span>
+<span class="kw">class</span> <span class="ty">Singleton</span> <span class="punct">{</span>
+    <span class="kw">private static</span> <span class="ty">Singleton</span> <span class="var">instance</span><span class="punct">;</span>   <span class="com">// 没有 volatile！</span>
+
+    <span class="kw">public static</span> <span class="ty">Singleton</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="ty">Singleton</span><span class="punct">.</span><span class="kw">class</span><span class="punct">) {</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+                    <span class="var">instance</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Singleton</span><span class="punct">();</span>  <span class="com">// ← 危险点</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">instance</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><code>new Singleton()</code> 在字节码层面分三步：</p>
+  <ol>
+    <li>分配内存空间（<code>new</code>）</li>
+    <li>调用构造方法初始化字段（<code>invokespecial</code>）</li>
+    <li>将引用赋值给变量（<code>putstatic</code>）</li>
+  </ol>
+  <p>步骤 2 和 3 可以被重排序为 <strong>先赋引用，再初始化</strong>。若线程 A 执行了第 3 步但还未执行第 2 步，线程 B 第一个 <code>null</code> 检查会看到非 null 的 <code>instance</code>，但该对象尚未初始化完成——<strong>拿到一个半成品对象</strong>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 正确的 DCL（加 volatile）</span></div>
+    <pre><span class="com">// ✅ 正确：volatile 禁止步骤 2/3 重排序</span>
+<span class="kw">class</span> <span class="ty">Singleton</span> <span class="punct">{</span>
+    <span class="kw">private static volatile</span> <span class="ty">Singleton</span> <span class="var">instance</span><span class="punct">;</span>
+
+    <span class="kw">public static</span> <span class="ty">Singleton</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="ty">Singleton</span><span class="punct">.</span><span class="kw">class</span><span class="punct">) {</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+                    <span class="var">instance</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Singleton</span><span class="punct">();</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">instance</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 4. happens-before -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">4. happens-before 规则</h2>
+  <p><code>happens-before</code> 是 JMM 的核心概念，由 JSR-133 规范定义：</p>
+
+  <div class="callout info">
+    <strong>定义</strong>：如果操作 A <em>happens-before</em> 操作 B，则 A 的结果对 B 可见，且 A 的执行顺序排在 B 之前。
+    happens-before 不等于"时间上先发生"，它是一个关于<strong>可见性的承诺</strong>。
+  </div>
+
+  <p>JMM 给出了 8 条天然的 happens-before 规则（程序员不需要额外同步即可依赖）：</p>
+
+  <table>
+    <thead>
+      <tr><th>规则名称</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>程序顺序规则</strong></td><td>同一线程内，前面的操作 hb 后面的操作（单线程表现有序）</td></tr>
+      <tr><td><strong>监视器锁规则</strong></td><td><code>unlock</code> hb 后续对同一锁的 <code>lock</code></td></tr>
+      <tr><td><strong>volatile 变量规则</strong></td><td>对 volatile 变量的写 hb 后续对该变量的读</td></tr>
+      <tr><td><strong>线程启动规则</strong></td><td><code>Thread.start()</code> hb 新线程内的任意操作</td></tr>
+      <tr><td><strong>线程终止规则</strong></td><td>线程内所有操作 hb <code>Thread.join()</code> 返回</td></tr>
+      <tr><td><strong>线程中断规则</strong></td><td><code>interrupt()</code> hb 被中断线程检测到中断</td></tr>
+      <tr><td><strong>对象终结规则</strong></td><td>构造方法结束 hb <code>finalize()</code> 开始</td></tr>
+      <tr><td><strong>传递性规则</strong></td><td>A hb B，B hb C，则 A hb C</td></tr>
+    </tbody>
+  </table>
+
+  <h3>用 happens-before 分析 volatile</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — volatile 可见性验证</span></div>
+    <pre><span class="kw">class</span> <span class="ty">VisibilityDemo</span> <span class="punct">{</span>
+    <span class="kw">private volatile boolean</span> <span class="var">flag</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+    <span class="kw">private int</span> <span class="var">data</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="com">// 线程 A 执行</span>
+    <span class="kw">void</span> <span class="fn">writer</span><span class="punct">() {</span>
+        <span class="var">data</span> <span class="punct">=</span> <span class="num">42</span><span class="punct">;</span>          <span class="com">// ① 普通写</span>
+        <span class="var">flag</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>         <span class="com">// ② volatile 写</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 线程 B 执行</span>
+    <span class="kw">void</span> <span class="fn">reader</span><span class="punct">() {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">flag</span><span class="punct">) {</span>           <span class="com">// ③ volatile 读</span>
+            <span class="com">// ④ 此处一定能看到 data == 42</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">data</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>分析链路：① hb ②（程序顺序规则）→ ② hb ③（volatile 变量规则）→ ③ hb ④（程序顺序规则）→ 由传递性得 ① hb ④。所以 B 读到 <code>flag==true</code> 时，<code>data</code> 必然已可见为 42。</p>
+
+  <!-- 5. volatile 深入 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">5. volatile 的两层语义</h2>
+
+  <h3>语义一：可见性</h3>
+  <p>写 volatile 变量时，JMM 要求将工作内存中的值立即刷新到主内存；读 volatile 变量时，要求先从主内存加载最新值，丢弃本地缓存副本。</p>
+
+  <h3>语义二：禁止特定重排序</h3>
+  <p>JMM 通过 <strong>内存屏障（Memory Barrier）</strong> 来实现重排序禁止：</p>
+
+  <table>
+    <thead>
+      <tr><th>屏障类型</th><th>作用</th><th>插入时机</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>StoreStore</code></td><td>屏障前的写不能重排到屏障后</td><td>volatile 写之前</td></tr>
+      <tr><td><code>StoreLoad</code></td><td>屏障前的写必须对屏障后的读可见</td><td>volatile 写之后（最重量级）</td></tr>
+      <tr><td><code>LoadLoad</code></td><td>屏障前的读不能重排到屏障后</td><td>volatile 读之后</td></tr>
+      <tr><td><code>LoadStore</code></td><td>屏障前的读不能重排到屏障后的写</td><td>volatile 读之后</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>volatile 不能保证原子性！</strong><br>
+    <code>volatile int i; i++;</code> 依然线程不安全——<code>i++</code> 是「读→加→写」三步，volatile 只保证每步的可见性，但三步之间可以插入其他线程的操作。
+    需要原子性时用 <code>AtomicInteger</code> 或 <code>synchronized</code>。
+  </div>
+
+  <!-- 6. synchronized 与 JMM -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">6. synchronized 与 JMM</h2>
+  <p><code>synchronized</code> 同时保证三大特性：</p>
+  <ul>
+    <li><strong>原子性</strong>：同一时刻只有一个线程能进入同步块。</li>
+    <li><strong>可见性</strong>：unlock 前会把工作内存的变量刷回主内存；lock 后会清空工作内存副本，从主内存重新读。</li>
+    <li><strong>有序性</strong>：synchronized 建立了 happens-before 关系（监视器锁规则）。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — synchronized 保证可见性</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Counter</span> <span class="punct">{</span>
+    <span class="kw">private int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="com">// lock 时从主内存读最新值，unlock 时写回主内存</span>
+    <span class="kw">public synchronized void</span> <span class="fn">increment</span><span class="punct">() {</span>
+        <span class="var">count</span><span class="punct">++;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public synchronized int</span> <span class="fn">get</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">count</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. final 与 JMM -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">7. final 字段的特殊保证</h2>
+  <p>JMM 为 <code>final</code> 字段提供了"构造安全发布"保证：</p>
+  <ul>
+    <li>构造方法中对 <code>final</code> 字段的写，在构造方法完成之前不会被重排序到构造方法之外。</li>
+    <li>其他线程通过正常途径获得该对象引用后，<strong>一定能看到 final 字段的初始化值</strong>，无需任何额外同步。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — final 的安全发布</span></div>
+    <pre><span class="kw">class</span> <span class="ty">ImmutablePoint</span> <span class="punct">{</span>
+    <span class="kw">final int</span> <span class="var">x</span><span class="punct">;</span>
+    <span class="kw">final int</span> <span class="var">y</span><span class="punct">;</span>
+
+    <span class="ty">ImmutablePoint</span><span class="punct">(</span><span class="kw">int</span> <span class="var">x</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">y</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">x</span> <span class="punct">=</span> <span class="var">x</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">y</span> <span class="punct">=</span> <span class="var">y</span><span class="punct">;</span>
+        <span class="com">// 构造结束前，JMM 保证 x/y 写入对所有线程可见</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 只要不在构造方法中逸出 this，其他线程读到的 x/y 一定是完整初始化的</span>
+<span class="ty">ImmutablePoint</span> <span class="var">p</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ImmutablePoint</span><span class="punct">(</span><span class="num">3</span><span class="punct">,</span> <span class="num">4</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：this 逸出</strong><br>
+    如果在构造方法中将 <code>this</code> 传递给其他线程（如注册监听器），final 的安全保证失效——其他线程可能在构造完成之前就访问该对象。
+  </div>
+
+  <!-- 8. as-if-serial -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">8. as-if-serial 语义</h2>
+  <p>无论编译器、CPU 如何重排，<strong>单线程程序的执行结果不变</strong>——这是 JMM 对单线程的最低保证，称为 as-if-serial。</p>
+  <p>有数据依赖的操作不会被重排：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 数据依赖禁止重排</span></div>
+    <pre><span class="kw">int</span> <span class="var">a</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>     <span class="com">// ①</span>
+<span class="kw">int</span> <span class="var">b</span> <span class="punct">=</span> <span class="num">2</span><span class="punct">;</span>     <span class="com">// ②  ①② 无依赖，可以重排</span>
+<span class="kw">int</span> <span class="var">c</span> <span class="punct">=</span> <span class="var">a</span> <span class="punct">+</span> <span class="var">b</span><span class="punct">;</span> <span class="com">// ③  ③ 依赖 ①②，必须在 ①② 之后</span></pre>
+  </div>
+
+  <p>注意：as-if-serial 只在单线程内有效。多线程场景下，两个线程各自遵守 as-if-serial，但相互之间的操作顺序没有保证。</p>
+
+  <!-- 9. 常见陷阱 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">9. 常见陷阱 &amp; 面试考点</h2>
+
+  <h3>陷阱一：用布尔标志停止线程——必须加 volatile</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 线程停止标志</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Worker</span> <span class="kw">implements</span> <span class="ty">Runnable</span> <span class="punct">{</span>
+    <span class="com">// ❌ 没有 volatile：JIT 可能将 while(!stopped) 优化成死循环</span>
+    <span class="kw">private boolean</span> <span class="var">stopped</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+
+    <span class="com">// ✅ 正确：加 volatile 保证主线程的写对 Worker 线程立即可见</span>
+    <span class="kw">private volatile boolean</span> <span class="var">stopped</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">run</span><span class="punct">() {</span>
+        <span class="kw">while</span> <span class="punct">(!</span><span class="var">stopped</span><span class="punct">) {</span>
+            <span class="fn">doWork</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">stop</span><span class="punct">() {</span> <span class="var">stopped</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">; }</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱二：long / double 的非原子性</h3>
+  <p>在 32 位 JVM 上，对 <code>long</code> 和 <code>double</code> 的读写不是原子的（被拆成两次 32 位操作）。在 64 位 JVM 上通常已优化为原子操作，但 <strong>JMM 规范并不强制保证</strong>。
+  多线程共享 <code>long</code>/<code>double</code> 时，加 <code>volatile</code> 或 <code>synchronized</code> 是安全写法。</p>
+
+  <h3>面试高频：volatile 能否替代 synchronized？</h3>
+  <table>
+    <thead>
+      <tr><th>特性</th><th>volatile</th><th>synchronized</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>可见性</td><td>✅</td><td>✅</td></tr>
+      <tr><td>原子性</td><td>❌（复合操作不安全）</td><td>✅</td></tr>
+      <tr><td>有序性</td><td>✅（禁止特定重排）</td><td>✅</td></tr>
+      <tr><td>阻塞</td><td>❌（非阻塞）</td><td>✅（互斥阻塞）</td></tr>
+      <tr><td>性能</td><td>较轻量</td><td>相对重（但 JDK6+ 有偏向锁优化）</td></tr>
+    </tbody>
+  </table>
+
+  <h3>面试高频：happens-before 与时间先后的区别</h3>
+  <div class="callout tip">
+    <strong>时间先发生 ≠ happens-before</strong>：A 在时间上先于 B 执行，不代表 A 的写对 B 可见。
+    happens-before 是一个逻辑上的偏序关系，由 JMM 的 8 条规则建立，与物理时钟无关。
+    只有满足 happens-before，JMM 才保证 B 能看到 A 的结果。
+  </div>
+
+  <h3>面试高频：JMM 三大特性</h3>
+  <ul>
+    <li><strong>原子性</strong>：操作不可分割。基本类型读写（除 long/double）是原子的；复合操作需要同步。</li>
+    <li><strong>可见性</strong>：一个线程修改的值，其他线程能立即看到。volatile、synchronized、final 均可保证。</li>
+    <li><strong>有序性</strong>：程序执行的顺序符合代码书写顺序。JMM 允许编译器和CPU重排，但对外暴露的结果有序性由 happens-before 保证。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 总结 -->
+  <h2 style="border-color:#c084fc; color:#c084fc;">小结</h2>
+  <div class="tree">
+    <span class="hi">JMM 知识体系</span>
+    ├── <span class="hi">为什么</span>：多核 CPU 缓存 + 编译器/CPU 重排 → 并发可见性问题
+    ├── <span class="hi">核心抽象</span>：主内存 ↔ 工作内存，线程通过主内存通信
+    ├── <span class="hi">happens-before</span>：8 条规则建立操作间的可见性偏序关系
+    ├── <span class="hi">volatile</span>：可见性 + 禁止特定重排（内存屏障）；不保证原子性
+    ├── <span class="hi">synchronized</span>：原子性 + 可见性 + 有序性三合一
+    └── <span class="hi">final</span>：构造安全发布，无需额外同步
+  </div>
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./04-对象内存布局.html" class="nav-btn">← 04. 对象内存布局（Header / Instance Data / Padding）</a>
+    <a href="./06-引用类型.html" class="nav-btn next">06. 引用类型（强 / 软 / 弱 / 虚） →</a>
+  </div>
+
+</div>
+</body>
+</html>

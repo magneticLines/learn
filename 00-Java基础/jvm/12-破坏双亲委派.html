@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>12. 破坏双亲委派的场景（SPI / Tomcat）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 类加载
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color: #c084fc; border-color: #7e22ce;">JVM · 类加载</div>
+    <h1>12. 破坏双亲委派的场景（SPI / Tomcat）</h1>
+    <p>双亲委派是 JVM 类加载的默认秩序，但它并非不可打破。理解"何时以及为何要打破它"，是深入理解 Java 模块化、框架隔离的关键。</p>
+  </div>
+
+  <!-- 1. 回顾 & 为什么要破坏 -->
+  <h2 style="border-color: #c084fc;">为什么要破坏双亲委派？</h2>
+  <p>
+    上一节我们学到，双亲委派的核心价值是<strong>安全性与唯一性</strong>：核心类只由 Bootstrap ClassLoader 加载，不会被第三方替换；同一个类在 JVM 里只有一份。
+  </p>
+  <p>
+    但这个模型有一个根本性矛盾：<strong>委派方向是"自下而上"，而有时加载需求是"自上而下"</strong>。
+  </p>
+  <div class="callout info">
+    经典悖论：<code>java.sql.Driver</code> 接口在 rt.jar（Bootstrap 加载），但具体实现（如 <code>com.mysql.cj.jdbc.Driver</code>）在应用 classpath（App ClassLoader 加载）。<br/>
+    Bootstrap ClassLoader 无法"向下"看到应用 classpath，所以按双亲委派它根本找不到实现类。
+  </div>
+  <p>
+    JDK、Tomcat、OSGi 三个场景分别用了三种不同的方式解开这个死结，各有巧妙之处。
+  </p>
+
+  <hr/>
+
+  <!-- 2. 场景一：SPI -->
+  <h2 style="border-color: #c084fc;">场景一：SPI 与线程上下文类加载器</h2>
+  <h3>SPI 是什么</h3>
+  <p>
+    <strong>SPI（Service Provider Interface）</strong> 是 JDK 提供的插件化机制：在 <code>META-INF/services/</code> 目录下放一个以接口全限定名命名的文件，文件内容是实现类名。<code>ServiceLoader</code> 在运行时扫描并实例化这些实现。
+  </p>
+  <p>
+    JDBC、JNDI、JAX-WS、日志门面（SLF4J）都用了这套机制。问题在于：<code>ServiceLoader</code> 自身在 rt.jar 里，由 Bootstrap ClassLoader 加载，但它要加载的"实现类"却在用户 classpath 里——Bootstrap ClassLoader 根本看不到。
+  </p>
+
+  <h3>解法：线程上下文类加载器（Thread Context ClassLoader）</h3>
+  <p>
+    JDK 1.2 引入了 <code>Thread.currentThread().getContextClassLoader()</code>。主线程启动时，JVM 把它默认设置为 <strong>App ClassLoader</strong>。
+    <code>ServiceLoader</code> 拿到这个 ClassLoader 来加载实现类，绕过了 Bootstrap 向下看不到的问题。
+  </p>
+  <div class="callout warn">
+    这本质上是一种"父 ClassLoader 委托子 ClassLoader 去加载"的逆向委派，<strong>打破了双亲委派的单向性</strong>。
+    它是一个妥协方案，JDK 开发者自己也承认这是一种"不得不为"的设计。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ServiceLoader 核心源码（简化）</span><span>Java</span></div>
+    <pre><span class="com">// java.util.ServiceLoader#load(Class&lt;S&gt;)</span>
+<span class="kw">public static</span> <span class="punct">&lt;</span><span class="ty">S</span><span class="punct">&gt;</span> <span class="ty">ServiceLoader</span><span class="punct">&lt;</span><span class="ty">S</span><span class="punct">&gt;</span> <span class="fn">load</span><span class="punct">(</span><span class="ty">Class</span><span class="punct">&lt;</span><span class="ty">S</span><span class="punct">&gt;</span> <span class="var">service</span><span class="punct">) {</span>
+    <span class="com">// 关键：不用自己（Bootstrap），而是拿线程上下文类加载器</span>
+    <span class="ty">ClassLoader</span> <span class="var">cl</span> <span class="punct">=</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">getContextClassLoader</span><span class="punct">();</span>
+    <span class="kw">return</span> <span class="fn">load</span><span class="punct">(</span><span class="var">service</span><span class="punct">,</span> <span class="var">cl</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>JDBC 加载流程（完整链路）</h3>
+  <div class="tree">
+    <span class="hi">1.</span> Class.forName("com.mysql.cj.jdbc.Driver")  ← 旧写法，现在不需要了<br/>
+    <span class="hi">2.</span> DriverManager.getConnection(url)  ← 触发 DriverManager 静态初始化<br/>
+    <span class="hi">3.</span> DriverManager 由 Bootstrap 加载，调用 ServiceLoader.load(Driver.class)<br/>
+    <span class="hi">4.</span> ServiceLoader 拿到线程上下文类加载器（App ClassLoader）<br/>
+    <span class="hi">5.</span> 扫描 classpath 中 META-INF/services/java.sql.Driver<br/>
+    <span class="hi">6.</span> App ClassLoader 加载 com.mysql.cj.jdbc.Driver<br/>
+    <span class="hi">7.</span> Driver 自动注册到 DriverManager ✓
+  </div>
+
+  <hr/>
+
+  <!-- 3. 场景二：Tomcat -->
+  <h2 style="border-color: #c084fc;">场景二：Tomcat 的类加载隔离</h2>
+  <h3>Tomcat 面临的问题</h3>
+  <p>
+    一个 Tomcat 实例可以同时跑多个 Web 应用（WAR 包）。这带来三个相互冲突的需求：
+  </p>
+  <ul>
+    <li><strong>隔离性</strong>：App-A 和 App-B 各自依赖 jackson-2.12 和 jackson-2.15，不能互相干扰</li>
+    <li><strong>共享性</strong>：Tomcat 自身的 Servlet API、公共工具类要被所有应用共享，不能每个 WAR 都加载一份</li>
+    <li><strong>安全性</strong>：JDK 核心类始终由 Bootstrap 加载，不可被覆盖</li>
+  </ul>
+  <p>
+    标准双亲委派只有一条线性委派链，无法同时满足"隔离"和"共享"，所以 Tomcat 设计了一套<strong>多层次并行的类加载器树</strong>。
+  </p>
+
+  <h3>Tomcat 类加载器层次</h3>
+  <div class="tree">
+Bootstrap ClassLoader（JDK 核心）
+  └── Extension ClassLoader（JDK 扩展）
+        └── App ClassLoader（Tomcat 启动 classpath）
+              └── <span class="hi">CommonClassLoader</span>  ← $CATALINA_HOME/lib，所有 Web 应用可见
+                    ├── <span class="hi">CatalinaClassLoader</span>  ← Tomcat 容器私有，Web 应用不可见
+                    ├── <span class="hi">SharedClassLoader</span>    ← 所有 Web 应用共享，Tomcat 不可见
+                    │     ├── <span class="hi">WebappClassLoader-App1</span>  ← /WEB-INF/classes + /WEB-INF/lib
+                    │     └── <span class="hi">WebappClassLoader-App2</span>  ← /WEB-INF/classes + /WEB-INF/lib
+  </div>
+
+  <h3>WebappClassLoader 如何打破双亲委派</h3>
+  <p>
+    <strong>标准双亲委派</strong>：先委派父加载器，父加载器找不到再自己加载。<br/>
+    <strong>WebappClassLoader 策略</strong>：<strong>先自己加载，自己找不到再委派父加载器</strong>（对非 JDK 核心类）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>WebappClassLoader#loadClass 逻辑（伪代码，基于 Tomcat 源码简化）</span><span>Java</span></div>
+    <pre><span class="ann">@Override</span>
+<span class="kw">public</span> <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="fn">loadClass</span><span class="punct">(</span><span class="ty">String</span> <span class="var">name</span><span class="punct">,</span> <span class="kw">boolean</span> <span class="var">resolve</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">ClassNotFoundException</span> <span class="punct">{</span>
+
+    <span class="com">// 1. 先查本地缓存（已加载过的类）</span>
+    <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="var">clazz</span> <span class="punct">=</span> <span class="fn">findLoadedClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">clazz</span> <span class="punct">!= null)</span> <span class="kw">return</span> <span class="var">clazz</span><span class="punct">;</span>
+
+    <span class="com">// 2. java.* 必须委派给 Bootstrap，安全红线不可破</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">name</span><span class="punct">.</span><span class="fn">startsWith</span><span class="punct">(</span><span class="str">"java."</span><span class="punct">)) {</span>
+        <span class="kw">return</span> <span class="var">parent</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 3. 【关键】先用自己加载 WEB-INF 下的类（打破双亲委派！）</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="var">clazz</span> <span class="punct">=</span> <span class="fn">findClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>  <span class="com">// 在 /WEB-INF/classes 和 /WEB-INF/lib 中找</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">clazz</span> <span class="punct">!= null)</span> <span class="kw">return</span> <span class="var">clazz</span><span class="punct">;</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">ClassNotFoundException</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="com">// 自己找不到，继续往下走</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 4. 自己找不到，再委派父加载器（SharedClassLoader → CommonClassLoader）</span>
+    <span class="kw">return</span> <span class="var">parent</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    这种"<strong>先自己、再父级</strong>"的策略让每个 WebApp 都优先使用自己 WEB-INF 下的 JAR，从而实现版本隔离。
+  </p>
+
+  <h3>具体隔离效果</h3>
+  <table>
+    <thead>
+      <tr><th>类的来源</th><th>由谁加载</th><th>App1 / App2 是否共享</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>java.*</code>、<code>javax.*</code>（JDK）</td><td>Bootstrap ClassLoader</td><td>是（强制共享）</td></tr>
+      <tr><td>Servlet API（<code>javax.servlet.*</code>）</td><td>CommonClassLoader</td><td>是</td></tr>
+      <tr><td>Tomcat 内部实现</td><td>CatalinaClassLoader</td><td>否（Web 应用看不到）</td></tr>
+      <tr><td>各 App 的 WEB-INF/lib</td><td>WebappClassLoader（各自独立）</td><td>否（互相隔离）</td></tr>
+    </tbody>
+  </table>
+
+  <hr/>
+
+  <!-- 4. 场景三：OSGi -->
+  <h2 style="border-color: #c084fc;">场景三：OSGi 的网状类加载（扩展了解）</h2>
+  <p>
+    OSGi（如 Eclipse 插件系统）彻底抛弃了树形委派链，每个 Bundle（插件）都有自己的 ClassLoader，Bundle 之间通过<strong>声明式依赖</strong>（<code>Import-Package</code>/<code>Export-Package</code>）形成一张网状图。
+  </p>
+  <p>
+    类加载时不再沿树形向上委派，而是根据包名在图中寻找"谁导出了这个包"再去那个 Bundle 的 ClassLoader 加载。这是最彻底的双亲委派破坏，也带来了最复杂的依赖管理难度（bundle 地狱）。
+  </p>
+  <div class="callout info">
+    Java 9 的 JPMS（模块系统）吸收了 OSGi 的思想，在 JDK 层面原生支持模块边界和封装，是 OSGi 问题的官方解法。
+  </div>
+
+  <hr/>
+
+  <!-- 5. 三种破坏方式对比 -->
+  <h2 style="border-color: #c084fc;">三种破坏方式对比</h2>
+  <table>
+    <thead>
+      <tr><th>场景</th><th>破坏方式</th><th>解决的核心问题</th><th>代价</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>SPI（JDBC 等）</td>
+        <td>线程上下文类加载器，父加载器委托子加载器</td>
+        <td>父无法看到子 classpath 中的实现类</td>
+        <td>类加载方向混乱，隐式依赖线程状态</td>
+      </tr>
+      <tr>
+        <td>Tomcat WebApp</td>
+        <td>重写 <code>loadClass</code>，先自己加载再委派父</td>
+        <td>多应用版本隔离</td>
+        <td>不同 WebApp 间同名类互不可见</td>
+      </tr>
+      <tr>
+        <td>OSGi</td>
+        <td>彻底放弃树形委派，网状图协商</td>
+        <td>细粒度插件化、热插拔</td>
+        <td>依赖管理极复杂，调试困难</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr/>
+
+  <!-- 6. 手写一个破坏双亲委派的 ClassLoader -->
+  <h2 style="border-color: #c084fc;">手写一个"先自己加载"的 ClassLoader</h2>
+  <p>理解原理最好的方式是自己写一遍。下面模拟 Tomcat WebappClassLoader 的核心逻辑：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>MyWebappClassLoader.java</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">MyWebappClassLoader</span> <span class="kw">extends</span> <span class="ty">ClassLoader</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">webInfClassesPath</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">MyWebappClassLoader</span><span class="punct">(</span><span class="ty">String</span> <span class="var">path</span><span class="punct">,</span> <span class="ty">ClassLoader</span> <span class="var">parent</span><span class="punct">) {</span>
+        <span class="kw">super</span><span class="punct">(</span><span class="var">parent</span><span class="punct">);</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">webInfClassesPath</span> <span class="punct">=</span> <span class="var">path</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">protected</span> <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="fn">loadClass</span><span class="punct">(</span><span class="ty">String</span> <span class="var">name</span><span class="punct">,</span> <span class="kw">boolean</span> <span class="var">resolve</span><span class="punct">)</span>
+            <span class="kw">throws</span> <span class="ty">ClassNotFoundException</span> <span class="punct">{</span>
+
+        <span class="com">// 1. 查缓存</span>
+        <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="var">loaded</span> <span class="punct">=</span> <span class="fn">findLoadedClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">loaded</span> <span class="punct">!= null)</span> <span class="kw">return</span> <span class="var">loaded</span><span class="punct">;</span>
+
+        <span class="com">// 2. java.* 强制委派（安全红线）</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">name</span><span class="punct">.</span><span class="fn">startsWith</span><span class="punct">(</span><span class="str">"java."</span><span class="punct">))</span> <span class="punct">{</span>
+            <span class="kw">return</span> <span class="fn">super</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="var">resolve</span><span class="punct">);</span>
+        <span class="punct">}</span>
+
+        <span class="com">// 3. 先尝试从 WEB-INF/classes 加载（自己先来，打破委派顺序）</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="var">clazz</span> <span class="punct">=</span> <span class="fn">findClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">resolve</span><span class="punct">)</span> <span class="fn">resolveClass</span><span class="punct">(</span><span class="var">clazz</span><span class="punct">);</span>
+            <span class="kw">return</span> <span class="var">clazz</span><span class="punct">;</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">ClassNotFoundException</span> <span class="var">ignored</span><span class="punct">) {</span>
+            <span class="com">// 自己没有，交给父加载器（SharedClassLoader）</span>
+        <span class="punct">}</span>
+
+        <span class="com">// 4. 委派父加载器</span>
+        <span class="kw">return</span> <span class="kw">super</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="var">resolve</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">protected</span> <span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="fn">findClass</span><span class="punct">(</span><span class="ty">String</span> <span class="var">name</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">ClassNotFoundException</span> <span class="punct">{</span>
+        <span class="com">// 把类名转为文件路径，读取字节码，调用 defineClass</span>
+        <span class="ty">String</span> <span class="var">classFile</span> <span class="punct">=</span> <span class="var">webInfClassesPath</span> <span class="punct">+</span>
+            <span class="var">name</span><span class="punct">.</span><span class="fn">replace</span><span class="punct">(</span><span class="str">"."</span><span class="punct">,</span> <span class="str">"/"</span><span class="punct">) +</span> <span class="str">".class"</span><span class="punct">;</span>
+        <span class="kw">try</span> <span class="punct">(</span><span class="ty">InputStream</span> <span class="var">in</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="var">classFile</span><span class="punct">)) {</span>
+            <span class="kw">byte</span><span class="punct">[]</span> <span class="var">bytes</span> <span class="punct">=</span> <span class="var">in</span><span class="punct">.</span><span class="fn">readAllBytes</span><span class="punct">();</span>
+            <span class="kw">return</span> <span class="fn">defineClass</span><span class="punct">(</span><span class="var">name</span><span class="punct">,</span> <span class="var">bytes</span><span class="punct">,</span> <span class="num">0</span><span class="punct">,</span> <span class="var">bytes</span><span class="punct">.</span><span class="var">length</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">throw new</span> <span class="ty">ClassNotFoundException</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <hr/>
+
+  <!-- 7. 陷阱 -->
+  <h2 style="border-color: #c084fc;">常见陷阱与坑</h2>
+
+  <h3>陷阱 1：ClassCastException 明明是同一个类</h3>
+  <p>
+    症状：<code>(MyService) obj</code> 抛出 <code>ClassCastException: MyService cannot be cast to MyService</code>，两边明明是"同一个类"。
+  </p>
+  <div class="callout warn">
+    根本原因：JVM 的类唯一性由 <strong>ClassLoader + 全限定名</strong> 共同决定。同一个 .class 文件被两个不同的 ClassLoader 加载，在 JVM 眼中就是两个不同的类，互相强转必然抛 ClassCastException。
+  </div>
+  <p>
+    解法：确保接口/父类由共同的父 ClassLoader（如 SharedClassLoader）加载，实现类才用各自的 WebappClassLoader。这也是 Tomcat 把 Servlet API 放到 Common 层的原因。
+  </p>
+
+  <h3>陷阱 2：线程上下文类加载器被"污染"</h3>
+  <p>
+    某些框架（如旧版 Spring）在创建线程池时没有正确传递线程上下文类加载器，导致线程池中的 SPI 加载失败，报 <code>ServiceConfigurationError</code>。
+  </p>
+  <p>
+    规避：在提交任务前保存并恢复：<code>Thread.currentThread().setContextClassLoader(appClassLoader)</code>。
+  </p>
+
+  <h3>陷阱 3：热加载/热部署导致 Metaspace 泄漏</h3>
+  <p>
+    Tomcat 热部署时会创建新的 WebappClassLoader，旧的需要被 GC 回收。但如果有静态变量、ThreadLocal、JDBC Driver 注册等持有对旧 ClassLoader 的引用，旧 ClassLoader 就无法被回收，导致 Metaspace 持续增长直至 OOM。
+  </p>
+  <div class="callout tip">
+    排查命令：<code>jmap -dump:live,format=b,file=heap.hprof &lt;pid&gt;</code>，然后用 MAT 搜索 WebappClassLoader 实例数量。正常热部署后只应存在一个。
+  </div>
+
+  <hr/>
+
+  <!-- 8. 面试考点 -->
+  <h2 style="border-color: #c084fc;">面试高频考点</h2>
+
+  <h3>Q1：为什么要打破双亲委派？举两个例子。</h3>
+  <p>
+    标准答法：双亲委派保证了安全性和唯一性，但无法解决"父 ClassLoader 需要使用子 ClassLoader 才能看到的类"的问题。
+    <strong>例一：SPI（JDBC）</strong>，<code>DriverManager</code> 由 Bootstrap 加载，但 MySQL 驱动在用户 classpath，通过线程上下文类加载器解决。
+    <strong>例二：Tomcat</strong>，多应用版本隔离，WebappClassLoader 先加载自身 WEB-INF 目录，不先委派父加载器。
+  </p>
+
+  <h3>Q2：Tomcat 如何实现应用隔离？</h3>
+  <p>
+    每个 Web 应用对应一个独立的 <code>WebappClassLoader</code> 实例。它重写了 <code>loadClass</code> 方法，对非 JDK 核心类优先从自己的 WEB-INF 目录加载，找不到才委派父加载器（SharedClassLoader）。由于两个 WebApp 的 ClassLoader 实例不同，即使是同名类在 JVM 内也是两个不同的类对象，实现了彻底隔离。
+  </p>
+
+  <h3>Q3：SPI 用的是什么机制破坏双亲委派？有什么缺点？</h3>
+  <p>
+    线程上下文类加载器（Thread Context ClassLoader）。缺点：类加载方向违反了直觉（父委托子），且隐式依赖线程状态，在线程切换或线程池场景下需要手动维护，容易出错。Java 9 的模块系统在一定程度上改善了这个问题。
+  </p>
+
+  <h3>Q4：同一个类被两个 ClassLoader 加载会怎样？</h3>
+  <p>
+    JVM 会把它们视为两个完全不同的类型，相互之间不能强转（抛 <code>ClassCastException</code>），也不满足 <code>instanceof</code>。这是多 ClassLoader 隔离设计中最容易踩的坑，解法是将共享的接口提升到公共的父 ClassLoader 中加载。
+  </p>
+
+  <div class="nav-footer">
+    <a href="./11-双亲委派模型.html" class="nav-btn">← 11. 双亲委派模型</a>
+    <a href="./13-JVM常用参数.html" class="nav-btn next">13. JVM 常用参数（-Xmx / -Xms / -XX:+UseG1GC） →</a>
+  </div>
+
+</div>
+</body>
+</html>

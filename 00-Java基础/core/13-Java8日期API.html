@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>13 - Java 8 日期 API</title>
+  <style>
+    /* ── 基础重置 ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 15px; line-height: 1.75;
+      background: #f5f7fa; color: #1a1a2e;
+    }
+
+    /* ── 页面布局 ── */
+    .page-header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+      color: #fff; padding: 2.5rem 2rem 2rem;
+      border-bottom: 4px solid #f0a500;
+    }
+    .page-header .chapter { font-size: .85rem; opacity: .75; letter-spacing: .05em; text-transform: uppercase; }
+    .page-header h1 { font-size: 2rem; margin-top: .35rem; }
+    .page-header .subtitle { margin-top: .5rem; opacity: .85; font-size: .95rem; }
+
+    main { max-width: 960px; margin: 2rem auto; padding: 0 1.25rem 4rem; }
+
+    /* ── 通用卡片 ── */
+    .card {
+      background: #fff; border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.07);
+      padding: 1.75rem 2rem; margin-bottom: 2rem;
+    }
+    .card h2 {
+      font-size: 1.2rem; color: #1e3a5f;
+      border-left: 4px solid #2d6a9f; padding-left: .75rem;
+      margin-bottom: 1.25rem;
+    }
+    .card h3 { font-size: 1rem; color: #2d6a9f; margin: 1.25rem 0 .5rem; }
+
+    /* ── 代码块 ── */
+    pre {
+      background: #1e2a3a; color: #cdd9e5;
+      border-radius: 8px; padding: 1.1rem 1.3rem;
+      font-size: .85rem; overflow-x: auto;
+      line-height: 1.65; margin: .75rem 0;
+    }
+    code { font-family: "Cascadia Code", "Fira Code", Consolas, monospace; }
+    pre code { color: inherit; }
+    p code, li code, td code {
+      background: #eef2f7; color: #c0392b;
+      padding: .1em .4em; border-radius: 4px; font-size: .88em;
+    }
+
+    /* ── callout ── */
+    .callout {
+      border-radius: 8px; padding: .9rem 1.1rem;
+      margin: 1rem 0; font-size: .9rem;
+      border-left: 4px solid;
+    }
+    .callout.info  { background: #e8f4fd; border-color: #2980b9; color: #1a5276; }
+    .callout.warn  { background: #fef9e7; border-color: #f39c12; color: #7d6608; }
+    .callout.good  { background: #eafaf1; border-color: #27ae60; color: #1e8449; }
+    .callout.bad   { background: #fdf2f8; border-color: #c0392b; color: #922b21; }
+    .callout strong { display: block; margin-bottom: .3rem; }
+
+    /* ── 树形结构 ── */
+    .tree { font-family: monospace; font-size: .88rem; line-height: 1.9;
+            background: #f8fafc; border-radius: 8px;
+            padding: 1rem 1.25rem; overflow-x: auto; }
+    .tree .root { color: #1e3a5f; font-weight: 700; }
+    .tree .pkg  { color: #2d6a9f; }
+    .tree .cls  { color: #16a085; }
+    .tree .note { color: #888; font-style: italic; }
+
+    /* ── 表格 ── */
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th { background: #1e3a5f; color: #fff; padding: .55rem .8rem; text-align: left; }
+    td { padding: .5rem .8rem; border-bottom: 1px solid #e8ecf0; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    tr:hover td { background: #eef4fb; }
+
+    /* ── 对比块 ── */
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: .75rem 0; }
+    .compare .bad-box  { background: #fdf2f8; border: 1px solid #e8a0a0; border-radius: 8px; padding: .85rem 1rem; }
+    .compare .good-box { background: #eafaf1; border: 1px solid #82c99a; border-radius: 8px; padding: .85rem 1rem; }
+    .compare .label { font-size: .78rem; font-weight: 700; margin-bottom: .4rem; letter-spacing: .03em; }
+    .bad-box  .label { color: #c0392b; }
+    .good-box .label { color: #27ae60; }
+    @media(max-width:640px){ .compare { grid-template-columns: 1fr; } }
+
+    /* ── 导航 ── */
+    .nav-footer {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 2.5rem; padding-top: 1.25rem;
+      border-top: 2px solid #e0e6ef; font-size: .88rem;
+    }
+    .nav-footer a {
+      color: #2d6a9f; text-decoration: none; font-weight: 600;
+      padding: .4rem .85rem; border: 1.5px solid #2d6a9f; border-radius: 6px;
+      transition: background .18s;
+    }
+    .nav-footer a:hover { background: #2d6a9f; color: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════ 页眉 ══════════════════ -->
+<header class="page-header">
+  <div class="chapter">00-Java基础 · core</div>
+  <h1>13 — Java 8 日期 API</h1>
+  <div class="subtitle">java.time：不可变、线程安全、时区清晰的现代日期体系</div>
+</header>
+
+<main>
+
+<!-- ══ 1. 为什么重新设计 ══ -->
+<section class="card">
+  <h2>1. 为什么要重新设计？旧 API 的五大历史包袱</h2>
+
+  <p>Java 1.0 就提供了 <code>java.util.Date</code>，1.1 补充了 <code>Calendar</code>。但这两个类沿用了 30 多年，积累了很多问题：</p>
+
+  <table style="margin-top:.75rem">
+    <tr><th>问题</th><th>具体表现</th><th>影响</th></tr>
+    <tr>
+      <td><strong>可变性（Mutable）</strong></td>
+      <td><code>Date.setTime()</code> 可随时修改内部状态</td>
+      <td>多线程共享时需要加锁；作为 Map key 不安全</td>
+    </tr>
+    <tr>
+      <td><strong>月份从 0 开始</strong></td>
+      <td><code>Calendar.MONTH</code> 中 1月=0，12月=11</td>
+      <td>off-by-one bug 极其常见，新人必踩</td>
+    </tr>
+    <tr>
+      <td><strong>职责混乱</strong></td>
+      <td><code>Date</code> 既代表"时刻"又格式化日期；<code>SimpleDateFormat</code> 不安全</td>
+      <td>类之间边界模糊，容易误用</td>
+    </tr>
+    <tr>
+      <td><strong>API 繁琐</strong></td>
+      <td>计算两日期相差天数需要自己做毫秒除法</td>
+      <td>简单业务需要写大量样板代码</td>
+    </tr>
+    <tr>
+      <td><strong>时区含义模糊</strong></td>
+      <td><code>Date</code> 内部存 UTC 毫秒，但 <code>toString()</code> 却用本地时区显示</td>
+      <td>日志/序列化时区混乱，排查问题困难</td>
+    </tr>
+  </table>
+
+  <div class="callout info" style="margin-top:1rem">
+    <strong>设计来源：Joda-Time → JSR-310</strong>
+    Java 8 的 <code>java.time</code> 由 Stephen Colebourne（Joda-Time 作者）主导，通过 JSR-310 进入 JDK。
+    核心设计哲学：<em>不可变对象</em>（Immutable）、<em>职责单一</em>（每个类只表达一种概念）、<em>流式 API</em>（方法链）、<em>时区显式化</em>。
+  </div>
+</section>
+
+<!-- ══ 2. 类族全景 ══ -->
+<section class="card">
+  <h2>2. java.time 类族全景</h2>
+
+  <div class="tree">
+    <span class="root">java.time</span><br>
+    ├── <span class="cls">LocalDate</span>         <span class="note">── 无时区的日期 (2024-03-15)</span><br>
+    ├── <span class="cls">LocalTime</span>         <span class="note">── 无时区的时间 (10:30:00)</span><br>
+    ├── <span class="cls">LocalDateTime</span>     <span class="note">── 无时区的日期+时间</span><br>
+    ├── <span class="cls">ZonedDateTime</span>     <span class="note">── 带时区的完整时刻</span><br>
+    ├── <span class="cls">OffsetDateTime</span>    <span class="note">── 带偏移量(+08:00)的时刻，无DST规则</span><br>
+    ├── <span class="cls">Instant</span>           <span class="note">── 机器视角时刻 (Unix epoch 纳秒)</span><br>
+    ├── <span class="cls">Period</span>            <span class="note">── 日期间隔 (年/月/日)</span><br>
+    ├── <span class="cls">Duration</span>          <span class="note">── 时间间隔 (秒/纳秒)</span><br>
+    ├── <span class="cls">ZoneId</span>            <span class="note">── 时区 ID ("Asia/Shanghai")</span><br>
+    ├── <span class="cls">ZoneOffset</span>        <span class="note">── 固定偏移 (+08:00)</span><br>
+    └── <span class="pkg">format/</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="cls">DateTimeFormatter</span> <span class="note">── 线程安全的格式化器</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└── <span class="cls">DateTimeFormatterBuilder</span>
+  </div>
+
+  <h3>选哪个类？判断准则</h3>
+  <table>
+    <tr><th>场景</th><th>推荐类型</th></tr>
+    <tr><td>只需要日期（生日、节假日）</td><td><code>LocalDate</code></td></tr>
+    <tr><td>只需要时间（营业时间）</td><td><code>LocalTime</code></td></tr>
+    <tr><td>本地日期+时间，不关心时区</td><td><code>LocalDateTime</code></td></tr>
+    <tr><td>跨时区的业务（会议、日志）</td><td><code>ZonedDateTime</code></td></tr>
+    <tr><td>存入数据库 / REST API 传输</td><td><code>OffsetDateTime</code> 或 <code>Instant</code></td></tr>
+    <tr><td>计算时间间隔（秒级精度）</td><td><code>Duration</code></td></tr>
+    <tr><td>计算日期间隔（年月日）</td><td><code>Period</code></td></tr>
+  </table>
+</section>
+
+<!-- ══ 3. LocalDate ══ -->
+<section class="card">
+  <h2>3. LocalDate — 只有日期，没有时区</h2>
+
+  <h3>创建</h3>
+  <pre><code>// 当前日期（使用系统默认时区确定"今天"）
+LocalDate today = LocalDate.now();
+
+// 指定日期 — 月份直接用数字，1 = 1月，不再从 0 开始！
+LocalDate birthday = LocalDate.of(1990, 8, 20);
+
+// 从字符串解析（默认 ISO 格式 yyyy-MM-dd）
+LocalDate date = LocalDate.parse("2024-03-15");
+
+// 从字符串 + 自定义格式
+LocalDate date2 = LocalDate.parse("20240315",
+    DateTimeFormatter.ofPattern("yyyyMMdd"));</code></pre>
+
+  <h3>读取字段</h3>
+  <pre><code>LocalDate d = LocalDate.of(2024, 3, 15);
+d.getYear();        // 2024
+d.getMonth();       // Month.MARCH（枚举）
+d.getMonthValue();  // 3（int，更常用）
+d.getDayOfMonth();  // 15
+d.getDayOfWeek();   // DayOfWeek.FRIDAY
+d.getDayOfYear();   // 75
+d.isLeapYear();     // false</code></pre>
+
+  <h3>加减与比较</h3>
+  <pre><code>LocalDate d = LocalDate.of(2024, 3, 15);
+
+// ⚠️ 不可变！plus/minus 返回新对象，原对象不变
+LocalDate nextWeek  = d.plusWeeks(1);         // 2024-03-22
+LocalDate lastMonth = d.minusMonths(1);       // 2024-02-15
+LocalDate nextYear  = d.plus(1, ChronoUnit.YEARS);
+
+// 比较
+d.isBefore(nextWeek);   // true
+d.isAfter(lastMonth);   // true
+d.isEqual(LocalDate.of(2024,3,15));  // true
+
+// ChronoUnit 计算任意单位差值
+long days = ChronoUnit.DAYS.between(d, nextWeek);  // 7
+long months = ChronoUnit.MONTHS.between(
+    LocalDate.of(2024,1,1), LocalDate.of(2024,3,15)); // 2</code></pre>
+
+  <div class="callout good">
+    <strong>不可变设计的好处</strong>
+    LocalDate 所有方法都返回新对象，自身永不改变。这意味着：线程安全（无需 synchronized）、可作为 Map key（hashCode 稳定）、可作为方法参数传递而不担心被修改。代价是轻微的对象分配开销，在现代 JVM 上可忽略不计。
+  </div>
+</section>
+
+<!-- ══ 4. LocalDateTime ══ -->
+<section class="card">
+  <h2>4. LocalDateTime — 日期 + 时间，仍无时区</h2>
+
+  <h3>创建方式</h3>
+  <pre><code>// 当前时刻（无时区概念）
+LocalDateTime now = LocalDateTime.now();
+
+// 直接指定
+LocalDateTime dt = LocalDateTime.of(2024, 3, 15, 10, 30, 0);
+
+// 拼接：LocalDate + LocalTime → LocalDateTime
+LocalDate date = LocalDate.of(2024, 3, 15);
+LocalTime time = LocalTime.of(10, 30);
+LocalDateTime dt2 = date.atTime(time);
+// 等价于：date.atTime(10, 30)
+
+// 解析
+LocalDateTime dt3 = LocalDateTime.parse("2024-03-15T10:30:00");</code></pre>
+
+  <h3>拆分与修改</h3>
+  <pre><code>LocalDateTime dt = LocalDateTime.of(2024, 3, 15, 10, 30, 45);
+
+// 拆分
+LocalDate datePart = dt.toLocalDate();  // 2024-03-15
+LocalTime timePart = dt.toLocalTime();  // 10:30:45
+
+// with 系列 — 修改某个字段（返回新对象）
+dt.withYear(2025);         // 2025-03-15T10:30:45
+dt.withMonth(6);           // 2024-06-15T10:30:45
+dt.withDayOfMonth(1);      // 2024-03-01T10:30:45
+dt.withHour(0).withMinute(0).withSecond(0); // 当天零点</code></pre>
+
+  <h3>升级为 ZonedDateTime</h3>
+  <pre><code>ZoneId shanghai = ZoneId.of("Asia/Shanghai");
+ZonedDateTime zdt = dt.atZone(shanghai);
+// 2024-03-15T10:30:45+08:00[Asia/Shanghai]
+
+// 注意：atZone 假设"这个 LocalDateTime 就是在 Shanghai 时区发生的"
+// 它不做任何时间转换，只是附加时区信息</code></pre>
+</section>
+
+<!-- ══ 5. ZonedDateTime ══ -->
+<section class="card">
+  <h2>5. ZonedDateTime — 带时区的完整时刻</h2>
+
+  <h3>创建</h3>
+  <pre><code>ZoneId tokyo   = ZoneId.of("Asia/Tokyo");
+ZoneId london  = ZoneId.of("Europe/London");
+
+ZonedDateTime now = ZonedDateTime.now(tokyo);
+
+// 从 LocalDateTime + ZoneId
+ZonedDateTime zdt = ZonedDateTime.of(
+    LocalDateTime.of(2024, 3, 15, 10, 30, 0),
+    ZoneId.of("Asia/Shanghai"));</code></pre>
+
+  <h3>withZoneSameInstant vs withZoneSameLocal</h3>
+  <p>这是最容易混淆的两个方法，必须搞清楚：</p>
+
+  <div class="compare">
+    <div class="bad-box">
+      <div class="label">withZoneSameLocal — 保持"表盘时间"不变</div>
+      <pre style="font-size:.8rem"><code>// 上海 10:30 → 东京 10:30
+// 背后的时刻变了！
+zdt.withZoneSameLocal(tokyo)
+// 2024-03-15T10:30:00+09:00[Asia/Tokyo]
+// 上海 10:30 = UTC 02:30
+// 东京 10:30 = UTC 01:30
+// 两者差 1 小时</code></pre>
+    </div>
+    <div class="good-box">
+      <div class="label">withZoneSameInstant — 保持"绝对时刻"不变</div>
+      <pre style="font-size:.8rem"><code>// 上海 10:30 → 东京 11:30
+// 背后的时刻不变！
+zdt.withZoneSameInstant(tokyo)
+// 2024-03-15T11:30:00+09:00[Asia/Tokyo]
+// 两者都等于 UTC 02:30
+// 这才是"时区转换"</code></pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>记忆口诀</strong>
+    SameInstant = 同一时刻，表盘不同（跨时区开会用这个）；SameLocal = 表盘相同，时刻不同（迁移数据时区标注用这个）。
+    <br>绝大多数业务场景要用 <strong>withZoneSameInstant</strong>，因为你需要的是"真实转换"。
+  </div>
+
+  <h3>获取所有可用时区</h3>
+  <pre><code>// 打印全部 ZoneId（约 600 个）
+ZoneId.getAvailableZoneIds()
+      .stream()
+      .filter(id -> id.startsWith("Asia"))
+      .sorted()
+      .forEach(System.out::println);</code></pre>
+</section>
+
+<!-- ══ 6. Instant ══ -->
+<section class="card">
+  <h2>6. Instant — 机器视角的时刻</h2>
+
+  <p><code>Instant</code> 是"距 Unix Epoch (1970-01-01T00:00:00Z) 的秒数 + 纳秒调整量"。它不关心时区，是绝对时刻的最纯粹表示。</p>
+
+  <pre><code>// 当前时刻（UTC）
+Instant now = Instant.now();
+System.out.println(now);  // 2024-03-15T02:30:00.123456789Z
+
+// 转换为毫秒时间戳
+long epochMilli = now.toEpochMilli();
+
+// 从毫秒构造
+Instant i = Instant.ofEpochMilli(System.currentTimeMillis());
+
+// Instant → ZonedDateTime（需要指定时区才能显示为人类可读）
+ZonedDateTime zdt = now.atZone(ZoneId.of("Asia/Shanghai"));
+
+// ZonedDateTime → Instant（丢弃时区信息，取绝对时刻）
+Instant back = zdt.toInstant();
+
+// 与旧 Date 互转
+Date legacyDate = Date.from(now);
+Instant fromDate = legacyDate.toInstant();</code></pre>
+
+  <div class="callout info">
+    <strong>什么时候用 Instant？</strong>
+    记录事件发生时刻（日志时间戳、审计记录）、测量耗时（<code>Instant.now()</code> 做 stopwatch）、存入数据库的 UTC 时间戳。
+    <br>不适合：需要"年/月/日"等日历概念的场景，这时应先转为 ZonedDateTime。
+  </div>
+</section>
+
+<!-- ══ 7. Period vs Duration ══ -->
+<section class="card">
+  <h2>7. Period vs Duration — 两种间隔</h2>
+
+  <table>
+    <tr><th></th><th>Period</th><th>Duration</th></tr>
+    <tr><td><strong>适用对象</strong></td><td>LocalDate</td><td>LocalTime / LocalDateTime / Instant</td></tr>
+    <tr><td><strong>单位</strong></td><td>年、月、日</td><td>秒、纳秒（也有 hours/minutes 辅助）</td></tr>
+    <tr><td><strong>构造</strong></td><td><code>Period.of(1,2,3)</code> / <code>between(d1,d2)</code></td><td><code>Duration.ofHours(2)</code> / <code>between(t1,t2)</code></td></tr>
+    <tr><td><strong>含义</strong></td><td>日历间隔（考虑月份长短）</td><td>精确时间长度（固定秒数）</td></tr>
+  </table>
+
+  <pre><code>// Period
+LocalDate start = LocalDate.of(2023, 1, 1);
+LocalDate end   = LocalDate.of(2024, 3, 15);
+
+Period p = Period.between(start, end);
+System.out.println(p.getYears());   // 1
+System.out.println(p.getMonths());  // 2
+System.out.println(p.getDays());    // 14
+
+// Duration
+LocalDateTime t1 = LocalDateTime.of(2024,3,15, 8,0,0);
+LocalDateTime t2 = LocalDateTime.of(2024,3,15,10,30,0);
+
+Duration d = Duration.between(t1, t2);
+System.out.println(d.toHours());    // 2
+System.out.println(d.toMinutes());  // 150
+System.out.println(d.getSeconds()); // 9000</code></pre>
+
+  <div class="callout warn">
+    <strong>陷阱：Period.getDays() 不等于总天数！</strong>
+    <code>Period.between(start, end).getDays()</code> 只返回"零散天数"（14），不是两个日期相差的总天数（440）。
+    <br>如果你要总天数，请用：<code>ChronoUnit.DAYS.between(start, end)</code>（返回 440）。
+  </div>
+</section>
+
+<!-- ══ 8. 旧代码互操作 ══ -->
+<section class="card">
+  <h2>8. 旧代码互操作 — Date / Timestamp 与新类互转</h2>
+
+  <table>
+    <tr><th>源类型</th><th>目标类型</th><th>转换方式</th></tr>
+    <tr>
+      <td><code>Date</code></td>
+      <td><code>Instant</code></td>
+      <td><code>date.toInstant()</code></td>
+    </tr>
+    <tr>
+      <td><code>Date</code></td>
+      <td><code>LocalDateTime</code></td>
+      <td><code>date.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime()</code></td>
+    </tr>
+    <tr>
+      <td><code>LocalDateTime</code></td>
+      <td><code>Date</code></td>
+      <td><code>Date.from(ldt.atZone(ZoneId.systemDefault()).toInstant())</code></td>
+    </tr>
+    <tr>
+      <td><code>Timestamp</code></td>
+      <td><code>LocalDateTime</code></td>
+      <td><code>timestamp.toLocalDateTime()</code>（直接支持）</td>
+    </tr>
+    <tr>
+      <td><code>LocalDateTime</code></td>
+      <td><code>Timestamp</code></td>
+      <td><code>Timestamp.valueOf(ldt)</code></td>
+    </tr>
+    <tr>
+      <td><code>long</code>（毫秒）</td>
+      <td><code>Instant</code></td>
+      <td><code>Instant.ofEpochMilli(millis)</code></td>
+    </tr>
+    <tr>
+      <td><code>Instant</code></td>
+      <td><code>long</code>（毫秒）</td>
+      <td><code>instant.toEpochMilli()</code></td>
+    </tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>夏令时陷阱（DST）</strong>
+    当用 <code>ZoneId.systemDefault()</code> 在欧美时区做 Date ↔ LocalDateTime 互转时，夏令时切换那天某些本地时间不存在（时钟拨快）或存在两次（时钟拨回）。
+    建议：数据库和接口层统一使用 UTC（<code>Instant</code>/<code>OffsetDateTime</code>），只在展示层转为用户时区的 ZonedDateTime。
+  </div>
+</section>
+
+<!-- ══ 9. 实战场景 ══ -->
+<section class="card">
+  <h2>9. 实战场景</h2>
+
+  <h3>计算年龄</h3>
+  <pre><code>LocalDate birthday = LocalDate.of(1990, 8, 20);
+LocalDate today    = LocalDate.now();
+int age = Period.between(birthday, today).getYears();
+// 直接得到周岁，自动处理是否已过生日</code></pre>
+
+  <h3>判断 30 天内到期</h3>
+  <pre><code>LocalDate expireDate = LocalDate.of(2024, 4, 14);
+LocalDate today      = LocalDate.now();
+boolean expiringSoon = !expireDate.isBefore(today)
+    && ChronoUnit.DAYS.between(today, expireDate) <= 30;</code></pre>
+
+  <h3>获取当月首末日</h3>
+  <pre><code>LocalDate today = LocalDate.now();
+LocalDate firstDay = today.withDayOfMonth(1);
+LocalDate lastDay  = today.withDayOfMonth(today.lengthOfMonth());
+
+// 或用 TemporalAdjusters（语义更清晰）
+LocalDate first2 = today.with(TemporalAdjusters.firstDayOfMonth());
+LocalDate last2  = today.with(TemporalAdjusters.lastDayOfMonth());</code></pre>
+
+  <h3>TemporalAdjusters 常用调整器</h3>
+  <pre><code>// 下一个周一
+today.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+
+// 本月第一个周五
+today.with(TemporalAdjusters.firstInMonth(DayOfWeek.FRIDAY));
+
+// 下一年的第一天
+today.with(TemporalAdjusters.firstDayOfNextYear());</code></pre>
+
+  <h3>JPA / Hibernate 注解（Spring Boot 2.2+ 自动支持）</h3>
+  <pre><code>@Entity
+public class Order {
+    // MySQL DATE 列 ↔ LocalDate（无需 @Temporal）
+    private LocalDate orderDate;
+
+    // MySQL DATETIME / TIMESTAMP 列 ↔ LocalDateTime
+    private LocalDateTime createdAt;
+
+    // 存为 UTC Instant（推荐跨时区系统）
+    @Column(columnDefinition = "TIMESTAMP")
+    private Instant updatedAt;
+}</code></pre>
+</section>
+
+<!-- ══ 10. 常见陷阱 ══ -->
+<section class="card">
+  <h2>10. 四个常见陷阱</h2>
+
+  <h3>陷阱 1：忘记接收返回值</h3>
+  <div class="compare">
+    <div class="bad-box">
+      <div class="label">错误</div>
+      <pre><code>LocalDate date = LocalDate.now();
+date.plusDays(7);  // 返回值被丢弃！
+System.out.println(date); // 还是今天</code></pre>
+    </div>
+    <div class="good-box">
+      <div class="label">正确</div>
+      <pre><code>LocalDate date = LocalDate.now();
+LocalDate future = date.plusDays(7); // 接住返回值
+System.out.println(future);</code></pre>
+    </div>
+  </div>
+
+  <h3>陷阱 2：now() 依赖默认时区</h3>
+  <pre><code>// ❌ 在服务器时区 ≠ 用户时区时产生错误结果
+LocalDate today = LocalDate.now();
+
+// ✅ 显式传入时区
+LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));</code></pre>
+
+  <h3>陷阱 3：Period.getDays() 只是零散天</h3>
+  <pre><code>Period p = Period.between(
+    LocalDate.of(2023,1,1),
+    LocalDate.of(2024,3,15));
+
+p.getDays();   // 14  ← 只是零散天！
+// ✅ 总天数
+ChronoUnit.DAYS.between(
+    LocalDate.of(2023,1,1),
+    LocalDate.of(2024,3,15));  // 440</code></pre>
+
+  <h3>陷阱 4：夏令时切换时加减天数与加减小时不等价</h3>
+  <pre><code>ZonedDateTime zdt = ZonedDateTime.of(
+    LocalDateTime.of(2024, 3, 10, 1, 30),  // 美国夏令时切换前
+    ZoneId.of("America/New_York"));
+
+// plusDays(1) 保持时钟时间（1:30 AM），自动调整偏移
+ZonedDateTime nextDay = zdt.plusDays(1);   // 2024-03-11T01:30-04:00
+
+// plusHours(24) 固定增加 86400 秒，时钟时间变为 2:30
+ZonedDateTime plus24h = zdt.plusHours(24); // 2024-03-11T02:30-04:00</code></pre>
+</section>
+
+<!-- ══ 11. 知识联系 ══ -->
+<section class="card">
+  <h2>11. 知识联系</h2>
+
+  <table>
+    <tr><th>关联知识点</th><th>说明</th></tr>
+    <tr>
+      <td><strong>DateTimeFormatter</strong></td>
+      <td>线程安全（与 SimpleDateFormat 相反），可预定义常量（<code>ISO_DATE</code>）或自定义模式；支持本地化（<code>ofLocalizedDate()</code>）</td>
+    </tr>
+    <tr>
+      <td><strong>JPA / Hibernate</strong></td>
+      <td>Spring Boot 2.2+ 通过 <code>hibernate-types</code> 自动映射 LocalDate/LocalDateTime；旧版需 <code>@Temporal(TemporalType.DATE)</code></td>
+    </tr>
+    <tr>
+      <td><strong>Jackson 序列化</strong></td>
+      <td>需引入 <code>jackson-datatype-jsr310</code>，注册 <code>JavaTimeModule</code>，否则 LocalDate 默认序列化为数组</td>
+    </tr>
+    <tr>
+      <td><strong>Stream + 日期分组</strong></td>
+      <td><code>Collectors.groupingBy(order -> order.getDate().getMonth())</code> 按月统计，结合 <code>TreeMap</code> 保持顺序</td>
+    </tr>
+    <tr>
+      <td><strong>不可变设计模式</strong></td>
+      <td>java.time 是 Effective Java Item 17（最小化可变性）的最佳实践范本；同类有 <code>String</code>、<code>BigDecimal</code></td>
+    </tr>
+  </table>
+</section>
+
+<!-- ══ 12. 面试高频考点 ══ -->
+<section class="card">
+  <h2>12. 面试高频考点</h2>
+
+  <table>
+    <tr><th>问题</th><th>关键答题点</th></tr>
+    <tr>
+      <td>Java 8 为什么重新设计日期 API？</td>
+      <td>Date 可变、月份 0 开始、SimpleDateFormat 线程不安全、时区混乱；JSR-310 = Joda-Time 进入 JDK</td>
+    </tr>
+    <tr>
+      <td>LocalDateTime 和 ZonedDateTime 的区别？</td>
+      <td>LocalDateTime 无时区概念，不能表示绝对时刻；ZonedDateTime 含 ZoneId，能做时区转换和 DST 处理</td>
+    </tr>
+    <tr>
+      <td>Instant 是什么？和 Date 有什么关系？</td>
+      <td>Unix epoch 纳秒精度时刻；<code>Date.from(instant)</code> / <code>date.toInstant()</code> 互转；两者都表示绝对时刻</td>
+    </tr>
+    <tr>
+      <td>Period.getDays() 能获取总天数吗？</td>
+      <td>不能，只是零散天部分；总天数用 <code>ChronoUnit.DAYS.between()</code></td>
+    </tr>
+    <tr>
+      <td>withZoneSameInstant 和 withZoneSameLocal 的区别？</td>
+      <td>SameInstant 保持绝对时刻不变（表盘变）= 真正的时区转换；SameLocal 保持表盘时间不变（时刻变）</td>
+    </tr>
+    <tr>
+      <td>为什么 java.time 类是线程安全的？</td>
+      <td>所有类都是不可变的（Immutable），所有修改方法返回新对象，不存在共享可变状态</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ══ 导航 ══ -->
+<nav class="nav-footer">
+  <a href="../java-core-roadmap.html">← 返回路线图</a>
+  <span style="color:#888;font-size:.85rem">13 / Java8日期API</span>
+  <a href="./14-DateTimeFormatter.html">下一篇 →</a>
+</nav>
+
+</main>
+</body>
+</html>

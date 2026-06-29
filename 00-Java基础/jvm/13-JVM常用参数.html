@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>13. JVM 常用参数（-Xmx / -Xms / -XX:+UseG1GC）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 性能调优基础
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 性能调优基础</div>
+    <h1>13. JVM 常用参数<br><span style="color:#c084fc;">-Xmx / -Xms / -XX:+UseG1GC</span></h1>
+    <p>从零理解 JVM 启动参数体系，掌握堆内存配置、GC 策略选择与生产调优套路。</p>
+  </div>
+
+  <!-- 1. 为什么需要 JVM 参数 -->
+  <h2 style="border-color:#c084fc;">为什么需要手动配置 JVM 参数？</h2>
+  <p>
+    JVM 的设计目标是"一次编写，到处运行"，但它无法预知你的程序会处理多大的数据、用什么 GC 算法最合适。
+    <strong>JVM 参数本质上是你与运行时之间的约定</strong>——你告诉 JVM 可以使用多少内存、用哪种垃圾回收器、出问题时怎么记录现场。
+  </p>
+  <p>
+    没有合理的参数，JVM 只能靠默认值猜测。默认值在开发阶段够用，但在生产环境（几十 GB 内存、几千并发）往往导致：
+  </p>
+  <ul>
+    <li>堆太小 → 频繁 Full GC → 应用停顿，吞吐下降</li>
+    <li>堆太大但 GC 策略不匹配 → 单次 STW 暂停几秒，接口超时</li>
+    <li>没有 OOM 转储 → 出问题无法复盘</li>
+  </ul>
+
+  <!-- 2. 参数分类 -->
+  <h2 style="border-color:#c084fc;">参数的三类语法</h2>
+  <p>HotSpot 的参数有三种前缀形式，含义不同：</p>
+  <table>
+    <thead>
+      <tr><th>前缀</th><th>含义</th><th>示例</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>-X</code></td>
+        <td>非标准参数，HotSpot 专有，各版本稳定</td>
+        <td><code>-Xmx4g</code>, <code>-Xms4g</code>, <code>-Xss512k</code></td>
+      </tr>
+      <tr>
+        <td><code>-XX:+/-</code></td>
+        <td>不稳定的高级参数；<code>+</code> 开启，<code>-</code> 关闭</td>
+        <td><code>-XX:+UseG1GC</code>, <code>-XX:-UseBiasedLocking</code></td>
+      </tr>
+      <tr>
+        <td><code>-XX:key=value</code></td>
+        <td>不稳定参数，赋值形式</td>
+        <td><code>-XX:MaxGCPauseMillis=200</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout info">
+    <strong>-X 与 -XX 的区别：</strong>-X 参数相对稳定，跨版本不会随便删；-XX 参数属于"实现细节"，官方保留随时修改的权利，但实践中核心参数（G1、GC 日志等）多年未变。
+  </div>
+
+  <!-- 3. 堆内存：-Xmx / -Xms -->
+  <h2 style="border-color:#c084fc;">堆内存两兄弟：-Xmx 与 -Xms</h2>
+  <h3>它们控制什么？</h3>
+  <p>
+    <code>-Xms</code>（initial heap size）：JVM 启动时向 OS 申请的<strong>初始堆大小</strong>。<br>
+    <code>-Xmx</code>（maximum heap size）：堆可以扩展到的<strong>最大上限</strong>。
+  </p>
+  <p>
+    JVM 启动后堆的实际大小在 Xms ~ Xmx 之间动态伸缩。当对象分配速度超过当前堆容量时，JVM 会触发 GC；GC 后仍不够用，则扩堆直到 Xmx；再无法分配则抛 <code>OutOfMemoryError: Java heap space</code>。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>启动命令示例</span><span>Shell</span></div>
+    <pre><span class="com"># 最常见的生产写法：初始 = 最大，避免运行时扩堆带来的 GC 压力</span>
+java <span class="kw">-Xms4g</span> <span class="kw">-Xmx4g</span> <span class="kw">-jar</span> app.jar
+
+<span class="com"># 单位：k / m / g（不区分大小写）</span>
+java <span class="kw">-Xms512m</span> <span class="kw">-Xmx2g</span> <span class="kw">-jar</span> app.jar</pre>
+  </div>
+
+  <h3>为什么生产环境要让 Xms = Xmx？</h3>
+  <p>
+    堆扩容本身要触发一次 GC（需要重新整理内存布局），还会导致堆大小不可预测，增加调优难度。
+    <strong>固定堆大小让系统行为更稳定</strong>，也更容易做容量规划。
+  </p>
+
+  <div class="callout warn">
+    <strong>陷阱：设置 Xmx 超过物理内存</strong><br>
+    JVM 的堆之外还有元空间（Metaspace）、线程栈、直接内存（NIO）、JVM 本身代码等开销。
+    通常建议 <code>-Xmx</code> 设为可用物理内存的 <strong>60%~75%</strong>，为非堆区域留出余量。
+    容器化场景要格外注意：JDK 8u191+ / JDK 10+ 才正确感知 cgroup 内存限制，否则 JVM 会读到宿主机物理内存，导致 OOM Killed。
+  </div>
+
+  <!-- 4. 线程栈 -Xss -->
+  <h2 style="border-color:#c084fc;">线程栈大小：-Xss</h2>
+  <p>
+    每个线程都有独立的栈帧空间，<code>-Xss</code> 控制单个线程的栈大小。默认值随平台不同（Linux x64 通常 512k，Windows 默认 256k）。
+  </p>
+  <ul>
+    <li>栈太小 → 深递归时抛 <code>StackOverflowError</code></li>
+    <li>栈太大 × 线程数多 → 整体内存占用暴增（1000 线程 × 1MB = 1GB）</li>
+    <li>微服务 / 线程池场景通常设 <code>-Xss256k</code> 或 <code>-Xss512k</code> 即可</li>
+  </ul>
+
+  <!-- 5. GC 收集器选择 -->
+  <h2 style="border-color:#c084fc;">GC 收集器选择：-XX:+UseG1GC</h2>
+  <h3>主流收集器对比</h3>
+  <table>
+    <thead>
+      <tr><th>收集器</th><th>适用场景</th><th>特点</th><th>JDK 默认版本</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>SerialGC</code></td>
+        <td>单核/客户端</td>
+        <td>单线程，STW，简单</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td><code>ParallelGC</code></td>
+        <td>批处理/吞吐优先</td>
+        <td>多线程，关注吞吐，暂停长</td>
+        <td>JDK 8 默认</td>
+      </tr>
+      <tr>
+        <td><code>G1GC</code></td>
+        <td>大堆/低延迟</td>
+        <td>Region 化，可控 MaxGCPause</td>
+        <td>JDK 9+ 默认</td>
+      </tr>
+      <tr>
+        <td><code>ZGC</code></td>
+        <td>超大堆/极低延迟</td>
+        <td>并发回收，亚毫秒级暂停</td>
+        <td>JDK 21 默认候选</td>
+      </tr>
+      <tr>
+        <td><code>ShenandoahGC</code></td>
+        <td>低延迟（Red Hat）</td>
+        <td>并发压缩，类似 ZGC</td>
+        <td>-</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>G1 的核心思想：Region 化</h3>
+  <p>
+    传统 CMS/Parallel 把堆划分为固定的新生代（Young）和老年代（Old）。
+    G1 把堆切成若干大小相等的 <strong>Region</strong>（默认 1~32MB），每个 Region 动态扮演 Eden / Survivor / Old / Humongous 角色。
+    GC 时优先回收"垃圾最多、回收收益最高"的 Region，这就是名字 <strong>Garbage-First</strong> 的由来。
+  </p>
+
+  <div class="tree">
+    堆（Heap）
+    ├── <span class="hi">Region 0</span>  [Eden]
+    ├── <span class="hi">Region 1</span>  [Eden]
+    ├── <span class="hi">Region 2</span>  [Survivor]
+    ├── <span class="hi">Region 3</span>  [Old]
+    ├── <span class="hi">Region 4</span>  [Old]
+    ├── <span class="hi">Region 5</span>  [Humongous]  ← 大对象（&gt; Region 的 50%）
+    └── ...（可动态重新角色分配）
+  </div>
+
+  <p>
+    G1 通过 <strong>Remembered Set（RSet）</strong>记录跨 Region 引用，回收某个 Region 时无需扫描全堆，从而控制单次 GC 的暂停时间。
+  </p>
+
+  <!-- 6. G1 核心参数 -->
+  <h2 style="border-color:#c084fc;">G1 的配套参数</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>G1 典型配置</span><span>JVM Args</span></div>
+    <pre><span class="kw">-XX:+UseG1GC</span>                    <span class="com"># 启用 G1 收集器（JDK 9+ 已是默认）</span>
+<span class="kw">-XX:MaxGCPauseMillis=200</span>         <span class="com"># 期望最大 STW 暂停（软目标，G1 尽力达到）</span>
+<span class="kw">-XX:G1HeapRegionSize=16m</span>         <span class="com"># Region 大小，必须是 2 的幂（1~32m）</span>
+<span class="kw">-XX:G1NewSizePercent=20</span>          <span class="com"># 新生代最小占堆比例（默认 5%）</span>
+<span class="kw">-XX:G1MaxNewSizePercent=40</span>       <span class="com"># 新生代最大占堆比例（默认 60%）</span>
+<span class="kw">-XX:InitiatingHeapOccupancyPercent=45</span>  <span class="com"># 堆占用达到多少比例触发并发标记（默认 45）</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>MaxGCPauseMillis 不是硬限制</strong><br>
+    这是给 G1 的"目标"，G1 会据此动态调整 Young 区大小和混合 GC 的 Region 数量。
+    设得太小（如 50ms）反而可能让 G1 频繁触发 GC，降低吞吐。<strong>200ms 是大多数 Web 服务的合理起点</strong>。
+  </div>
+
+  <!-- 7. GC 日志 -->
+  <h2 style="border-color:#c084fc;">GC 日志：排查问题的眼睛</h2>
+  <p>光配了参数还不够，必须把 GC 日志打开，否则出问题无从分析。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JDK 9+ 统一日志（Unified Logging）</span><span>JVM Args</span></div>
+    <pre><span class="kw">-Xlog:gc*:file=/var/log/app-gc.log:time,uptime,level,tags:filecount=5,filesize=20m</span>
+<span class="com"># gc*        → 输出所有 GC 相关子系统日志</span>
+<span class="com"># file=...   → 输出到文件</span>
+<span class="com"># time       → 打印时间戳</span>
+<span class="com"># filecount  → 最多保留 5 个滚动文件</span>
+<span class="com"># filesize   → 每个文件 20MB</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JDK 8 旧版 GC 日志参数</span><span>JVM Args</span></div>
+    <pre><span class="kw">-XX:+PrintGCDetails</span>
+<span class="kw">-XX:+PrintGCDateStamps</span>
+<span class="kw">-Xloggc:/var/log/app-gc.log</span>
+<span class="kw">-XX:+UseGCLogFileRotation</span>
+<span class="kw">-XX:NumberOfGCLogFiles=5</span>
+<span class="kw">-XX:GCLogFileSize=20m</span></pre>
+  </div>
+
+  <!-- 8. OOM 诊断参数 -->
+  <h2 style="border-color:#c084fc;">OOM 诊断三件套</h2>
+  <p>出现 OOM 时，堆转储（Heap Dump）是最重要的案发现场证据，务必提前配好。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OOM 诊断参数</span><span>JVM Args</span></div>
+    <pre><span class="kw">-XX:+HeapDumpOnOutOfMemoryError</span>          <span class="com"># OOM 时自动 dump 堆</span>
+<span class="kw">-XX:HeapDumpPath=/var/log/heap-dump.hprof</span> <span class="com"># dump 文件路径</span>
+<span class="kw">-XX:+ExitOnOutOfMemoryError</span>              <span class="com"># OOM 后直接退出（配合容器健康检查重启）</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：没有配 HeapDumpOnOutOfMemoryError</strong><br>
+    线上出现 OOM 后进程崩溃，重启后现场销毁，只剩一行"java.lang.OutOfMemoryError"，无法定位内存泄漏点。
+    这是最常见的生产事故复盘困难原因之一。
+  </div>
+
+  <!-- 9. 完整生产模板 -->
+  <h2 style="border-color:#c084fc;">完整生产启动模板（Spring Boot 示例）</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>生产级 JVM 参数（4c8g 容器）</span><span>Shell</span></div>
+    <pre>java \
+  <span class="com"># ── 堆内存（固定，避免扩缩堆触发 GC）──</span>
+  <span class="kw">-Xms4g</span> <span class="kw">-Xmx4g</span> \
+  <span class="com"># ── 线程栈（Web 服务足够用）──</span>
+  <span class="kw">-Xss256k</span> \
+  <span class="com"># ── GC 策略 ──</span>
+  <span class="kw">-XX:+UseG1GC</span> \
+  <span class="kw">-XX:MaxGCPauseMillis=200</span> \
+  <span class="kw">-XX:InitiatingHeapOccupancyPercent=40</span> \
+  <span class="com"># ── 元空间（防止 Metaspace 无限增长）──</span>
+  <span class="kw">-XX:MetaspaceSize=256m</span> \
+  <span class="kw">-XX:MaxMetaspaceSize=512m</span> \
+  <span class="com"># ── GC 日志（JDK 11+）──</span>
+  <span class="kw">-Xlog:gc*:file=/app/logs/gc.log:time,uptime:filecount=5,filesize=20m</span> \
+  <span class="com"># ── OOM 诊断 ──</span>
+  <span class="kw">-XX:+HeapDumpOnOutOfMemoryError</span> \
+  <span class="kw">-XX:HeapDumpPath=/app/logs/heap.hprof</span> \
+  <span class="kw">-XX:+ExitOnOutOfMemoryError</span> \
+  <span class="com"># ── 容器感知（JDK 8u191+ 必须显式加）──</span>
+  <span class="kw">-XX:+UseContainerSupport</span> \
+  <span class="kw">-jar</span> app.jar</pre>
+  </div>
+
+  <!-- 10. 元空间 -->
+  <h2 style="border-color:#c084fc;">元空间（Metaspace）与 PermGen 的区别</h2>
+  <p>
+    JDK 7 及以前有<strong>永久代（PermGen）</strong>，存储类的元数据。PermGen 是堆的一部分，大小固定，容易出现 <code>OutOfMemoryError: PermGen space</code>。
+  </p>
+  <p>
+    JDK 8 彻底移除 PermGen，改用<strong>元空间（Metaspace）</strong>，存在于<strong>本地内存（Native Memory）</strong>而非堆内。
+    默认无上限，理论上只要 OS 有内存就能增长——这反而是风险：类加载泄漏会悄悄耗尽系统内存。
+    因此生产环境<strong>必须</strong>设 <code>-XX:MaxMetaspaceSize</code>。
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>对比项</th><th>PermGen（JDK ≤7）</th><th>Metaspace（JDK 8+）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>位置</td><td>堆内（受 -Xmx 约束）</td><td>本地内存（独立于堆）</td></tr>
+      <tr><td>默认上限</td><td>64~85MB，固定</td><td>无上限（受 OS 限制）</td></tr>
+      <tr><td>GC 管理</td><td>Full GC 时回收</td><td>GC 触发时回收</td></tr>
+      <tr><td>配置参数</td><td><code>-XX:MaxPermSize</code></td><td><code>-XX:MaxMetaspaceSize</code></td></tr>
+    </tbody>
+  </table>
+
+  <!-- 11. 常见陷阱 -->
+  <h2 style="border-color:#c084fc;">常见陷阱汇总</h2>
+  <ul>
+    <li>
+      <strong>Xmx 设得接近物理内存上限：</strong>非堆区域（直接内存、Metaspace、栈）没有空间，导致进程被 OOM Killer 杀死，而不是 JVM 内部的 OOM。
+    </li>
+    <li>
+      <strong>容器里忘加 -XX:+UseContainerSupport（JDK 8u191 以下）：</strong>JVM 读到宿主机内存，以为自己有 128GB，堆设到 96GB，实际 cgroup 限制 4GB，直接被杀。
+    </li>
+    <li>
+      <strong>Xms 远小于 Xmx 用于"节省内存"：</strong>启动后流量一来堆频繁扩容，每次扩容都触发 GC，早高峰响应时间飙升。
+    </li>
+    <li>
+      <strong>JDK 8 环境加了 JDK 9+ 的 -Xlog 参数：</strong>JVM 无法识别直接报错退出，而不是忽略。要用 <code>-XX:+PrintGCDetails</code> 等旧参数。
+    </li>
+    <li>
+      <strong>MaxGCPauseMillis 设成 50ms 后吞吐骤降：</strong>G1 为了满足低暂停目标，把 Young 区压缩得很小，GC 频率大幅提高，CPU 大量消耗在 GC 上。
+    </li>
+  </ul>
+
+  <!-- 12. 面试考点 -->
+  <h2 style="border-color:#c084fc;">面试高频考点</h2>
+
+  <h3>Q：-Xmx 和 -Xms 建议设成一样吗？为什么？</h3>
+  <p>
+    生产环境建议相同。原因：堆扩容时需要触发一次 GC 来保证内存连续性，会引入额外停顿；固定堆大小让 GC 行为更可预测，便于调优基线对比。
+    开发/测试环境不必相同，让 JVM 按需分配可以节省资源。
+  </p>
+
+  <h3>Q：G1GC 和 CMS 的主要区别？</h3>
+  <p>
+    CMS 只处理老年代，与 ParNew（新生代）配合使用，两块区域分别管理；G1 统一管理整个堆，用 Region 化替代固定代划分，可以同时控制新生代和老年代的回收粒度，并且提供可预期的暂停时间目标，而 CMS 无法直接设置暂停目标。
+    CMS 在 JDK 9 被标记废弃，JDK 14 完全移除。
+  </p>
+
+  <h3>Q：什么情况下考虑换用 ZGC？</h3>
+  <p>
+    当 G1 的 GC 暂停（即使调优后）仍然超过 100ms，且业务对延迟极度敏感（如实时交易、游戏服务器）时考虑 ZGC。
+    ZGC 的并发 GC 设计可以将暂停控制在 1~10ms，但吞吐略低于 G1，且需要 JDK 11+（生产可用建议 JDK 15+）。
+  </p>
+
+  <h3>Q：Metaspace OOM 怎么排查？</h3>
+  <p>
+    常见原因是动态类加载泄漏（如 JSP 热重载、反射生成代理类没有使用自定义 ClassLoader 并及时卸载）。
+    排查方法：<code>jcmd &lt;pid&gt; VM.native_memory</code> 查看 Metaspace 使用量，配合 MAT / JProfiler 分析 ClassLoader 数量，定位哪个 ClassLoader 加载了大量类而未被回收。
+  </p>
+
+  <hr />
+
+  <!-- 参数速查卡 -->
+  <h2 style="border-color:#c084fc;">参数速查卡</h2>
+  <table>
+    <thead>
+      <tr><th>参数</th><th>作用</th><th>推荐值（4c8g 参考）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>-Xms</code></td><td>初始堆大小</td><td>与 Xmx 相同，如 <code>4g</code></td></tr>
+      <tr><td><code>-Xmx</code></td><td>最大堆大小</td><td>物理内存的 60~75%，如 <code>4g</code></td></tr>
+      <tr><td><code>-Xss</code></td><td>每线程栈大小</td><td><code>256k</code>~<code>512k</code></td></tr>
+      <tr><td><code>-XX:MetaspaceSize</code></td><td>Metaspace 初始大小</td><td><code>256m</code></td></tr>
+      <tr><td><code>-XX:MaxMetaspaceSize</code></td><td>Metaspace 上限</td><td><code>512m</code></td></tr>
+      <tr><td><code>-XX:+UseG1GC</code></td><td>启用 G1 收集器</td><td>JDK 9+ 已默认</td></tr>
+      <tr><td><code>-XX:MaxGCPauseMillis</code></td><td>G1 目标最大暂停</td><td><code>200</code>（ms）</td></tr>
+      <tr><td><code>-XX:+HeapDumpOnOutOfMemoryError</code></td><td>OOM 时 dump 堆</td><td>必须开启</td></tr>
+      <tr><td><code>-XX:+UseContainerSupport</code></td><td>感知 cgroup 内存限制</td><td>容器部署必须加（JDK 8u191+）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./12-破坏双亲委派.html" class="nav-btn">← 12. 破坏双亲委派的场景（SPI / Tomcat）</a>
+    <a href="./14-JIT即时编译.html" class="nav-btn next">14. JIT 即时编译（C1/C2 / 分层编译） →</a>
+  </div>
+
+</div>
+</body>
+</html>

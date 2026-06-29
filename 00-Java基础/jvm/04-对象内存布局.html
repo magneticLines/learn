@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>04. 对象内存布局（Header / Instance Data / Padding）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw  { color: #c084fc; } .ty  { color: #60a5fa; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .com { color: #64748b; } .fn  { color: #60a5fa; }
+    .punct { color: #475569; } .var { color: #e2e8f0; } .ann { color: #f87171; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .tree .hi { color: #c084fc; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next:hover { background: #1e1040; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../java-roadmap.html">路线图</a> / JVM / 内存模型
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <span class="tag" style="color:#c084fc; border-color:#4a1d96;">JVM · 内存模型</span>
+    <h1>对象内存布局<br>Header / Instance Data / Padding</h1>
+    <p>深入堆内存，看清 JVM 在 new 一个对象时，到底在内存里放了什么，以及为什么要这样放。</p>
+  </div>
+
+  <!-- ① 为什么要了解对象布局 -->
+  <h2 style="border-color:#c084fc;">为什么要研究对象内存布局？</h2>
+  <p>
+    对很多初学者而言，<code>new Object()</code> 只是"在堆上分配了一块内存"。
+    但当你需要优化内存占用、分析 GC 停顿、理解 synchronized 原理、或者看 JVM 源码时，
+    就必须清楚这块内存<strong>里面长什么样</strong>。
+  </p>
+  <p>
+    HotSpot JVM（OpenJDK 主流实现）规定：堆上每一个 Java 对象都由三部分组成：
+  </p>
+
+  <div class="tree">
+    ┌──────────────────────────────────┐<br>
+    │  <span class="hi">Object Header（对象头）</span>         │  ← JVM 自己用，Java 代码不可见<br>
+    │    Mark Word   （4 或 8 字节）   │<br>
+    │    Klass Word  （4 或 8 字节）   │<br>
+    │    [Array Length（仅数组，4 字节）]│<br>
+    ├──────────────────────────────────┤<br>
+    │  <span class="hi">Instance Data（实例数据）</span>        │  ← 你定义的所有字段<br>
+    │    int age        （4 字节）     │<br>
+    │    long salary    （8 字节）     │<br>
+    │    Object ref     （4 字节）     │<br>
+    │    …                             │<br>
+    ├──────────────────────────────────┤<br>
+    │  <span class="hi">Padding（对齐填充）</span>               │  ← 凑够 8 字节倍数（可能为 0）<br>
+    └──────────────────────────────────┘
+  </div>
+
+  <!-- ② Mark Word -->
+  <h2 style="border-color:#c084fc;">① Mark Word —— 对象的"身份证"</h2>
+  <p>
+    Mark Word 是对象头中最核心的部分，<strong>64 位 JVM 占 8 字节</strong>。
+    它是一个多路复用字段——同一块内存在不同状态下存放的内容完全不同，JVM 通过最低几位的标志位来区分当前状态：
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>对象状态</th>
+        <th>存储内容（64 bit）</th>
+        <th>标志位（低 2-3 bit）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>无锁</td>
+        <td>hashCode（31 bit）+ 分代年龄（4 bit）+ 偏向模式 0</td>
+        <td><code>01</code></td>
+      </tr>
+      <tr>
+        <td>偏向锁</td>
+        <td>线程 ID（54 bit）+ Epoch + 分代年龄</td>
+        <td><code>01</code>（偏向位=1）</td>
+      </tr>
+      <tr>
+        <td>轻量级锁</td>
+        <td>指向线程栈 Lock Record 的指针</td>
+        <td><code>00</code></td>
+      </tr>
+      <tr>
+        <td>重量级锁</td>
+        <td>指向 Monitor 对象的指针</td>
+        <td><code>10</code></td>
+      </tr>
+      <tr>
+        <td>GC 标记</td>
+        <td>空（转移期 forwarding pointer）</td>
+        <td><code>11</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>设计精妙之处：</strong>同一块 8 字节被"时分复用"。
+    对象未被锁定时，这里存 hashCode；加了 synchronized 之后，hashCode 被挤走，
+    等锁释放再存回来——这就是为什么<strong>在加锁之后才第一次调用 hashCode() 有特殊逻辑</strong>的根本原因。
+  </div>
+
+  <h3>为什么 hashCode 只有 31 bit？</h3>
+  <p>
+    HotSpot 默认用 <strong>Marsaglia xor-shift</strong> 算法生成 identity hashCode，
+    结果存入 Mark Word 的 31 位字段。一旦写入，这个值就永远不变（即使对象被 GC 移动地址也不变），
+    这是 <code>System.identityHashCode()</code> 的语义保证。
+  </p>
+
+  <!-- ③ Klass Word -->
+  <h2 style="border-color:#c084fc;">② Klass Word —— 类型指针</h2>
+  <p>
+    Klass Word 指向方法区（Metaspace）中该类的 <code>InstanceKlass</code> 结构，
+    JVM 靠它知道这个对象是哪个类的实例，从而找到虚方法表、字段描述等。
+  </p>
+  <p>
+    64 位 JVM 默认开启<strong>指针压缩（CompressedOops）</strong>，Klass Word 从 8 字节压缩到 4 字节。
+    堆地址不超过 32 GB 时均可使用，节省约 30% 的对象头开销。
+  </p>
+
+  <div class="callout tip">
+    <strong>JVM 参数对照：</strong><br>
+    <code>-XX:+UseCompressedOops</code>（默认开启）：普通对象引用 4 字节<br>
+    <code>-XX:+UseCompressedClassPointers</code>（默认开启）：Klass Word 4 字节<br>
+    当堆 &gt; 32 GB 时两者自动关闭，对象头膨胀，需重新评估内存规划。
+  </div>
+
+  <!-- ④ Instance Data -->
+  <h2 style="border-color:#c084fc;">③ Instance Data —— 字段的真实存储</h2>
+  <p>
+    Instance Data 存放你在类中声明的所有实例字段（静态字段在 Metaspace 中，不在这里）。
+    排列规则不是按源码顺序，HotSpot 会按字段类型做<strong>重新排序</strong>以减少 padding 浪费：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>字段类型</th><th>大小</th><th>排列优先级</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>long</code> / <code>double</code></td><td>8 字节</td><td>最先</td></tr>
+      <tr><td><code>int</code> / <code>float</code></td><td>4 字节</td><td>其次</td></tr>
+      <tr><td><code>short</code> / <code>char</code></td><td>2 字节</td><td>再次</td></tr>
+      <tr><td><code>byte</code> / <code>boolean</code></td><td>1 字节</td><td>再次</td></tr>
+      <tr><td>引用（压缩后）</td><td>4 字节</td><td>最后</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    父类字段在子类字段<strong>之前</strong>排列，但为节省空间，子类的小字段可能插入父类的 padding 空洞中
+    （取决于 JVM 实现，HotSpot 有此优化，参数 <code>-XX:+CompactFields</code> 默认开启）。
+  </p>
+
+  <!-- ⑤ Padding -->
+  <h2 style="border-color:#c084fc;">④ Padding —— 对齐填充</h2>
+  <p>
+    HotSpot 要求每个对象的<strong>总大小必须是 8 字节的倍数</strong>（与 CPU Cache Line 和 GC 的 oop 压缩算法有关）。
+    如果 Header + Instance Data 之和不是 8 的倍数，JVM 在末尾补零填充。
+  </p>
+  <p>
+    这些 padding 字节没有任何语义，只是"凑数"，但它们真实占用内存。
+    一个只有 <code>boolean</code> 字段的类，Instance Data 只有 1 字节，却要补 7 字节 padding——
+    这是很多人没想到的内存浪费源头。
+  </p>
+
+  <!-- ⑥ 完整示例 + JOL 验证 -->
+  <h2 style="border-color:#c084fc;">完整示例：用 JOL 看实际布局</h2>
+  <p>
+    <strong>JOL（Java Object Layout）</strong>是 OpenJDK 官方工具库，可以在运行时打印对象的真实内存布局。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>pom.xml 依赖</span></div>
+    <pre><span class="punct">&lt;</span><span class="ty">dependency</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">groupId</span><span class="punct">&gt;</span>org.openjdk.jol<span class="punct">&lt;/</span><span class="ty">groupId</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">artifactId</span><span class="punct">&gt;</span>jol-core<span class="punct">&lt;/</span><span class="ty">artifactId</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">version</span><span class="punct">&gt;</span>0.17<span class="punct">&lt;/</span><span class="ty">version</span><span class="punct">&gt;</span>
+<span class="punct">&lt;/</span><span class="ty">dependency</span><span class="punct">&gt;</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>示例类</span><span>Java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Order</span> <span class="punct">{</span>
+    <span class="kw">boolean</span> <span class="var">paid</span><span class="punct">;</span>      <span class="com">// 1 字节，但会被提升或补 padding</span>
+    <span class="kw">int</span>     <span class="var">quantity</span><span class="punct">;</span>  <span class="com">// 4 字节</span>
+    <span class="kw">long</span>    <span class="var">amount</span><span class="punct">;</span>    <span class="com">// 8 字节，对齐要求最高</span>
+    <span class="ty">String</span>  <span class="var">note</span><span class="punct">;</span>      <span class="com">// 引用，压缩后 4 字节</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JOL 打印布局</span><span>Java</span></div>
+    <pre><span class="kw">import</span> <span class="var">org.openjdk.jol.info.ClassLayout</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">JolDemo</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span>
+            <span class="ty">ClassLayout</span><span class="punct">.</span><span class="fn">parseInstance</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Order</span><span class="punct">()).</span><span class="fn">toPrintable</span><span class="punct">());</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>典型输出（64 位 JVM + 指针压缩）</span></div>
+    <pre><span class="com">OFFSET  SIZE    TYPE DESCRIPTION</span>
+     <span class="num">0</span>     <span class="num">4</span>         (object header: mark)    <span class="com">← Mark Word 低 4 字节</span>
+     <span class="num">4</span>     <span class="num">4</span>         (object header: mark)    <span class="com">← Mark Word 高 4 字节</span>
+     <span class="num">8</span>     <span class="num">4</span>         (object header: class)   <span class="com">← Klass Word（压缩后 4 字节）</span>
+    <span class="num">12</span>     <span class="num">4</span>   int  Order.quantity             <span class="com">← 先排 4 字节字段</span>
+    <span class="num">16</span>     <span class="num">8</span>  long  Order.amount               <span class="com">← 再排 8 字节字段</span>
+    <span class="num">24</span>     <span class="num">1</span>  boolean Order.paid               <span class="com">← 1 字节字段</span>
+    <span class="num">25</span>     <span class="num">3</span>         (alignment/padding gap)   <span class="com">← 补 3 字节，凑到 4 字节边界</span>
+    <span class="num">28</span>     <span class="num">4</span>   ref  Order.note                 <span class="com">← 引用 4 字节</span>
+<span class="com">Instance size: 32 bytes</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>注意字段排序变了：</strong>源码顺序是 paid → quantity → amount → note，
+    但实际内存顺序是 quantity → amount → paid → note。
+    JVM 重排是为了让每个字段都自然对齐（long 必须在 8 的倍数偏移处），减少 padding 浪费。
+  </div>
+
+  <!-- ⑦ 数组对象 -->
+  <h2 style="border-color:#c084fc;">数组对象的特殊结构</h2>
+  <p>
+    数组是特殊的对象，它在 Klass Word 之后多一个 <strong>4 字节的 Array Length 字段</strong>，
+    记录数组元素个数。因此一个 <code>int[]</code> 的对象头占 <strong>16 字节</strong>（Mark 8 + Klass 4 + Length 4），
+    而普通对象头只有 12 字节（压缩指针开启时）。
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>类型</th><th>对象头大小</th><th>备注</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>普通对象（压缩指针）</td><td>12 字节</td><td>Mark 8 + Klass 4</td></tr>
+      <tr><td>普通对象（未压缩）</td><td>16 字节</td><td>Mark 8 + Klass 8</td></tr>
+      <tr><td>数组对象（压缩指针）</td><td>16 字节</td><td>Mark 8 + Klass 4 + Length 4</td></tr>
+      <tr><td>数组对象（未压缩）</td><td>24 字节</td><td>Mark 8 + Klass 8 + Length 4 + pad 4</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ⑧ 最小对象大小 -->
+  <h2 style="border-color:#c084fc;">最小对象是多大？</h2>
+  <p>
+    <code>new Object()</code>——没有任何实例字段：
+    Mark Word 8 字节 + Klass Word 4 字节 = 12 字节，
+    不满 8 的倍数，padding 补 4 字节，最终 <strong>16 字节</strong>。
+  </p>
+  <p>
+    这告诉我们：哪怕一个空对象也要占 16 字节。
+    用大量细粒度对象（如 <code>new Boolean(true)</code>）会产生巨大内存开销，
+    这正是 JVM 用 <strong>Integer 缓存池</strong>（-128~127）和 <strong>Boolean.TRUE/FALSE</strong> 单例的原因。
+  </p>
+
+  <!-- ⑨ 与 synchronized 的关系 -->
+  <h2 style="border-color:#c084fc;">与 synchronized 的关系</h2>
+  <p>
+    理解了 Mark Word，你就能真正搞清楚 <code>synchronized</code> 的锁升级过程：
+  </p>
+  <ol>
+    <li><strong>无锁</strong>：Mark Word 存 hashCode + 分代年龄，标志位 <code>01</code>。</li>
+    <li><strong>偏向锁</strong>：将当前线程 ID 写入 Mark Word，后续同一线程无 CAS 直接进入，极低开销。</li>
+    <li><strong>轻量级锁</strong>：竞争出现，Mark Word 被替换成指向栈帧 Lock Record 的指针，CAS 抢占，自旋等待。</li>
+    <li><strong>重量级锁</strong>：自旋超限，膨胀为操作系统 Mutex，Mark Word 指向堆上的 Monitor 对象。</li>
+  </ol>
+
+  <div class="callout warn">
+    <strong>陷阱：调用 hashCode() 会禁用偏向锁</strong><br>
+    偏向锁的 Mark Word 没有位置存 hashCode。
+    如果一个对象<strong>先调用了 <code>System.identityHashCode()</code>，再对它加锁</strong>，
+    JVM 会直接跳过偏向锁，从轻量级锁开始。
+    反之，如果已经偏向，调用 hashCode 会撤销偏向锁，代价较大。
+  </div>
+
+  <!-- ⑩ 内存压缩与优化 -->
+  <h2 style="border-color:#c084fc;">实战：减少内存占用的技巧</h2>
+
+  <h3>1. 字段声明顺序不影响布局，但字段类型组合影响 padding</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>差的写法（多 4 字节 padding）</span><span>Java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Bad</span> <span class="punct">{</span>
+    <span class="kw">byte</span>  <span class="var">a</span><span class="punct">;</span>   <span class="com">// offset 12, 1 byte</span>
+    <span class="com">// JVM 会在此插入 3 字节 padding，让 int 对齐到 4</span>
+    <span class="kw">long</span>  <span class="var">b</span><span class="punct">;</span>   <span class="com">// offset 16, 8 bytes</span>
+    <span class="kw">byte</span>  <span class="var">c</span><span class="punct">;</span>   <span class="com">// offset 24, 1 byte</span>
+    <span class="com">// 末尾 7 字节 padding</span>
+<span class="punct">}</span>  <span class="com">// 总大小: 32 字节</span>
+
+<span class="kw">class</span> <span class="ty">Good</span> <span class="punct">{</span>
+    <span class="kw">long</span>  <span class="var">b</span><span class="punct">;</span>   <span class="com">// offset 12 → JVM 重排后 offset 12</span>
+    <span class="kw">byte</span>  <span class="var">a</span><span class="punct">;</span>
+    <span class="kw">byte</span>  <span class="var">c</span><span class="punct">;</span>   <span class="com">// a 和 c 紧凑排在一起</span>
+    <span class="com">// 末尾 6 字节 padding</span>
+<span class="punct">}</span>  <span class="com">// 总大小: 24 字节（JVM 会自动重排，Good 和 Bad 实际相同）</span></pre>
+  </div>
+
+  <div class="callout tip">
+    HotSpot 会自动重排字段，所以手写顺序对最终布局影响不大。
+    真正影响内存的是<strong>字段数量和类型的组合</strong>，以及父子类继承层次。
+  </div>
+
+  <h3>2. 用基本类型替代包装类型</h3>
+  <p>
+    <code>Integer</code> 对象 = 16 字节对象头 + 4 字节 int 字段 = <strong>16 字节</strong>（含 padding）。
+    而 <code>int</code> 基本类型只占 <strong>4 字节</strong>。
+    在数组或大量集合中，两者内存差距高达 4 倍。
+  </p>
+
+  <h3>3. 关注继承层次带来的 padding 叠加</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>父子类 padding 叠加示例</span><span>Java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Parent</span> <span class="punct">{</span>
+    <span class="kw">int</span> <span class="var">x</span><span class="punct">;</span>    <span class="com">// 12~15（4 字节）</span>
+              <span class="com">// 16 字节结束，恰好 8 的倍数，无需 padding</span>
+<span class="punct">}</span>
+
+<span class="kw">class</span> <span class="ty">Child</span> <span class="kw">extends</span> <span class="ty">Parent</span> <span class="punct">{</span>
+    <span class="kw">long</span> <span class="var">y</span><span class="punct">;</span>   <span class="com">// 必须对齐到 8 的倍数 → offset 16，OK</span>
+    <span class="kw">byte</span> <span class="var">z</span><span class="punct">;</span>   <span class="com">// offset 24，1 字节</span>
+              <span class="com">// 末尾补 7 字节 padding</span>
+<span class="punct">}</span>  <span class="com">// 总 32 字节</span></pre>
+  </div>
+
+  <!-- ⑪ 面试考点 -->
+  <hr />
+  <h2 style="border-color:#c084fc;">面试高频考点</h2>
+  <ul>
+    <li><strong>new Object() 占多少字节？</strong> 开启压缩指针时 16 字节（12 字节头 + 4 字节 padding），关闭时 16 字节（头本身就是 16 字节）。</li>
+    <li><strong>Mark Word 里存了什么？</strong> 要按锁状态分情况回答：无锁存 hashCode + 年龄，偏向锁存线程 ID，轻量级锁存 Lock Record 指针，重量级锁存 Monitor 指针。</li>
+    <li><strong>为什么对象大小必须是 8 的倍数？</strong> 两个原因：CPU 缓存行对齐提升访问性能；压缩指针（CompressedOops）将 32 位 oop 左移 3 位来寻址，要求对象首地址按 8 字节对齐。</li>
+    <li><strong>调用 hashCode() 后还能用偏向锁吗？</strong> 不能。Mark Word 中偏向锁没有存放 hashCode 的空间，计算过 identity hash 的对象会直接跳过偏向锁。</li>
+    <li><strong>CompressedOops 最大支持多大堆？</strong> 理论上 2³² × 8 = 32 GB，超过后自动关闭，对象引用回到 8 字节。</li>
+    <li><strong>静态字段在哪里？</strong> 静态字段属于类本身，存放在 Metaspace 的 <code>InstanceKlass</code> 对应的 Java mirror（即 Class 对象）中，不在堆上的实例对象里。</li>
+  </ul>
+
+  <!-- ⑫ 小结 -->
+  <hr />
+  <h2 style="border-color:#c084fc;">小结</h2>
+  <p>
+    Java 对象在堆内存中由三部分构成：
+  </p>
+  <ul>
+    <li><strong>Object Header</strong>：Mark Word（多路复用，存锁态/hashCode/GC 信息）+ Klass Word（类型指针）+ 可选的 Array Length。</li>
+    <li><strong>Instance Data</strong>：所有实例字段，JVM 按类型重排以减少 padding，父类字段在前。</li>
+    <li><strong>Padding</strong>：末尾凑 8 字节倍数的填充，无语义但真实占内存。</li>
+  </ul>
+  <p>
+    理解这个布局，是读懂 synchronized 锁升级、GC 移动对象、JVM 优化内存的基础。
+    推荐在自己机器上跑一跑 JOL，数字比文字更有说服力。
+  </p>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-栈帧结构.html" class="nav-btn">← 03. 栈帧结构（局部变量表 / 操作数栈）</a>
+    <a href="./05-JMM.html" class="nav-btn next">05. Java 内存模型 JMM（happens-before / 指令重排） →</a>
+  </div>
+
+</div>
+</body>
+</html>
