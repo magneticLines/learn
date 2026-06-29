@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>07. CyclicBarrier 循环屏障 — Java 并发</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part II 构建模块 / 队列与同步器
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part II 构建模块 · 队列与同步器</div>
+    <h1>07. CyclicBarrier 循环屏障</h1>
+    <p>让一组线程在同一个检查点集合等待，全部就位后再一起放行——还能无限复用。</p>
+  </div>
+
+  <!-- 1. 为什么需要 CyclicBarrier -->
+  <h2>为什么需要 CyclicBarrier？</h2>
+  <p>
+    想象一场接力赛：只有全部队员都到达交接区，裁判才会鸣枪，所有人同时出发进入下一棒。
+    这就是 <strong>屏障（Barrier）</strong> 语义——多个线程分头干活，在某个"检查点"处互等，
+    全员到齐之后再一起继续。
+  </p>
+  <p>
+    用 <code>Thread.join()</code> 或 <code>CountDownLatch</code> 也能实现"等齐再走"，
+    但它们都是<strong>一次性</strong>的：用完即毁，下一轮需要重新创建对象。
+    <code>CyclicBarrier</code> 的"Cyclic"正是为了解决这个问题——屏障可以<strong>循环复用</strong>，
+    多轮迭代计算（如并行模拟、矩阵分块运算）无需反复构造同步器。
+  </p>
+
+  <div class="callout info">
+    <strong>CountDownLatch vs CyclicBarrier</strong><br/>
+    CountDownLatch：1 个协调者倒计数，N 个等待者被动等待；一次性，不可重置。<br/>
+    CyclicBarrier：N 个参与者互等，大家地位平等；可复用，每轮自动重置。
+  </div>
+
+  <!-- 2. 核心 API -->
+  <h2>核心 API 一览</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — CyclicBarrier 构造与使用</span></div>
+    <pre><span class="com">// 构造1：指定参与者数量</span>
+<span class="ty">CyclicBarrier</span> <span class="var">barrier</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CyclicBarrier</span><span class="punct">(</span><span class="num">4</span><span class="punct">);</span>
+
+<span class="com">// 构造2：指定参与者数量 + 屏障动作（最后一个到达的线程执行）</span>
+<span class="ty">CyclicBarrier</span> <span class="var">barrier2</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CyclicBarrier</span><span class="punct">(</span><span class="num">4</span><span class="punct">,</span>
+    <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"所有线程就绪，开始下一阶段"</span><span class="punct">));</span>
+
+<span class="com">// 参与者调用 await() 表示"我到了"</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">barrier</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>            <span class="com">// 阻塞直到全部线程到达</span>
+    <span class="var">barrier</span><span class="punct">.</span><span class="fn">await</span><span class="punct">(</span><span class="num">5</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>  <span class="com">// 带超时版本</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">BrokenBarrierException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 屏障已损坏，必须处理！</span>
+<span class="punct">}</span>
+
+<span class="com">// 查询状态</span>
+<span class="var">barrier</span><span class="punct">.</span><span class="fn">isBroken</span><span class="punct">();</span>   <span class="com">// 是否已损坏</span>
+<span class="var">barrier</span><span class="punct">.</span><span class="fn">getNumberWaiting</span><span class="punct">();</span>  <span class="com">// 当前等待线程数</span>
+<span class="var">barrier</span><span class="punct">.</span><span class="fn">reset</span><span class="punct">();</span>      <span class="com">// 强制重置（危险！会触发 BrokenBarrierException）</span></pre>
+  </div>
+
+  <!-- 3. 内部原理 -->
+  <h2>内部原理：Generation + ReentrantLock</h2>
+  <p>
+    JDK 源码中，<code>CyclicBarrier</code> 用一个 <code>ReentrantLock</code> + <code>Condition</code>
+    实现等待/唤醒，用一个内部类 <code>Generation</code> 表示"当前这一轮"。
+    每次屏障被突破或重置，都会创建新的 <code>Generation</code> 实例，
+    这就是"Cyclic"得以成立的关键——旧一轮的等待者不会干扰新一轮。
+  </p>
+
+  <div class="tree">
+CyclicBarrier<br/>
+├── <span class="hi">lock</span>: ReentrantLock         &lt;-- 保护所有状态<br/>
+├── <span class="hi">trip</span>: Condition            &lt;-- 等待/唤醒队列<br/>
+├── <span class="hi">parties</span>: int              &lt;-- 总参与者数<br/>
+├── <span class="hi">count</span>: int               &lt;-- 当前轮还差多少人到达<br/>
+├── <span class="hi">generation</span>: Generation   &lt;-- 当前代（含 broken 标志）<br/>
+└── <span class="hi">barrierCommand</span>: Runnable &lt;-- 可选的屏障动作
+  </div>
+
+  <p>
+    当第 <em>N</em> 个线程调用 <code>await()</code>，<code>count</code> 减为 0：
+    先执行 <code>barrierCommand</code>（如果有），然后调用 <code>nextGeneration()</code>
+    创建新的 <code>Generation</code> 并 <code>signalAll()</code> 唤醒全部等待者，
+    屏障自动为下一轮复位。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JDK 源码简化版 — dowait 核心逻辑</span></div>
+    <pre><span class="kw">private</span> <span class="ty">int</span> <span class="fn">dowait</span><span class="punct">(</span><span class="kw">boolean</span> <span class="var">timed</span><span class="punct">,</span> <span class="kw">long</span> <span class="var">nanos</span><span class="punct">)</span>
+        <span class="kw">throws</span> <span class="ty">InterruptedException</span><span class="punct">,</span> <span class="ty">BrokenBarrierException</span> <span class="punct">{</span>
+    <span class="kw">final</span> <span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">lock</span><span class="punct">;</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">final</span> <span class="ty">Generation</span> <span class="var">g</span> <span class="punct">=</span> <span class="var">generation</span><span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">g</span><span class="punct">.</span><span class="var">broken</span><span class="punct">)</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="ty">BrokenBarrierException</span><span class="punct">();</span>
+
+        <span class="kw">int</span> <span class="var">index</span> <span class="punct">=</span> <span class="punct">--</span><span class="var">count</span><span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">index</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">) {</span>  <span class="com">// 最后一个到达</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">barrierCommand</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="var">barrierCommand</span><span class="punct">.</span><span class="fn">run</span><span class="punct">();</span>
+            <span class="fn">nextGeneration</span><span class="punct">();</span>  <span class="com">// 重置 count、创建新 Generation、signalAll</span>
+            <span class="kw">return</span> <span class="num">0</span><span class="punct">;</span>
+        <span class="punct">}</span>
+        <span class="com">// 不是最后一个：在 Condition 上等待</span>
+        <span class="kw">for</span> <span class="punct">(;;) {</span>
+            <span class="kw">if</span> <span class="punct">(!</span><span class="var">timed</span><span class="punct">)</span> <span class="var">trip</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+            <span class="kw">else if</span> <span class="punct">(</span><span class="var">nanos</span> <span class="punct">&gt;</span> <span class="num">0L</span><span class="punct">)</span> <span class="var">nanos</span> <span class="punct">=</span> <span class="var">trip</span><span class="punct">.</span><span class="fn">awaitNanos</span><span class="punct">(</span><span class="var">nanos</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">g</span><span class="punct">.</span><span class="var">broken</span><span class="punct">)</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="ty">BrokenBarrierException</span><span class="punct">();</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">g</span> <span class="punct">!=</span> <span class="var">generation</span><span class="punct">)</span> <span class="kw">return</span> <span class="var">index</span><span class="punct">;</span>  <span class="com">// 新一代，正常返回</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">timed</span> <span class="punct">&amp;&amp;</span> <span class="var">nanos</span> <span class="punct">&lt;=</span> <span class="num">0L</span><span class="punct">)</span> <span class="punct">{</span> <span class="fn">breakBarrier</span><span class="punct">();</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="ty">TimeoutException</span><span class="punct">();</span> <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 4. 典型用法 -->
+  <h2>典型用法：并行迭代计算</h2>
+  <p>
+    以<strong>并行粒子模拟</strong>为例：每轮迭代让 N 个线程各自更新自己负责的粒子，
+    全部更新完毕后统一合并结果，再进入下一轮。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ParticleSimulation.java — 多轮迭代场景</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ParticleSimulation</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">int</span> <span class="var">THREADS</span> <span class="punct">=</span> <span class="num">4</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">double</span><span class="punct">[]</span> <span class="var">positions</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">double</span><span class="punct">[</span><span class="num">1000</span><span class="punct">];</span>  <span class="com">// 粒子位置</span>
+    <span class="kw">private final</span> <span class="ty">AtomicReference</span><span class="punct">&lt;</span><span class="ty">double[]</span><span class="punct">&gt;</span> <span class="var">snapshot</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicReference</span><span class="punct">();</span>
+
+    <span class="kw">private final</span> <span class="ty">CyclicBarrier</span> <span class="var">barrier</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CyclicBarrier</span><span class="punct">(</span><span class="var">THREADS</span><span class="punct">,</span>
+        <span class="com">// 屏障动作：最后一个线程到达后执行，此时所有线程都停在 await()，无竞争</span>
+        <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="var">snapshot</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="var">positions</span><span class="punct">.</span><span class="fn">clone</span><span class="punct">())</span>
+    <span class="punct">);</span>
+
+    <span class="kw">class</span> <span class="ty">Worker</span> <span class="kw">implements</span> <span class="ty">Runnable</span> <span class="punct">{</span>
+        <span class="kw">private final</span> <span class="ty">int</span> <span class="var">from</span><span class="punct">,</span> <span class="var">to</span><span class="punct">;</span>
+        <span class="ty">Worker</span><span class="punct">(</span><span class="ty">int</span> <span class="var">from</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">to</span><span class="punct">) {</span> <span class="kw">this</span><span class="punct">.</span><span class="var">from</span> <span class="punct">=</span> <span class="var">from</span><span class="punct">;</span> <span class="kw">this</span><span class="punct">.</span><span class="var">to</span> <span class="punct">=</span> <span class="var">to</span><span class="punct">;</span> <span class="punct">}</span>
+
+        <span class="ann">@Override</span>
+        <span class="kw">public void</span> <span class="fn">run</span><span class="punct">() {</span>
+            <span class="kw">try</span> <span class="punct">{</span>
+                <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">round</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">round</span> <span class="punct">&lt;</span> <span class="num">100</span><span class="punct">;</span> <span class="var">round</span><span class="punct">++) {</span>
+                    <span class="fn">updateParticles</span><span class="punct">(</span><span class="var">from</span><span class="punct">,</span> <span class="var">to</span><span class="punct">);</span>    <span class="com">// 第一步：各自更新分片</span>
+
+                    <span class="var">barrier</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>              <span class="com">// 等待全部线程完成更新</span>
+                    <span class="com">// ↑ 屏障动作（快照）在此处由最后一个到达的线程执行</span>
+
+                    <span class="fn">renderParticles</span><span class="punct">(</span><span class="var">snapshot</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(),</span> <span class="var">from</span><span class="punct">,</span> <span class="var">to</span><span class="punct">);</span>  <span class="com">// 第二步：基于快照渲染</span>
+
+                    <span class="var">barrier</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>              <span class="com">// 等待全部线程完成渲染，进入下一轮</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="punct">|</span> <span class="ty">BrokenBarrierException</span> <span class="var">e</span><span class="punct">) {</span>
+                <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>屏障动作的执行时机</strong>：<code>barrierCommand</code> 由<strong>最后一个到达</strong>的线程在持有锁时同步执行，
+    此时其余线程都挂起在 <code>Condition.await()</code>，不存在并发竞争。
+    因此屏障动作里可以安全地合并/汇总各线程的中间结果，无需额外同步。
+  </div>
+
+  <!-- 5. 并发陷阱 -->
+  <h2>并发陷阱与反例</h2>
+
+  <h3>陷阱 1：忽略 BrokenBarrierException</h3>
+  <p>
+    只要<strong>任意一个参与者</strong>超时、被中断或抛出异常，屏障就会进入<strong>损坏（broken）状态</strong>，
+    随后所有正在等待或将来调用 <code>await()</code> 的线程都会收到 <code>BrokenBarrierException</code>。
+    如果你把它 <code>catch</code> 后静默吞掉，程序会在屏障损坏后继续以不一致的状态执行。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 静默吞异常</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">barrier</span><span class="punct">.</span><span class="fn">await</span><span class="punct">(</span><span class="num">2</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 危险：屏障已损坏，后续逻辑拿到的数据是不完整的</span>
+    <span class="com">// 什么都不做 → 继续向下执行 → 数据一致性破坏</span>
+<span class="punct">}</span>
+<span class="fn">mergeResults</span><span class="punct">();</span>  <span class="com">// 此时某些分片可能根本没完成！</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 正确处理屏障损坏</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">barrier</span><span class="punct">.</span><span class="fn">await</span><span class="punct">(</span><span class="num">2</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+    <span class="kw">return</span><span class="punct">;</span>  <span class="com">// 中断：退出任务</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">BrokenBarrierException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 屏障已损坏（超时/其他线程中断导致）</span>
+    <span class="fn">cancelTask</span><span class="punct">();</span>  <span class="com">// 回滚/取消/上报错误，绝不继续执行</span>
+    <span class="kw">return</span><span class="punct">;</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">TimeoutException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 屏障超时（此线程超时后屏障已损坏，其他线程将收到 BrokenBarrierException）</span>
+    <span class="fn">cancelTask</span><span class="punct">();</span>
+    <span class="kw">return</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 2：屏障动作中抛出异常</h3>
+  <p>
+    如果 <code>barrierCommand</code> 抛出了未捕获的异常，屏障同样会进入损坏状态，
+    所有等待线程收到 <code>BrokenBarrierException</code>。
+    务必在屏障动作内部处理异常，不要让它向上传播。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 vs 正例 — 屏障动作异常处理</span></div>
+    <pre><span class="com">// 反例：屏障动作抛出异常 → 损坏屏障 → 所有等待线程报错</span>
+<span class="ty">CyclicBarrier</span> <span class="var">bad</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CyclicBarrier</span><span class="punct">(</span><span class="num">4</span><span class="punct">,</span>
+    <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="fn">mergeResults</span><span class="punct">());</span>  <span class="com">// mergeResults 可能抛 NPE !</span>
+
+<span class="com">// 正例：在动作内部捕获，屏障状态始终健康</span>
+<span class="ty">CyclicBarrier</span> <span class="var">good</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CyclicBarrier</span><span class="punct">(</span><span class="num">4</span><span class="punct">,</span> <span class="punct">() -&gt; {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">mergeResults</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="var">mergeError</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>  <span class="com">// 记录错误，不向外抛</span>
+    <span class="punct">}</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <h3>陷阱 3：参与者数量不匹配</h3>
+  <p>
+    如果实际调用 <code>await()</code> 的线程数<strong>少于</strong>构造时声明的 <code>parties</code>，
+    屏障会永远等下去（死锁）。常见场景：
+  </p>
+  <ul>
+    <li>线程池复用时某线程意外终止，新任务提交前屏障就已经"缺人"</li>
+    <li>动态跳过某些分支导致部分线程根本不调用 <code>await()</code></li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>死锁陷阱</strong>：务必保证每轮迭代中 <strong>parties 个线程都必然调用 await()</strong>。
+    如果某线程有可能不调用（如提前 return），要在 finally 块中处理，或使用带超时的 await。
+  </div>
+
+  <h3>陷阱 4：误用 reset()</h3>
+  <p>
+    手动调用 <code>barrier.reset()</code> 会使当前等待的线程全部收到 <code>BrokenBarrierException</code>。
+    这不是"优雅重置"，而是一次强制中断——只应用于明确知道需要放弃当前轮并重新开始的场景，
+    绝不能在正常迭代中使用。
+  </p>
+
+  <!-- 6. 与 CountDownLatch 对比 -->
+  <h2>CyclicBarrier vs CountDownLatch vs Phaser</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>特性</th>
+        <th><code>CountDownLatch</code></th>
+        <th><code>CyclicBarrier</code></th>
+        <th><code>Phaser</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>可复用</td>
+        <td>否（一次性）</td>
+        <td>是（自动重置）</td>
+        <td>是（多阶段）</td>
+      </tr>
+      <tr>
+        <td>等待角色</td>
+        <td>等待者 ≠ 计数者</td>
+        <td>参与者平等互等</td>
+        <td>参与者平等互等</td>
+      </tr>
+      <tr>
+        <td>参与者数量</td>
+        <td>构造后不变</td>
+        <td>构造后不变</td>
+        <td>可动态注册/注销</td>
+      </tr>
+      <tr>
+        <td>屏障动作</td>
+        <td>无</td>
+        <td>有（可选 Runnable）</td>
+        <td>有（可继承覆写）</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>一次性启动/等待完成</td>
+        <td>固定线程数多轮迭代</td>
+        <td>动态参与者/多阶段流水</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 7. 实战：并行数据导入 -->
+  <h2>实战：并行数据导入 + 汇总校验</h2>
+  <p>
+    4 个线程各自导入 1/4 的数据行，全部导入完毕后由屏障动作触发一次完整性校验，
+    校验通过后再一起进入提交阶段。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ParallelImporter.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ParallelImporter</span> <span class="punct">{</span>
+
+    <span class="kw">private static final</span> <span class="ty">int</span> <span class="var">N</span> <span class="punct">=</span> <span class="num">4</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">AtomicBoolean</span> <span class="var">valid</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicBoolean</span><span class="punct">(</span><span class="kw">false</span><span class="punct">);</span>
+
+    <span class="com">// 屏障动作：所有线程完成导入后，做一次全局完整性校验</span>
+    <span class="kw">private final</span> <span class="ty">CyclicBarrier</span> <span class="var">barrier</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CyclicBarrier</span><span class="punct">(</span><span class="var">N</span><span class="punct">,</span> <span class="punct">() -&gt; {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">boolean</span> <span class="var">ok</span> <span class="punct">=</span> <span class="fn">validateIntegrity</span><span class="punct">();</span>
+            <span class="var">valid</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="var">ok</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="var">valid</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="kw">false</span><span class="punct">);</span>  <span class="com">// 异常不向外抛，避免损坏屏障</span>
+        <span class="punct">}</span>
+    <span class="punct">});</span>
+
+    <span class="kw">public void</span> <span class="fn">run</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Row</span><span class="punct">&gt;</span> <span class="var">rows</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="var">N</span><span class="punct">);</span>
+        <span class="kw">int</span> <span class="var">chunk</span> <span class="punct">=</span> <span class="var">rows</span><span class="punct">.</span><span class="fn">size</span><span class="punct">() /</span> <span class="var">N</span><span class="punct">;</span>
+
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">N</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+            <span class="kw">final</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Row</span><span class="punct">&gt;</span> <span class="var">slice</span> <span class="punct">=</span> <span class="var">rows</span><span class="punct">.</span><span class="fn">subList</span><span class="punct">(</span><span class="var">i</span> <span class="punct">*</span> <span class="var">chunk</span><span class="punct">,</span>
+                <span class="var">i</span> <span class="punct">==</span> <span class="var">N</span> <span class="punct">-</span> <span class="num">1</span> <span class="punct">?</span> <span class="var">rows</span><span class="punct">.</span><span class="fn">size</span><span class="punct">() :</span> <span class="punct">(</span><span class="var">i</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">) *</span> <span class="var">chunk</span><span class="punct">);</span>
+            <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+                <span class="kw">try</span> <span class="punct">{</span>
+                    <span class="fn">importSlice</span><span class="punct">(</span><span class="var">slice</span><span class="punct">);</span>   <span class="com">// 阶段 1：导入分片</span>
+                    <span class="var">barrier</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>    <span class="com">// 等待全部完成 → 触发校验</span>
+
+                    <span class="kw">if</span> <span class="punct">(</span><span class="var">valid</span><span class="punct">.</span><span class="fn">get</span><span class="punct">())</span> <span class="fn">commitSlice</span><span class="punct">(</span><span class="var">slice</span><span class="punct">);</span>  <span class="com">// 阶段 2：校验通过再提交</span>
+                    <span class="kw">else</span> <span class="fn">rollbackSlice</span><span class="punct">(</span><span class="var">slice</span><span class="punct">);</span>
+                <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="punct">|</span> <span class="ty">BrokenBarrierException</span> <span class="var">e</span><span class="punct">) {</span>
+                    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+                    <span class="fn">rollbackSlice</span><span class="punct">(</span><span class="var">slice</span><span class="punct">);</span>
+                <span class="punct">}</span>
+            <span class="punct">});</span>
+        <span class="punct">}</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">awaitTermination</span><span class="punct">(</span><span class="num">30</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 8. 面试高频考点 -->
+  <h2>面试高频考点</h2>
+  <ul>
+    <li><strong>CyclicBarrier 和 CountDownLatch 的核心区别？</strong><br/>
+      CountDownLatch 是一次性的，计数只减不增，且等待者不参与倒计数；
+      CyclicBarrier 可复用，参与者地位平等，全员到达后自动重置。</li>
+    <li><strong>BrokenBarrierException 什么时候会触发？</strong><br/>
+      任意等待线程被中断、超时，或屏障动作抛出异常，屏障即进入 broken 状态，
+      当前及后续 await() 全部抛出此异常。</li>
+    <li><strong>屏障动作由哪个线程执行？</strong><br/>
+      最后一个调用 await() 的线程，在持有内部锁时同步执行，执行完毕后才唤醒其余线程。</li>
+    <li><strong>如果某线程不调用 await() 会怎样？</strong><br/>
+      屏障永远等不到 parties 个到达者，所有等待线程无限阻塞——典型死锁。
+      用带超时的 await 或 finally 块保证一定会调用。</li>
+    <li><strong>CyclicBarrier 底层用了什么锁？</strong><br/>
+      <code>ReentrantLock</code> + <code>Condition</code>，不是 AQS 的直接子类（而 CountDownLatch 直接继承 AQS）。</li>
+  </ul>
+
+  <!-- 9. 小结 -->
+  <h2>小结</h2>
+  <p>
+    <code>CyclicBarrier</code> 的核心价值在于：让<strong>固定数量的线程在同一检查点互相等待</strong>，
+    并支持<strong>多轮循环复用</strong>，非常适合"分阶段并行计算"场景。
+    关键设计点：
+  </p>
+  <ul>
+    <li>用 <code>Generation</code> 对象隔离每一轮，使自动重置安全可靠</li>
+    <li>屏障动作在所有线程停止后、唤醒前执行，天然无竞争</li>
+    <li>屏障损坏具有传染性——任何参与者出问题，全部参与者都需要响应</li>
+    <li>参与者数量固定是最大限制；若需动态增减，升级到 <code>Phaser</code></li>
+  </ul>
+
+  <hr/>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./06-Semaphore.html" class="nav-btn">← 06. Semaphore 信号量</a>
+    <a href="../concurrency-roadmap.html" class="nav-btn next">路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

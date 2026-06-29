@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>11. 锁竞争与可伸缩性 — Java 并发编程实战</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #c084fc; }
+  p code, li code { color: #c084fc; }
+  h2 { color: #c084fc; border-left-color: #c084fc; }
+  .hero .tag { color: #c084fc; border-color: #4a1d96; }
+  .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 活跃性与性能
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 活跃性与性能</div>
+    <h1>11. 锁竞争与可伸缩性</h1>
+    <p>理解锁竞争如何成为并发程序的性能天花板，以及三条系统性降低竞争的路径。</p>
+  </div>
+
+  <!-- 1. 为什么锁竞争是可伸缩性的天花板 -->
+  <h2>1. 为什么锁竞争是可伸缩性的天花板</h2>
+  <p>
+    加入更多 CPU 核心、增大线程池，程序吞吐量本应线性增长。
+    然而实际上，增加到某个数量之后，吞吐量反而下降甚至变负增长。
+    根本原因是 <strong>Amdahl 定律</strong>：
+  </p>
+  <div class="callout info">
+    <strong>Amdahl 定律</strong><br>
+    设程序中<em>必须串行执行</em>的比例为 F（0 ≤ F ≤ 1），使用 N 个处理器时的最大加速比为：<br><br>
+    <code>Speedup ≤ 1 / (F + (1-F)/N)</code><br><br>
+    当 N → ∞，加速比趋近 <code>1/F</code>。
+    哪怕只有 10% 的代码必须串行（比如持有全局锁），10 核机器的加速上限就是 <strong>5.3×</strong>，而非 10×。
+  </p>
+  <p>
+    锁的作用是把一段代码"强制串行化"。
+    每当多个线程争抢同一把锁，后来者必须<strong>阻塞等待</strong>——这些 CPU 时间被白白浪费。
+    竞争越激烈，被串行化的代码占比越高，可伸缩性越差。
+  </p>
+
+  <div class="tree">
+    线程数 × 锁竞争激烈度<br>
+    &nbsp;&nbsp;↓<br>
+    大量线程阻塞 → CPU 上下文切换暴增<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">有效并行度 ≈ 锁的持有者数量（通常 = 1）</span><br>
+    &nbsp;&nbsp;↓<br>
+    吞吐量瓶颈，加核无效
+  </div>
+
+  <!-- 2. 锁竞争的两个来源 -->
+  <h2>2. 锁竞争的两个来源</h2>
+  <p>线程请求一把锁时，有两种结果：</p>
+  <ul>
+    <li><strong>无竞争（uncontended）</strong>：锁空闲，JVM 使用偏向锁 / 轻量级 CAS 完成，开销极小。</li>
+    <li><strong>有竞争（contended）</strong>：锁被占用，线程进入内核态挂起（OS 调度），开销是前者的<em>几十到几百倍</em>。</li>
+  </ul>
+  <p>竞争激烈程度由两个因子共同决定：</p>
+  <table>
+    <thead><tr><th>因子</th><th>含义</th><th>类比</th></tr></thead>
+    <tbody>
+      <tr><td><strong>请求频率</strong></td><td>单位时间内多少线程尝试获取锁</td><td>超市收银台每分钟来多少顾客</td></tr>
+      <tr><td><strong>持有时长</strong></td><td>每次加锁后持有多久才释放</td><td>每位顾客结账需要多长时间</td></tr>
+    </tbody>
+  </table>
+  <p>
+    降低竞争的三条路：<strong>①减少持有时长</strong>、<strong>②降低请求频率</strong>、<strong>③使用非独占同步</strong>（读写锁 / 无锁结构）。
+  </p>
+
+  <!-- 3. 减少锁持有时长 -->
+  <h2>3. 减少锁持有时长</h2>
+  <p>
+    "锁的作用域"越小，其他线程等待的时间就越短。
+    常见做法是把<strong>不需要同步的计算移到锁外</strong>。
+  </p>
+
+  <h3>反例：把整个方法体都锁住</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>BadCache.java</span><span>反例</span></div>
+    <pre><span class="com">// 问题：正则预编译和日志调用根本不涉及共享状态，</span>
+<span class="com">// 却被包在锁里，无谓地拉长了持有时长</span>
+<span class="kw">public synchronized</span> <span class="ty">String</span> <span class="fn">processAndCache</span><span class="punct">(</span><span class="ty">String</span> <span class="var">key</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">input</span><span class="punct">) {</span>
+    <span class="ty">Pattern</span> <span class="var">p</span> <span class="punct">=</span> <span class="ty">Pattern</span><span class="punct">.</span><span class="fn">compile</span><span class="punct">(</span><span class="str">"\\d+"</span><span class="punct">);</span>          <span class="com">// 纯计算，无需锁</span>
+    <span class="ty">String</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">p</span><span class="punct">.</span><span class="fn">matcher</span><span class="punct">(</span><span class="var">input</span><span class="punct">).</span><span class="fn">replaceAll</span><span class="punct">(</span><span class="str">""</span><span class="punct">);</span>
+    <span class="var">log</span><span class="punct">.</span><span class="fn">info</span><span class="punct">(</span><span class="str">"processed: {}"</span><span class="punct">,</span> <span class="var">result</span><span class="punct">);</span>              <span class="com">// I/O，持有锁风险极大</span>
+    <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">result</span><span class="punct">);</span>                        <span class="com">// 这行才真正需要同步</span>
+    <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>正例：缩小锁的作用域</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>GoodCache.java</span><span>正例</span></div>
+    <pre><span class="kw">public</span> <span class="ty">String</span> <span class="fn">processAndCache</span><span class="punct">(</span><span class="ty">String</span> <span class="var">key</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">input</span><span class="punct">) {</span>
+    <span class="com">// 不需要锁的纯计算，先做完</span>
+    <span class="ty">Pattern</span> <span class="var">p</span> <span class="punct">=</span> <span class="ty">Pattern</span><span class="punct">.</span><span class="fn">compile</span><span class="punct">(</span><span class="str">"\\d+"</span><span class="punct">);</span>
+    <span class="ty">String</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">p</span><span class="punct">.</span><span class="fn">matcher</span><span class="punct">(</span><span class="var">input</span><span class="punct">).</span><span class="fn">replaceAll</span><span class="punct">(</span><span class="str">""</span><span class="punct">);</span>
+    <span class="var">log</span><span class="punct">.</span><span class="fn">info</span><span class="punct">(</span><span class="str">"processed: {}"</span><span class="punct">,</span> <span class="var">result</span><span class="punct">);</span>
+
+    <span class="com">// 锁只保护真正的共享状态写入，作用域极小</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">) {</span>
+        <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">result</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：不要为了"缩小锁范围"而拆出多个 synchronized 块</strong><br>
+    如果两个操作对外必须是原子的（例如"检查再写入"），拆开反而引入竞态条件。
+    缩小作用域的前提是：被移出的代码与被保护的共享状态<em>无关</em>。
+  </div>
+
+  <!-- 4. 降低锁请求频率：锁分解与锁分段 -->
+  <h2>4. 降低锁请求频率：锁分解与锁分段</h2>
+  <p>
+    一把粗粒度的锁（如单个 <code>this</code> 对象锁）把不相关的数据捆绑在一起——
+    访问字段 A 和访问字段 B 互相阻塞，但它们之间根本不存在数据依赖。
+    解法是<strong>锁分解（Lock Splitting）</strong>：每组独立状态使用各自的锁。
+  </p>
+
+  <h3>反例：一把锁保护所有字段</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>UserService.java</span><span>反例 — 锁分解前</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">UserService</span> <span class="punct">{</span>
+    <span class="com">// 两组完全独立的状态，却共享同一把 this 锁</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">Long</span><span class="punct">,</span> <span class="ty">User</span><span class="punct">&gt;</span> <span class="var">users</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">Long</span><span class="punct">,</span> <span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">orders</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public synchronized void</span> <span class="fn">addUser</span><span class="punct">(</span><span class="ty">User</span> <span class="var">u</span><span class="punct">) {</span>  <span class="var">users</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">u</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">(),</span> <span class="var">u</span><span class="punct">); }</span>
+    <span class="kw">public synchronized void</span> <span class="fn">addOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">o</span><span class="punct">) {</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">o</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">(),</span> <span class="var">o</span><span class="punct">); }</span>
+    <span class="com">// addUser 和 addOrder 互相阻塞，毫无必要</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>正例：锁分解</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>UserService.java</span><span>正例 — 锁分解后</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">UserService</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">Object</span> <span class="var">userLock</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Object</span> <span class="var">orderLock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">Long</span><span class="punct">,</span> <span class="ty">User</span><span class="punct">&gt;</span>  <span class="var">users</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">Long</span><span class="punct">,</span> <span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">orders</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public void</span> <span class="fn">addUser</span><span class="punct">(</span><span class="ty">User</span> <span class="var">u</span><span class="punct">) {</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">userLock</span><span class="punct">) {</span> <span class="var">users</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">u</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">(),</span> <span class="var">u</span><span class="punct">); }</span>
+    <span class="punct">}</span>
+    <span class="kw">public void</span> <span class="fn">addOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">o</span><span class="punct">) {</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">orderLock</span><span class="punct">) {</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">o</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">(),</span> <span class="var">o</span><span class="punct">); }</span>
+    <span class="punct">}</span>
+    <span class="com">// 两组操作现在完全并行，互不阻塞</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>锁分段（Lock Striping）</h3>
+  <p>
+    锁分段是锁分解的极端形式：把一个大数据结构（如 HashMap）切成 N 段，每段独立加锁。
+    <code>ConcurrentHashMap</code> 在 Java 7 默认使用 16 个 Segment（继承自 ReentrantLock），
+    Java 8 改为 CAS + 每个桶头节点作为锁，粒度更细。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StripedMap.java（概念演示）</span><span>锁分段原理</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">StripedMap</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt; {</span>
+    <span class="kw">private static final int</span> <span class="var">STRIPES</span> <span class="punct">=</span> <span class="num">16</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">Object</span><span class="punct">[]</span> <span class="var">locks</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt;&gt;</span> <span class="var">maps</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">StripedMap</span><span class="punct">() {</span>
+        <span class="var">locks</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">[</span><span class="var">STRIPES</span><span class="punct">];</span>
+        <span class="var">maps</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">STRIPES</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+            <span class="var">locks</span><span class="punct">[</span><span class="var">i</span><span class="punct">]</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+            <span class="var">maps</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;());</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private int</span> <span class="fn">stripe</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">key</span><span class="punct">) {</span>
+        <span class="com">// 将 key 哈希映射到 [0, STRIPES) — 关键：分散均匀</span>
+        <span class="kw">return</span> <span class="ty">Math</span><span class="punct">.</span><span class="fn">abs</span><span class="punct">(</span><span class="var">key</span><span class="punct">.</span><span class="fn">hashCode</span><span class="punct">() %</span> <span class="var">STRIPES</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">,</span> <span class="ty">V</span> <span class="var">value</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">s</span> <span class="punct">=</span> <span class="fn">stripe</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">locks</span><span class="punct">[</span><span class="var">s</span><span class="punct">]) {</span>
+            <span class="var">maps</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">s</span><span class="punct">).</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">value</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+    <span class="com">// get 同理，只锁对应 stripe</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>锁分段的代价：跨段操作变复杂</strong><br>
+    若需要对整个 Map 做原子 <code>size()</code> 或 <code>clear()</code>，
+    必须按固定顺序依次获取全部 16 把锁，否则会引发死锁或看到不一致的中间状态。
+    <code>ConcurrentHashMap.size()</code> 返回的是<em>近似值</em>，正是这个代价的体现。
+  </div>
+
+  <!-- 5. 非独占同步：ReadWriteLock -->
+  <h2>5. 非独占同步：ReadWriteLock</h2>
+  <p>
+    读操作天然可以并行——多个线程同时读一份不变的数据不会有问题。
+    <code>synchronized</code> 和 <code>ReentrantLock</code> 都是独占锁，不区分读写，浪费了读并行的机会。
+    <code>ReentrantReadWriteLock</code> 将锁拆分为：
+  </p>
+  <ul>
+    <li><strong>读锁（共享）</strong>：多个读线程可同时持有，只要没有写线程。</li>
+    <li><strong>写锁（独占）</strong>：只有一个写线程可持有，此时所有读线程阻塞。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ReadWriteCache.java</span><span>读写锁正例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ReadWriteCache</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt; {</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt;</span> <span class="var">map</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+    <span class="kw">private final</span> <span class="ty">ReentrantReadWriteLock</span> <span class="var">rwl</span>
+        <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantReadWriteLock</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Lock</span> <span class="var">r</span> <span class="punct">=</span> <span class="var">rwl</span><span class="punct">.</span><span class="fn">readLock</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Lock</span> <span class="var">w</span> <span class="punct">=</span> <span class="var">rwl</span><span class="punct">.</span><span class="fn">writeLock</span><span class="punct">();</span>
+
+    <span class="kw">public</span> <span class="ty">V</span> <span class="fn">get</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">) {</span>
+        <span class="var">r</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">return</span> <span class="var">map</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>           <span class="com">// 多读线程可并行到这里</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span> <span class="var">r</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">(); }</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">,</span> <span class="ty">V</span> <span class="var">value</span><span class="punct">) {</span>
+        <span class="var">w</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="var">map</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">value</span><span class="punct">);</span>           <span class="com">// 写时独占，阻塞所有读</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span> <span class="var">w</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">(); }</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>读写锁适合"读多写少"场景</strong><br>
+    若写操作频繁，读锁几乎总被写锁抢先阻塞，此时读写锁比普通锁开销<em>更大</em>（内部维护状态更复杂）。
+    建议仅在读比例超过 80% 时引入。
+  </div>
+
+  <!-- 6. 无锁路径：Atomic 与 CAS -->
+  <h2>6. 无锁路径：Atomic 与 CAS</h2>
+  <p>
+    最彻底的"避免竞争"是根本不用锁。
+    Java 通过 <code>java.util.concurrent.atomic</code> 包提供基于 CPU 原语 <strong>CAS（Compare-And-Swap）</strong>
+    的无锁变量。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Counter.java</span><span>synchronized vs AtomicLong</span></div>
+    <pre><span class="com">// 方式一：synchronized — 每次 ++ 都要独占锁，竞争激烈时慢</span>
+<span class="kw">private long</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+<span class="kw">public synchronized void</span> <span class="fn">increment</span><span class="punct">() {</span> <span class="var">count</span><span class="punct">++; }</span>
+
+<span class="com">// 方式二：AtomicLong — CAS 自旋，无内核态切换</span>
+<span class="kw">private final</span> <span class="ty">AtomicLong</span> <span class="var">count</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicLong</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+<span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span> <span class="var">count</span><span class="punct">.</span><span class="fn">incrementAndGet</span><span class="punct">(); }</span>
+
+<span class="com">// 方式三：高并发计数用 LongAdder（Java 8+）</span>
+<span class="com">// 内部分 Cell 数组，各线程写各自的 Cell，最终 sum() 汇总</span>
+<span class="com">// 竞争越激烈，LongAdder 优势越大</span>
+<span class="kw">private final</span> <span class="ty">LongAdder</span> <span class="var">count</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LongAdder</span><span class="punct">();</span>
+<span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span> <span class="var">count</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">(); }</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>LongAdder vs AtomicLong 选哪个？</strong><br>
+    AtomicLong 每次操作返回准确的当前值，适合需要实时精确读数的场景（如序列号生成器）。
+    LongAdder 把写分散到多个 Cell，<code>sum()</code> 有轻微延迟，适合高并发统计计数器（如 QPS、请求总数）。
+  </div>
+
+  <!-- 7. 避免热点字段 -->
+  <h2>7. 避免热点字段</h2>
+  <p>
+    锁分解与分段能降低整体竞争，但如果有一个字段被<em>所有操作都访问</em>，它就成了<strong>热点（Hot Field）</strong>，
+    无论分解得多细，整体吞吐量仍会被该字段的竞争拖死。
+  </p>
+
+  <h3>典型热点：size 字段</h3>
+  <p>
+    假设你自己实现了 <code>StripedMap</code>，每次 <code>put</code>/<code>remove</code> 后都更新一个 <code>synchronized</code> 的 <code>size</code> 字段。
+    这把"全局 size 锁"立刻成为瓶颈——16 个分段的并行写全部争抢同一个 size。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — size 热点</span><span>反例</span></div>
+    <pre><span class="kw">private volatile int</span> <span class="var">size</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+<span class="kw">public void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">,</span> <span class="ty">V</span> <span class="var">value</span><span class="punct">) {</span>
+    <span class="kw">int</span> <span class="var">s</span> <span class="punct">=</span> <span class="fn">stripe</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">locks</span><span class="punct">[</span><span class="var">s</span><span class="punct">]) {</span>
+        <span class="var">maps</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">s</span><span class="punct">).</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">value</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">) {</span> <span class="var">size</span><span class="punct">++; }</span>  <span class="com">// ← 所有线程争这把全局锁，分段白搭</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 用 LongAdder 消除 size 热点</span><span>正例</span></div>
+    <pre><span class="kw">private final</span> <span class="ty">LongAdder</span> <span class="var">size</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LongAdder</span><span class="punct">();</span>
+
+<span class="kw">public void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">,</span> <span class="ty">V</span> <span class="var">value</span><span class="punct">) {</span>
+    <span class="kw">int</span> <span class="var">s</span> <span class="punct">=</span> <span class="fn">stripe</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">locks</span><span class="punct">[</span><span class="var">s</span><span class="punct">]) {</span>
+        <span class="var">maps</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">s</span><span class="punct">).</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">value</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="var">size</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">();</span>  <span class="com">// 无锁竞争，各线程写各自的 Cell</span>
+<span class="punct">}</span>
+
+<span class="kw">public long</span> <span class="fn">size</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">size</span><span class="punct">.</span><span class="fn">sum</span><span class="punct">(); }</span>  <span class="com">// 近似值，读写分离</span></pre>
+  </div>
+
+  <!-- 8. 线程本地化：ThreadLocal 与对象池 -->
+  <h2>8. 线程本地化：ThreadLocal 与减少共享</h2>
+  <p>
+    竞争的根本来源是<strong>共享可变状态</strong>。
+    如果能让某些对象只属于一个线程，竞争就从根本上消失。
+    <code>ThreadLocal</code> 是最直接的机制。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ThreadLocal 正例</span><span>线程本地化</span></div>
+    <pre><span class="com">// SimpleDateFormat 是线程不安全的，共享一个会有竞争</span>
+<span class="com">// 用 ThreadLocal 给每个线程一个独立实例，零竞争</span>
+<span class="kw">private static final</span> <span class="ty">ThreadLocal</span><span class="punct">&lt;</span><span class="ty">SimpleDateFormat</span><span class="punct">&gt;</span> <span class="var">DATE_FORMAT</span> <span class="punct">=</span>
+    <span class="ty">ThreadLocal</span><span class="punct">.</span><span class="fn">withInitial</span><span class="punct">(() -&gt;</span>
+        <span class="kw">new</span> <span class="ty">SimpleDateFormat</span><span class="punct">(</span><span class="str">"yyyy-MM-dd HH:mm:ss"</span><span class="punct">));</span>
+
+<span class="kw">public</span> <span class="ty">String</span> <span class="fn">format</span><span class="punct">(</span><span class="ty">Date</span> <span class="var">date</span><span class="punct">) {</span>
+    <span class="com">// 当前线程独享，无需加锁</span>
+    <span class="kw">return</span> <span class="var">DATE_FORMAT</span><span class="punct">.</span><span class="fn">get</span><span class="punct">().</span><span class="fn">format</span><span class="punct">(</span><span class="var">date</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>ThreadLocal 泄漏陷阱（线程池场景）</strong><br>
+    线程池中的线程生命周期极长，<code>ThreadLocal</code> 中存储的对象若不手动 <code>remove()</code>，
+    会一直留在线程的 <code>ThreadLocalMap</code> 中，既占内存又可能被下一个任务"脏读"。
+    使用后务必在 <code>finally</code> 块调用 <code>threadLocal.remove()</code>。
+  </div>
+
+  <!-- 9. 性能权衡总结 -->
+  <h2>9. 三条路径对比</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>策略</th>
+        <th>典型手段</th>
+        <th>适用场景</th>
+        <th>主要代价</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>减少持有时长</strong></td>
+        <td>缩小 <code>synchronized</code> 块；锁外做计算</td>
+        <td>通用，首选改造方向</td>
+        <td>注意不能破坏原子性</td>
+      </tr>
+      <tr>
+        <td><strong>降低请求频率</strong></td>
+        <td>锁分解、锁分段、<code>ThreadLocal</code></td>
+        <td>独立数据分组、多核高并发</td>
+        <td>跨段原子操作变复杂</td>
+      </tr>
+      <tr>
+        <td><strong>非独占 / 无锁</strong></td>
+        <td><code>ReadWriteLock</code>、<code>Atomic*</code>、<code>LongAdder</code></td>
+        <td>读多写少；简单计数器</td>
+        <td>读写锁开销高于读少场景</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 10. 面试高频考点 -->
+  <h2>10. 面试高频考点</h2>
+  <ul>
+    <li>Amdahl 定律说明了什么？为什么加核不一定能线性提速？</li>
+    <li><code>ConcurrentHashMap</code> 在 Java 7 和 Java 8 中的分段策略有何不同？</li>
+    <li><code>size()</code> 为什么是近似值？跨段原子操作如何实现？</li>
+    <li><code>ReadWriteLock</code> 在写多场景为什么反而更慢？</li>
+    <li><code>AtomicLong</code> 和 <code>LongAdder</code> 分别适合什么场景？</li>
+    <li><code>ThreadLocal</code> 在线程池下为什么会泄漏？如何避免？</li>
+  </ul>
+
+  <hr>
+
+  <nav class="nav-footer">
+    <a href="./10-活锁与饥饿.html" class="nav-btn">← 10. 活锁 / 饥饿</a>
+    <a href="../concurrency-roadmap.html" class="nav-btn next">路线图 →</a>
+  </nav>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>09. 死锁的成因与避免 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #c084fc; }
+    p code, li code { color: #c084fc; }
+    h2 { color: #c084fc; border-left-color: #c084fc; }
+    .hero .tag { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 活跃性与性能
+  </div>
+
+  <!-- 头部 -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 活跃性与性能</div>
+    <h1>09. 死锁的成因与避免</h1>
+    <p>理解死锁的四个必要条件，掌握锁顺序、超时获取、资源图检测等系统性规避策略。</p>
+  </div>
+
+  <!-- 1. 什么是死锁 -->
+  <h2>什么是死锁</h2>
+  <p>
+    <strong>死锁（Deadlock）</strong> 是并发程序中最令人头疼的活跃性故障：两个或多个线程相互持有对方所需的锁，永远卡住等待，程序表面上"活着"却什么也做不了。
+  </p>
+  <p>用一个生活类比理解：两辆车在单行道对头相遇，A 说"你先倒"，B 说"你先倒"，双方都不动，道路永久堵死。</p>
+
+  <div class="callout info">
+    死锁与 <strong>死循环</strong> 的区别：死循环会持续消耗 CPU；死锁线程会进入 BLOCKED 状态，CPU 几乎为零，但业务请求全部挂起。监控时注意区分。
+  </div>
+
+  <!-- 2. 四个必要条件 -->
+  <h2>Coffman 四个必要条件</h2>
+  <p>1971 年 Coffman 等人证明：死锁的出现<strong>当且仅当</strong>以下四个条件同时满足。破坏任意一个，死锁就不会发生。</p>
+
+  <table>
+    <thead>
+      <tr><th>条件</th><th>含义</th><th>Java 中的体现</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>互斥（Mutual Exclusion）</strong></td>
+        <td>资源同一时刻只能被一个线程持有</td>
+        <td><code>synchronized</code>、<code>ReentrantLock</code></td>
+      </tr>
+      <tr>
+        <td><strong>占有并等待（Hold &amp; Wait）</strong></td>
+        <td>线程持有至少一个资源，同时等待另一个</td>
+        <td>先锁 A，再试图锁 B</td>
+      </tr>
+      <tr>
+        <td><strong>不可剥夺（No Preemption）</strong></td>
+        <td>锁不能被强制夺走，只能由持有者主动释放</td>
+        <td><code>synchronized</code> 无法被抢占</td>
+      </tr>
+      <tr>
+        <td><strong>循环等待（Circular Wait）</strong></td>
+        <td>线程形成一个等待环：T1 等 T2，T2 等 T1</td>
+        <td>两线程以相反顺序获取同两把锁</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    面试高频考点：能否背出四个条件只是起点，面试官更想听到"破坏哪个条件最实际，怎么破坏"。
+  </div>
+
+  <!-- 3. 经典死锁复现 -->
+  <h2>反例：经典转账死锁</h2>
+  <p>下面是教科书级别的死锁：两个账户相互转账，两个线程以相反顺序加锁。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>DeadlockDemo.java — 反例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Account</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">id</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="kw">double</span> <span class="var">balance</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="kw">synchronized void</span> <span class="fn">transfer</span><span class="punct">(</span><span class="ty">Account</span> <span class="var">target</span><span class="punct">,</span> <span class="kw">double</span> <span class="var">amount</span><span class="punct">) {</span>
+        <span class="com">// 先锁 this，再锁 target — 顺序由调用方决定，不一致时必死锁</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">target</span><span class="punct">) {</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">balance</span> <span class="punct">&gt;=</span> <span class="var">amount</span><span class="punct">) {</span>
+                <span class="kw">this</span><span class="punct">.</span><span class="var">balance</span> <span class="punct">-=</span> <span class="var">amount</span><span class="punct">;</span>
+                <span class="var">target</span><span class="punct">.</span><span class="var">balance</span> <span class="punct">+=</span> <span class="var">amount</span><span class="punct">;</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 线程 1：accountA.transfer(accountB, 100)
+// 线程 2：accountB.transfer(accountA, 100)
+//
+// 执行时序：
+//   T1 获得 lockA，等待 lockB
+//   T2 获得 lockB，等待 lockA
+//   → 循环等待，永久阻塞</span></pre>
+  </div>
+
+  <div class="tree">
+线程状态图
+<br>
+T1 ──持有──▶ lockA ──等待──▶ lockB ◀──持有── T2
+                                         │
+T1 ◀──等待── lockA ◀──持有── T2 ──等待──┘
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">循环等待 → 死锁</span>
+  </div>
+
+  <!-- 4. 避免策略 -->
+  <h2>策略一：固定锁顺序（破坏循环等待）</h2>
+  <p>最简单、开销最小的方案：<strong>所有线程按照相同的全局顺序获取锁</strong>，循环等待便不可能形成。</p>
+  <p>对于"锁任意两个对象"的场景，可以用 <code>System.identityHashCode()</code> 给对象排序，让所有线程都先锁编号小的那个。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderedLockTransfer.java — 正例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BankService</span> <span class="punct">{</span>
+
+    <span class="com">// 用于打破极罕见的 hashCode 相等情形（需要第三把"仲裁锁"）</span>
+    <span class="kw">private static final</span> <span class="ty">Object</span> <span class="var">TIE_LOCK</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+
+    <span class="kw">public void</span> <span class="fn">transfer</span><span class="punct">(</span><span class="ty">Account</span> <span class="var">from</span><span class="punct">,</span> <span class="ty">Account</span> <span class="var">to</span><span class="punct">,</span> <span class="kw">double</span> <span class="var">amount</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">fromHash</span> <span class="punct">=</span> <span class="ty">System</span><span class="punct">.</span><span class="fn">identityHashCode</span><span class="punct">(</span><span class="var">from</span><span class="punct">);</span>
+        <span class="kw">int</span> <span class="var">toHash</span>   <span class="punct">=</span> <span class="ty">System</span><span class="punct">.</span><span class="fn">identityHashCode</span><span class="punct">(</span><span class="var">to</span><span class="punct">);</span>
+
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">fromHash</span> <span class="punct">&lt;</span> <span class="var">toHash</span><span class="punct">) {</span>
+            <span class="com">// 始终先锁 hashCode 小的</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">from</span><span class="punct">) {</span>
+                <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">to</span><span class="punct">) {</span> <span class="fn">doTransfer</span><span class="punct">(</span><span class="var">from</span><span class="punct">,</span> <span class="var">to</span><span class="punct">,</span> <span class="var">amount</span><span class="punct">); }</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span> <span class="kw">else if</span> <span class="punct">(</span><span class="var">fromHash</span> <span class="punct">&gt;</span> <span class="var">toHash</span><span class="punct">) {</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">to</span><span class="punct">) {</span>
+                <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">from</span><span class="punct">) {</span> <span class="fn">doTransfer</span><span class="punct">(</span><span class="var">from</span><span class="punct">,</span> <span class="var">to</span><span class="punct">,</span> <span class="var">amount</span><span class="punct">); }</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+            <span class="com">// 极罕见：hashCode 相同，用全局仲裁锁确保同一时刻只有一个线程执行</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">TIE_LOCK</span><span class="punct">) {</span>
+                <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">from</span><span class="punct">) {</span>
+                    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">to</span><span class="punct">) {</span> <span class="fn">doTransfer</span><span class="punct">(</span><span class="var">from</span><span class="punct">,</span> <span class="var">to</span><span class="punct">,</span> <span class="var">amount</span><span class="punct">); }</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private void</span> <span class="fn">doTransfer</span><span class="punct">(</span><span class="ty">Account</span> <span class="var">from</span><span class="punct">,</span> <span class="ty">Account</span> <span class="var">to</span><span class="punct">,</span> <span class="kw">double</span> <span class="var">amount</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">from</span><span class="punct">.</span><span class="fn">getBalance</span><span class="punct">() &gt;=</span> <span class="var">amount</span><span class="punct">) {</span>
+            <span class="var">from</span><span class="punct">.</span><span class="fn">debit</span><span class="punct">(</span><span class="var">amount</span><span class="punct">);</span>
+            <span class="var">to</span><span class="punct">.</span><span class="fn">credit</span><span class="punct">(</span><span class="var">amount</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    如果对象有天然的全局唯一 ID（如数据库主键），直接按 ID 排序比 <code>identityHashCode</code> 更可靠，不存在 hash 碰撞问题。
+  </div>
+
+  <!-- 5. tryLock 超时 -->
+  <h2>策略二：使用 tryLock 超时（破坏不可剥夺）</h2>
+  <p><code>ReentrantLock.tryLock(timeout)</code> 允许线程在等待超时后<strong>主动放弃</strong>已持有的锁并重试，从而打破"不可剥夺"条件。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>TryLockTransfer.java — 正例</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.locks.ReentrantLock</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="var">java.util.concurrent.TimeUnit</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">AccountV2</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>
+    <span class="kw">private double</span> <span class="var">balance</span><span class="punct">;</span>
+
+    <span class="kw">public boolean</span> <span class="fn">transfer</span><span class="punct">(</span><span class="ty">AccountV2</span> <span class="var">target</span><span class="punct">,</span> <span class="kw">double</span> <span class="var">amount</span><span class="punct">)</span>
+            <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+
+        <span class="kw">long</span> <span class="var">deadline</span> <span class="punct">=</span> <span class="ty">System</span><span class="punct">.</span><span class="fn">nanoTime</span><span class="punct">() +</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">.</span><span class="fn">toNanos</span><span class="punct">(</span><span class="num">200</span><span class="punct">);</span>
+
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">lock</span><span class="punct">.</span><span class="fn">tryLock</span><span class="punct">()) {</span>
+                <span class="kw">try</span> <span class="punct">{</span>
+                    <span class="kw">if</span> <span class="punct">(</span><span class="var">target</span><span class="punct">.</span><span class="var">lock</span><span class="punct">.</span><span class="fn">tryLock</span><span class="punct">()) {</span>
+                        <span class="kw">try</span> <span class="punct">{</span>
+                            <span class="com">// 两把锁都拿到了，安全执行</span>
+                            <span class="kw">if</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">balance</span> <span class="punct">&gt;=</span> <span class="var">amount</span><span class="punct">) {</span>
+                                <span class="kw">this</span><span class="punct">.</span><span class="var">balance</span>   <span class="punct">-=</span> <span class="var">amount</span><span class="punct">;</span>
+                                <span class="var">target</span><span class="punct">.</span><span class="var">balance</span> <span class="punct">+=</span> <span class="var">amount</span><span class="punct">;</span>
+                            <span class="punct">}</span>
+                            <span class="kw">return true</span><span class="punct">;</span>
+                        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+                            <span class="var">target</span><span class="punct">.</span><span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+                        <span class="punct">}</span>
+                    <span class="punct">}</span>
+                <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+                    <span class="kw">this</span><span class="punct">.</span><span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>  <span class="com">// 拿不到 target 的锁时主动释放 this 的锁</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+
+            <span class="kw">if</span> <span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="fn">nanoTime</span><span class="punct">() &gt;</span> <span class="var">deadline</span><span class="punct">) {</span>
+                <span class="kw">return false</span><span class="punct">;</span>  <span class="com">// 超时，返回失败，由调用方决定重试或报错</span>
+            <span class="punct">}</span>
+
+            <span class="com">// 随机退避，减少活锁（两个线程同时重试的概率）</span>
+            <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">((</span><span class="kw">long</span><span class="punct">)(</span><span class="ty">Math</span><span class="punct">.</span><span class="fn">random</span><span class="punct">() *</span> <span class="num">10</span><span class="punct">));</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：tryLock 可能引入活锁。</strong> 两个线程同时放弃并以相同节奏重试，永远拿不齐两把锁。解决方案：加入随机退避时间（Jitter），打破节奏同步。
+  </div>
+
+  <!-- 6. 开放调用 -->
+  <h2>策略三：开放调用（减少锁的持有范围）</h2>
+  <p>
+    很多死锁发生在<strong>持有锁的情况下调用外部方法</strong>，而外部方法内部也会获取锁。这种嵌套调用极难分析。
+    <strong>开放调用（Open Call）</strong> 指在调用外部方法时不持有任何锁——缩小锁的临界区，只在真正需要保护共享状态时才加锁。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OpenCall.java — 反例 vs 正例</span></div>
+    <pre><span class="com">// ===== 反例：持有锁调用外部方法 =====</span>
+<span class="kw">class</span> <span class="ty">Taxi</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">Point</span> <span class="var">location</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">Dispatcher</span> <span class="var">dispatcher</span><span class="punct">;</span>
+
+    <span class="com">// 持有 this 锁时调用 dispatcher.notifyAvailable(this)
+    // dispatcher 内部也有锁 → 嵌套加锁，容易死锁</span>
+    <span class="kw">public synchronized void</span> <span class="fn">setLocation</span><span class="punct">(</span><span class="ty">Point</span> <span class="var">p</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">location</span> <span class="punct">=</span> <span class="var">p</span><span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="fn">atDestination</span><span class="punct">())</span>
+            <span class="var">dispatcher</span><span class="punct">.</span><span class="fn">notifyAvailable</span><span class="punct">(</span><span class="kw">this</span><span class="punct">);</span>  <span class="com">// ← 危险：持锁调用外部</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// ===== 正例：先读出状态，释放锁后再调用外部 =====</span>
+<span class="kw">class</span> <span class="ty">TaxiV2</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">Point</span> <span class="var">location</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">Dispatcher</span> <span class="var">dispatcher</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">setLocation</span><span class="punct">(</span><span class="ty">Point</span> <span class="var">p</span><span class="punct">) {</span>
+        <span class="kw">boolean</span> <span class="var">arrived</span><span class="punct">;</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">) {</span>
+            <span class="kw">this</span><span class="punct">.</span><span class="var">location</span> <span class="punct">=</span> <span class="var">p</span><span class="punct">;</span>
+            <span class="var">arrived</span> <span class="punct">=</span> <span class="fn">atDestination</span><span class="punct">();</span>
+        <span class="punct">}</span>  <span class="com">// ← 先释放锁</span>
+
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">arrived</span><span class="punct">)</span>
+            <span class="var">dispatcher</span><span class="punct">.</span><span class="fn">notifyAvailable</span><span class="punct">(</span><span class="kw">this</span><span class="punct">);</span>  <span class="com">// ← 锁外调用外部方法，安全</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. 资源图与检测 -->
+  <h2>策略四：死锁检测与诊断</h2>
+  <p>对于已经发生的死锁（或怀疑正在发生），有以下诊断手段：</p>
+
+  <h3>jstack 线程转储</h3>
+  <p>这是最常用的生产环境死锁诊断工具，JDK 自带，无需额外依赖。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>命令行</span></div>
+    <pre><span class="com"># 获取 JVM 进程 PID</span>
+<span class="var">jps</span> <span class="punct">-</span><span class="var">l</span>
+
+<span class="com"># 输出线程转储，自动标记死锁</span>
+<span class="var">jstack</span> <span class="punct">&lt;</span><span class="var">pid</span><span class="punct">&gt;</span>
+
+<span class="com"># 典型输出片段：
+# Found one Java-level deadlock:
+# "Thread-1":
+#   waiting to lock monitor 0x... (object 0x..., Account@7852e922)
+#   which is held by "Thread-0"
+# "Thread-0":
+#   waiting to lock monitor 0x... (object 0x..., Account@4e25154f)
+#   which is held by "Thread-1"</span></pre>
+  </div>
+
+  <h3>代码中主动检测</h3>
+  <p><code>ThreadMXBean</code> 可在程序内部定时扫描死锁，适合接入监控告警系统。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>DeadlockDetector.java</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.lang.management.ManagementFactory</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="var">java.lang.management.ThreadMXBean</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">DeadlockDetector</span> <span class="punct">{</span>
+
+    <span class="kw">public static boolean</span> <span class="fn">hasDeadlock</span><span class="punct">() {</span>
+        <span class="ty">ThreadMXBean</span> <span class="var">bean</span> <span class="punct">=</span> <span class="ty">ManagementFactory</span><span class="punct">.</span><span class="fn">getThreadMXBean</span><span class="punct">();</span>
+        <span class="kw">long</span><span class="punct">[]</span> <span class="var">ids</span> <span class="punct">=</span> <span class="var">bean</span><span class="punct">.</span><span class="fn">findDeadlockedThreads</span><span class="punct">();</span>  <span class="com">// 包含 ReentrantLock</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">ids</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="ty">ThreadInfo</span><span class="punct">[]</span> <span class="var">infos</span> <span class="punct">=</span> <span class="var">bean</span><span class="punct">.</span><span class="fn">getThreadInfo</span><span class="punct">(</span><span class="var">ids</span><span class="punct">,</span> <span class="kw">true</span><span class="punct">,</span> <span class="kw">true</span><span class="punct">);</span>
+            <span class="kw">for</span> <span class="punct">(</span><span class="ty">ThreadInfo</span> <span class="var">info</span> <span class="punct">:</span> <span class="var">infos</span><span class="punct">)</span>
+                <span class="ty">System</span><span class="punct">.</span><span class="var">err</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"死锁线程: "</span> <span class="punct">+</span> <span class="var">info</span><span class="punct">.</span><span class="fn">getThreadName</span><span class="punct">());</span>
+            <span class="kw">return true</span><span class="punct">;</span>
+        <span class="punct">}</span>
+        <span class="kw">return false</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 8. 其他模式 -->
+  <h2>更多常见死锁模式</h2>
+
+  <h3>协作对象之间的死锁</h3>
+  <p>当两个对象<strong>各自有锁</strong>，并且彼此持有对方的引用相互调用时，就形成了协作对象死锁——这种死锁在代码评审时极难发现，因为每个类单独看都是正确的。</p>
+  <div class="callout warn">
+    规则：<strong>如果一个加锁方法调用了另一个对象的加锁方法，要高度警觉。</strong> 考虑是否可以改为开放调用，或重新设计数据流向。
+  </div>
+
+  <h3>数据库事务死锁</h3>
+  <p>数据库锁与 Java 锁可以交织：Java 线程持有 Java 锁等待数据库行锁，另一个事务持有行锁等待 Java 锁被释放后才能提交。这类死锁跨越两个锁系统，极难排查。</p>
+  <p>对策：<strong>不要在持有 Java 锁的情况下执行数据库操作</strong>，先释放 Java 锁，再操作数据库。</p>
+
+  <h3>线程池诱发的死锁</h3>
+  <p>单线程池中，任务 A 提交了任务 B 并等待 B 的结果，但线程池已满，B 永远无法执行——这是"资源耗尽型死锁"，不是锁导致的，但现象完全一样。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>ThreadPoolDeadlock.java — 反例</span></div>
+    <pre><span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newSingleThreadExecutor</span><span class="punct">();</span>
+
+<span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="com">// 任务 A：提交任务 B 并阻塞等待</span>
+    <span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">futureB</span> <span class="punct">=</span> <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt;</span> <span class="str">"B的结果"</span><span class="punct">);</span>
+    <span class="com">// ↑ 单线程池满，B 永远等不到执行机会</span>
+    <span class="kw">return</span> <span class="var">futureB</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>  <span class="com">// A 永久阻塞 → 死锁</span>
+<span class="punct">});</span></pre>
+  </div>
+  <p>解决：为相互依赖的任务使用<strong>不同的线程池</strong>，或改用异步回调（CompletableFuture）避免 get() 阻塞。</p>
+
+  <!-- 9. 策略总结 -->
+  <h2>策略总结对比</h2>
+
+  <table>
+    <thead>
+      <tr><th>策略</th><th>破坏的条件</th><th>适用场景</th><th>代价</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>固定锁顺序</td>
+        <td>循环等待</td>
+        <td>锁的集合固定，可枚举排序</td>
+        <td>低，无额外开销</td>
+      </tr>
+      <tr>
+        <td>tryLock + 退避</td>
+        <td>不可剥夺</td>
+        <td>锁集合动态、无法预先排序</td>
+        <td>中，需处理重试逻辑</td>
+      </tr>
+      <tr>
+        <td>开放调用</td>
+        <td>减少持锁范围</td>
+        <td>持锁调用外部方法的场景</td>
+        <td>低，需重构临界区</td>
+      </tr>
+      <tr>
+        <td>无锁化（CAS/不可变）</td>
+        <td>互斥（根本消除）</td>
+        <td>高并发读多写少</td>
+        <td>设计复杂度较高</td>
+      </tr>
+      <tr>
+        <td>jstack / ThreadMXBean</td>
+        <td>—（检测而非预防）</td>
+        <td>生产排查、监控告警</td>
+        <td>诊断工具，无运行代价</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 10. 面试要点 -->
+  <h2>面试要点与常见陷阱</h2>
+  <ul>
+    <li><strong>四个条件背了没用</strong>：面试官会追问"如何破坏第 N 个条件，给出代码示例"，要能说清楚。</li>
+    <li><strong>synchronized 无法中断</strong>：等待 <code>synchronized</code> 的线程无法响应中断，<code>tryLock(timeout)</code> 是唯一可以给等待设置超时的方案。</li>
+    <li><strong>死锁 vs 活锁</strong>：死锁线程完全停止；活锁线程不断尝试但都失败，CPU 占用高。下一节会讲。</li>
+    <li><strong>不要在循环里无条件 tryLock</strong>：没有退避的自旋重试在争用时会造成 CPU 爆满。</li>
+    <li><strong>数据库 + Java 锁混用</strong>：这是最难排查的死锁类型，务必规避持 Java 锁时做数据库 I/O。</li>
+    <li><strong>线程转储是第一现场</strong>：生产出现疑似死锁时，先 <code>jstack</code> 保存现场，再重启服务，顺序不能反。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./08-JMM与happens-before.html" class="nav-btn">← 08. Java 内存模型 JMM 与 happens-before</a>
+    <a href="./10-活锁与饥饿.html" class="nav-btn next">10. 活锁 / 饥饿 →</a>
+  </div>
+
+</div>
+</body>
+</html>

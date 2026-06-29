@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>04. Condition 条件变量 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #c084fc; }
+    p code, li code { color: #c084fc; }
+    h2 { color: #c084fc; border-left-color: #c084fc; }
+    .hero .tag { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 显式锁
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 显式锁</div>
+    <h1>04. Condition 条件变量</h1>
+    <p>把"等待某个条件成立"的语义从锁中分离出来——精准唤醒、多条件队列、彻底告别 notifyAll 的惊群效应。</p>
+  </div>
+
+  <!-- 1. 为什么需要条件变量 -->
+  <h2>1. 为什么需要条件变量</h2>
+  <p>
+    并发程序中有大量"<strong>生产者/消费者</strong>"式协作：消费者在队列为空时必须<strong>等待</strong>，生产者放入数据后再<strong>通知</strong>消费者。
+    这种"等待-通知"机制本质上需要两个能力：
+  </p>
+  <ul>
+    <li>原子地<strong>释放锁 + 进入等待</strong>（否则通知可能在等待开始前就发出，永远丢失）</li>
+    <li>被唤醒后<strong>重新持有锁</strong>再继续执行</li>
+  </ul>
+  <p>
+    <code>synchronized</code> 配套的 <code>Object.wait/notify</code> 也能做到，但有一个致命缺陷：
+    <strong>一把锁只有一个等待集合</strong>。多条件场景下（如：队列空 vs 队列满）只能用 <code>notifyAll</code>，
+    把<em>所有</em>等待线程全部唤醒，大多数线程检查条件后又立刻重新睡眠——这就是经典的<strong>惊群（Spurious Wakeup）</strong>放大版。
+  </p>
+  <div class="callout info">
+    <strong>核心设计动机：</strong>一把 Lock 可以派生出<em>多个</em> Condition，每个 Condition 维护独立的等待队列。
+    生产者只唤醒「消费者条件」，消费者只唤醒「生产者条件」，精准、零浪费。
+  </div>
+
+  <!-- 2. Condition 与 Object.wait 对照 -->
+  <h2>2. Condition 与 Object.wait/notify 对照</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th><code>Object.wait/notify</code></th>
+        <th><code>Condition.await/signal</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>等待队列数量</td>
+        <td>每个对象只有 <strong>1</strong> 个</td>
+        <td>一把锁可有<strong>任意多个</strong></td>
+      </tr>
+      <tr>
+        <td>精准唤醒</td>
+        <td>不支持（notify 随机，notifyAll 全唤醒）</td>
+        <td>支持（signal 只唤醒该条件队列头部）</td>
+      </tr>
+      <tr>
+        <td>超时等待</td>
+        <td><code>wait(long ms)</code>，精度毫秒</td>
+        <td><code>await(long, TimeUnit)</code>，精度纳秒</td>
+      </tr>
+      <tr>
+        <td>不响应中断的等待</td>
+        <td>无</td>
+        <td><code>awaitUninterruptibly()</code></td>
+      </tr>
+      <tr>
+        <td>返回值（是否超时）</td>
+        <td>无</td>
+        <td><code>awaitUntil(Date)</code> 返回 boolean</td>
+      </tr>
+      <tr>
+        <td>使用前提</td>
+        <td>必须持有对象的 monitor</td>
+        <td>必须持有关联的 Lock</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 3. API 全景 -->
+  <h2>3. Condition API 全景</h2>
+
+  <div class="tree">
+    <span class="hi">java.util.concurrent.locks.Condition</span><br>
+    ├── <span class="hi">await()</span>            — 等待，响应中断<br>
+    ├── <span class="hi">awaitUninterruptibly()</span> — 等待，不响应中断<br>
+    ├── <span class="hi">await(long, TimeUnit)</span>  — 限时等待，返回剩余时间 &gt; 0 表示正常唤醒<br>
+    ├── <span class="hi">awaitNanos(long)</span>    — 纳秒精度限时等待<br>
+    ├── <span class="hi">awaitUntil(Date)</span>    — 等待到某个绝对时刻<br>
+    ├── <span class="hi">signal()</span>            — 唤醒该条件队列中等待最久的线程<br>
+    └── <span class="hi">signalAll()</span>         — 唤醒该条件队列中所有线程
+  </div>
+
+  <div class="callout warn">
+    <strong>必须在持有锁的情况下调用</strong> await/signal，否则抛出
+    <code>IllegalMonitorStateException</code>——这与 wait/notify 要求持有 monitor 完全类比。
+  </div>
+
+  <!-- 4. 经典场景：有界阻塞队列 -->
+  <h2>4. 经典场景：有界阻塞队列</h2>
+  <p>用两个独立 Condition 分别管理"队列非空"和"队列未满"两种条件，是 Condition 最典型的教科书示例（ArrayBlockingQueue 源码就是这么实现的）。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BoundedBlockingQueue.java</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BoundedBlockingQueue</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt; {</span>
+
+    <span class="kw">private final</span> <span class="ty">ReentrantLock</span> <span class="var">lock</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>
+    <span class="com">// 两个独立条件队列：精准分工，互不打扰</span>
+    <span class="kw">private final</span> <span class="ty">Condition</span>      <span class="var">notFull</span>  <span class="punct">=</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">newCondition</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Condition</span>      <span class="var">notEmpty</span> <span class="punct">=</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">newCondition</span><span class="punct">();</span>
+
+    <span class="kw">private final</span> <span class="ty">Object</span><span class="punct">[]</span> <span class="var">items</span><span class="punct">;</span>
+    <span class="kw">private int</span> <span class="var">head</span><span class="punct">,</span> <span class="var">tail</span><span class="punct">,</span> <span class="var">count</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">BoundedBlockingQueue</span><span class="punct">(</span><span class="kw">int</span> <span class="var">capacity</span><span class="punct">) {</span>
+        <span class="var">items</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">[</span><span class="var">capacity</span><span class="punct">];</span>
+    <span class="punct">}</span>
+
+    <span class="com">/** 生产者：队列满则等待 */</span>
+    <span class="kw">public void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">E</span> <span class="var">e</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="com">// 必须用 while，不能用 if！防止虚假唤醒（spurious wakeup）</span>
+            <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span>
+                <span class="var">notFull</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>       <span class="com">// 释放锁，挂起，等待 notFull 信号</span>
+            <span class="var">items</span><span class="punct">[</span><span class="var">tail</span><span class="punct">]</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">;</span>
+            <span class="kw">if</span> <span class="punct">(++</span><span class="var">tail</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span> <span class="var">tail</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+            <span class="punct">++</span><span class="var">count</span><span class="punct">;</span>
+            <span class="com">// 只唤醒等待"非空"的消费者，不惊扰其它生产者</span>
+            <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="com">/** 消费者：队列空则等待 */</span>
+    <span class="ann">@SuppressWarnings</span><span class="punct">(</span><span class="str">"unchecked"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">E</span> <span class="fn">take</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span>
+                <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>       <span class="com">// 释放锁，挂起，等待 notEmpty 信号</span>
+            <span class="ty">E</span> <span class="var">x</span> <span class="punct">= (</span><span class="ty">E</span><span class="punct">)</span> <span class="var">items</span><span class="punct">[</span><span class="var">head</span><span class="punct">];</span>
+            <span class="var">items</span><span class="punct">[</span><span class="var">head</span><span class="punct">] =</span> <span class="kw">null</span><span class="punct">;</span>
+            <span class="kw">if</span> <span class="punct">(++</span><span class="var">head</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span> <span class="var">head</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+            <span class="punct">--</span><span class="var">count</span><span class="punct">;</span>
+            <span class="com">// 只唤醒等待"未满"的生产者</span>
+            <span class="var">notFull</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>
+            <span class="kw">return</span> <span class="var">x</span><span class="punct">;</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么 signal 而不是 signalAll？</strong><br>
+    每个条件队列的语义已足够精确：放入数据后只需唤醒<em>一个</em>消费者（它取走一个元素就够了）；
+    反之亦然。此处用 <code>signal()</code> 性能更优。
+    但如果同一条件队列上存在<em>多种不同的等待逻辑</em>（比如有人等"队列元素 &gt; 5"，有人等"队列元素 &gt; 1"），
+    则必须用 <code>signalAll()</code>，否则可能唤醒了错误的线程而正确的线程永远沉睡。
+  </div>
+
+  <!-- 5. 内部机制：等待队列如何工作 -->
+  <h2>5. 内部机制：AQS 条件队列</h2>
+  <p>
+    <code>ReentrantLock.newCondition()</code> 返回的是 <code>AbstractQueuedSynchronizer.ConditionObject</code>。
+    理解它的内部结构，才能真正看清 <code>await/signal</code> 在做什么。
+  </p>
+
+  <div class="tree">
+    AQS 内部有两条队列：<br><br>
+    <span class="hi">同步队列（Sync Queue）</span> — 双向链表，存放"竞争锁失败、正在排队"的线程<br>
+    <span class="hi">条件队列（Condition Queue）</span> — 单向链表，存放"已持有锁、调用 await 主动让出"的线程<br><br>
+    调用 await() 时：<br>
+    &nbsp;&nbsp;1. 将当前线程封装为 Node，加入 <span class="hi">条件队列</span> 尾部<br>
+    &nbsp;&nbsp;2. 完全释放锁（支持重入，计数归零）<br>
+    &nbsp;&nbsp;3. park 挂起线程<br><br>
+    调用 signal() 时：<br>
+    &nbsp;&nbsp;1. 将条件队列头节点转移到 <span class="hi">同步队列</span><br>
+    &nbsp;&nbsp;2. unpark 唤醒该线程（它将重新竞争锁，获得锁后从 await 返回）
+  </div>
+
+  <div class="callout info">
+    <strong>await 释放的是"全部重入层次"</strong>：若当前线程持有了 3 层重入，await 会把计数从 3 归零，
+    signal 后重新获得锁时再恢复到 3。这与 <code>Object.wait</code> 的语义完全一致。
+  </div>
+
+  <!-- 6. 并发陷阱与反例 -->
+  <h2>6. 并发陷阱与反例</h2>
+
+  <h3>陷阱 1：用 if 代替 while 检查条件（虚假唤醒）</h3>
+  <p>JVM 规范允许线程在没有收到 signal 的情况下从 <code>await</code> 自行返回（虚假唤醒），必须用循环重新检查条件。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — if 检查条件（危险）</span><span>Java</span></div>
+    <pre><span class="com">// 危险！虚假唤醒后 count 仍为 0，直接 take 会取到 null</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span>
+    <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+<span class="com">// ↑ 虚假唤醒后直接跑到这里，count 还是 0</span>
+<span class="ty">E</span> <span class="var">x</span> <span class="punct">= (</span><span class="ty">E</span><span class="punct">)</span> <span class="var">items</span><span class="punct">[</span><span class="var">head</span><span class="punct">];</span>  <span class="com">// 取到 null，NPE 或数据错乱</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — while 循环（安全）</span><span>Java</span></div>
+    <pre><span class="com">// 正确：每次被唤醒后重新检查，不满足就继续等</span>
+<span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span>
+    <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span></pre>
+  </div>
+
+  <h3>陷阱 2：在锁外调用 signal/await</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 锁外 signal</span><span>Java</span></div>
+    <pre><span class="com">// 忘记加锁，直接 signal → IllegalMonitorStateException</span>
+<span class="var">notEmpty</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>  <span class="com">// 抛异常！</span>
+
+<span class="com">// 正例：signal 必须在 lock/unlock 区间内</span>
+<span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span> <span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 3：signal 用错条件对象——通知了错误队列</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 生产者通知了 notFull 而不是 notEmpty</span><span>Java</span></div>
+    <pre><span class="com">// 生产者放完数据，却通知"队列未满"条件——等待取数据的消费者永远沉睡</span>
+<span class="var">notFull</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>   <span class="com">// BUG：应该是 notEmpty.signal()</span></pre>
+  </div>
+
+  <div class="callout warn">
+    多个 Condition 对象的命名务必清晰。建议命名为 <code>notFull</code>/<code>notEmpty</code>，
+    而不是 <code>cond1</code>/<code>cond2</code>，字面语义直接对应"满足了什么条件"。
+  </div>
+
+  <h3>陷阱 4：await 后忘记处理中断</h3>
+  <p>
+    <code>await()</code> 会响应线程中断，抛出 <code>InterruptedException</code>。
+    若方法签名不声明该异常，必须显式捕获处理，<strong>不能直接吞掉</strong>。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 吞掉中断</span><span>Java</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span>
+        <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 吞掉！中断状态丢失，调用方永远感知不到取消信号</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 恢复中断状态</span><span>Java</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span>
+        <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 方案 A：重新设置中断标志，让上层感知</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+    <span class="kw">break</span><span class="punct">;</span>
+    <span class="com">// 方案 B：若不想响应中断，改用 awaitUninterruptibly()</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. 进阶：限时等待与超时检测 -->
+  <h2>7. 进阶：限时等待与超时检测</h2>
+  <p>
+    生产环境中常见"最多等待 N 毫秒，超时返回失败"的需求。
+    <code>await(long, TimeUnit)</code> 返回 <code>true</code> 表示在超时前被正常 signal 唤醒，
+    <code>false</code> 表示超时。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>限时 take — 超时返回 null</span><span>Java</span></div>
+    <pre><span class="ann">@SuppressWarnings</span><span class="punct">(</span><span class="str">"unchecked"</span><span class="punct">)</span>
+<span class="kw">public</span> <span class="ty">E</span> <span class="fn">poll</span><span class="punct">(</span><span class="kw">long</span> <span class="var">timeout</span><span class="punct">,</span> <span class="ty">TimeUnit</span> <span class="var">unit</span><span class="punct">)</span>
+        <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+    <span class="kw">long</span> <span class="var">nanos</span> <span class="punct">=</span> <span class="var">unit</span><span class="punct">.</span><span class="fn">toNanos</span><span class="punct">(</span><span class="var">timeout</span><span class="punct">);</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">) {</span>
+            <span class="com">// awaitNanos 返回剩余纳秒，&lt;= 0 表示已超时</span>
+            <span class="kw">if</span> <span class="punct">((</span><span class="var">nanos</span> <span class="punct">=</span> <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">awaitNanos</span><span class="punct">(</span><span class="var">nanos</span><span class="punct">))</span> <span class="punct">&lt;=</span> <span class="num">0</span><span class="punct">)</span>
+                <span class="kw">return null</span><span class="punct">;</span>
+        <span class="punct">}</span>
+        <span class="ty">E</span> <span class="var">x</span> <span class="punct">= (</span><span class="ty">E</span><span class="punct">)</span> <span class="var">items</span><span class="punct">[</span><span class="var">head</span><span class="punct">];</span>
+        <span class="var">items</span><span class="punct">[</span><span class="var">head</span><span class="punct">] =</span> <span class="kw">null</span><span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(++</span><span class="var">head</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span> <span class="var">head</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+        <span class="punct">--</span><span class="var">count</span><span class="punct">;</span>
+        <span class="var">notFull</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>
+        <span class="kw">return</span> <span class="var">x</span><span class="punct">;</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    注意将 <code>awaitNanos</code> 的返回值<strong>赋回</strong> <code>nanos</code>，
+    每轮循环用剩余时间继续等待——这样可以正确处理虚假唤醒叠加超时的情况。
+  </div>
+
+  <!-- 8. JDK 中的实际应用 -->
+  <h2>8. JDK 中的实际应用</h2>
+  <table>
+    <thead>
+      <tr><th>类</th><th>使用的 Condition</th><th>用途</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>ArrayBlockingQueue</code></td>
+        <td><code>notFull</code> + <code>notEmpty</code></td>
+        <td>阻塞 put/take，精准双条件设计</td>
+      </tr>
+      <tr>
+        <td><code>LinkedBlockingQueue</code></td>
+        <td><code>notFull</code> + <code>notEmpty</code></td>
+        <td>同上，但读写锁分离，各自独立 Condition</td>
+      </tr>
+      <tr>
+        <td><code>DelayQueue</code></td>
+        <td><code>available</code></td>
+        <td>等待最近到期的元素，leader 线程限时等待</td>
+      </tr>
+      <tr>
+        <td><code>ReentrantReadWriteLock</code></td>
+        <td>内部用 AQS 共享/独占节点代替显式 Condition</td>
+        <td>读写互斥协调</td>
+      </tr>
+      <tr>
+        <td><code>Phaser</code></td>
+        <td>用 ForkJoinPool 的 ManagedBlocker 代替</td>
+        <td>屏障等待，可配合虚拟线程</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 9. 与 synchronized + wait/notify 的选择建议 -->
+  <h2>9. 选择建议：何时用 Condition，何时用 wait/notify</h2>
+  <ul>
+    <li><strong>只有一种等待条件</strong>，且不需要超时、公平、可中断——<code>synchronized + wait/notifyAll</code> 足够，简单直白</li>
+    <li><strong>多种等待条件</strong>（如生产者/消费者双端都需要阻塞）——Condition 精准唤醒，性能显著优于 notifyAll</li>
+    <li><strong>需要超时精度到纳秒</strong>——<code>awaitNanos</code></li>
+    <li><strong>需要公平锁语义</strong>——<code>new ReentrantLock(true)</code> + Condition，<code>synchronized</code> 无法做到</li>
+    <li><strong>需要 awaitUninterruptibly</strong>——某些底层资源获取场景，不允许响应中断</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>面试高频考点</strong><br>
+    ① "Condition 与 Object.wait/notify 的区别"——重点说多条件队列 + 精准唤醒<br>
+    ② "为什么 await 必须用 while 而非 if"——虚假唤醒（spurious wakeup）<br>
+    ③ "ArrayBlockingQueue 如何实现阻塞"——两个 Condition + signal 而非 signalAll<br>
+    ④ "signal 和 signalAll 如何选择"——单一等待语义用 signal，混合等待语义用 signalAll
+  </div>
+
+  <hr />
+
+  <!-- 小结 -->
+  <h2>小结</h2>
+  <p>
+    <code>Condition</code> 是显式锁体系对"等待-通知"机制的全面升级：
+    <strong>一把锁多个条件队列</strong>消灭了 notifyAll 惊群，
+    <strong>精准 signal</strong> 让线程协作更高效，
+    <strong>丰富的 await 变体</strong>满足了超时、不可中断等生产需求。
+    理解它的内部机制（AQS 条件队列 → 同步队列的节点转移）是真正掌握 Java 并发基础设施的关键一步。
+  </p>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-ReadWriteLock.html" class="nav-btn">← 03. ReentrantReadWriteLock 读写锁</a>
+    <a href="./05-CAS与原子类.html" class="nav-btn next">05. CAS 与原子类 atomic →</a>
+  </div>
+
+</div>
+</body>
+</html>

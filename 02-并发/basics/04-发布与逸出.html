@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>04. 发布与逸出（this 逸出）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part I 基础知识 / 同步与可见性
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part I 基础知识 · 同步与可见性</div>
+    <h1>04. 发布与逸出（this 逸出）</h1>
+    <p>对象在构造完成之前被其他线程看到，是并发 Bug 中最隐蔽的一类——JVM 指令重排加上构造器竞态，足以让"看起来正确"的代码在生产环境崩溃。</p>
+  </div>
+
+  <!-- ① 什么是"发布" -->
+  <h2>① 什么是"发布"（Publishing）</h2>
+  <p>
+    <strong>发布</strong>指的是让一个对象的引用对当前作用域之外的代码可见。常见形式包括：
+  </p>
+  <ul>
+    <li>把引用存入一个 <code>public static</code> 字段</li>
+    <li>把引用传给外部方法（包括回调、监听器）</li>
+    <li>把引用存入某个可被其他线程访问的集合</li>
+    <li>在构造器里把 <code>this</code> 传出去（最危险的一种）</li>
+  </ul>
+  <p>
+    发布本身不是问题；问题在于<strong>在对象完全构造好之前</strong>就发布了——这就是"逸出（Escape）"。
+  </p>
+
+  <div class="callout info">
+    <strong>为什么单独拿出来讲？</strong><br>
+    在上一节 happens-before 中我们学到：JVM 保证构造函数内的写操作对"正常获得引用的线程"可见。
+    但一旦 <code>this</code> 在构造器执行期间就被发布，这个保证就被打破了——
+    其他线程可能拿到一个字段尚未初始化完毕的"半成品对象"。
+  </div>
+
+  <!-- ② 直觉模型：半生不熟的对象 -->
+  <h2>② 直觉模型：半生不熟的对象</h2>
+  <p>想象烤蛋糕的过程：面糊刚放进烤箱（构造器开始执行），你就把"蛋糕已做好"的消息广播出去（发布 <code>this</code>）。其他人跑来吃，却发现还是面糊。这就是 this 逸出的本质。</p>
+  <p>
+    在 JVM 视角里，构造器执行期间，对象字段的写入对其他线程来说<strong>不保证按顺序可见</strong>。
+    更糟的是，指令重排可能让字段赋值顺序与源码顺序不同，因此拿到逸出引用的线程可能看到字段的默认值（<code>0</code>/<code>null</code>/<code>false</code>），或部分初始化的状态。
+  </p>
+
+  <!-- ③ 经典反例 -->
+  <h2>③ 经典反例：构造器里注册监听器</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>EventSource.java — 危险：this 在构造器里逸出</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">EventSource</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">name</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">int</span><span class="punct">[]</span> <span class="var">data</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">EventSource</span><span class="punct">(</span><span class="ty">EventBus</span> <span class="var">bus</span><span class="punct">) {</span>
+        <span class="com">// 第一步：注册到 bus — 此时 this 已被发布！</span>
+        <span class="var">bus</span><span class="punct">.</span><span class="fn">register</span><span class="punct">(</span><span class="kw">this</span><span class="punct">);</span>  <span class="com">// ← this 逸出</span>
+
+        <span class="com">// 第二步：字段初始化尚未完成</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="str">"source-1"</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">data</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">int</span><span class="punct">[</span><span class="num">1024</span><span class="punct">];</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">getName</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">name</span><span class="punct">; }</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>
+    如果 <code>bus.register(this)</code> 内部立刻把 <code>this</code> 放到共享队列里，另一个线程就可能在
+    <code>name</code> / <code>data</code> 赋值之前访问它，读到 <code>null</code> 和 <code>null</code>。
+    即使 <code>name</code> / <code>data</code> 用了 <code>final</code> 修饰，逸出仍然打破了 final 字段的安全发布保证。
+  </p>
+
+  <div class="callout warn">
+    <strong>面试高频考点：</strong>
+    "<code>final</code> 字段不是线程安全的吗？" — final 字段的安全性依赖于"构造器正常完成后引用才被发布"这一前提。
+    一旦 this 在构造器中逸出，final 保证失效。
+  </div>
+
+  <!-- ④ 另一个常见陷阱：匿名内部类 -->
+  <h2>④ 另一种逸出：匿名内部类隐式持有 this</h2>
+  <p>
+    匿名内部类（包括 Lambda 捕获外部类实例）会隐式持有外部类的 <code>this</code>。
+    如果在构造器里把匿名内部类的实例传出去，效果等同于直接传 <code>this</code>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Server.java — 匿名内部类导致隐式 this 逸出</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Server</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">int</span> <span class="var">port</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">Server</span><span class="punct">(</span><span class="ty">int</span> <span class="var">port</span><span class="punct">,</span> <span class="ty">ThreadPool</span> <span class="var">pool</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">port</span> <span class="punct">=</span> <span class="var">port</span><span class="punct">;</span>
+        <span class="com">// 匿名 Runnable 隐式捕获了外部的 this（Server 实例）</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Runnable</span><span class="punct">() {</span>
+            <span class="ann">@Override</span>
+            <span class="kw">public void</span> <span class="fn">run</span><span class="punct">() {</span>
+                <span class="com">// 这里访问的 Server.this 可能还没构造完</span>
+                <span class="fn">System.out.println</span><span class="punct">(</span><span class="str">"listening on "</span> <span class="punct">+</span> <span class="var">port</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">});</span>
+        <span class="com">// ... 后续字段初始化</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>
+    即使 <code>Runnable</code> 只访问了 <code>port</code>，只要匿名类实例被发布，外部类 <code>this</code> 就随之逸出。
+    如果 <code>port</code> 之后还有其他字段初始化，那些字段在任务执行时仍可能不可见。
+  </p>
+
+  <!-- ⑤ 底层原因 -->
+  <h2>⑤ 底层原因：JMM 与指令重排</h2>
+  <p>从 JMM（Java 内存模型）角度理解这个问题：</p>
+  <div class="tree">
+构造器执行（单线程视角）           其他线程（可能的读取时序）
+─────────────────────────────      ─────────────────────────────
+bus.register(this)  ← 发布         读取 name → null  ← <span class="hi">看到默认值</span>
+this.name = "src"                  读取 data → null  ← <span class="hi">看到默认值</span>
+this.data = new int[1024]
+  </div>
+  <p>
+    JMM 不保证构造器内的写操作对"通过非安全路径获得引用的线程"有序可见。
+    更重要的是，JIT 编译器和 CPU 都可能对构造器内指令重排序，
+    使得字段赋值在 <code>register(this)</code> 调用之后才真正落地到主内存。
+  </p>
+  <p>
+    <code>final</code> 字段通过在构造器末尾插入 <strong>StoreStore 屏障</strong> 来保证可见性，
+    但这个屏障前提是：<strong>引用在构造器正常退出后才被发布</strong>。逸出让屏障提前失效。
+  </p>
+
+  <!-- ⑥ 正例 -->
+  <h2>⑥ 正例：工厂方法模式修复逸出</h2>
+  <p>最通用的解法是<strong>工厂方法</strong>：把注册/发布动作移出构造器，等对象完全构造后再发布。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>EventSource.java — 安全：工厂方法延迟发布</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">EventSource</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">name</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">int</span><span class="punct">[]</span> <span class="var">data</span><span class="punct">;</span>
+
+    <span class="com">// 构造器：只做字段初始化，绝不把 this 传出去</span>
+    <span class="kw">private</span> <span class="fn">EventSource</span><span class="punct">() {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">name</span> <span class="punct">=</span> <span class="str">"source-1"</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">data</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">int</span><span class="punct">[</span><span class="num">1024</span><span class="punct">];</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 工厂方法：构造完成后再注册，引用此时已完全初始化</span>
+    <span class="kw">public static</span> <span class="ty">EventSource</span> <span class="fn">create</span><span class="punct">(</span><span class="ty">EventBus</span> <span class="var">bus</span><span class="punct">) {</span>
+        <span class="ty">EventSource</span> <span class="var">source</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">EventSource</span><span class="punct">();</span>
+        <span class="var">bus</span><span class="punct">.</span><span class="fn">register</span><span class="punct">(</span><span class="var">source</span><span class="punct">);</span>  <span class="com">// ← 发布在构造完成之后</span>
+        <span class="kw">return</span> <span class="var">source</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">getName</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">name</span><span class="punct">; }</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>
+    工厂方法保证了：当 <code>bus.register(source)</code> 执行时，构造器已完整执行完毕，
+    JMM 的 <strong>构造器 happens-before 后续引用读取</strong> 保证生效，所有字段对其他线程安全可见。
+  </p>
+
+  <!-- ⑦ Server 正例 -->
+  <h2>⑦ 线程启动的修复：延迟 submit</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>Server.java — 安全：start() 方法延迟提交任务</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Server</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">int</span> <span class="var">port</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">ThreadPool</span> <span class="var">pool</span><span class="punct">;</span>
+
+    <span class="com">// 构造器只保存依赖，不启动任何后台任务</span>
+    <span class="kw">public</span> <span class="fn">Server</span><span class="punct">(</span><span class="ty">int</span> <span class="var">port</span><span class="punct">,</span> <span class="ty">ThreadPool</span> <span class="var">pool</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">port</span> <span class="punct">=</span> <span class="var">port</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">pool</span> <span class="punct">=</span> <span class="var">pool</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 由外部在确认构造完成后显式调用</span>
+    <span class="kw">public void</span> <span class="fn">start</span><span class="punct">() {</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -></span>
+            <span class="fn">System.out.println</span><span class="punct">(</span><span class="str">"listening on "</span> <span class="punct">+</span> <span class="var">port</span><span class="punct">)</span>
+        <span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用端</span>
+<span class="ty">Server</span> <span class="var">srv</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Server</span><span class="punct">(</span><span class="num">8080</span><span class="punct">,</span> <span class="var">pool</span><span class="punct">);</span>
+<span class="var">srv</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>  <span class="com">// 构造完成后再启动后台任务，引用已安全发布</span></pre>
+  </div>
+
+  <!-- ⑧ 对比总结 -->
+  <h2>⑧ 反例 vs 正例对比</h2>
+  <table>
+    <tr>
+      <th>场景</th>
+      <th>危险做法</th>
+      <th>安全做法</th>
+    </tr>
+    <tr>
+      <td>注册监听器</td>
+      <td>构造器内 <code>bus.register(this)</code></td>
+      <td>工厂方法：构造完后再 register</td>
+    </tr>
+    <tr>
+      <td>启动后台线程</td>
+      <td>构造器内 <code>new Thread(this).start()</code></td>
+      <td>提供 <code>start()</code> 方法，外部显式调用</td>
+    </tr>
+    <tr>
+      <td>匿名内部类</td>
+      <td>构造器内把匿名类实例发布给共享结构</td>
+      <td>用 Lambda/方法引用替代，或移出构造器</td>
+    </tr>
+    <tr>
+      <td>静态字段发布</td>
+      <td>构造器执行中途赋值给 <code>public static</code> 字段</td>
+      <td>静态初始化块或工厂方法完成后赋值</td>
+    </tr>
+  </table>
+
+  <!-- ⑨ 安全发布的四种手段 -->
+  <h2>⑨ 安全发布的四种通用手段</h2>
+  <p>《Java 并发编程实战》总结了让对象被安全发布的四种方式，满足任意一种即可：</p>
+  <ol>
+    <li>在<strong>静态初始化函数</strong>中初始化引用（JVM 初始化阶段的内置锁保证）</li>
+    <li>将引用保存到 <strong><code>volatile</code> 字段</strong>或 <code>AtomicReference</code> 中</li>
+    <li>将引用保存到某个被<strong>正确加锁保护</strong>的字段中</li>
+    <li>将引用保存到 <strong><code>final</code> 字段</strong>中（前提：构造器不逸出）</li>
+  </ol>
+  <div class="callout tip">
+    <strong>记忆口诀：静态 / volatile / 锁 / final。</strong>
+    只要发布动作走其中一条路，接收方就能看到一个完整初始化的对象。
+  </div>
+
+  <!-- ⑩ 陷阱汇总 -->
+  <h2>⑩ 并发陷阱速查</h2>
+  <ul>
+    <li><strong>构造器里调用可覆盖方法</strong>：子类覆盖方法可能读取尚未初始化的字段，this 同样处于逸出状态</li>
+    <li><strong>Spring Bean 的 <code>@PostConstruct</code></strong>：Spring 保证在所有依赖注入完成后才调用 <code>@PostConstruct</code>，比构造器内注册安全</li>
+    <li><strong><code>ThreadLocal</code> 不能防逸出</strong>：ThreadLocal 只隔离"存储"，若构造器把 this 传到了别的线程，ThreadLocal 无效</li>
+    <li><strong>双重检查锁（DCL）</strong>：如果单例构造器里逸出了 this，DCL 的 volatile 保证也救不了你</li>
+    <li><strong><code>this</code> 传入方法不一定逸出</strong>：只要该方法不把引用存储到可被其他线程访问的位置，就是局部使用，不构成逸出</li>
+  </ul>
+
+  <!-- ⑪ 知识地图 -->
+  <h2>⑪ 知识点地图</h2>
+  <div class="tree">
+发布与逸出
+├── 安全发布 → static / volatile / 锁 / final
+├── <span class="hi">this 逸出</span> → 构造器注册、匿名类、可覆盖方法
+│   └── 根因：JMM 构造器不保证中途可见性 + 指令重排
+├── 修复手段 → 工厂方法 / start() 分离
+└── 关联知识
+    ├── happens-before（上一节）
+    ├── final 字段语义（JMM StoreStore 屏障）
+    └── 线程安全对象设计（不可变对象、安全发布）
+  </div>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./03-happens-before初识.html" class="nav-btn">← 03. happens-before 初识</a>
+    <a href="./05-进程vs线程.html" class="nav-btn next">05. 进程 vs 线程 · 为什么需要并发 →</a>
+  </div>
+
+</div>
+</body>
+</html>

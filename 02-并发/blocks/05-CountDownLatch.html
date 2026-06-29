@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>05. CountDownLatch 倒计时门闩 — Java 并发</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a>
+    &nbsp;/&nbsp;Part II 构建模块&nbsp;/&nbsp;队列与同步器
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part II 构建模块 · 队列与同步器</div>
+    <h1>05. CountDownLatch 倒计时门闩</h1>
+    <p>让一个或多个线程等待，直到其他线程完成一组操作——一次性的同步屏障，不可重置。</p>
+  </div>
+
+  <!-- 1. 为什么需要它 -->
+  <h2>为什么需要 CountDownLatch？</h2>
+  <p>
+    在并发程序里，<strong>等待若干事件全部发生之后再继续</strong>是极其常见的需求：
+  </p>
+  <ul>
+    <li>主线程启动 N 个工作线程，等它们全部就绪后再一起开跑（赛跑模型）</li>
+    <li>主线程把任务拆成 N 份并行处理，等全部子任务完成后汇总结果</li>
+    <li>集成测试中，等待多个依赖服务启动完毕再开始测试</li>
+  </ul>
+  <p>
+    在 JDK 1.5 之前，实现上述逻辑需要手写 <code>wait/notifyAll</code> + 计数器，容易出错。
+    <code>CountDownLatch</code> 把这个模式封装成一个语义明确的工具类：
+    <strong>内部维护一个整数计数器，每次 <code>countDown()</code> 减 1，减到 0 时所有阻塞在 <code>await()</code> 的线程同时放行。</strong>
+  </p>
+  <div class="callout info">
+    <strong>设计哲学：</strong>CountDownLatch 是"一次性"的——计数归零后不能重置。
+    这个设计来自 AQS（AbstractQueuedSynchronizer）的共享锁机制：归零是不可逆状态，
+    简化了实现，也明确了语义。如果需要可重置的屏障，应该用 <code>CyclicBarrier</code>。
+  </div>
+
+  <!-- 2. 底层原理 -->
+  <h2>底层原理：AQS 共享锁</h2>
+  <p>
+    <code>CountDownLatch</code> 内部有一个私有静态类 <code>Sync</code>，继承自
+    <code>AbstractQueuedSynchronizer</code>（AQS）。
+  </p>
+  <div class="tree">
+CountDownLatch<br>
+└── <span class="hi">Sync</span> extends AbstractQueuedSynchronizer<br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── state = count（构造时传入）<br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="hi">tryAcquireShared</span>: state==0 ? 放行 : 阻塞<br>
+&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="hi">tryReleaseShared</span>: CAS(state, s, s-1)，归零时返回 true 唤醒所有等待线程
+  </div>
+  <p>
+    <strong>await()</strong> 调用 <code>acquireSharedInterruptibly(1)</code>，
+    如果 <code>state != 0</code> 则进入 AQS 的 CLH 等待队列挂起。
+    <strong>countDown()</strong> 调用 <code>releaseShared(1)</code>，通过 CAS 将 state 减 1；
+    当 state 变为 0 时，<code>tryReleaseShared</code> 返回 <code>true</code>，
+    AQS 以广播方式唤醒队列中<strong>所有</strong>等待线程（共享锁语义）。
+  </p>
+  <div class="callout tip">
+    <strong>对比独占锁：</strong>独占锁 release 后只唤醒队头一个等待者；
+    CountDownLatch 用共享锁，归零后会传播唤醒，直到遇到第一个独占节点为止——
+    这就是 N 个 await() 线程能同时放行的根本原因。
+  </div>
+
+  <!-- 3. 核心 API -->
+  <h2>核心 API 一览</h2>
+  <table>
+    <thead>
+      <tr><th>方法</th><th>语义</th><th>线程安全</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>new CountDownLatch(int count)</code></td>
+        <td>初始化计数器，count 必须 ≥ 0</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><code>await()</code></td>
+        <td>阻塞直到 count == 0 或线程被中断</td>
+        <td>可在多线程调用</td>
+      </tr>
+      <tr>
+        <td><code>await(long timeout, TimeUnit unit)</code></td>
+        <td>带超时的等待，超时返回 false</td>
+        <td>可在多线程调用</td>
+      </tr>
+      <tr>
+        <td><code>countDown()</code></td>
+        <td>count 减 1；已为 0 则无操作</td>
+        <td>可在多线程调用</td>
+      </tr>
+      <tr>
+        <td><code>getCount()</code></td>
+        <td>返回当前计数值（仅供监控/调试）</td>
+        <td>是</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 4. 两种经典模式 -->
+  <h2>两种经典使用模式</h2>
+
+  <h3>模式一：主线程等待所有子任务完成（任务完成门）</h3>
+  <p>
+    主线程把工作拆给 N 个子线程，每个子线程完成后 <code>countDown()</code>，
+    主线程 <code>await()</code> 汇总。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>TaskCompletionDemo.java</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.</span><span class="ty">CountDownLatch</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="var">java.util.concurrent.</span><span class="ty">ExecutorService</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="var">java.util.concurrent.</span><span class="ty">Executors</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">TaskCompletionDemo</span> <span class="punct">{</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="kw">int</span> <span class="var">N</span> <span class="punct">=</span> <span class="num">5</span><span class="punct">;</span>
+        <span class="com">// 计数器初始化为子任务数量</span>
+        <span class="ty">CountDownLatch</span> <span class="var">latch</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="var">N</span><span class="punct">);</span>
+        <span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="var">N</span><span class="punct">);</span>
+
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">N</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+            <span class="kw">final int</span> <span class="var">id</span> <span class="punct">=</span> <span class="var">i</span><span class="punct">;</span>
+            <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+                <span class="kw">try</span> <span class="punct">{</span>
+                    <span class="fn">doWork</span><span class="punct">(</span><span class="var">id</span><span class="punct">);</span>
+                <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+                    <span class="com">// 必须放 finally，确保异常时也能 countDown，否则主线程永远阻塞</span>
+                    <span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>
+                <span class="punct">}</span>
+            <span class="punct">});</span>
+        <span class="punct">}</span>
+
+        <span class="com">// 主线程在此阻塞，直到 5 个子任务全部调用 countDown()</span>
+        <span class="var">latch</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"所有子任务完成，开始汇总结果"</span><span class="punct">);</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+    <span class="punct">}</span>
+
+    <span class="kw">static void</span> <span class="fn">doWork</span><span class="punct">(</span><span class="kw">int</span> <span class="var">id</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">100</span> <span class="punct">*</span> <span class="var">id</span><span class="punct">);</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"Task "</span> <span class="punct">+</span> <span class="var">id</span> <span class="punct">+</span> <span class="str">" done"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>模式二：多线程同时起跑（发令枪门）</h3>
+  <p>
+    反过来，用一个 count=1 的 Latch 作"发令枪"：所有工作线程启动后先 <code>await()</code>，
+    等主线程做好准备后 <code>countDown()</code>，所有线程同时冲出。
+    常用于并发测试：尽可能让多线程在同一时刻竞争同一资源，暴露竞态条件。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>StartingGunDemo.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">StartingGunDemo</span> <span class="punct">{</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="kw">int</span> <span class="var">N</span> <span class="punct">=</span> <span class="num">8</span><span class="punct">;</span>
+        <span class="com">// 发令枪：count=1，主线程控制</span>
+        <span class="ty">CountDownLatch</span> <span class="var">startGun</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+        <span class="com">// 完成门：count=N，等所有选手跑完</span>
+        <span class="ty">CountDownLatch</span> <span class="var">finishLine</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="var">N</span><span class="punct">);</span>
+
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">N</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+            <span class="kw">final int</span> <span class="var">id</span> <span class="punct">=</span> <span class="var">i</span><span class="punct">;</span>
+            <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+                <span class="kw">try</span> <span class="punct">{</span>
+                    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"选手 "</span> <span class="punct">+</span> <span class="var">id</span> <span class="punct">+</span> <span class="str">" 就位"</span><span class="punct">);</span>
+                    <span class="com">// 等发令枪</span>
+                    <span class="var">startGun</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+                    <span class="fn">race</span><span class="punct">(</span><span class="var">id</span><span class="punct">);</span>
+                <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+                    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+                <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+                    <span class="var">finishLine</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>
+                <span class="punct">}</span>
+            <span class="punct">}).</span><span class="fn">start</span><span class="punct">();</span>
+        <span class="punct">}</span>
+
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">500</span><span class="punct">);</span> <span class="com">// 确认所有选手就位</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"预备——跑！"</span><span class="punct">);</span>
+        <span class="var">startGun</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>  <span class="com">// 一声令下，所有线程同时放行</span>
+
+        <span class="var">finishLine</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"比赛结束"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">static void</span> <span class="fn">race</span><span class="punct">(</span><span class="kw">int</span> <span class="var">id</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">((</span><span class="kw">long</span><span class="punct">)(</span><span class="ty">Math</span><span class="punct">.</span><span class="fn">random</span><span class="punct">() *</span> <span class="num">200</span><span class="punct">));</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"选手 "</span> <span class="punct">+</span> <span class="var">id</span> <span class="punct">+</span> <span class="str">" 到达终点"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 5. 并发陷阱 -->
+  <h2>并发陷阱与反例分析</h2>
+
+  <h3>陷阱 1：countDown() 未放 finally，子任务异常导致主线程死锁</h3>
+  <div class="callout warn">
+    <strong>死锁风险：</strong>如果 countDown() 写在业务代码之后而不是 finally 块里，一旦业务抛出未检查异常，
+    countDown() 不会执行，计数器永远不归零，主线程永远阻塞。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — countDown 不在 finally</span></div>
+    <pre><span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="fn">doWork</span><span class="punct">();</span>         <span class="com">// 若此处抛出 RuntimeException</span>
+    <span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span> <span class="ann">// ← 永远不会执行！主线程死等</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — countDown 放 finally</span></div>
+    <pre><span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span> <span class="com">// 无论正常还是异常，都保证执行</span>
+    <span class="punct">}</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <h3>陷阱 2：await() 无超时，线程永久阻塞</h3>
+  <p>
+    生产代码应使用带超时的 <code>await(long, TimeUnit)</code>，超时后检查返回值决定是否继续。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>带超时的安全写法</span></div>
+    <pre><span class="kw">boolean</span> <span class="var">ok</span> <span class="punct">=</span> <span class="var">latch</span><span class="punct">.</span><span class="fn">await</span><span class="punct">(</span><span class="num">30</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+<span class="kw">if</span> <span class="punct">(!</span><span class="var">ok</span><span class="punct">) {</span>
+    <span class="com">// 超时：记录告警、取消任务、降级处理……</span>
+    <span class="fn">handleTimeout</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 3：把 CountDownLatch 当 CyclicBarrier 用</h3>
+  <p>
+    CountDownLatch 是<strong>一次性</strong>的，计数归零后不可重置，再次 <code>await()</code> 会立即返回。
+    如果需要"跑完一轮再跑下一轮"的周期性屏障，必须换成 <code>CyclicBarrier</code>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 错误地复用 CountDownLatch</span></div>
+    <pre><span class="ty">CountDownLatch</span> <span class="var">latch</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="num">3</span><span class="punct">);</span>
+<span class="com">// 第一轮：正常工作</span>
+<span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span> <span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span> <span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>
+<span class="var">latch</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>  <span class="com">// OK，放行</span>
+
+<span class="com">// 第二轮：再次调用 countDown 无效，await 立即返回</span>
+<span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>  <span class="ann">// state 已为 0，无操作</span>
+<span class="var">latch</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>      <span class="ann">// 立即返回！根本没等待</span></pre>
+  </div>
+
+  <h3>陷阱 4：count 传入 0</h3>
+  <p>
+    <code>new CountDownLatch(0)</code> 是合法的，<code>await()</code> 会<strong>立即返回</strong>，不阻塞。
+    这在条件初始化（如无子任务时）可以利用，但要确保语义符合预期，不要因笔误把初始值算错。
+  </p>
+
+  <!-- 6. 可见性保证 -->
+  <h2>内存可见性保证</h2>
+  <p>
+    JDK 规范明确：<strong>countDown() happens-before await() 返回</strong>。
+    也就是说，子线程在 <code>countDown()</code> 之前写入的所有数据，在主线程 <code>await()</code> 返回之后可以安全读取，
+    无需额外的 <code>volatile</code> 或 <code>synchronized</code>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>可见性示例</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">results</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CopyOnWriteArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="ty">CountDownLatch</span> <span class="var">latch</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="num">3</span><span class="punct">);</span>
+
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">3</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+    <span class="kw">final int</span> <span class="var">id</span> <span class="punct">=</span> <span class="var">i</span><span class="punct">;</span>
+    <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+        <span class="var">results</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="str">"result-"</span> <span class="punct">+</span> <span class="var">id</span><span class="punct">);</span>  <span class="com">// 写入结果</span>
+        <span class="var">latch</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>               <span class="com">// happens-before 下面的 await() 返回</span>
+    <span class="punct">}).</span><span class="fn">start</span><span class="punct">();</span>
+<span class="punct">}</span>
+
+<span class="var">latch</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+<span class="com">// 此处读取 results，三个子线程的写入均已可见，不会有脏读</span>
+<span class="var">results</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">::</span><span class="fn">println</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- 7. 与 CyclicBarrier / Phaser 对比 -->
+  <h2>CountDownLatch vs CyclicBarrier vs Phaser</h2>
+  <table>
+    <thead>
+      <tr><th>特性</th><th>CountDownLatch</th><th>CyclicBarrier</th><th>Phaser</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>可重置</td>
+        <td>否（一次性）</td>
+        <td>是（自动重置）</td>
+        <td>是（多阶段）</td>
+      </tr>
+      <tr>
+        <td>等待方向</td>
+        <td>N 个事件 → 1+ 个等待者</td>
+        <td>N 个线程互相等</td>
+        <td>任意注册/注销</td>
+      </tr>
+      <tr>
+        <td>屏障动作</td>
+        <td>无</td>
+        <td>有（barrierAction）</td>
+        <td>有（onAdvance）</td>
+      </tr>
+      <tr>
+        <td>参与方数量</td>
+        <td>固定（构造时确定）</td>
+        <td>固定</td>
+        <td>动态注册/注销</td>
+      </tr>
+      <tr>
+        <td>典型场景</td>
+        <td>主线程等子任务、并发压测起跑</td>
+        <td>多线程分阶段协作</td>
+        <td>Fork/Join 风格分阶段任务</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 8. 面试高频考点 -->
+  <h2>面试高频考点</h2>
+  <ul>
+    <li><strong>CountDownLatch 和 join() 有什么区别？</strong>
+      <code>join()</code> 只能等待线程本身结束，且只能在线程对象上调用；CountDownLatch 更灵活，可以等待任意事件（不止线程结束），且支持线程池场景。</li>
+    <li><strong>为什么 CountDownLatch 不可重置？</strong>
+      基于 AQS state 的 CAS 操作是单向递减到 0，归零即广播唤醒，没有"复位"逻辑。
+      这是故意设计成一次性的，语义更简单、不易误用。</li>
+    <li><strong>await() 和 countDown() 都是线程安全的吗？</strong>
+      是的。countDown() 通过 AQS 的 CAS 保证原子性；await() 通过 AQS 的队列机制保证阻塞和唤醒正确。</li>
+    <li><strong>countDown() 多调用几次会怎样？</strong>
+      count 已为 0 时再调用 countDown() 是无操作（state 不会变成负数），不会抛异常。</li>
+    <li><strong>await() 响应中断吗？</strong>
+      是的，<code>await()</code> 会响应中断并抛出 <code>InterruptedException</code>，应该正确处理而不是吞掉。</li>
+  </ul>
+
+  <!-- 9. 小结 -->
+  <h2>小结</h2>
+  <div class="callout tip">
+    <strong>记忆口诀：</strong>CountDownLatch = "倒计时闹钟"。构造时设定几点钟（count），
+    任何线程都可以拨快时间（countDown），到零时所有等待者（await）同时醒来，且闹钟不能重拨。
+    <br><br>
+    核心要点：<strong>countDown() 必须放 finally</strong>；生产代码用带超时的 <strong>await(timeout, unit)</strong>；
+    需要重复使用的屏障请改用 <strong>CyclicBarrier</strong>。
+  </div>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./04-BlockingQueue.html" class="nav-btn">← 04. 阻塞队列 BlockingQueue 与生产者-消费者</a>
+    <a href="./06-Semaphore.html" class="nav-btn next">06. Semaphore 信号量 →</a>
+  </div>
+
+</div>
+</body>
+</html>

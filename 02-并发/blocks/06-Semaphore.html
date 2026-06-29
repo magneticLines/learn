@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>06. Semaphore 信号量 · Java 并发</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part II 构建模块 / 队列与同步器
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part II 构建模块 · 队列与同步器</div>
+    <h1>06. Semaphore 信号量</h1>
+    <p>用"令牌桶"控制并发度——许可证计数器背后的操作系统哲学与 Java 实践。</p>
+  </div>
+
+  <!-- ① 为什么需要信号量 -->
+  <h2>① 为什么需要信号量</h2>
+  <p>
+    <code>synchronized</code> 和 <code>ReentrantLock</code> 解决的是<strong>互斥</strong>问题：同一时刻只允许一个线程进入临界区。
+    但现实中更常见的约束是：<strong>同时最多允许 N 个线程并发访问某资源</strong>。
+  </p>
+  <p>典型场景：</p>
+  <ul>
+    <li>数据库连接池最多持有 10 条连接，超出请求必须等待</li>
+    <li>限流：下载服务同时最多 5 个并发传输，防止带宽耗尽</li>
+    <li>将无界并发压缩成有界并发（把任意多线程映射到固定大小的资源池）</li>
+  </ul>
+  <p>
+    互斥锁是 <strong>N=1</strong> 的特殊信号量。信号量把"许可证数量"参数化，是互斥锁的广义版本。
+  </p>
+
+  <div class="callout info">
+    <strong>操作系统溯源：</strong>Semaphore 由 Dijkstra 在 1965 年提出（THE 操作系统论文），
+    定义了两个原语 <strong>P</strong>（proberen，尝试减一，对应 <code>acquire</code>）
+    和 <strong>V</strong>（verhogen，增一，对应 <code>release</code>）。
+    Java 的 <code>java.util.concurrent.Semaphore</code> 是同一思想的高层封装。
+  </div>
+
+  <!-- ② 核心模型：令牌桶 -->
+  <h2>② 核心模型：令牌桶</h2>
+  <p>把 Semaphore 想象成一个装有 N 枚令牌的桶：</p>
+  <div class="tree">
+┌─────────────────────────────────────┐
+│  Semaphore(permits = 3)             │
+│                                     │
+│  bucket: [ 🪙 🪙 🪙 ]               │
+│                                     │
+│  acquire() → 取走一枚，桶空则阻塞   │
+│  release() → 放回一枚，唤醒等待者   │
+└─────────────────────────────────────┘
+
+  Thread-A ──acquire()──▶ [ 🪙 🪙  ]  ✓ 进入
+  Thread-B ──acquire()──▶ [ 🪙    ]   ✓ 进入
+  Thread-C ──acquire()──▶ [       ]   ✓ 进入
+  Thread-D ──acquire()──▶  <span class="hi">BLOCKED</span>（等待）
+  Thread-A ──release()──▶ [ 🪙    ]   Thread-D 被唤醒
+  </div>
+
+  <!-- ③ API 速查 -->
+  <h2>③ API 速查</h2>
+  <table>
+    <thead>
+      <tr><th>方法</th><th>语义</th><th>阻塞？</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>acquire()</code></td><td>申请 1 个许可，不足则阻塞（可响应中断）</td><td>是</td></tr>
+      <tr><td><code>acquire(n)</code></td><td>申请 n 个许可，全部满足才返回</td><td>是</td></tr>
+      <tr><td><code>acquireUninterruptibly()</code></td><td>申请 1 个许可，忽略中断</td><td>是</td></tr>
+      <tr><td><code>tryAcquire()</code></td><td>尝试获取，立即返回 true/false</td><td>否</td></tr>
+      <tr><td><code>tryAcquire(timeout, unit)</code></td><td>限时等待</td><td>超时前</td></tr>
+      <tr><td><code>release()</code></td><td>归还 1 个许可</td><td>否</td></tr>
+      <tr><td><code>release(n)</code></td><td>归还 n 个许可</td><td>否</td></tr>
+      <tr><td><code>availablePermits()</code></td><td>当前剩余许可数（仅参考，非精确）</td><td>否</td></tr>
+      <tr><td><code>drainPermits()</code></td><td>取走所有剩余许可，返回数量</td><td>否</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ④ 构造参数：公平 vs 非公平 -->
+  <h2>④ 构造参数：公平 vs 非公平</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span></div>
+    <pre><span class="com">// 非公平（默认）：新来线程可能插队，吞吐更高</span>
+<span class="ty">Semaphore</span> <span class="var">unfair</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Semaphore</span><span class="punct">(</span><span class="num">3</span><span class="punct">);</span>
+
+<span class="com">// 公平：严格 FIFO，避免饥饿，但吞吐略低</span>
+<span class="ty">Semaphore</span> <span class="var">fair</span>   <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Semaphore</span><span class="punct">(</span><span class="num">3</span><span class="punct">,</span> <span class="kw">true</span><span class="punct">);</span></pre>
+  </div>
+  <p>
+    <strong>背后是 AQS：</strong><code>Semaphore</code> 内部继承 <code>AbstractQueuedSynchronizer</code>，
+    <code>permits</code> 存储在 AQS 的 <code>state</code> 字段中，
+    公平/非公平对应 AQS 两种 <code>tryAcquireShared</code> 实现。
+  </p>
+
+  <!-- ⑤ 实战示例：数据库连接池 -->
+  <h2>⑤ 实战示例：数据库连接池</h2>
+  <p>用 Semaphore 为一个简化版连接池添加并发控制：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — BoundedConnectionPool.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BoundedConnectionPool</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">Semaphore</span>         <span class="var">semaphore</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">Queue</span><span class="punct">&lt;</span><span class="ty">Connection</span><span class="punct">&gt;</span> <span class="var">pool</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">BoundedConnectionPool</span><span class="punct">(</span><span class="ty">int</span> <span class="var">size</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 许可数 == 池容量，超出部分阻塞等待</span>
+        <span class="var">semaphore</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Semaphore</span><span class="punct">(</span><span class="var">size</span><span class="punct">,</span> <span class="kw">true</span><span class="punct">);</span>
+        <span class="var">pool</span>      <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayDeque</span><span class="punct">&lt;&gt;();</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="ty">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">size</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span>
+            <span class="var">pool</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="fn">createConnection</span><span class="punct">());</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">Connection</span> <span class="fn">acquire</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="com">// 先拿令牌（不足则阻塞），再取连接对象</span>
+        <span class="var">semaphore</span><span class="punct">.</span><span class="fn">acquire</span><span class="punct">();</span>
+        <span class="kw">return</span> <span class="fn">pollConnection</span><span class="punct">();</span>  <span class="com">// 此时一定有空闲连接</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">release</span><span class="punct">(</span><span class="ty">Connection</span> <span class="var">conn</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="fn">returnConnection</span><span class="punct">(</span><span class="var">conn</span><span class="punct">);</span>  <span class="com">// 先归还对象</span>
+        <span class="var">semaphore</span><span class="punct">.</span><span class="fn">release</span><span class="punct">();</span>       <span class="com">// 再释放令牌，唤醒等待者</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>设计要点：</strong>先 <code>acquire()</code> 再取对象、先归还对象再 <code>release()</code>，
+    保证"有令牌 → 一定有对象"的不变式，避免令牌与对象数量失配。
+  </div>
+
+  <!-- ⑥ 并发陷阱：反例 → 正例 -->
+  <h2>⑥ 并发陷阱</h2>
+
+  <h3>陷阱 1：release() 在 finally 外——许可泄漏</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例（许可永久泄漏）</span></div>
+    <pre><span class="var">semaphore</span><span class="punct">.</span><span class="fn">acquire</span><span class="punct">();</span>
+<span class="fn">doWork</span><span class="punct">();</span>          <span class="com">// 若此处抛异常 ↓</span>
+<span class="var">semaphore</span><span class="punct">.</span><span class="fn">release</span><span class="punct">();</span> <span class="com">// 永远不会执行！许可数永久 -1</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 正例（finally 保证释放）</span></div>
+    <pre><span class="var">semaphore</span><span class="punct">.</span><span class="fn">acquire</span><span class="punct">();</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="fn">doWork</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="var">semaphore</span><span class="punct">.</span><span class="fn">release</span><span class="punct">();</span>  <span class="com">// 无论正常/异常，必定执行</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 2：release() 比 acquire() 多——许可膨胀</h3>
+  <p>
+    <code>Semaphore</code> <strong>不绑定线程</strong>：任何线程都可以调用 <code>release()</code>，
+    即使它从未调用过 <code>acquire()</code>。这与 <code>ReentrantLock</code> 只有持有者才能解锁完全不同。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例（许可越界膨胀）</span></div>
+    <pre><span class="ty">Semaphore</span> <span class="var">sem</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Semaphore</span><span class="punct">(</span><span class="num">2</span><span class="punct">);</span>
+<span class="com">// 某线程不小心多调了一次 release</span>
+<span class="var">sem</span><span class="punct">.</span><span class="fn">release</span><span class="punct">();</span>  <span class="com">// permits 变为 3！超出初始容量</span>
+<span class="com">// 后续可能同时有 3 个线程进入，超出资源限制</span></pre>
+  </div>
+  <p>
+    正例：用封装隐藏 <code>Semaphore</code>（如上一节的连接池），
+    外部只暴露 <code>acquire/release</code> 业务方法，内部保证对称调用。
+  </p>
+
+  <h3>陷阱 3：tryAcquire() 返回 false 后仍执行受保护逻辑</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例</span></div>
+    <pre><span class="var">semaphore</span><span class="punct">.</span><span class="fn">tryAcquire</span><span class="punct">();</span>  <span class="com">// 返回值被忽略！</span>
+<span class="fn">accessResource</span><span class="punct">();</span>        <span class="com">// 可能在没有许可的情况下进入</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 正例</span></div>
+    <pre><span class="kw">if</span> <span class="punct">(</span><span class="var">semaphore</span><span class="punct">.</span><span class="fn">tryAcquire</span><span class="punct">(</span><span class="num">100</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">accessResource</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">semaphore</span><span class="punct">.</span><span class="fn">release</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+    <span class="fn">handleTimeout</span><span class="punct">();</span>  <span class="com">// 降级：返回错误 / 重试 / 排队</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 4：availablePermits() 用于并发决策</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例（TOCTOU 竞态）</span></div>
+    <pre><span class="kw">if</span> <span class="punct">(</span><span class="var">semaphore</span><span class="punct">.</span><span class="fn">availablePermits</span><span class="punct">()</span> <span class="punct">&gt;</span> <span class="num">0</span><span class="punct">)</span> <span class="punct">{</span>  <span class="com">// 检查时有许可</span>
+    <span class="var">semaphore</span><span class="punct">.</span><span class="fn">acquire</span><span class="punct">();</span>                   <span class="com">// 获取时可能已被抢走 → 仍会阻塞</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>
+    <code>availablePermits()</code> 仅供监控/日志，<strong>不能</strong>用来做"先判断再获取"的并发决策，
+    正确做法是直接调用 <code>tryAcquire()</code>（原子地检查并获取）。
+  </p>
+
+  <!-- ⑦ 进阶：用 Semaphore 实现有界阻塞集合 -->
+  <h2>⑦ 进阶：用 Semaphore 实现有界阻塞集合</h2>
+  <p>
+    《Java 并发编程实战》第 5 章经典示例——将任意无界集合包装成有界阻塞集合：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — BoundedHashSet.java（JCIP 清单 5-14 简化版）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BoundedHashSet</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">Set</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span>      <span class="var">set</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">Semaphore</span>   <span class="var">sem</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">BoundedHashSet</span><span class="punct">(</span><span class="ty">int</span> <span class="var">bound</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 用 synchronizedSet 保护集合自身线程安全</span>
+        <span class="var">set</span> <span class="punct">=</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">synchronizedSet</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">HashSet</span><span class="punct">&lt;&gt;());</span>
+        <span class="var">sem</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Semaphore</span><span class="punct">(</span><span class="var">bound</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public boolean</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">T</span> <span class="var">o</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="var">sem</span><span class="punct">.</span><span class="fn">acquire</span><span class="punct">();</span>          <span class="com">// 先占位（桶满则阻塞）</span>
+        <span class="kw">boolean</span> <span class="var">wasAdded</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="var">wasAdded</span> <span class="punct">=</span> <span class="var">set</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">o</span><span class="punct">);</span>
+            <span class="kw">return</span> <span class="var">wasAdded</span><span class="punct">;</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="com">// 若元素已存在（add 返回 false），需归还许可</span>
+            <span class="kw">if</span> <span class="punct">(!</span><span class="var">wasAdded</span><span class="punct">)</span>
+                <span class="var">sem</span><span class="punct">.</span><span class="fn">release</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public boolean</span> <span class="fn">remove</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">boolean</span> <span class="var">wasRemoved</span> <span class="punct">=</span> <span class="var">set</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">(</span><span class="var">o</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">wasRemoved</span><span class="punct">)</span>
+            <span class="var">sem</span><span class="punct">.</span><span class="fn">release</span><span class="punct">();</span>  <span class="com">// 元素真正被移除，才归还许可</span>
+        <span class="kw">return</span> <span class="var">wasRemoved</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <div class="callout info">
+    <strong>精妙之处：</strong>Semaphore 的许可数代表集合"剩余容量"，
+    而非"已用容量"——这与连接池恰好相反，但逻辑一致：
+    许可代表"可用资源槽"，acquire 消耗槽，release 归还槽。
+  </div>
+
+  <!-- ⑧ 与其他同步器对比 -->
+  <h2>⑧ 与其他同步器横向对比</h2>
+  <table>
+    <thead>
+      <tr><th>同步器</th><th>核心语义</th><th>计数方向</th><th>可重置？</th><th>典型场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Semaphore</code></td>
+        <td>控制并发度（N 个许可）</td>
+        <td>双向（可增可减）</td>
+        <td>是（release 可超初始值）</td>
+        <td>连接池、限流、有界容器</td>
+      </tr>
+      <tr>
+        <td><code>CountDownLatch</code></td>
+        <td>一次性等待 N 个事件</td>
+        <td>单向减（到 0 开门）</td>
+        <td>否</td>
+        <td>启动门、结束门</td>
+      </tr>
+      <tr>
+        <td><code>CyclicBarrier</code></td>
+        <td>N 个线程互相等待</td>
+        <td>计到 N 后重置</td>
+        <td>是（自动循环）</td>
+        <td>分阶段并行计算</td>
+      </tr>
+      <tr>
+        <td><code>ReentrantLock</code></td>
+        <td>互斥（N=1 信号量）</td>
+        <td>0/1</td>
+        <td>是（可重入）</td>
+        <td>临界区保护</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ⑨ 面试高频考点 -->
+  <h2>⑨ 面试高频考点</h2>
+  <ul>
+    <li><strong>Semaphore 与 ReentrantLock 的关系：</strong>互斥锁是 permits=1 的非公平信号量，但 Semaphore 不可重入、不绑定线程。</li>
+    <li><strong>底层实现：</strong>基于 AQS，<code>state</code> 存储许可数，<code>tryAcquireShared</code> / <code>tryReleaseShared</code> 以 CAS 原子修改。</li>
+    <li><strong>为什么 release() 不绑定线程：</strong>信号量用于资源计数，而非互斥所有权；可以用于生产者-消费者（生产者 release，消费者 acquire）。</li>
+    <li><strong>公平模式代价：</strong>需维护 CLH 队列 FIFO 顺序，每次 acquire 先检查队列头，吞吐低于非公平模式约 10~20%（视竞争强度）。</li>
+    <li><strong>permits 为 0 的信号量：</strong>初始 permits=0 可实现"先 acquire 后等 release"的一次性通知，类似 CountDownLatch(1)，但可重复使用。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>认为 Semaphore 能替代锁保证原子性。
+    Semaphore 只控制并发数量，不提供互斥语义——
+    如果 N=1 且需要原子性操作，仍应使用 <code>ReentrantLock</code> 而非 Semaphore，
+    因为 Semaphore 无重入保护，递归调用 acquire 会死锁。
+  </div>
+
+  <!-- ⑩ 小结 -->
+  <h2>⑩ 小结</h2>
+  <div class="tree">
+Semaphore 核心思想
+  ├── 令牌桶模型：N 枚许可 = N 个并发配额
+  ├── acquire()  → 消耗许可（不足则阻塞/超时/返回 false）
+  ├── release()  → 归还许可（任何线程均可调用）
+  ├── 底层：AQS 共享模式，state = 剩余许可数
+  ├── 公平/非公平：构造参数决定，影响吞吐 vs 饥饿
+  └── <span class="hi">必须在 finally 中 release()，否则许可永久泄漏</span>
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-CountDownLatch.html" class="nav-btn">← 05. CountDownLatch</a>
+    <a href="./07-CyclicBarrier.html" class="nav-btn next">07. CyclicBarrier →</a>
+  </div>
+
+</div>
+</body>
+</html>

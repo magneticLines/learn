@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>01. Executor 框架与解耦思想</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part III 结构化应用 / 任务执行
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part III 结构化应用 · 任务执行</div>
+    <h1>01. Executor 框架与解耦思想</h1>
+    <p>从"手工管理线程"到"提交任务即可"——理解 Executor 的设计哲学与并发解耦模型。</p>
+  </div>
+
+  <!-- ===== 1. 问题的起点 ===== -->
+  <h2>为什么需要 Executor 框架？</h2>
+  <p>
+    在没有任何框架的年代，Java 程序员写并发代码只有一条路：<strong>手工创建和管理 Thread</strong>。
+    表面上看很直接，但暗藏大量并发陷阱。
+  </p>
+
+  <h3>反例：每个请求 new 一个线程</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>ThreadPerTask.java（反例）</span></div>
+    <pre><span class="com">// ❌ 反例：无上限地为每个任务创建线程</span>
+<span class="kw">public class</span> <span class="ty">ThreadPerTaskServer</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="ty">ServerSocket</span> <span class="var">ss</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ServerSocket</span><span class="punct">(</span><span class="num">8080</span><span class="punct">);</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+            <span class="ty">Socket</span> <span class="var">conn</span> <span class="punct">=</span> <span class="var">ss</span><span class="punct">.</span><span class="fn">accept</span><span class="punct">();</span>
+            <span class="com">// 每来一个连接就 new 一个线程——并发量一大就 OOM</span>
+            <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -></span> <span class="fn">handle</span><span class="punct">(</span><span class="var">conn</span><span class="punct">)).</span><span class="fn">start</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>这段代码至少有三个并发问题：</p>
+  <ol>
+    <li><strong>线程创建开销不可控</strong>：每次 <code>new Thread()</code> 都要在 OS 内核分配栈空间（默认 512KB–1MB），10000 个并发连接 = 10000 个线程 = 直接 OOM。</li>
+    <li><strong>任务提交与任务执行强耦合</strong>：谁提交任务，谁就决定执行策略（几个线程、排队还是丢弃）。换一种策略就得改业务代码。</li>
+    <li><strong>没有生命周期管理</strong>：线程跑完自生自灭，出错无处感知，也无法优雅关闭。</li>
+  </ol>
+
+  <div class="callout warn">
+    <strong>核心矛盾：</strong>线程是昂贵的系统资源，任务是轻量的业务逻辑。把它们 1:1 绑定，就像每次外卖都买一辆摩托车，用完扔掉。
+  </div>
+
+  <!-- ===== 2. Executor 接口设计 ===== -->
+  <h2>Executor 接口：一句话抽象</h2>
+  <p>
+    Java 5 引入 <code>java.util.concurrent.Executor</code>，它只有一个方法：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Executor.java（JDK 源码精简）</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">Executor</span> <span class="punct">{</span>
+    <span class="com">// 提交一个 Runnable，具体怎么跑——我不管</span>
+    <span class="kw">void</span> <span class="fn">execute</span><span class="punct">(</span><span class="ty">Runnable</span> <span class="var">command</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    这一个方法完成了最关键的设计决策：<strong>把"提交任务"和"执行任务"解耦</strong>。
+    调用方只需关心"我有一个任务"，执行策略（线程池大小、排队方式、拒绝策略）完全由 <code>Executor</code> 的实现决定。
+  </p>
+
+  <div class="callout info">
+    <strong>设计模式视角：</strong>这是标准的<em>命令模式（Command Pattern）</em>——<code>Runnable</code> 是命令对象，<code>Executor</code> 是调用者，真正的执行者（线程池、当前线程、新线程）对客户端透明。
+  </div>
+
+  <!-- ===== 3. 接口层次 ===== -->
+  <h2>接口层次：三层递进</h2>
+
+  <div class="tree">
+    <span class="hi">Executor</span>                    ← 只有 execute(Runnable)<br>
+    └── <span class="hi">ExecutorService</span>           ← 增加生命周期管理 + submit/invokeAll<br>
+        └── <span class="hi">ScheduledExecutorService</span> ← 再增加定时 / 周期调度
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>接口</th><th>新增能力</th><th>核心方法</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Executor</code></td>
+        <td>任务提交与执行解耦</td>
+        <td><code>execute(Runnable)</code></td>
+      </tr>
+      <tr>
+        <td><code>ExecutorService</code></td>
+        <td>生命周期管理、返回值支持</td>
+        <td><code>submit()</code> <code>shutdown()</code> <code>awaitTermination()</code> <code>invokeAll()</code></td>
+      </tr>
+      <tr>
+        <td><code>ScheduledExecutorService</code></td>
+        <td>延迟 / 周期执行</td>
+        <td><code>schedule()</code> <code>scheduleAtFixedRate()</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 4. ThreadPoolExecutor ===== -->
+  <h2>ThreadPoolExecutor：真正的实现核心</h2>
+  <p>
+    所有常用线程池（<code>newFixedThreadPool</code>、<code>newCachedThreadPool</code> 等）底层都是
+    <code>ThreadPoolExecutor</code>，它由 <strong>5 个核心参数</strong>共同决定线程池行为：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ThreadPoolExecutor 构造参数</span></div>
+    <pre><span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+    <span class="num">4</span><span class="punct">,</span>                             <span class="com">// corePoolSize：常驻线程数</span>
+    <span class="num">16</span><span class="punct">,</span>                            <span class="com">// maximumPoolSize：最大线程数</span>
+    <span class="num">60</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>         <span class="com">// keepAliveTime：空闲线程存活时长</span>
+    <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;(</span><span class="num">1000</span><span class="punct">),</span> <span class="com">// workQueue：任务排队缓冲区</span>
+    <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">.</span><span class="ty">CallerRunsPolicy</span><span class="punct">()</span> <span class="com">// rejectedHandler：队列满时的策略</span>
+<span class="punct">);</span></pre>
+  </div>
+
+  <p>执行流程的决策树（这是面试必考点，要能背诵）：</p>
+
+  <div class="tree">
+    提交任务<br>
+    ├── 当前线程数 &lt; corePoolSize  → <span class="hi">新建线程立即执行</span><br>
+    ├── 当前线程数 ≥ corePoolSize  → 尝试加入 workQueue<br>
+    │   ├── 队列未满               → <span class="hi">入队等待</span><br>
+    │   └── 队列已满<br>
+    │       ├── 线程数 &lt; maximumPoolSize → <span class="hi">新建非核心线程执行</span><br>
+    │       └── 线程数 = maximumPoolSize → <span class="hi">触发 RejectedExecutionHandler</span><br>
+    └── 核心线程空闲超 keepAliveTime → 回收（core 默认不回收）
+  </div>
+
+  <!-- ===== 5. 工厂方法 ===== -->
+  <h2>Executors 工厂方法与其陷阱</h2>
+  <p>
+    JDK 提供 <code>Executors</code> 工具类快速创建线程池，但<strong>每种工厂方法都有其适用场景和潜在陷阱</strong>：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>工厂方法</th><th>底层配置</th><th>适用场景</th><th>陷阱</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>newFixedThreadPool(n)</code></td>
+        <td>core=max=n，<strong>无界队列</strong></td>
+        <td>CPU 密集型，线程数可控</td>
+        <td>队列无上限，任务堆积可 OOM</td>
+      </tr>
+      <tr>
+        <td><code>newCachedThreadPool()</code></td>
+        <td>core=0，max=Integer.MAX_VALUE</td>
+        <td>短生命周期大量异步任务</td>
+        <td>线程数无上限，瞬时并发高时 OOM</td>
+      </tr>
+      <tr>
+        <td><code>newSingleThreadExecutor()</code></td>
+        <td>core=max=1，无界队列</td>
+        <td>串行化任务，保证顺序</td>
+        <td>同 Fixed，队列无上限</td>
+      </tr>
+      <tr>
+        <td><code>newScheduledThreadPool(n)</code></td>
+        <td>DelayedWorkQueue</td>
+        <td>定时/周期任务</td>
+        <td>任务抛异常会静默终止调度</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>阿里巴巴 Java 开发手册明令禁止</strong>直接使用 <code>Executors</code> 工厂方法，原因正是上表中的 OOM 风险。
+    生产环境应显式构造 <code>ThreadPoolExecutor</code>，让每个参数都有意图可查。
+  </div>
+
+  <!-- ===== 6. 正例 ===== -->
+  <h2>正例：用 ExecutorService 重写 Web 服务器</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ExecutorServer.java（正例）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ExecutorServer</span> <span class="punct">{</span>
+
+    <span class="com">// 显式构造：所有参数意图清晰，有边界保护</span>
+    <span class="kw">private static final</span> <span class="ty">ExecutorService</span> <span class="var">POOL</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+        <span class="num">8</span><span class="punct">,</span> <span class="num">32</span><span class="punct">,</span>
+        <span class="num">60</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>
+        <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;(</span><span class="num">500</span><span class="punct">),</span>       <span class="com">// 有界队列，防止任务堆积</span>
+        <span class="kw">new</span> <span class="ty">ThreadFactoryBuilder</span><span class="punct">().</span><span class="fn">setNameFormat</span><span class="punct">(</span><span class="str">"server-worker-%d"</span><span class="punct">).</span><span class="fn">build</span><span class="punct">(),</span>
+        <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">.</span><span class="ty">CallerRunsPolicy</span><span class="punct">()</span>   <span class="com">// 背压：让调用方自己跑，起到限速效果</span>
+    <span class="punct">);</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="ty">ServerSocket</span> <span class="var">ss</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ServerSocket</span><span class="punct">(</span><span class="num">8080</span><span class="punct">);</span>
+        <span class="ty">Runtime</span><span class="punct">.</span><span class="fn">getRuntime</span><span class="punct">().</span><span class="fn">addShutdownHook</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -> {</span>
+            <span class="com">// 优雅关闭：不再接受新任务，等已提交任务跑完</span>
+            <span class="var">POOL</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+            <span class="kw">try</span> <span class="punct">{</span>
+                <span class="kw">if</span> <span class="punct">(!</span><span class="var">POOL</span><span class="punct">.</span><span class="fn">awaitTermination</span><span class="punct">(</span><span class="num">30</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">))</span>
+                    <span class="var">POOL</span><span class="punct">.</span><span class="fn">shutdownNow</span><span class="punct">();</span>
+            <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+                <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+            <span class="punct">}</span>
+        <span class="punct">}));</span>
+
+        <span class="kw">while</span> <span class="punct">(!</span><span class="var">POOL</span><span class="punct">.</span><span class="fn">isShutdown</span><span class="punct">()) {</span>
+            <span class="ty">Socket</span> <span class="var">conn</span> <span class="punct">=</span> <span class="var">ss</span><span class="punct">.</span><span class="fn">accept</span><span class="punct">();</span>
+            <span class="com">// 只提交任务，不关心谁去跑——解耦完成</span>
+            <span class="var">POOL</span><span class="punct">.</span><span class="fn">execute</span><span class="punct">(() -></span> <span class="fn">handle</span><span class="punct">(</span><span class="var">conn</span><span class="punct">));</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ===== 7. 解耦的深层意义 ===== -->
+  <h2>解耦的深层意义：策略可替换</h2>
+  <p>
+    当任务提交与执行策略解耦后，你可以在<strong>不修改业务代码</strong>的前提下切换执行策略：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ExecutionPolicy.java — 同一任务，三种执行策略</span></div>
+    <pre><span class="ty">Executor</span> <span class="var">executor</span><span class="punct">;</span>
+
+<span class="com">// 策略 1：单线程串行（测试/调试用，方便复现问题）</span>
+<span class="var">executor</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newSingleThreadExecutor</span><span class="punct">();</span>
+
+<span class="com">// 策略 2：固定大小线程池（生产常用）</span>
+<span class="var">executor</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="ty">Runtime</span><span class="punct">.</span><span class="fn">getRuntime</span><span class="punct">().</span><span class="fn">availableProcessors</span><span class="punct">());</span>
+
+<span class="com">// 策略 3：同步执行（在调用线程跑，单元测试追求确定性时有用）</span>
+<span class="var">executor</span> <span class="punct">=</span> <span class="ty">Runnable</span><span class="punct">::</span><span class="fn">run</span><span class="punct">;</span>  <span class="com">// Executor 是函数式接口！</span>
+
+<span class="com">// 业务代码完全不变：</span>
+<span class="var">executor</span><span class="punct">.</span><span class="fn">execute</span><span class="punct">(() -></span> <span class="fn">processOrder</span><span class="punct">(</span><span class="var">orderId</span><span class="punct">));</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>单元测试技巧：</strong>将 Executor 作为依赖注入，测试时传入 <code>Runnable::run</code>（同步执行），
+    生产时传入真实线程池。这样测试完全确定性，不需要 sleep/CountDownLatch 来等待异步结果。
+  </div>
+
+  <!-- ===== 8. 并发陷阱 ===== -->
+  <h2>并发陷阱汇总</h2>
+
+  <h3>陷阱 1：忘记关闭 ExecutorService</h3>
+  <p>
+    <code>ExecutorService</code> 内部持有线程，JVM 不会因为 main 方法结束就自动关闭它（非守护线程会阻止 JVM 退出）。
+    必须显式调用 <code>shutdown()</code>，或将线程设置为守护线程。
+  </p>
+
+  <h3>陷阱 2：用 execute() 丢失异常</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>异常丢失问题</span></div>
+    <pre><span class="com">// ❌ execute() 中抛出的 RuntimeException 会被 UncaughtExceptionHandler 捕获</span>
+<span class="com">//    但如果没有设置 handler，异常会被静默打印到 stderr 然后消失</span>
+<span class="var">pool</span><span class="punct">.</span><span class="fn">execute</span><span class="punct">(() -> {</span>
+    <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="str">"我消失了"</span><span class="punct">);</span>  <span class="com">// 调用方永远不知道</span>
+<span class="punct">});</span>
+
+<span class="com">// ✅ 用 submit() 返回 Future，异常会被包装进 ExecutionException</span>
+<span class="ty">Future</span><span class="punct">&lt;?&gt;</span> <span class="var">f</span> <span class="punct">=</span> <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -> {</span>
+    <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="str">"我被捕获了"</span><span class="punct">);</span>
+<span class="punct">});</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">f</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>  <span class="com">// 这里会抛出 ExecutionException，cause 就是原始异常</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">ExecutionException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="var">log</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"任务失败"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getCause</span><span class="punct">());</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 3：ScheduledExecutorService 任务静默消亡</h3>
+  <p>
+    用 <code>scheduleAtFixedRate</code> 提交的周期任务，一旦任务体内抛出<strong>未被捕获的异常</strong>，
+    调度会<strong>永久停止</strong>，且没有任何警告——这是生产环境中最难排查的 bug 之一。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ScheduledTask 保护写法</span></div>
+    <pre><span class="var">scheduler</span><span class="punct">.</span><span class="fn">scheduleAtFixedRate</span><span class="punct">(() -> {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">doWork</span><span class="punct">();</span>  <span class="com">// 真正的业务逻辑</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="com">// 必须在这里捕获所有异常，否则调度链断裂</span>
+        <span class="var">log</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"定时任务异常，本次跳过"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">},</span> <span class="num">0</span><span class="punct">,</span> <span class="num">1</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MINUTES</span><span class="punct">);</span></pre>
+  </div>
+
+  <h3>陷阱 4：拒绝策略选择不当</h3>
+  <table>
+    <thead>
+      <tr><th>拒绝策略</th><th>行为</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>AbortPolicy</code>（默认）</td><td>抛出 <code>RejectedExecutionException</code></td><td>快速失败，调用方需处理异常</td></tr>
+      <tr><td><code>CallerRunsPolicy</code></td><td>由提交线程自己执行</td><td>背压限速，保证任务不丢失</td></tr>
+      <tr><td><code>DiscardPolicy</code></td><td>静默丢弃</td><td>允许丢失、容忍数据损失</td></tr>
+      <tr><td><code>DiscardOldestPolicy</code></td><td>丢弃队列头部最旧任务</td><td>新任务优先，旧任务可牺牲</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 9. 与 Spring 的联系 ===== -->
+  <h2>与 Spring / 框架的联系</h2>
+  <p>
+    Spring 的 <code>@Async</code>、Spring Boot 的 <code>TaskExecutor</code>、Spring MVC 的
+    <code>AsyncTaskExecutor</code> 底层全部基于 <code>ExecutorService</code>。
+    Spring 只是在框架层面帮你管理线程池的生命周期，核心抽象还是 JDK 的 <code>Executor</code>。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Spring Boot 配置线程池的正确姿势</span></div>
+    <pre><span class="ann">@Configuration</span>
+<span class="kw">public class</span> <span class="ty">AsyncConfig</span> <span class="kw">implements</span> <span class="ty">AsyncConfigurer</span> <span class="punct">{</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public</span> <span class="ty">Executor</span> <span class="fn">getAsyncExecutor</span><span class="punct">() {</span>
+        <span class="ty">ThreadPoolTaskExecutor</span> <span class="var">exec</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadPoolTaskExecutor</span><span class="punct">();</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setCorePoolSize</span><span class="punct">(</span><span class="num">8</span><span class="punct">);</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setMaxPoolSize</span><span class="punct">(</span><span class="num">32</span><span class="punct">);</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setQueueCapacity</span><span class="punct">(</span><span class="num">500</span><span class="punct">);</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setThreadNamePrefix</span><span class="punct">(</span><span class="str">"async-"</span><span class="punct">);</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">initialize</span><span class="punct">();</span>
+        <span class="kw">return</span> <span class="var">exec</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ===== 10. 小结 ===== -->
+  <h2>小结</h2>
+  <ul>
+    <li><code>Executor</code> 的核心价值是<strong>解耦"任务提交"与"执行策略"</strong>，让业务代码不感知并发细节。</li>
+    <li><code>ThreadPoolExecutor</code> 是绝大多数场景的实现，5 个核心参数决定线程池行为，<strong>生产代码请显式构造</strong>。</li>
+    <li>执行流程优先级：核心线程 → 队列 → 非核心线程 → 拒绝策略，牢记这条决策链。</li>
+    <li><code>execute()</code> 会静默丢失异常；需要感知结果和异常时，用 <code>submit()</code> 配合 <code>Future.get()</code>。</li>
+    <li>定时任务必须在任务体内 try-catch，否则一次异常会永久终止调度。</li>
+    <li>下一节将深入 <code>Callable</code>、<code>Future</code>、<code>FutureTask</code>——有了 Executor 解耦基础，这三个类负责把"异步结果"带回调用方。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../concurrency-roadmap.html" class="nav-btn">← 路线图</a>
+    <a href="./02-Callable-Future.html" class="nav-btn next">02. Callable / Future / FutureTask →</a>
+  </div>
+
+</div>
+</body>
+</html>

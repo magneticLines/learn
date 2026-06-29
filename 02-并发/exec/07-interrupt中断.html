@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>07. 中断机制 interrupt 的正确姿势 — Java 并发</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+.page { max-width: 720px; margin: 0 auto; }
+.breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+.breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+.hero { margin-bottom: 40px; }
+.hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+.hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+.hero p { color: #64748b; font-size: 0.9rem; }
+h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+.code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+.code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+.code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+.kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+.com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+.callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+.callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+.callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+.callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+tr:nth-child(even) td { background: #13151f; }
+td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+.tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+.nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+.nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+.nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+/* 主题色补丁 */
+.tree .hi { color: #fbbf24; }
+p code, li code { color: #fbbf24; }
+h2 { color: #fbbf24; border-left-color: #fbbf24; }
+.hero .tag { color: #fbbf24; border-color: #78350f; }
+.nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part III 结构化应用 / 取消与关闭
+  </div>
+
+  <!-- 主标题区 -->
+  <div class="hero">
+    <div class="tag">Part III 结构化应用 · 取消与关闭</div>
+    <h1>07. 中断机制 interrupt 的正确姿势</h1>
+    <p>理解 Java 中断协议的本质，掌握"请求—响应"协作模型，彻底告别吞异常与死循环两大陷阱。</p>
+  </div>
+
+  <!-- ① 为什么需要中断 -->
+  <h2>① 线程停止为什么是个难题</h2>
+  <p>Java 1.0 提供了 <code>Thread.stop()</code>，它会在目标线程执行到任意字节码处强行抛出 <code>ThreadDeath</code>。听起来很彻底，但问题在于：</p>
+  <ul>
+    <li>对象可能只写了一半字段，锁已经被自动释放——<strong>共享状态不一致</strong>。</li>
+    <li>调用方根本不知道对象处于什么状态，无法做清理。</li>
+  </ul>
+  <p>这就像写文件写到一半直接断电，文件系统没有 fsync 就崩了。</p>
+
+  <div class="callout info">
+    <strong>设计哲学：</strong>Java 放弃了"强制杀死"，转而采用<strong>协作式中断（Cooperative Interruption）</strong>——调用方只是发出一个"请停下来"的信号，被中断线程自己决定何时、如何停止。这保证了对象不变式始终成立。
+  </div>
+
+  <p>中断机制的核心是 <code>Thread</code> 里一个 <strong>boolean 标志位</strong>（中断状态），配合三个 API：</p>
+
+  <table>
+    <thead>
+      <tr><th>方法</th><th>含义</th><th>是否清除标志位</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>t.interrupt()</code></td><td>设置目标线程的中断标志为 true；若目标正阻塞在 sleep/wait/join 则立刻抛 <code>InterruptedException</code></td><td>抛异常时清除</td></tr>
+      <tr><td><code>Thread.interrupted()</code></td><td>查询<strong>当前线程</strong>的中断状态（静态方法）</td><td><strong>是</strong>（副作用！）</td></tr>
+      <tr><td><code>t.isInterrupted()</code></td><td>查询指定线程的中断状态（实例方法）</td><td><strong>否</strong></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ② 阻塞方法如何响应中断 -->
+  <h2>② 阻塞操作与 InterruptedException 的关系</h2>
+  <p>JDK 的阻塞方法（<code>Thread.sleep</code>、<code>Object.wait</code>、<code>BlockingQueue.take</code>、<code>Lock.lockInterruptibly</code> 等）在等待期间会持续检查中断标志。一旦发现标志为 true，它们会：</p>
+  <ol>
+    <li><strong>清除</strong>中断标志（重置为 false）</li>
+    <li>抛出 <code>InterruptedException</code></li>
+  </ol>
+
+  <p>这就是为什么 <code>InterruptedException</code> 是<strong>受检异常</strong>——JDK 强迫你在编译时处理它，否则代码根本编译不过。它不是"出错了"，而是"有人请求我停止"。</p>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>很多初学者写 <code>catch (InterruptedException e) { }</code> 直接吞掉异常，中断标志也被清除了，上层调用者永远无法感知中断请求——这是并发 Bug 的温床。
+  </div>
+
+  <!-- ③ 两种正确的处理策略 -->
+  <h2>③ 两种正确的处理策略</h2>
+
+  <h3>策略一：向上传播（推荐，最简洁）</h3>
+  <p>如果你的方法本身就是"可中断"的，直接在方法签名上声明 <code>throws InterruptedException</code>，让调用链自己决定如何处理。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>策略一：直接传播</span><span>Java</span></div>
+    <pre><span class="com">// 不捕获，直接声明抛出——调用方得到完整的中断信号</span>
+<span class="kw">public</span> <span class="ty">BlockingTask</span> <span class="fn">take</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+    <span class="kw">return</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>  <span class="com">// 直接传播 InterruptedException</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>策略二：捕获后恢复中断标志（当不能抛出时）</h3>
+  <p>某些情况下你实现的是 <code>Runnable.run()</code> 或者框架接口，签名不允许抛出受检异常。此时正确做法是：<strong>catch 后立即调用 <code>Thread.currentThread().interrupt()</code> 重新设置标志</strong>，保证上层仍能感知到中断请求。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>策略二：捕获后恢复标志</span><span>Java</span></div>
+    <pre><span class="ann">@Override</span>
+<span class="kw">public</span> <span class="kw">void</span> <span class="fn">run</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">while</span> <span class="punct">(!</span><span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">isInterrupted</span><span class="punct">())</span> <span class="punct">{</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="ty">Task</span> <span class="var">task</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>
+            <span class="fn">process</span><span class="punct">(</span><span class="var">task</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="com">// 无法向上传播（run() 不允许抛出受检异常）</span>
+            <span class="com">// 必须恢复标志，否则循环条件下一次检查会看到 false，无法退出</span>
+            <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+            <span class="kw">break</span><span class="punct">;</span>  <span class="com">// 或 return，视业务决定清理逻辑</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>记忆口诀：</strong>要么 <strong>throws</strong>，要么 <strong>re-interrupt</strong>，永远不要只 catch 不处理。
+  </div>
+
+  <!-- ④ 反例 vs 正例全对比 -->
+  <h2>④ 反例 → 问题 → 正例完整对比</h2>
+
+  <h3>反例 A：吞掉异常（最常见）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 A — 吞异常</span><span>Java</span></div>
+    <pre><span class="kw">public</span> <span class="kw">void</span> <span class="fn">doWork</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// ❌ 什么都不做——中断信号消失，线程无法被外部取消</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>问题：</strong>调用 <code>shutdownNow()</code> 或 <code>future.cancel(true)</code> 之后，线程仍然继续跑，取消操作完全失效。</p>
+
+  <h3>反例 B：用 stop() / destroy()（已废弃）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 B — 已废弃 API</span><span>Java</span></div>
+    <pre><span class="var">thread</span><span class="punct">.</span><span class="fn">stop</span><span class="punct">();</span>    <span class="com">// ❌ 已废弃，可能导致共享状态不一致</span>
+<span class="var">thread</span><span class="punct">.</span><span class="fn">destroy</span><span class="punct">();</span> <span class="com">// ❌ 从未实现，直接抛 UnsupportedOperationException</span></pre>
+  </div>
+
+  <h3>反例 C：用 volatile 标志但忽略阻塞</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 C — volatile 标志无法唤醒阻塞线程</span><span>Java</span></div>
+    <pre><span class="kw">volatile</span> <span class="kw">boolean</span> <span class="var">cancelled</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+
+<span class="kw">public</span> <span class="kw">void</span> <span class="fn">run</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">while</span> <span class="punct">(!</span><span class="var">cancelled</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// ❌ 如果 queue.take() 永久阻塞，cancelled=true 根本没机会被检查</span>
+        <span class="ty">Task</span> <span class="var">t</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>
+        <span class="fn">process</span><span class="punct">(</span><span class="var">t</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>问题：</strong>线程阻塞在 <code>take()</code> 时，即使设置 <code>cancelled = true</code> 也不会被唤醒。<code>interrupt()</code> 才能打断阻塞。</p>
+
+  <h3>正例：interrupt + isInterrupted 双重检查</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 完整可取消的工作线程</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">CancellableWorker</span> <span class="kw">implements</span> <span class="ty">Runnable</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">BlockingQueue</span><span class="punct">&lt;</span><span class="ty">Task</span><span class="punct">&gt;</span> <span class="var">queue</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">CancellableWorker</span><span class="punct">(</span><span class="ty">BlockingQueue</span><span class="punct">&lt;</span><span class="ty">Task</span><span class="punct">&gt;</span> <span class="var">queue</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">queue</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">run</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="com">// 循环条件：检查中断标志（非阻塞路径用 isInterrupted）</span>
+        <span class="kw">while</span> <span class="punct">(!</span><span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">isInterrupted</span><span class="punct">())</span> <span class="punct">{</span>
+            <span class="kw">try</span> <span class="punct">{</span>
+                <span class="com">// take() 是阻塞点：中断会让它立刻抛 InterruptedException</span>
+                <span class="ty">Task</span> <span class="var">task</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>
+                <span class="fn">process</span><span class="punct">(</span><span class="var">task</span><span class="punct">);</span>
+            <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+                <span class="com">// 恢复标志，让循环条件在下一次迭代感知到中断并退出</span>
+                <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+        <span class="com">// 到达此处：做清理工作（关闭资源、写日志等）</span>
+        <span class="fn">cleanup</span><span class="punct">();</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private void</span> <span class="fn">process</span><span class="punct">(</span><span class="ty">Task</span> <span class="var">task</span><span class="punct">)</span> <span class="punct">{ </span><span class="com">/* ... */</span> <span class="punct">}</span>
+    <span class="kw">private void</span> <span class="fn">cleanup</span><span class="punct">()</span>          <span class="punct">{ </span><span class="com">/* 关闭 DB 连接、flush 缓冲区 */</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ⑤ 中断在 ExecutorService 中的表现 -->
+  <h2>⑤ 中断在 ExecutorService 中的表现</h2>
+  <p>当你调用 <code>future.cancel(true)</code> 或 <code>executorService.shutdownNow()</code> 时，背后就是对执行任务的线程调用 <code>interrupt()</code>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>future.cancel(true) 的底层行为</span><span>Java</span></div>
+    <pre><span class="ty">ExecutorService</span> <span class="var">exec</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newSingleThreadExecutor</span><span class="punct">();</span>
+<span class="ty">Future</span><span class="punct">&lt;?&gt;</span> <span class="var">future</span> <span class="punct">=</span> <span class="var">exec</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="kw">while</span> <span class="punct">(!</span><span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">isInterrupted</span><span class="punct">())</span> <span class="punct">{</span>
+        <span class="com">// 可响应中断的工作循环</span>
+        <span class="fn">doSomeWork</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">});</span>
+
+<span class="com">// 参数 true 表示：若任务正在运行，对其线程调用 interrupt()</span>
+<span class="var">future</span><span class="punct">.</span><span class="fn">cancel</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span>
+
+<span class="com">// shutdownNow() 同理：返回未执行的任务列表，并中断正在执行的线程</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Runnable</span><span class="punct">&gt;</span> <span class="var">pending</span> <span class="punct">=</span> <span class="var">exec</span><span class="punct">.</span><span class="fn">shutdownNow</span><span class="punct">();</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>重要推论：</strong>如果你的任务吞掉了 <code>InterruptedException</code>，<code>shutdownNow()</code> 发出的中断信号就石沉大海，线程池永远关不掉，JVM 进程无法优雅退出。
+  </div>
+
+  <!-- ⑥ interrupted() vs isInterrupted() 易混点 -->
+  <h2>⑥ interrupted() vs isInterrupted() 易混点</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>静态方法有副作用——这是高频面试陷阱</span><span>Java</span></div>
+    <pre><span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>  <span class="com">// 设置标志</span>
+
+<span class="com">// Thread.interrupted() 是静态方法，检查并清除当前线程的标志</span>
+<span class="kw">boolean</span> <span class="var">a</span> <span class="punct">=</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">interrupted</span><span class="punct">();</span>  <span class="com">// true，同时清除标志</span>
+<span class="kw">boolean</span> <span class="var">b</span> <span class="punct">=</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">interrupted</span><span class="punct">();</span>  <span class="com">// false！标志已被第一次调用清除</span>
+
+<span class="com">// isInterrupted() 是实例方法，只查询不清除</span>
+<span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+<span class="kw">boolean</span> <span class="var">c</span> <span class="punct">=</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">isInterrupted</span><span class="punct">();</span>  <span class="com">// true</span>
+<span class="kw">boolean</span> <span class="var">d</span> <span class="punct">=</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">isInterrupted</span><span class="punct">();</span>  <span class="com">// 仍然 true</span></pre>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>方法</th><th>作用域</th><th>清除标志</th><th>推荐使用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Thread.interrupted()</code></td><td>当前线程（静态）</td><td><strong>是</strong></td><td>在循环内消费中断并决定是否继续</td></tr>
+      <tr><td><code>t.isInterrupted()</code></td><td>任意线程（实例）</td><td><strong>否</strong></td><td>查询中断状态但不想清除（最常用）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ⑦ 不可中断阻塞怎么办 -->
+  <h2>⑦ 不可中断的阻塞——额外手段</h2>
+  <p>不是所有阻塞都能被 <code>interrupt()</code> 打断。遇到这些情况需要额外处理：</p>
+
+  <table>
+    <thead>
+      <tr><th>阻塞类型</th><th>interrupt 是否有效</th><th>替代方案</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>等待 <code>synchronized</code> 锁</td><td>无效（继续阻塞）</td><td>改用 <code>Lock.lockInterruptibly()</code></td></tr>
+      <tr><td>Socket I/O（<code>InputStream.read</code>）</td><td>无效</td><td>关闭底层 Socket：<code>socket.close()</code></td></tr>
+      <tr><td>NIO Selector 阻塞</td><td>无效</td><td>调用 <code>selector.wakeup()</code></td></tr>
+      <tr><td><code>Thread.sleep / wait / take</code></td><td><strong>有效</strong>，抛 IE</td><td>——</td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>对 synchronized 无效 → 改用 lockInterruptibly</span><span>Java</span></div>
+    <pre><span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>
+
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="com">// 若等待锁期间收到中断，立刻抛 InterruptedException</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lockInterruptibly</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">doLockedWork</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>  <span class="com">// 恢复标志</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ⑧ 中断在实际架构中的位置 -->
+  <h2>⑧ 整体协作流程图</h2>
+  <div class="tree">
+调用方<br>
+&nbsp;&nbsp;└─ <span class="hi">thread.interrupt()</span>  &nbsp;← 发出请求<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;▼<br>
+目标线程<br>
+&nbsp;&nbsp;├─ 正在阻塞（sleep/wait/take）<br>
+&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└─ 立刻抛 <span class="hi">InterruptedException</span>（标志被清除）<br>
+&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ catch → 策略1: throws IE / 策略2: re-interrupt<br>
+&nbsp;&nbsp;│<br>
+&nbsp;&nbsp;└─ 正在运行（非阻塞）<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 下次循环检查 <span class="hi">isInterrupted()</span> → true → 退出循环<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ cleanup() → 线程正常结束
+  </div>
+
+  <!-- ⑨ 面试高频考点 -->
+  <h2>⑨ 面试高频考点速查</h2>
+  <ul>
+    <li><strong>interrupt() 是请求，不是命令。</strong>目标线程可以忽略它（尽管这是错误做法）。</li>
+    <li><strong>sleep() 抛出 IE 后，中断标志被清除。</strong>这是 catch 里必须 re-interrupt 的根本原因。</li>
+    <li><strong>Thread.interrupted() 有副作用，</strong>调用后标志变 false——这是超高频考点，很多人混淆静态/实例方法。</li>
+    <li><strong>synchronized 锁等待对 interrupt 不响应，</strong>只有 <code>lockInterruptibly()</code> 才能被中断。</li>
+    <li><strong>shutdownNow() 的本质</strong>就是对每个正在执行任务的线程调用 <code>interrupt()</code>，任务本身必须正确处理中断才能真正停止。</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>一句话总结：</strong>中断是 Java 协作式取消的信号协议——发出方负责设置标志，接收方负责检查并响应，绝不能悄悄吞掉信号。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./06-为什么不用Executors.html" class="nav-btn">← 06. 为什么不建议用 Executors 快捷工厂</a>
+    <a href="./08-优雅关闭线程池.html" class="nav-btn next">08. 优雅关闭线程池（shutdown vs shutdownNow） →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>02. Callable / Future / FutureTask</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part III 结构化应用 / 任务执行
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part III 结构化应用 · 任务执行</div>
+    <h1>02. Callable / Future / FutureTask</h1>
+    <p>让任务能够"带着答案回来"——Java 异步计算结果的标准抽象，以及它们背后的设计取舍。</p>
+  </div>
+
+  <!-- ======================================================== -->
+  <h2>为什么 Runnable 不够用？</h2>
+
+  <p>
+    <code>Runnable</code> 是 Java 最早的任务抽象，接口非常简单：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Runnable.java（JDK 源码）</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">Runnable</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">run</span><span class="punct">();</span>  <span class="com">// 无返回值，无法抛出受检异常</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>它有两个硬伤：</p>
+  <ul>
+    <li><strong>无返回值</strong>：任务算完结果存哪？只能写到共享变量，引发可见性/竞态问题。</li>
+    <li><strong>不能抛受检异常</strong>：网络 IO、数据库操作必须在内部 try-catch，错误信息容易被吞掉。</li>
+  </ul>
+
+  <p>
+    JDK 5 用 <code>Callable&lt;V&gt;</code> 填补了这两个空缺，同时引入 <code>Future&lt;V&gt;</code> 作为"异步结果的占位符"，两者配合就构成了 Java 标准的<strong>异步任务模型</strong>。
+  </p>
+
+  <!-- ======================================================== -->
+  <h2>三个核心接口 / 类的关系</h2>
+
+  <div class="tree">
+&lt;&lt;interface&gt;&gt; <span class="hi">Callable&lt;V&gt;</span>          — 描述「有结果的任务」
+    └── V call() throws Exception
+
+&lt;&lt;interface&gt;&gt; <span class="hi">Future&lt;V&gt;</span>            — 描述「异步结果的句柄」
+    ├── boolean isDone()
+    ├── boolean cancel(boolean mayInterrupt)
+    ├── V get() throws ...
+    └── V get(long timeout, TimeUnit unit) throws ...
+
+<span class="hi">FutureTask&lt;V&gt;</span>                       — 同时实现 Runnable + Future
+    ├── 持有一个 Callable（或包装后的 Runnable）
+    ├── 状态机：NEW → COMPLETING → NORMAL / EXCEPTIONAL / CANCELLED
+    └── 可直接提交给 Thread / Executor，也可手动 run()
+  </div>
+
+  <p>
+    可以把 <code>Future</code> 理解为一张<strong>快递单</strong>：你下单（提交 Callable），快递员（线程池）在后台打包发货，你拿着这张单随时可以查快递状态（<code>isDone()</code>）、取消订单（<code>cancel()</code>），或者坐在那等包裹到手（<code>get()</code>）。
+  </p>
+
+  <!-- ======================================================== -->
+  <h2>Callable 接口详解</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Callable.java（JDK 源码）</span></div>
+    <pre><span class="ann">@FunctionalInterface</span>
+<span class="kw">public interface</span> <span class="ty">Callable</span><span class="punct">&lt;</span><span class="ty">V</span><span class="punct">&gt; {</span>
+    <span class="ty">V</span> <span class="fn">call</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">Exception</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>与 Runnable 的对比：</p>
+
+  <table>
+    <thead>
+      <tr><th>特性</th><th><code>Runnable</code></th><th><code>Callable&lt;V&gt;</code></th></tr>
+    </thead>
+    <tbody>
+      <tr><td>返回值</td><td>void</td><td>V（泛型）</td></tr>
+      <tr><td>受检异常</td><td>不允许</td><td>允许 <code>throws Exception</code></td></tr>
+      <tr><td>配套工具</td><td>Thread / Executor</td><td>ExecutorService.submit()</td></tr>
+      <tr><td>适用场景</td><td>fire-and-forget</td><td>需要结果 / 需要异常传播</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ======================================================== -->
+  <h2>Future 接口详解</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Future&lt;V&gt; 核心方法</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">V</span><span class="punct">&gt; {</span>
+
+    <span class="com">// 阻塞直到有结果，或抛出异常</span>
+    <span class="ty">V</span>       <span class="fn">get</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span><span class="punct">,</span> <span class="ty">ExecutionException</span><span class="punct">;</span>
+
+    <span class="com">// 带超时的 get，超时抛 TimeoutException</span>
+    <span class="ty">V</span>       <span class="fn">get</span><span class="punct">(</span><span class="kw">long</span> <span class="var">timeout</span><span class="punct">,</span> <span class="ty">TimeUnit</span> <span class="var">unit</span><span class="punct">)</span>
+                <span class="kw">throws</span> <span class="ty">InterruptedException</span><span class="punct">,</span> <span class="ty">ExecutionException</span><span class="punct">,</span> <span class="ty">TimeoutException</span><span class="punct">;</span>
+
+    <span class="com">// 任务是否已结束（正常完成 / 异常 / 取消 均算 done）</span>
+    <span class="kw">boolean</span> <span class="fn">isDone</span><span class="punct">();</span>
+
+    <span class="com">// 尝试取消；mayInterruptIfRunning=true 会给执行线程发中断信号</span>
+    <span class="kw">boolean</span> <span class="fn">cancel</span><span class="punct">(</span><span class="kw">boolean</span> <span class="var">mayInterruptIfRunning</span><span class="punct">);</span>
+
+    <span class="com">// 是否被取消（cancel 成功 → true）</span>
+    <span class="kw">boolean</span> <span class="fn">isCancelled</span><span class="punct">();</span>
+
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>ExecutionException 的设计意图</strong><br>
+    <code>Callable.call()</code> 中抛出的任何异常都会被包裹进 <code>ExecutionException</code>，通过 <code>getCause()</code> 取出真实异常。这样做是为了跨线程传播异常——子线程的受检异常被安全地"搬运"到调用 <code>get()</code> 的线程。
+  </div>
+
+  <!-- ======================================================== -->
+  <h2>FutureTask：唯一内置实现</h2>
+
+  <p>
+    <code>FutureTask</code> 同时实现了 <code>RunnableFuture</code>（即 <code>Runnable + Future</code>），是 JDK 里 <code>Future</code> 的唯一标准实现。它的核心是一个<strong>状态机</strong>：
+  </p>
+
+  <div class="tree">
+NEW
+ │  run() 开始执行
+ ▼
+COMPLETING          ← 过渡态（outcome 写入中），极短暂
+ │
+ ├─► NORMAL         ← call() 正常返回，outcome = 返回值
+ ├─► EXCEPTIONAL    ← call() 抛异常，outcome = Throwable
+ └─► CANCELLED      ← cancel(false) 在运行前取消
+      │
+      └─► INTERRUPTING → INTERRUPTED   ← cancel(true) 中断执行中的线程
+  </div>
+
+  <p>
+    状态一旦离开 <code>NEW</code> 就<strong>不可逆</strong>，这保证了 <code>get()</code> 的结果<strong>只会被写入一次</strong>（happens-before 语义由 volatile + CAS 保证，无需额外同步）。
+  </p>
+
+  <h3>FutureTask 的两种构造方式</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>FutureTask 构造</span></div>
+    <pre><span class="com">// 方式 1：包装 Callable（推荐）</span>
+<span class="ty">FutureTask</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">task1</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FutureTask</span><span class="punct">&lt;&gt;(</span>
+    <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="str">"hello from callable"</span>
+<span class="punct">);</span>
+
+<span class="com">// 方式 2：包装 Runnable，并指定完成后的返回值</span>
+<span class="ty">FutureTask</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">task2</span> = <span class="kw">new</span> <span class="ty">FutureTask</span><span class="punct">&lt;&gt;(</span>
+    <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="ty">System</span><span class="punct">.</span><span class="fn">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"running"</span><span class="punct">),</span>
+    <span class="str">"done"</span>  <span class="com">// Runnable 完成后 get() 返回这个值</span>
+<span class="punct">);</span></pre>
+  </div>
+
+  <!-- ======================================================== -->
+  <h2>标准用法：配合 ExecutorService</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BasicFutureDemo.java</span></div>
+    <pre><span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="num">4</span><span class="punct">);</span>
+
+<span class="com">// submit(Callable) 内部会把 Callable 包成 FutureTask 再提交</span>
+<span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">future</span> <span class="punct">=</span> <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>          <span class="com">// 模拟耗时计算</span>
+    <span class="kw">return</span> <span class="fn">expensiveCompute</span><span class="punct">();</span>
+<span class="punct">});</span>
+
+<span class="com">// 提交后主线程可以做其他事</span>
+<span class="fn">doOtherWork</span><span class="punct">();</span>
+
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="com">// 阻塞等结果，建议始终指定超时</span>
+    <span class="ty">Integer</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">future</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">5</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"结果: "</span> <span class="punct">+</span> <span class="var">result</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">TimeoutException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="var">future</span><span class="punct">.</span><span class="fn">cancel</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span>         <span class="com">// 超时取消，释放线程</span>
+    <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="str">"计算超时"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">ExecutionException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 子线程内的异常被包裹在此，getCause() 取真实异常</span>
+    <span class="ty">Throwable</span> <span class="var">cause</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getCause</span><span class="punct">();</span>
+    <span class="var">logger</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"任务执行异常"</span><span class="punct">,</span> <span class="var">cause</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="var">pool</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ======================================================== -->
+  <h2>进阶：手动使用 FutureTask</h2>
+
+  <p>
+    有时你需要手动控制 <code>FutureTask</code>，例如在 <strong>缓存预热</strong> 场景中，保证相同的昂贵计算只执行一次：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Memoizer.java — 用 FutureTask 实现线程安全的缓存</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Memoizer</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt; {</span>
+
+    <span class="com">// ConcurrentHashMap 保证 map 操作的线程安全</span>
+    <span class="kw">private final</span> <span class="ty">ConcurrentHashMap</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">FutureTask</span><span class="punct">&lt;</span><span class="ty">V</span><span class="punct">&gt;&gt;</span> <span class="var">cache</span>
+        <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ConcurrentHashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">private final</span> <span class="ty">Function</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt;</span> <span class="var">loader</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">V</span> <span class="fn">get</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+            <span class="ty">FutureTask</span><span class="punct">&lt;</span><span class="ty">V</span><span class="punct">&gt;</span> <span class="var">f</span> <span class="punct">=</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">f</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+                <span class="ty">FutureTask</span><span class="punct">&lt;</span><span class="ty">V</span><span class="punct">&gt;</span> <span class="var">ft</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FutureTask</span><span class="punct">&lt;&gt;(()</span> <span class="punct">-&gt;</span> <span class="var">loader</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="var">key</span><span class="punct">));</span>
+                <span class="com">// putIfAbsent：只有当 key 不存在时才插入，原子操作</span>
+                <span class="var">f</span> <span class="punct">=</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">putIfAbsent</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">ft</span><span class="punct">);</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">f</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+                    <span class="var">f</span> <span class="punct">=</span> <span class="var">ft</span><span class="punct">;</span>
+                    <span class="var">ft</span><span class="punct">.</span><span class="fn">run</span><span class="punct">();</span>    <span class="com">// 由当前线程同步执行（或提交给线程池）</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+            <span class="kw">try</span> <span class="punct">{</span>
+                <span class="kw">return</span> <span class="var">f</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+            <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">CancellationException</span> <span class="var">e</span><span class="punct">) {</span>
+                <span class="com">// 被取消时清除缓存，下次重试</span>
+                <span class="var">cache</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">f</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么用 FutureTask 而不是直接存结果 V？</strong><br>
+    如果存的是 V，两个线程同时判断 cache 为空就会各自计算一次（check-then-act 竞态）。存 FutureTask 后，第二个线程拿到已有的 FutureTask 直接 <code>get()</code> 阻塞等待，第一个线程计算完 FutureTask 就完成，所有等待者自动唤醒——这是 <strong>Future 作为"一次性屏障"</strong> 的经典用法。
+  </div>
+
+  <!-- ======================================================== -->
+  <h2>并发陷阱：反例 vs 正例</h2>
+
+  <h3>陷阱 1：get() 忘写超时 → 线程池雪崩</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：无限阻塞</span></div>
+    <pre><span class="com">// ❌ 如果远程服务挂起，这个调用线程永远阻塞</span>
+<span class="ty">String</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">future</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：有界等待</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="com">// ✅ 始终传超时参数，结合业务 SLA 设置合理值</span>
+    <span class="ty">String</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">future</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">3</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">TimeoutException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="var">future</span><span class="punct">.</span><span class="fn">cancel</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span>   <span class="com">// 超时后一定要 cancel，避免线程池中任务继续跑</span>
+    <span class="kw">throw new</span> <span class="ty">ServiceUnavailableException</span><span class="punct">(</span><span class="str">"下游超时"</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 2：循环提交后顺序 get() → 串行化陷阱</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：并行提交但串行等待，慢任务拖累所有结果</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Result</span><span class="punct">&gt;&gt;</span> <span class="var">futures</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="ty">Task</span> <span class="var">t</span> <span class="punct">:</span> <span class="var">tasks</span><span class="punct">)</span> <span class="var">futures</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(</span><span class="var">t</span><span class="punct">));</span>
+
+<span class="com">// ❌ 按提交顺序逐一 get()：第一个任务最慢则后面全阻塞</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Result</span><span class="punct">&gt;</span> <span class="var">f</span> <span class="punct">:</span> <span class="var">futures</span><span class="punct">)</span> <span class="fn">process</span><span class="punct">(</span><span class="var">f</span><span class="punct">.</span><span class="fn">get</span><span class="punct">());</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：用 ExecutorCompletionService 按完成顺序消费</span></div>
+    <pre><span class="ty">ExecutorCompletionService</span><span class="punct">&lt;</span><span class="ty">Result</span><span class="punct">&gt;</span> <span class="var">ecs</span>
+    <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ExecutorCompletionService</span><span class="punct">&lt;&gt;(</span><span class="var">pool</span><span class="punct">);</span>
+
+<span class="kw">for</span> <span class="punct">(</span><span class="ty">Task</span> <span class="var">t</span> <span class="punct">:</span> <span class="var">tasks</span><span class="punct">)</span> <span class="var">ecs</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(</span><span class="var">t</span><span class="punct">);</span>
+
+<span class="com">// ✅ take() 返回最先完成的那个 Future，不被慢任务阻塞</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">tasks</span><span class="punct">.</span><span class="fn">size</span><span class="punct">();</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+    <span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Result</span><span class="punct">&gt;</span> <span class="var">f</span> <span class="punct">=</span> <span class="var">ecs</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>  <span class="com">// 按完成顺序出队</span>
+    <span class="fn">process</span><span class="punct">(</span><span class="var">f</span><span class="punct">.</span><span class="fn">get</span><span class="punct">());</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 3：cancel() 不等于真正停止任务</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>cancel(true) 的局限性</span></div>
+    <pre><span class="com">// cancel(true) 只是发中断信号，任务代码必须主动响应</span>
+<span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="var">f</span> <span class="punct">=</span> <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="com">// ❌ 死循环不检查中断，cancel(true) 完全无效</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="kw">return null</span><span class="punct">;</span>
+<span class="punct">});</span>
+
+<span class="var">f</span><span class="punct">.</span><span class="fn">cancel</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span>  <span class="com">// Future 状态变 CANCELLED，但线程仍在跑！</span>
+
+<span class="com">// ✅ 正确做法：任务内部检查中断状态</span>
+<span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="var">f2</span> <span class="punct">=</span> <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="kw">while</span> <span class="punct">(!</span><span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">isInterrupted</span><span class="punct">())</span> <span class="punct">{</span>
+        <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="punct">}</span>
+    <span class="kw">return null</span><span class="punct">;</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>cancel(false) vs cancel(true)</strong><br>
+    <code>cancel(false)</code>：只阻止任务被启动，如果已在运行则不干预。<br>
+    <code>cancel(true)</code>：给执行线程发中断信号（<code>Thread.interrupt()</code>），但任务代码必须主动检查 <code>isInterrupted()</code> 或调用会抛 <code>InterruptedException</code> 的方法（如 <code>sleep/wait</code>）才能真正停下来。
+  </div>
+
+  <h3>陷阱 4：ExecutionException 被吞掉</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 vs 正例</span></div>
+    <pre><span class="com">// ❌ 反例：吞掉异常，生产问题无从排查</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">future</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="var">e</span><span class="punct">.</span><span class="fn">printStackTrace</span><span class="punct">();</span>  <span class="com">// 打的是 ExecutionException，真实原因在 cause 里</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正例：分类处理，透传真实原因</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">future</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">5</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">ExecutionException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="ty">Throwable</span> <span class="var">cause</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getCause</span><span class="punct">();</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">cause</span> <span class="kw">instanceof</span> <span class="ty">IOException</span><span class="punct">)</span>  <span class="kw">throw</span> <span class="punct">(</span><span class="ty">IOException</span><span class="punct">)</span> <span class="var">cause</span><span class="punct">;</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">cause</span> <span class="kw">instanceof</span> <span class="ty">RuntimeException</span><span class="punct">)</span> <span class="kw">throw</span> <span class="punct">(</span><span class="ty">RuntimeException</span><span class="punct">)</span> <span class="var">cause</span><span class="punct">;</span>
+    <span class="kw">throw new</span> <span class="ty">IllegalStateException</span><span class="punct">(</span><span class="str">"未预期异常"</span><span class="punct">,</span> <span class="var">cause</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 当前线程被中断，务必恢复中断状态</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+    <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="str">"等待结果时被中断"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ======================================================== -->
+  <h2>invokeAll / invokeAny：批量任务的两种策略</h2>
+
+  <p>
+    <code>ExecutorService</code> 提供了两个批量提交方法，分别对应两种常见的聚合需求：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>方法</th><th>语义</th><th>典型场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>invokeAll(tasks)</code></td><td>等所有任务完成，返回 Future 列表</td><td>需要全部结果才能继续（如汇总报表）</td></tr>
+      <tr><td><code>invokeAll(tasks, timeout, unit)</code></td><td>超时后未完成的 Future 被自动取消</td><td>有 SLA 限制的批量调用</td></tr>
+      <tr><td><code>invokeAny(tasks)</code></td><td>第一个成功完成即返回，取消其余任务</td><td>最快响应即可（如多地区冗余查询）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>invokeAny 示例 — 冗余查询取最快结果</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Callable</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;&gt;</span> <span class="var">mirrors</span> <span class="punct">=</span> <span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span>
+    <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="fn">fetchFrom</span><span class="punct">(</span><span class="str">"us-east"</span><span class="punct">),</span>
+    <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="fn">fetchFrom</span><span class="punct">(</span><span class="str">"eu-west"</span><span class="punct">),</span>
+    <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="fn">fetchFrom</span><span class="punct">(</span><span class="str">"ap-east"</span><span class="punct">)</span>
+<span class="punct">);</span>
+
+<span class="com">// 哪个机房最先响应就用哪个，其余请求自动取消</span>
+<span class="ty">String</span> <span class="var">fastest</span> <span class="punct">=</span> <span class="var">pool</span><span class="punct">.</span><span class="fn">invokeAny</span><span class="punct">(</span><span class="var">mirrors</span><span class="punct">,</span> <span class="num">2</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- ======================================================== -->
+  <h2>面试高频考点</h2>
+
+  <ul>
+    <li><strong>Runnable vs Callable 区别？</strong> 返回值 + 受检异常两点，延伸到 Future 如何传播异常。</li>
+    <li><strong>FutureTask 是怎么保证线程安全的？</strong> 状态机 + volatile + CAS，outcome 写入 happens-before get() 读取。</li>
+    <li><strong>get() 抛哪些异常？分别代表什么？</strong> <code>InterruptedException</code>（等待时被中断）、<code>ExecutionException</code>（任务抛异常）、<code>TimeoutException</code>（超时）、<code>CancellationException</code>（任务被取消）。</li>
+    <li><strong>cancel(true) 一定能停止任务吗？</strong> 不能，只是发中断信号，任务必须主动响应中断。</li>
+    <li><strong>Future 的局限性是什么？</strong> 无法链式组合、无法在完成时触发回调（这正是 CompletableFuture 诞生的原因）。</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>Future 与 CompletableFuture 的分水岭</strong><br>
+    <code>Future</code> 是<strong>拉模型</strong>（你主动 <code>get()</code> 等结果），阻塞调用线程；<code>CompletableFuture</code> 是<strong>推模型</strong>（任务完成后主动触发回调），支持流式链式编排，彻底消除阻塞等待。下一节将详细展开。
+  </div>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-Executor框架.html" class="nav-btn">← 01. Executor 框架与解耦思想</a>
+    <a href="./03-CompletableFuture.html" class="nav-btn next">03. CompletableFuture 异步编排 →</a>
+  </div>
+
+</div>
+</body>
+</html>

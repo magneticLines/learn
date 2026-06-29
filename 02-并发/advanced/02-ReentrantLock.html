@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>02. ReentrantLock vs synchronized · Java 并发</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #c084fc; }
+    p code, li code { color: #c084fc; }
+    h2 { color: #c084fc; border-left-color: #c084fc; }
+    .hero .tag { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 显式锁
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 显式锁</div>
+    <h1>02. Lock / ReentrantLock vs synchronized</h1>
+    <p>理解显式锁的设计动机，掌握它在哪些场景下比内置锁更强大，以及如何安全地使用它。</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>为什么会有 ReentrantLock？</h2>
+
+  <p><code>synchronized</code> 是 Java 最早的内置锁，依赖 JVM 字节码指令 <code>monitorenter / monitorexit</code> 实现。它足够简单，但也因此<strong>缺少灵活性</strong>——一旦线程在等待锁，什么都做不了：不能中断等待、不能设超时、不能非阻塞地试探加锁。</p>
+
+  <p>2004 年 Java 5 发布，<code>java.util.concurrent.locks</code> 包随 JSR-166 一同入库。Doug Lea 设计了 <code>Lock</code> 接口与 <code>ReentrantLock</code> 实现，把"加锁"这件事从 JVM 指令层提升到了 <strong>Java API 层</strong>，从此可以用代码完全控制锁的行为。</p>
+
+  <div class="callout info">
+    <strong>可重入（Reentrant）是什么意思？</strong><br/>
+    同一个线程可以对同一把锁多次加锁而不会死锁。<code>synchronized</code> 天然可重入；<code>ReentrantLock</code> 名字里就带着这个承诺，内部维护一个 <em>持有计数</em>，每次 <code>lock()</code> +1，每次 <code>unlock()</code> -1，降到 0 才真正释放。
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>Lock 接口核心 API</h2>
+
+  <div class="tree">
+    <span class="hi">Lock</span>                           // 接口<br/>
+    ├── <span class="hi">lock()</span>                    // 阻塞直到获得锁<br/>
+    ├── <span class="hi">lockInterruptibly()</span>       // 可被 interrupt 打断<br/>
+    ├── <span class="hi">tryLock()</span>                 // 立即返回 boolean，不阻塞<br/>
+    ├── <span class="hi">tryLock(time, unit)</span>       // 限时等待<br/>
+    ├── <span class="hi">unlock()</span>                  // 释放锁（必须手动调用！）<br/>
+    └── <span class="hi">newCondition()</span>            // 返回绑定的 Condition 对象
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>反例 → 问题 → 正例</h2>
+
+  <h3>反例：忘记在 finally 中释放锁</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 错误写法</span></div>
+    <pre><span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>
+
+<span class="kw">void</span> <span class="fn">badMethod</span><span class="punct">() {</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+    <span class="com">// ❌ 如果这里抛出异常，unlock() 永远不会执行</span>
+    <span class="fn">doSomethingRisky</span><span class="punct">();</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>   <span class="com">// 线程一旦崩溃，其他线程永久阻塞</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：锁泄漏（Lock Leak）</strong><br/>
+    与 <code>synchronized</code> 不同，JVM 不会帮你自动释放 <code>ReentrantLock</code>。一旦 <code>unlock()</code> 没被调用，所有等待该锁的线程将<strong>永久挂起</strong>，进程无法恢复。
+  </div>
+
+  <h3>正例：lock-try-finally 惯用模式</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 正确写法</span></div>
+    <pre><span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>
+
+<span class="kw">void</span> <span class="fn">goodMethod</span><span class="punct">() {</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="com">// ✅ 无论正常返回还是抛出异常，finally 必然执行</span>
+        <span class="fn">doSomethingRisky</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>规则：<code>lock()</code> 必须在 <code>try</code> 块之外调用，<code>unlock()</code> 必须在 <code>finally</code> 块中调用。</strong> 这是使用显式锁唯一被广泛接受的惯用法。</p>
+
+  <!-- ============================================================ -->
+  <h2>synchronized 做不到的三件事</h2>
+
+  <h3>1. 可中断的等待（lockInterruptibly）</h3>
+
+  <p>场景：用户点了"取消"按钮，希望中止正在等锁的线程。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — lockInterruptibly 示例</span></div>
+    <pre><span class="kw">void</span> <span class="fn">cancellableTask</span><span class="punct">(</span><span class="ty">ReentrantLock</span> <span class="var">lock</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+    <span class="com">// 若等待期间线程被 interrupt()，直接抛出 InterruptedException</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lockInterruptibly</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>使用 <code>synchronized</code> 时，<code>interrupt()</code> 对一个正在等待 monitor 的线程<strong>完全无效</strong>，它会继续阻塞直到获得锁。</p>
+
+  <h3>2. 限时尝试加锁（tryLock with timeout）</h3>
+
+  <p>场景：数据库连接池，最多等 200ms，超时就降级或报错，避免线程堆积。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — tryLock 限时示例</span></div>
+    <pre><span class="ty">boolean</span> <span class="var">acquired</span> <span class="punct">=</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">tryLock</span><span class="punct">(</span><span class="num">200</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">);</span>
+<span class="kw">if</span> <span class="punct">(!</span><span class="var">acquired</span><span class="punct">) {</span>
+    <span class="com">// 未获得锁，执行降级逻辑</span>
+    <span class="fn">fallback</span><span class="punct">();</span>
+    <span class="kw">return</span><span class="punct">;</span>
+<span class="punct">}</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="fn">doWork</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><code>tryLock()</code>（无参数版本）更激进：<strong>立即返回</strong>，拿到返回 <code>true</code>，拿不到返回 <code>false</code>，完全非阻塞。</p>
+
+  <h3>3. 公平锁（Fair Lock）</h3>
+
+  <p>默认情况下，<code>synchronized</code> 和 <code>new ReentrantLock()</code> 都是<strong>非公平锁</strong>——新来的线程可以"插队"抢锁，吞吐量高，但可能导致某些线程饥饿（starvation）。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 公平锁与非公平锁</span></div>
+    <pre><span class="com">// 非公平锁（默认）：吞吐量高，可能饥饿</span>
+<span class="ty">ReentrantLock</span> <span class="var">unfair</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>
+
+<span class="com">// 公平锁：FIFO 队列，不会饥饿，但吞吐量明显下降</span>
+<span class="ty">ReentrantLock</span> <span class="var">fair</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>公平锁的代价</strong>：每次加锁都要维护 CLH 队列（AbstractQueuedSynchronizer 内部的虚拟双向队列），吞吐量通常比非公平锁低 <strong>5～10 倍</strong>。只有在"等待时间公平"比"总吞吐量"更重要的场景（如打印队列、公平调度）才值得开启。
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>Condition：比 wait/notify 更精确的等待</h2>
+
+  <p><code>synchronized</code> 配套的等待机制是 <code>Object.wait() / notify() / notifyAll()</code>，所有等待线程共用同一个 monitor 队列，<code>notify()</code> 只能随机唤醒一个，无法指定。</p>
+
+  <p><code>ReentrantLock.newCondition()</code> 可以创建<strong>多个等待队列</strong>，精确控制唤醒哪批线程。经典应用是有界缓冲区（生产者-消费者）：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 有界缓冲区（Condition 精确唤醒）</span></div>
+    <pre><span class="kw">class</span> <span class="ty">BoundedBuffer</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt; {</span>
+    <span class="kw">private final</span> <span class="ty">ReentrantLock</span> <span class="var">lock</span>   <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>
+    <span class="com">// 两个独立的等待集：生产者等"有空位"，消费者等"有数据"</span>
+    <span class="kw">private final</span> <span class="ty">Condition</span>      <span class="var">notFull</span>  <span class="punct">=</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">newCondition</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Condition</span>      <span class="var">notEmpty</span> <span class="punct">=</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">newCondition</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Object</span><span class="punct">[]</span>       <span class="var">items</span><span class="punct">;</span>
+    <span class="kw">private int</span> <span class="var">head</span><span class="punct">,</span> <span class="var">tail</span><span class="punct">,</span> <span class="var">count</span><span class="punct">;</span>
+
+    <span class="fn">BoundedBuffer</span><span class="punct">(</span><span class="kw">int</span> <span class="var">cap</span><span class="punct">) {</span> <span class="var">items</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">[</span><span class="var">cap</span><span class="punct">]; }</span>
+
+    <span class="kw">public void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">T</span> <span class="var">x</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span>
+                <span class="var">notFull</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>   <span class="com">// 队列满，生产者挂起</span>
+            <span class="var">items</span><span class="punct">[</span><span class="var">tail</span><span class="punct">] =</span> <span class="var">x</span><span class="punct">;</span>
+            <span class="kw">if</span> <span class="punct">(++</span><span class="var">tail</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span> <span class="var">tail</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+            <span class="punct">++</span><span class="var">count</span><span class="punct">;</span>
+            <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>     <span class="com">// 精确唤醒一个等待数据的消费者</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@SuppressWarnings</span><span class="punct">(</span><span class="str">"unchecked"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">T</span> <span class="fn">take</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span>
+                <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>   <span class="com">// 队列空，消费者挂起</span>
+            <span class="ty">T</span> <span class="var">x</span> <span class="punct">= (</span><span class="ty">T</span><span class="punct">)</span> <span class="var">items</span><span class="punct">[</span><span class="var">head</span><span class="punct">];</span>
+            <span class="kw">if</span> <span class="punct">(++</span><span class="var">head</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span> <span class="var">head</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+            <span class="punct">--</span><span class="var">count</span><span class="punct">;</span>
+            <span class="var">notFull</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>      <span class="com">// 精确唤醒一个等待空位的生产者</span>
+            <span class="kw">return</span> <span class="var">x</span><span class="punct">;</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>若用 <code>synchronized + notifyAll()</code> 实现同样逻辑，每次唤醒<strong>所有</strong>等待线程，大量线程白白竞争后再次挂起，浪费上下文切换开销。<code>Condition.signal()</code> 只唤醒<strong>对应等待集</strong>中的一个线程，精确高效。</p>
+
+  <!-- ============================================================ -->
+  <h2>底层原理：AQS（AbstractQueuedSynchronizer）</h2>
+
+  <p><code>ReentrantLock</code> 的所有功能都建立在 <code>AbstractQueuedSynchronizer</code>（AQS）之上。AQS 的核心是一个 <strong>volatile int state</strong> 变量和一条 <strong>CLH 变体双向等待队列</strong>。</p>
+
+  <div class="tree">
+    加锁流程（非公平锁）<br/>
+    ├── CAS(state, 0, 1) 成功 ──▶ 设置 exclusiveOwnerThread = 当前线程，直接返回<br/>
+    ├── CAS 失败（锁被持有）<br/>
+    │   ├── 若 exclusiveOwnerThread == 当前线程 ──▶ state++（可重入）<br/>
+    │   └── 否则 ──▶ 封装成 Node 入队，LockSupport.park() 挂起<br/>
+    释放锁流程<br/>
+    └── state-- ，降到 0 时 ──▶ LockSupport.unpark(队头后继节点的线程)
+  </div>
+
+  <p><code>LockSupport.park/unpark</code> 底层对应 POSIX <code>pthread_mutex + pthread_cond</code>（Linux）或 Windows 的 <code>SetEvent/WaitForSingleObject</code>，比 JVM monitor 的 <code>wait/notify</code> 更轻量，也不需要先持有 monitor。</p>
+
+  <!-- ============================================================ -->
+  <h2>全面对比：ReentrantLock vs synchronized</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>特性</th>
+        <th><code>synchronized</code></th>
+        <th><code>ReentrantLock</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>可重入</td>
+        <td>✅ 自动</td>
+        <td>✅ 自动（持有计数）</td>
+      </tr>
+      <tr>
+        <td>加锁/解锁方式</td>
+        <td>JVM 自动（字节码）</td>
+        <td>手动 <code>lock() / unlock()</code></td>
+      </tr>
+      <tr>
+        <td>可中断等待</td>
+        <td>❌</td>
+        <td>✅ <code>lockInterruptibly()</code></td>
+      </tr>
+      <tr>
+        <td>限时尝试</td>
+        <td>❌</td>
+        <td>✅ <code>tryLock(time, unit)</code></td>
+      </tr>
+      <tr>
+        <td>非阻塞尝试</td>
+        <td>❌</td>
+        <td>✅ <code>tryLock()</code></td>
+      </tr>
+      <tr>
+        <td>公平锁</td>
+        <td>❌</td>
+        <td>✅ <code>new ReentrantLock(true)</code></td>
+      </tr>
+      <tr>
+        <td>多条件变量</td>
+        <td>❌（单一等待集）</td>
+        <td>✅ <code>newCondition()</code> 任意多个</td>
+      </tr>
+      <tr>
+        <td>锁状态查询</td>
+        <td>❌</td>
+        <td>✅ <code>isLocked()</code> / <code>getQueueLength()</code></td>
+      </tr>
+      <tr>
+        <td>性能（Java 6+）</td>
+        <td>偏向锁/轻量锁优化后与 ReentrantLock 接近</td>
+        <td>高竞争场景略优</td>
+      </tr>
+      <tr>
+        <td>代码安全性</td>
+        <td>高（JVM 保证释放）</td>
+        <td>低（需要 try-finally 纪律）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2>常见并发陷阱汇总</h2>
+
+  <h3>陷阱 1：在 lock() 之前的代码抛出异常</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 另一个常见错误</span></div>
+    <pre><span class="com">// ❌ 如果 prepare() 抛异常，lock 还没调用，unlock() 会抛 IllegalMonitorStateException</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="fn">prepare</span><span class="punct">();</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>   <span class="com">// lock() 必须在 try 块外！</span>
+    <span class="fn">doWork</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>   <span class="com">// 若 lock() 从未执行，这里会抛异常</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正确：先 lock()，再 try</span>
+<span class="fn">prepare</span><span class="punct">();</span>
+<span class="var">lock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="fn">doWork</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 2：在 Condition.await() 之后不用 while 循环检查条件</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 虚假唤醒（Spurious Wakeup）</span></div>
+    <pre><span class="com">// ❌ if 只检查一次，虚假唤醒后直接往下走，可能读到脏数据</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span> <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+
+<span class="com">// ✅ while 循环：每次被唤醒都重新检查条件</span>
+<span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span> <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span></pre>
+  </div>
+
+  <p>操作系统层面存在<strong>虚假唤醒（spurious wakeup）</strong>现象——线程可能在没有任何 <code>signal()</code> 的情况下被唤醒。Java 规范不保证消除这一现象，因此 <code>await()</code> 的条件判断<strong>必须用 while</strong>，永远不要用 <code>if</code>。</p>
+
+  <h3>陷阱 3：tryLock() 获取失败后仍调用 unlock()</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — tryLock 与 unlock 配对</span></div>
+    <pre><span class="ty">boolean</span> <span class="var">acquired</span> <span class="punct">=</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">tryLock</span><span class="punct">();</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(!</span><span class="var">acquired</span><span class="punct">)</span> <span class="kw">return</span><span class="punct">;</span>   <span class="com">// ✅ 未获锁直接返回，不进入 try 体</span>
+    <span class="fn">doWork</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">acquired</span><span class="punct">)</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>  <span class="com">// ✅ 只有成功获锁才解锁</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>什么时候选 ReentrantLock，什么时候用 synchronized？</h2>
+
+  <div class="callout tip">
+    <strong>实践建议</strong><br/>
+    优先选 <code>synchronized</code>：代码简洁，JVM 会自动处理异常情况下的锁释放，现代 JVM（Java 6+）经过偏向锁、轻量锁优化后性能已与 ReentrantLock 相当。<br/><br/>
+    遇到以下场景时才切换到 <code>ReentrantLock</code>：
+    <ul style="margin-top:8px;margin-left:20px;">
+      <li>需要可中断的锁等待（响应取消操作）</li>
+      <li>需要超时机制防止死锁或线程堆积</li>
+      <li>需要非阻塞的 tryLock 实现无锁降级</li>
+      <li>需要公平锁防止饥饿</li>
+      <li>需要多个 Condition 精确唤醒不同等待集</li>
+      <li>需要通过 isLocked() 等方法查询锁状态（用于监控/调试）</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>面试高频考点</h2>
+
+  <ul>
+    <li><strong>ReentrantLock 和 synchronized 的区别？</strong> — 从可中断、超时、公平、多 Condition 四个维度回答，底层一个是 AQS，一个是 JVM monitor。</li>
+    <li><strong>为什么 unlock() 要放在 finally 中？</strong> — 显式锁 JVM 不自动释放，异常时若不 finally 会死锁。</li>
+    <li><strong>公平锁为何吞吐量低？</strong> — 每次都要把新线程加入 FIFO 队列，无法利用 CPU 缓存热线程，上下文切换频繁。</li>
+    <li><strong>Condition.await() 为何要用 while？</strong> — 防止虚假唤醒（OS 层 spurious wakeup）导致条件未满足就继续执行。</li>
+    <li><strong>AQS 的核心数据结构？</strong> — volatile int state + CLH 变体双向队列 + LockSupport.park/unpark。</li>
+    <li><strong>tryLock() 能避免死锁吗？</strong> — 能在一定程度上避免：若两个线程互相持有对方需要的锁，tryLock 超时后可以<em>回退并重试</em>，打破死锁的"持有并等待"条件。</li>
+  </ul>
+
+  <hr/>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../concurrency-roadmap.html" class="nav-btn">← 路线图</a>
+    <a href="./03-ReadWriteLock.html" class="nav-btn next">03. ReentrantReadWriteLock 读写锁 →</a>
+  </div>
+
+</div>
+</body>
+</html>

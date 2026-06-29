@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>06. 为什么不建议用 Executors 快捷工厂</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part III 结构化应用 / 线程池
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part III 结构化应用 · 线程池</div>
+    <h1>06. 为什么不建议用 Executors 快捷工厂</h1>
+    <p>从 OOM 到饥饿——拆解三大快捷方法背后埋下的并发定时炸弹，再给出生产级正例。</p>
+  </div>
+
+  <!-- 1. 背景 -->
+  <h2>为什么会有 Executors？</h2>
+  <p>
+    <code>Executors</code> 是 JDK 1.5 随 <code>java.util.concurrent</code> 一起引入的工厂类，目的是让开发者
+    <strong>一行代码就能拿到一个线程池</strong>，降低入门门槛。它提供三个最常用的快捷方法：
+  </p>
+  <ul>
+    <li><code>Executors.newFixedThreadPool(n)</code> — 固定线程数</li>
+    <li><code>Executors.newCachedThreadPool()</code> — 弹性缓存线程</li>
+    <li><code>Executors.newSingleThreadExecutor()</code> — 单线程串行</li>
+  </ul>
+  <p>
+    表面上很方便，但阿里 Java 开发手册明确<strong>禁止</strong>在生产代码中直接使用它们，
+    原因全在这三个方法底层参数的默认值里。
+  </p>
+
+  <!-- 2. 内部结构 -->
+  <h2>快捷工厂的真实参数</h2>
+  <p>所有快捷方法本质上都是 <code>ThreadPoolExecutor</code> 的包装，只是传入了不同的默认参数：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JDK 源码节选（简化）</span></div>
+    <pre><span class="com">// ① newFixedThreadPool —— 无界队列！</span>
+<span class="kw">public static</span> <span class="ty">ExecutorService</span> <span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="kw">int</span> <span class="var">nThreads</span><span class="punct">) {</span>
+    <span class="kw">return new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+        <span class="var">nThreads</span><span class="punct">,</span> <span class="var">nThreads</span><span class="punct">,</span>          <span class="com">// corePoolSize = maximumPoolSize</span>
+        <span class="num">0L</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">,</span>
+        <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;()</span>  <span class="com">// ← 无界队列，容量 = Integer.MAX_VALUE</span>
+    <span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// ② newCachedThreadPool —— 无限线程！</span>
+<span class="kw">public static</span> <span class="ty">ExecutorService</span> <span class="fn">newCachedThreadPool</span><span class="punct">() {</span>
+    <span class="kw">return new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+        <span class="num">0</span><span class="punct">,</span> <span class="ty">Integer</span><span class="punct">.</span><span class="var">MAX_VALUE</span><span class="punct">,</span>          <span class="com">// ← 最大线程数 = 21 亿</span>
+        <span class="num">60L</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>
+        <span class="kw">new</span> <span class="ty">SynchronousQueue</span><span class="punct">&lt;&gt;()</span>     <span class="com">// 无缓冲，任务直接交给新线程</span>
+    <span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// ③ newSingleThreadExecutor —— 同样无界队列</span>
+<span class="kw">public static</span> <span class="ty">ExecutorService</span> <span class="fn">newSingleThreadExecutor</span><span class="punct">() {</span>
+    <span class="kw">return new</span> <span class="ty">FinalizableDelegatedExecutorService</span><span class="punct">(</span>
+        <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+            <span class="num">1</span><span class="punct">,</span> <span class="num">1</span><span class="punct">,</span>
+            <span class="num">0L</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">,</span>
+            <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;()</span>  <span class="com">// ← 无界队列</span>
+        <span class="punct">)</span>
+    <span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>关键结论：</strong>快捷工厂要么用无界队列（Fixed / Single），要么允许无限创建线程（Cached）。
+    两种极端在高并发下都是<strong>资源炸弹</strong>。
+  </div>
+
+  <!-- 3. 三大陷阱 -->
+  <h2>三大并发陷阱逐一拆解</h2>
+
+  <h3>陷阱一：newFixedThreadPool / newSingleThreadExecutor — 无界队列导致 OOM</h3>
+  <p>
+    <code>LinkedBlockingQueue&lt;&gt;()</code> 无参构造的容量是 <code>Integer.MAX_VALUE</code>（约 21 亿）。
+    当生产速度 &gt; 消费速度时，任务会无限堆积在队列里，
+    最终吃光堆内存，抛出 <code>OutOfMemoryError: Java heap space</code>。
+  </p>
+  <p>
+    更隐蔽的是：由于队列永远不满，<code>maximumPoolSize</code> 设置的值<strong>永远不会被触发</strong>，
+    拒绝策略也<strong>永远不会执行</strong>，系统在 OOM 之前没有任何预警。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：无界队列打穿内存</span></div>
+    <pre><span class="com">// 反例：表面上只有 4 个线程，实则任务无限堆积</span>
+<span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="num">4</span><span class="punct">);</span>
+
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">1_000_000</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+    <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+        <span class="com">// 每个任务持有一个 1MB 的字节数组模拟业务数据</span>
+        <span class="kw">byte</span><span class="punct">[]</span> <span class="var">data</span> <span class="punct">=</span> <span class="kw">new</span> <span class="kw">byte</span><span class="punct">[</span><span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">];</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span> <span class="com">// 模拟耗时 IO</span>
+    <span class="punct">});</span>
+<span class="punct">}</span>
+<span class="com">// → 队列堆积 ~100 万个 Runnable + data，迅速 OOM</span></pre>
+  </div>
+
+  <h3>陷阱二：newCachedThreadPool — 无限线程导致 OOM / 上下文切换风暴</h3>
+  <p>
+    <code>SynchronousQueue</code> 没有任何缓冲：提交一个任务，
+    若没有空闲线程立刻接手，就会<strong>立即创建新线程</strong>。
+    高并发下线程数会爆炸式增长——每个线程默认栈 512KB~1MB，
+    几万个线程直接撑爆堆外内存，或引发严重的 CPU 上下文切换。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：请求洪峰秒杀线程上限</span></div>
+    <pre><span class="com">// 反例：秒杀活动瞬间涌入 5 万请求</span>
+<span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newCachedThreadPool</span><span class="punct">();</span>
+
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">50_000</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+    <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+        <span class="fn">processOrder</span><span class="punct">();</span> <span class="com">// 每次操作耗时 200ms</span>
+    <span class="punct">});</span>
+<span class="punct">}</span>
+<span class="com">// → 瞬间创建 5 万线程，每线程 512KB 栈 = 约 25GB 内存</span>
+<span class="com">// → OutOfMemoryError: unable to create new native thread</span></pre>
+  </div>
+
+  <h3>陷阱三：newSingleThreadExecutor — 包装后无法强制转型，隐藏拒绝策略</h3>
+  <p>
+    <code>newSingleThreadExecutor()</code> 返回的是
+    <code>FinalizableDelegatedExecutorService</code>，它对外<strong>隐藏了</strong>
+    <code>ThreadPoolExecutor</code> 的类型——你无法通过强制转型来修改核心参数，
+    也无法在运行时收紧队列大小，陷入"买了个黑盒子"的困境。
+    同时它继承了无界队列的 OOM 风险。
+  </p>
+
+  <!-- 4. 对比表 -->
+  <h2>三大工厂方法风险对比</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>工厂方法</th>
+        <th>核心问题</th>
+        <th>触发条件</th>
+        <th>后果</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>newFixedThreadPool</code></td>
+        <td>无界队列 <code>LinkedBlockingQueue()</code></td>
+        <td>生产 &gt; 消费</td>
+        <td>堆内存 OOM，拒绝策略失效</td>
+      </tr>
+      <tr>
+        <td><code>newCachedThreadPool</code></td>
+        <td>最大线程数 = <code>Integer.MAX_VALUE</code></td>
+        <td>请求洪峰</td>
+        <td>线程数暴增，OOM / CPU 风暴</td>
+      </tr>
+      <tr>
+        <td><code>newSingleThreadExecutor</code></td>
+        <td>无界队列 + 黑盒包装</td>
+        <td>任务积压</td>
+        <td>OOM，且无法运行时修参</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. 资源耗尽的本质 -->
+  <h2>并发根因：资源耗尽与背压缺失</h2>
+  <p>
+    这三个陷阱本质上都是同一个并发问题：<strong>系统没有背压（Back-pressure）机制</strong>。
+  </p>
+  <p>
+    健壮的并发系统必须在任意一层设置明确的<strong>上界</strong>：
+  </p>
+  <div class="tree">
+    请求 → 队列（有界）→ 线程（有界）→ 处理<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">↑ 满了就触发拒绝策略</span>&nbsp;&nbsp;<span class="hi">↑ 超了就不再创建</span><br>
+    <br>
+    快捷工厂的问题：<br>
+    &nbsp;&nbsp;Fixed/Single → 队列无界，<span class="hi">背压缺失</span><br>
+    &nbsp;&nbsp;Cached&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; → 线程无界，<span class="hi">背压缺失</span>
+  </div>
+  <p>
+    线程池的四个参数
+    <code>corePoolSize</code>、<code>maximumPoolSize</code>、
+    <code>workQueue</code>、<code>RejectedExecutionHandler</code>
+    共同构成背压链条，任何一环失控都会造成资源耗尽。
+    快捷工厂让其中关键的"队列容量"或"线程上限"变为无界，等同于拆掉了安全阀。
+  </p>
+
+  <!-- 6. 正例 -->
+  <h2>正例：手动构造 ThreadPoolExecutor</h2>
+  <p>
+    生产代码应该显式地写出每一个参数，让意图一目了然，
+    同时配合有界队列和合理的拒绝策略构成完整的背压链。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：显式参数 + 有界队列 + 拒绝策略 + 命名线程</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent</span><span class="punct">.*;</span>
+<span class="kw">import</span> <span class="var">java.util.concurrent.atomic.AtomicInteger</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">ThreadPoolFactory</span> <span class="punct">{</span>
+
+    <span class="kw">public static</span> <span class="ty">ThreadPoolExecutor</span> <span class="fn">buildOrderPool</span><span class="punct">() {</span>
+
+        <span class="com">// 1. 自定义线程工厂——线程命名，便于排查</span>
+        <span class="ty">AtomicInteger</span> <span class="var">counter</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+        <span class="ty">ThreadFactory</span> <span class="var">factory</span> <span class="punct">=</span> <span class="var">r</span> <span class="punct">-&gt; {</span>
+            <span class="ty">Thread</span> <span class="var">t</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(</span><span class="var">r</span><span class="punct">);</span>
+            <span class="var">t</span><span class="punct">.</span><span class="fn">setName</span><span class="punct">(</span><span class="str">"order-pool-"</span> <span class="punct">+</span> <span class="var">counter</span><span class="punct">.</span><span class="fn">getAndIncrement</span><span class="punct">());</span>
+            <span class="var">t</span><span class="punct">.</span><span class="fn">setDaemon</span><span class="punct">(</span><span class="kw">false</span><span class="punct">);</span>   <span class="com">// 业务线程不要设为守护线程</span>
+            <span class="kw">return</span> <span class="var">t</span><span class="punct">;</span>
+        <span class="punct">};</span>
+
+        <span class="kw">return new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+            <span class="num">8</span><span class="punct">,</span>                              <span class="com">// corePoolSize：CPU 密集取 N+1，IO 密集可翻倍</span>
+            <span class="num">16</span><span class="punct">,</span>                             <span class="com">// maximumPoolSize：弹性上限，不能无限</span>
+            <span class="num">60L</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>        <span class="com">// keepAliveTime：超额线程空闲多久后回收</span>
+            <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;(</span><span class="num">1024</span><span class="punct">),</span> <span class="com">// 有界队列！超出才触发扩线程/拒绝策略</span>
+            <span class="var">factory</span><span class="punct">,</span>                        <span class="com">// 命名线程工厂</span>
+            <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">.</span><span class="ty">CallerRunsPolicy</span><span class="punct">()</span> <span class="com">// 调用者降速，天然背压</span>
+        <span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>CallerRunsPolicy 是最温柔的背压：</strong>当线程池和队列都满时，
+    任务会在<strong>提交者线程</strong>里直接执行，从而让生产者自动减速，
+    不丢任务、不抛异常，适合大多数业务场景。其他策略见上一篇。
+  </div>
+
+  <!-- 7. 更进一步：Spring Boot 中的正确姿势 -->
+  <h2>在 Spring Boot 中的正确姿势</h2>
+  <p>
+    Spring 提供了 <code>ThreadPoolTaskExecutor</code>，它是对
+    <code>ThreadPoolExecutor</code> 的薄封装，
+    支持 Bean 化配置，并提供优雅关闭（<code>setWaitForTasksToCompleteOnShutdown</code>）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Spring Boot 配置示例</span></div>
+    <pre><span class="ann">@Configuration</span>
+<span class="kw">public class</span> <span class="ty">AsyncConfig</span> <span class="punct">{</span>
+
+    <span class="ann">@Bean</span><span class="punct">(</span><span class="str">"orderExecutor"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">ThreadPoolTaskExecutor</span> <span class="fn">orderExecutor</span><span class="punct">() {</span>
+        <span class="ty">ThreadPoolTaskExecutor</span> <span class="var">exec</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadPoolTaskExecutor</span><span class="punct">();</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setCorePoolSize</span><span class="punct">(</span><span class="num">8</span><span class="punct">);</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setMaxPoolSize</span><span class="punct">(</span><span class="num">16</span><span class="punct">);</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setQueueCapacity</span><span class="punct">(</span><span class="num">1024</span><span class="punct">);</span>       <span class="com">// 有界！</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setThreadNamePrefix</span><span class="punct">(</span><span class="str">"order-"</span><span class="punct">);</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setRejectedExecutionHandler</span><span class="punct">(</span>
+            <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">.</span><span class="ty">CallerRunsPolicy</span><span class="punct">());</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setWaitForTasksToCompleteOnShutdown</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span>  <span class="com">// 优雅关闭</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">setAwaitTerminationSeconds</span><span class="punct">(</span><span class="num">30</span><span class="punct">);</span>
+        <span class="var">exec</span><span class="punct">.</span><span class="fn">initialize</span><span class="punct">();</span>
+        <span class="kw">return</span> <span class="var">exec</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 8. 参数选型速查 -->
+  <h2>参数选型速查</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>参数</th>
+        <th>CPU 密集型任务</th>
+        <th>IO 密集型任务</th>
+        <th>混合型任务</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>corePoolSize</code></td>
+        <td>CPU 核数 + 1</td>
+        <td>CPU 核数 × 2</td>
+        <td>压测后调整</td>
+      </tr>
+      <tr>
+        <td><code>maximumPoolSize</code></td>
+        <td>= corePoolSize</td>
+        <td>2 × corePoolSize</td>
+        <td>压测后调整</td>
+      </tr>
+      <tr>
+        <td><code>workQueue</code></td>
+        <td><code>ArrayBlockingQueue(n)</code></td>
+        <td><code>LinkedBlockingQueue(n)</code></td>
+        <td>有界即可</td>
+      </tr>
+      <tr>
+        <td><code>RejectedPolicy</code></td>
+        <td>AbortPolicy + 告警</td>
+        <td>CallerRunsPolicy</td>
+        <td>视业务定</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>面试高频陷阱：</strong>面试官最爱问"<code>maximumPoolSize</code> 什么时候生效？"
+    答案是：<strong>仅当有界队列满了之后</strong>，线程池才会尝试扩充到 maximumPoolSize。
+    如果用的是无界队列，maximumPoolSize 永远不会被触发——这正是 Executors 快捷工厂最大的误导性。
+  </div>
+
+  <!-- 9. 总结 -->
+  <h2>总结</h2>
+  <ul>
+    <li><code>newFixedThreadPool</code> / <code>newSingleThreadExecutor</code>：无界队列，任务积压会 OOM。</li>
+    <li><code>newCachedThreadPool</code>：无限线程，请求洪峰会打爆内存或 CPU。</li>
+    <li>快捷工厂的本质缺陷是<strong>背压链条的关键环节被设为无界</strong>，系统没有自保能力。</li>
+    <li>生产代码应显式使用 <code>ThreadPoolExecutor</code> 或 <code>ThreadPoolTaskExecutor</code>，
+        明确每一个参数，搭配有界队列与合适的拒绝策略。</li>
+    <li>线程命名是可观测性的基础，出了问题能在 thread dump 里一眼找到归属。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-拒绝策略.html" class="nav-btn">← 05. 四种拒绝策略</a>
+    <a href="./07-interrupt中断.html" class="nav-btn next">07. 中断机制 interrupt 的正确姿势 →</a>
+  </div>
+
+</div>
+</body>
+</html>

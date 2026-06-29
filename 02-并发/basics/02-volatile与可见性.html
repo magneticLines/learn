@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>02. volatile 与可见性 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part I 基础知识 / 同步与可见性
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part I 基础知识 · 同步与可见性</div>
+    <h1>02. volatile 与可见性</h1>
+    <p>理解 CPU 缓存、指令重排序与 Java 内存模型，掌握 volatile 的语义边界与正确使用场景。</p>
+  </div>
+
+  <!-- 1. 为什么会有可见性问题 -->
+  <h2>1. 为什么会有可见性问题？</h2>
+  <p>
+    在单线程世界里，代码顺序执行，写入的值立刻能读回来，天经地义。
+    但在多核 CPU + JVM 的现实世界里，这个假设<strong>全面失效</strong>。根源在于三层"加速机制"：
+  </p>
+
+  <div class="tree">
+CPU 核心 0               CPU 核心 1
+┌─────────────────┐      ┌─────────────────┐
+│  寄存器 (ns级)  │      │  寄存器 (ns级)  │
+│  L1 Cache       │      │  L1 Cache       │
+│  L2 Cache       │      │  L2 Cache       │
+└────────┬────────┘      └────────┬────────┘
+         │                        │
+         └──────────┬─────────────┘
+                    │
+             L3 Cache (共享)
+                    │
+              主内存 (RAM)   ← <span class="hi">真正的"共享状态"在这里</span>
+  </div>
+
+  <p>
+    线程运行在某个 CPU 核心上，<strong>写操作只更新了该核心的 L1/L2 缓存</strong>，
+    还没有刷回主内存；另一个核心的线程读同一变量，拿到的是<strong>它自己缓存里的旧副本</strong>。
+    这就是可见性问题。
+  </p>
+
+  <p>除了 CPU 缓存，还有两个"帮凶"：</p>
+  <ul>
+    <li><strong>编译器重排序</strong>：JIT 编译器为了提升性能，可能调整指令顺序（不影响单线程结果，但会破坏多线程语义）</li>
+    <li><strong>CPU 指令重排序</strong>：现代 CPU 的乱序执行引擎（Out-of-Order Execution）在不违反数据依赖的前提下自由排序</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>Java 内存模型（JMM）</strong> 就是为了屏蔽不同硬件平台的差异，定义了一套统一的规则：什么情况下线程间的写操作对其他线程"保证可见"。volatile 就是 JMM 提供的最轻量可见性保证手段。
+  </div>
+
+  <!-- 2. 反例：没有 volatile 时会发生什么 -->
+  <h2>2. 反例：没有 volatile 时的经典陷阱</h2>
+
+  <p>这是一个看起来"应该能正常停止"的循环，实际上<strong>可能永远不会停下来</strong>：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StopFlag.java — 反例</span><span>❌ 不安全</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">StopFlag</span> <span class="punct">{</span>
+
+    <span class="com">// 没有 volatile：JIT 可能把 running 缓存在寄存器里</span>
+    <span class="kw">private</span> <span class="kw">static</span> <span class="ty">boolean</span> <span class="var">running</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+
+        <span class="ty">Thread</span> <span class="var">worker</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="com">// JIT 热身后，可能将循环编译为：</span>
+            <span class="com">// if (running) { while (true) {} }  ← 死循环！</span>
+            <span class="kw">while</span> <span class="punct">(</span><span class="var">running</span><span class="punct">) {</span>
+                <span class="com">// 忙等待</span>
+            <span class="punct">}</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"worker 已停止"</span><span class="punct">);</span>
+        <span class="punct">});</span>
+
+        <span class="var">worker</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+
+        <span class="var">running</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>  <span class="com">// 主线程的写操作对 worker 不可见</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"已发出停止信号"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>为什么 JIT 会这样优化？</strong><br>
+    worker 线程的循环体内没有任何同步点，JIT 推断"这个变量不会在本线程内改变"，
+    于是把 <code>running</code> 提升到寄存器，只读一次。这是合法的单线程优化，但在多线程下是灾难。
+  </div>
+
+  <!-- 3. volatile 的语义 -->
+  <h2>3. volatile 的两大语义</h2>
+
+  <h3>3.1 可见性保证</h3>
+  <p>
+    对一个 <code>volatile</code> 变量的<strong>写操作</strong>，JVM 保证立刻刷新到主内存；
+    对它的<strong>读操作</strong>，JVM 保证从主内存重新加载，而不是读缓存副本。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StopFlag.java — 正例</span><span>✅ 安全</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">StopFlag</span> <span class="punct">{</span>
+
+    <span class="com">// volatile：每次读都从主内存加载，每次写都立即刷回主内存</span>
+    <span class="kw">private</span> <span class="kw">static volatile</span> <span class="ty">boolean</span> <span class="var">running</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="ty">Thread</span> <span class="var">worker</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="kw">while</span> <span class="punct">(</span><span class="var">running</span><span class="punct">) { }</span>  <span class="com">// 每次迭代都从主内存读 running</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"worker 已停止"</span><span class="punct">);</span>
+        <span class="punct">});</span>
+        <span class="var">worker</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+        <span class="var">running</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>  <span class="com">// 写入主内存，worker 下次循环必然看到</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>3.2 禁止指令重排序（有序性保证）</h3>
+  <p>
+    <code>volatile</code> 通过插入<strong>内存屏障（Memory Barrier）</strong>来禁止特定方向的重排序：
+  </p>
+
+  <div class="tree">
+写操作前插入 StoreStore 屏障 → 前面的写不会排到 volatile 写之后
+写操作后插入 StoreLoad  屏障 → volatile 写不会排到后面的读之前   ← <span class="hi">最重量级，防止写缓冲区绕过缓存</span>
+读操作前插入 LoadLoad   屏障 → volatile 读不会排到后面的读之前
+读操作后插入 LoadStore  屏障 → volatile 读不会排到后面的写之前
+  </div>
+
+  <p>最经典的受益场景是<strong>双重检查锁（DCL）单例</strong>：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Singleton.java — DCL 单例</span><span>Java 5+</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Singleton</span> <span class="punct">{</span>
+
+    <span class="com">// 必须加 volatile，否则 instance = new Singleton() 的三步操作</span>
+    <span class="com">// 可能被重排为：分配内存 → 赋值引用 → 初始化对象</span>
+    <span class="com">// 另一线程看到非 null 的引用，但对象尚未初始化 → NPE 或状态错乱</span>
+    <span class="kw">private static volatile</span> <span class="ty">Singleton</span> <span class="var">instance</span><span class="punct">;</span>
+
+    <span class="kw">private</span> <span class="fn">Singleton</span><span class="punct">() {}</span>
+
+    <span class="kw">public static</span> <span class="ty">Singleton</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>            <span class="com">// 第一次检查：避免每次都加锁</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="ty">Singleton</span><span class="punct">.</span><span class="kw">class</span><span class="punct">) {</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>    <span class="com">// 第二次检查：防止重复创建</span>
+                    <span class="var">instance</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Singleton</span><span class="punct">();</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">instance</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>new Singleton() 发生了什么？</strong><br>
+    字节码层面分三步：① <code>ALLOCATE</code> 分配内存；② <code>INVOKESPECIAL</code> 调用构造器（初始化字段）；③ <code>ASTORE</code> 将引用赋给 <code>instance</code>。<br>
+    没有 volatile 时，JIT 可能将 ② 和 ③ 对调。另一个线程进入第一次 null 检查，看到 <code>instance != null</code>，但拿到的是<strong>未完成初始化的对象</strong>。
+    volatile 的写屏障保证 ② 一定在 ③ 之前对所有线程可见。
+  </div>
+
+  <!-- 4. volatile 不能替代锁 -->
+  <h2>4. 核心陷阱：volatile 不保证原子性</h2>
+
+  <p>
+    这是最常见的误用。<code>volatile</code> 只保证单次读/写的可见性，
+    对于<strong>复合操作（读-改-写）</strong>，它什么也保证不了。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Counter.java — 反例</span><span>❌ 线程不安全</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Counter</span> <span class="punct">{</span>
+    <span class="com">// volatile 保证每次读到最新值，但 ++ 是三步操作：</span>
+    <span class="com">// 1. 读取 count 到本地  2. +1  3. 写回 count</span>
+    <span class="com">// 步骤 1~3 不是原子的，两个线程可能同时读到相同的值，各自加 1，最终只增加了 1</span>
+    <span class="kw">private volatile</span> <span class="kw">int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span>
+        <span class="var">count</span><span class="punct">++;</span>  <span class="com">// ❌ 看起来一行，实际是非原子的读-改-写</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Counter.java — 正例（三种修复方式）</span><span>✅ 安全</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.atomic.AtomicInteger</span><span class="punct">;</span>
+
+<span class="com">// 方式 1：AtomicInteger（推荐，无锁 CAS）</span>
+<span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">count</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+<span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span> <span class="var">count</span><span class="punct">.</span><span class="fn">incrementAndGet</span><span class="punct">();}</span>
+
+<span class="com">// 方式 2：synchronized（简单粗暴）</span>
+<span class="kw">private int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+<span class="kw">public synchronized void</span> <span class="fn">increment</span><span class="punct">() {</span> <span class="var">count</span><span class="punct">++;</span> <span class="punct">}</span>
+
+<span class="com">// 方式 3：LongAdder（高并发累加，Java 8+，吞吐量最高）</span>
+<span class="kw">import</span> <span class="var">java.util.concurrent.atomic.LongAdder</span><span class="punct">;</span>
+<span class="kw">private final</span> <span class="ty">LongAdder</span> <span class="var">count</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LongAdder</span><span class="punct">();</span>
+<span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span> <span class="var">count</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">();}</span></pre>
+  </div>
+
+  <!-- 5. volatile vs synchronized 对比 -->
+  <h2>5. volatile vs synchronized：如何选择？</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th><code>volatile</code></th>
+        <th><code>synchronized</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>可见性</td>
+        <td>✅ 保证</td>
+        <td>✅ 保证（解锁时刷主内存）</td>
+      </tr>
+      <tr>
+        <td>有序性</td>
+        <td>✅ 禁止重排序</td>
+        <td>✅ 保证（临界区内有序）</td>
+      </tr>
+      <tr>
+        <td>原子性</td>
+        <td>❌ 仅单次读/写原子</td>
+        <td>✅ 临界区整体原子</td>
+      </tr>
+      <tr>
+        <td>阻塞</td>
+        <td>非阻塞，无锁竞争</td>
+        <td>阻塞，有上下文切换开销</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>状态标志位、单写多读、DCL</td>
+        <td>复合操作、临界区、条件等待</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>选择原则</strong>：如果写操作是<strong>独立赋值</strong>（不依赖当前值），用 volatile；
+    如果写操作依赖当前值（如 <code>count++</code>、<code>map.put</code>），用 synchronized 或 Atomic 类。
+  </div>
+
+  <!-- 6. volatile 的底层实现 -->
+  <h2>6. 底层实现：内存屏障与 LOCK 前缀</h2>
+
+  <p>
+    在 x86 架构上，JVM 通常将 volatile 写编译为带 <code>LOCK</code> 前缀的指令（如 <code>LOCK XCHG</code> 或 <code>LOCK ADD</code>）。
+    <code>LOCK</code> 前缀有两个效果：
+  </p>
+  <ol>
+    <li>将当前处理器缓存行写回主内存（刷缓存）</li>
+    <li>使其他核心缓存了该地址的缓存行失效（MESI 协议中的 Invalid 状态），强迫它们下次读时重新从主内存加载</li>
+  </ol>
+
+  <div class="tree">
+主线程写 volatile running = false
+    │
+    ├─ CPU 0 L1 Cache 更新
+    ├─ LOCK 指令 → 缓存行写回主内存
+    └─ 通过 MESI 协议广播 → CPU 1 的缓存行标记为 Invalid
+                                   │
+                              worker 线程读 running
+                                   └─ 缓存 miss → 从主内存加载 → 得到 false  <span class="hi">✓ 可见</span>
+  </div>
+
+  <p>
+    在 ARM/PowerPC 等弱内存模型架构上，JVM 会插入专用的 <code>dmb</code>（Data Memory Barrier）指令，
+    效果相同但开销更高。这就是为什么 volatile 在 ARM 上的性能损耗通常大于 x86。
+  </p>
+
+  <!-- 7. 实际应用场景 -->
+  <h2>7. volatile 的正确使用场景</h2>
+
+  <h3>场景 1：状态标志位（最经典）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>状态标志位</span></div>
+    <pre><span class="kw">private volatile boolean</span> <span class="var">shutdown</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+
+<span class="kw">public void</span> <span class="fn">shutdown</span><span class="punct">() {</span> <span class="var">shutdown</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">; }</span>  <span class="com">// 单次赋值，volatile 够用</span>
+
+<span class="kw">public void</span> <span class="fn">run</span><span class="punct">() {</span>
+    <span class="kw">while</span> <span class="punct">(!</span><span class="var">shutdown</span><span class="punct">) {</span>
+        <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>场景 2：发布不可变对象（安全发布）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>安全发布配置对象</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ConfigHolder</span> <span class="punct">{</span>
+    <span class="com">// Config 内部字段全部 final，对象构造完成后不再改变</span>
+    <span class="com">// volatile 保证：看到非 null 的 config 引用时，Config 对象也已完全初始化</span>
+    <span class="kw">private volatile</span> <span class="ty">Config</span> <span class="var">config</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">reload</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="var">config</span> <span class="punct">=</span> <span class="fn">loadFromFile</span><span class="punct">();</span>  <span class="com">// 原子替换引用</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">Config</span> <span class="fn">get</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">config</span><span class="punct">; }</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>场景 3：DCL 单例（见第 3 节）</h3>
+
+  <!-- 8. 面试高频考点 -->
+  <h2>8. 面试高频考点</h2>
+
+  <ul>
+    <li><strong>volatile 能保证线程安全吗？</strong> — 不能。线程安全需要原子性 + 可见性 + 有序性，volatile 只提供后两者。</li>
+    <li><strong>long/double 为什么建议加 volatile？</strong> — JVM 规范允许 64 位读写分两个 32 位操作完成（非原子写），在 32 位 JVM 上可能读到"半个值"。加 volatile 后强制原子读写。</li>
+    <li><strong>volatile 和 happens-before 的关系？</strong> — volatile 写 happens-before 后续对同一变量的 volatile 读，这是 JMM 的规则之一。下一节详细讲。</li>
+    <li><strong>为什么 DCL 中第一次 null 检查不加锁却安全？</strong> — volatile 写屏障保证 <code>instance</code> 赋值前构造器已完成，读到非 null 就意味着对象完全可用。第一次检查只是快速路径，不需要互斥。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>陷阱：volatile 数组</strong><br>
+    <code>volatile int[] arr</code> 只保证<strong>数组引用</strong>的可见性，不保证数组元素的可见性。
+    修改 <code>arr[0] = 1</code> 对其他线程不可见。需要用 <code>AtomicIntegerArray</code> 或加锁。
+  </div>
+
+  <hr />
+
+  <h2>小结</h2>
+  <p>
+    <code>volatile</code> 是 Java 并发工具箱里最轻量的可见性武器：
+    无锁、无上下文切换、开销极低，但职责边界清晰——
+    <strong>它只解决可见性和有序性，不解决原子性</strong>。
+    正确使用 volatile 的关键是：写操作必须是独立赋值（不依赖当前值）。
+    下一节我们进入 happens-before 规则，建立更完整的 JMM 直觉。
+  </p>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../concurrency-roadmap.html" class="nav-btn">← 路线图</a>
+    <a href="./03-happens-before初识.html" class="nav-btn next">03. happens-before 初识 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>05. 进程 vs 线程 · 为什么需要并发</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part I 基础知识 / 线程基础
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part I 基础知识 · 线程基础</div>
+    <h1>05. 进程 vs 线程 · 为什么需要并发</h1>
+    <p>从操作系统资源模型出发，理解进程与线程的本质区别，再回答"为什么程序需要并发"这个根本问题。</p>
+  </div>
+
+  <!-- ===== 1. 从资源隔离说起 ===== -->
+  <h2>1. 进程：操作系统的资源容器</h2>
+
+  <p>
+    进程（Process）是操作系统进行<strong>资源分配的最小单位</strong>。
+    当你双击一个 .jar 文件，OS 就为它分配一套独立的"行李箱"：
+  </p>
+
+  <div class="tree">
+    进程 A（JVM 实例）<br>
+    ├── <span class="hi">虚拟地址空间</span>（堆 · 栈 · 代码段 · 方法区）<br>
+    ├── <span class="hi">文件描述符表</span>（打开的 Socket / 文件）<br>
+    ├── <span class="hi">信号处理表</span><br>
+    └── <span class="hi">至少一个线程</span>（main 线程）
+  </div>
+
+  <p>
+    两个进程之间的内存<strong>天然隔离</strong>——进程 A 崩溃不会踩到进程 B 的数据。
+    这是 OS 通过 MMU（内存管理单元）的页表映射实现的，每个进程看到的都是"假地址"（虚拟地址），
+    真正的物理内存由内核统一调度。
+  </p>
+
+  <div class="callout info">
+    <strong>为什么进程隔离如此重要？</strong><br>
+    Chrome 把每个 Tab 设计成独立进程，正是利用这一点：一个 Tab 崩溃不会拖死整个浏览器。
+    代价是：进程间通信（IPC）需要走内核——管道、Socket、共享内存——成本远高于同进程内的函数调用。
+  </div>
+
+  <!-- ===== 2. 线程：进程内的执行流 ===== -->
+  <h2>2. 线程：进程内的轻量执行流</h2>
+
+  <p>
+    线程（Thread）是操作系统进行<strong>调度的最小单位</strong>。
+    同一进程内的所有线程<strong>共享</strong>进程的地址空间（堆、方法区、全局变量），
+    但每个线程拥有自己私有的：
+  </p>
+
+  <ul>
+    <li><strong>程序计数器（PC）</strong>：记录当前执行到哪条字节码指令</li>
+    <li><strong>虚拟机栈（Stack）</strong>：局部变量、方法调用帧，线程私有不共享</li>
+    <li><strong>本地方法栈</strong>：执行 native 方法时使用</li>
+  </ul>
+
+  <div class="tree">
+    进程（JVM）<br>
+    ├── 堆（<span class="hi">所有线程共享</span>）<br>
+    ├── 方法区 / Metaspace（<span class="hi">所有线程共享</span>）<br>
+    ├── Thread-1：PC + Stack（<span class="hi">私有</span>）<br>
+    ├── Thread-2：PC + Stack（<span class="hi">私有</span>）<br>
+    └── Thread-N：PC + Stack（<span class="hi">私有</span>）
+  </div>
+
+  <p>
+    共享堆内存是线程的最大优势，也是并发 bug 的根源——
+    两个线程同时读写同一个对象，就可能产生竞争条件（Race Condition）。
+  </p>
+
+  <!-- ===== 3. 进程 vs 线程对比 ===== -->
+  <h2>3. 进程 vs 线程：一张表看清本质</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th>进程</th>
+        <th>线程</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>资源</td>
+        <td>独立地址空间、文件描述符</td>
+        <td>共享进程地址空间，私有栈 + PC</td>
+      </tr>
+      <tr>
+        <td>创建开销</td>
+        <td>重（需 fork/clone，复制页表）</td>
+        <td>轻（Linux 约 10 KB 栈，JVM 默认 512 KB~1 MB）</td>
+      </tr>
+      <tr>
+        <td>切换开销</td>
+        <td>重（TLB 刷新，页表切换）</td>
+        <td>轻（只需切换寄存器组、栈指针）</td>
+      </tr>
+      <tr>
+        <td>通信方式</td>
+        <td>IPC（管道/Socket/共享内存）</td>
+        <td>直接读写共享堆对象</td>
+      </tr>
+      <tr>
+        <td>隔离性</td>
+        <td>强（崩溃互不影响）</td>
+        <td>弱（一个线程抛出未捕获异常可终止整个 JVM）</td>
+      </tr>
+      <tr>
+        <td>典型用途</td>
+        <td>微服务、多进程模型（Nginx worker）</td>
+        <td>同一服务内的并发请求处理、异步任务</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 4. 为什么需要并发 ===== -->
+  <h2>4. 为什么需要并发？——三个根本动机</h2>
+
+  <h3>动机一：利用多核 CPU，提升吞吐量</h3>
+  <p>
+    现代 CPU 普遍是多核（8 核、16 核甚至更多）。
+    单线程程序无论代码多优秀，同一时刻只能跑在<strong>一个核</strong>上，剩余的核全部闲置。
+    并发让多个线程同时运行在不同核上，理论上 N 核可将 CPU 密集型任务提速 N 倍。
+  </p>
+
+  <div class="callout info">
+    <strong>Amdahl 定律的警示：</strong>
+    假设程序 5% 的代码必须串行执行，即使用无限多核，加速比上限也只有 20 倍（1 / 0.05）。
+    识别并缩短"串行瓶颈"，比无脑堆线程更重要。
+  </div>
+
+  <h3>动机二：I/O 等待期间不阻塞 CPU，提升响应性</h3>
+  <p>
+    磁盘 I/O 约 10 ms，网络 RTT 约 1–100 ms，而 CPU 执行一条指令约 0.3 ns。
+    单线程在等待 I/O 时 CPU 完全空转；多线程（或异步 I/O）允许 CPU 在等待期间
+    切换去处理其他请求，这是 Web 服务器能同时服务数千连接的基础。
+  </p>
+
+  <h3>动机三：建模现实世界的并发性</h3>
+  <p>
+    真实业务天然是并发的：多个用户同时下单、多个传感器同时上报数据。
+    用多线程建模这类场景比单线程轮询更直观，代码结构更清晰。
+  </p>
+
+  <!-- ===== 5. 并发的代价 ===== -->
+  <h2>5. 并发的代价——必须面对的三大挑战</h2>
+
+  <p>并发不是免费的午餐。引入线程会带来三类根本性挑战：</p>
+
+  <table>
+    <thead>
+      <tr><th>挑战</th><th>根因</th><th>典型表现</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>安全性问题</strong></td>
+        <td>多线程共享可变状态，操作非原子</td>
+        <td>计数器丢失更新、单例对象被部分构造</td>
+      </tr>
+      <tr>
+        <td><strong>活跃性问题</strong></td>
+        <td>线程互相等待资源，调度策略不公平</td>
+        <td>死锁、活锁、饥饿</td>
+      </tr>
+      <tr>
+        <td><strong>性能问题</strong></td>
+        <td>上下文切换、锁竞争、内存可见性同步</td>
+        <td>加了锁反而比单线程更慢</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 6. 反例与正例 ===== -->
+  <h2>6. 反例 → 问题 → 正例：计数器的并发陷阱</h2>
+
+  <h3>反例：非线程安全的计数器</h3>
+  <p>
+    <code>count++</code> 看起来是一行代码，但在字节码层面分解为三步：
+    <code>读取</code> → <code>加一</code> → <code>写回</code>。
+    两个线程可能同时读到相同旧值，导致最终结果比预期少。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UnsafeCounter.java</span><span>反例 ❌</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">UnsafeCounter</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="com">// 问题：read-modify-write 三步不是原子操作</span>
+    <span class="com">// Thread-1 读到 count=5，Thread-2 也读到 count=5</span>
+    <span class="com">// 两者都写回 6，结果丢了一次 +1</span>
+    <span class="kw">public void</span> <span class="fn">increment</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="var">count</span><span class="punct">++;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public int</span> <span class="fn">get</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">return</span> <span class="var">count</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>实验验证：</strong>启动 1000 个线程各调用 increment() 一次，预期结果 1000，
+    实际运行往往得到 970~999 的随机值——每次运行结果都不同，这就是数据竞争（Data Race）的典型症状。
+  </div>
+
+  <h3>正例一：synchronized 关键字</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>SynchronizedCounter.java</span><span>正例 ✅</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">SynchronizedCounter</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="com">// synchronized 保证同一时刻只有一个线程执行此方法</span>
+    <span class="com">// 内置锁（monitor）附着在 this 对象上</span>
+    <span class="kw">public synchronized void</span> <span class="fn">increment</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="var">count</span><span class="punct">++;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public synchronized int</span> <span class="fn">get</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">return</span> <span class="var">count</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>正例二：AtomicInteger（更高效）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>AtomicCounter.java</span><span>正例 ✅（推荐）</span></div>
+    <pre><span class="kw">import</span> <span class="ty">java.util.concurrent.atomic.AtomicInteger</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">AtomicCounter</span> <span class="punct">{</span>
+    <span class="com">// AtomicInteger 内部用 CAS（Compare-And-Swap）指令</span>
+    <span class="com">// 无锁实现原子操作，在低竞争场景比 synchronized 性能更好</span>
+    <span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">count</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+
+    <span class="kw">public void</span> <span class="fn">increment</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="var">count</span><span class="punct">.</span><span class="fn">incrementAndGet</span><span class="punct">();</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public int</span> <span class="fn">get</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">return</span> <span class="var">count</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ===== 7. 线程调度模型 ===== -->
+  <h2>7. Java 线程与操作系统线程的关系</h2>
+
+  <p>
+    Java 线程（<code>java.lang.Thread</code>）在 HotSpot JVM 中是<strong>一对一映射到 OS 内核线程</strong>的（称为 1:1 模型）。
+    这意味着线程的创建、销毁、上下文切换都由操作系统内核负责，
+    调度粒度是操作系统的时间片（Linux 默认约 4 ms）。
+  </p>
+
+  <div class="callout info">
+    <strong>Java 21 虚拟线程（Virtual Thread）：</strong>
+    JDK 21 引入的 Project Loom 提供了 M:N 模型——大量虚拟线程复用少量 OS 线程。
+    虚拟线程的上下文切换由 JVM 完成，成本极低（约 200 ns），
+    适合 I/O 密集型场景下开启百万级并发。但本节聚焦平台线程（Platform Thread），
+    理解其 1:1 模型是进一步学习的基础。
+  </div>
+
+  <!-- ===== 8. 并发 vs 并行 ===== -->
+  <h2>8. 并发 vs 并行：两个容易混淆的概念</h2>
+
+  <p>
+    <strong>并发（Concurrency）</strong>是问题域的概念：多个任务在逻辑上同时进行，
+    不要求物理上同时执行（单核 CPU 通过时间片切换也能实现并发）。
+  </p>
+  <p>
+    <strong>并行（Parallelism）</strong>是解决域的概念：多个任务在物理上真正同时执行，
+    依赖多核 CPU 或多机。并行是并发的一种实现方式。
+  </p>
+
+  <div class="tree">
+    并发（Concurrency）<br>
+    └── 强调"结构"：如何将程序分解为可独立推进的任务<br>
+    <br>
+    并行（Parallelism）<br>
+    └── 强调"执行"：多个计算单元同时物理执行<br>
+    <br>
+    单核 CPU：<span class="hi">可以并发，不能并行</span><br>
+    多核 CPU：<span class="hi">可以并发，也可以并行</span>
+  </div>
+
+  <!-- ===== 9. 面试高频 ===== -->
+  <h2>9. 面试高频考点</h2>
+
+  <ul>
+    <li>
+      <strong>进程和线程的区别？</strong>——资源分配 vs 调度单位，隔离性 vs 共享内存，创建开销，通信方式。
+      答完记得补充：线程共享堆 + 方法区，私有 PC + 栈，这是 Java 内存模型的基础。
+    </li>
+    <li>
+      <strong>为什么引入线程而不是直接用多进程？</strong>——线程更轻量，同进程内通信零拷贝，
+      但代价是需要程序员自己保证线程安全。
+    </li>
+    <li>
+      <strong>并发和并行的区别？</strong>——并发是结构问题，并行是执行问题；单核也能并发。
+    </li>
+    <li>
+      <strong><code>count++</code> 是线程安全的吗？</strong>——不是。JVM 会编译成 getstatic / iadd / putstatic
+      三条字节码，非原子操作，需要 synchronized 或 AtomicInteger。
+    </li>
+    <li>
+      <strong>Java 线程和操作系统线程是什么关系？</strong>——HotSpot 采用 1:1 模型，Java 线程对应一个 OS 内核线程；
+      JDK 21 虚拟线程采用 M:N 模型。
+    </li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>学习路径提示：</strong>
+    理解"进程 vs 线程"是并发编程的地基。后续章节的 <code>synchronized</code>、<code>volatile</code>、
+    JMM（Java 内存模型）、锁、线程池，都建立在"多线程共享堆内存"这一根本事实之上。
+    遇到并发 bug 时，第一步永远是问：<em>"哪些线程在访问哪些共享状态？"</em>
+  </div>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./04-发布与逸出.html" class="nav-btn">← 04. 发布与逸出（this 逸出）</a>
+    <a href="./06-线程的创建与生命周期.html" class="nav-btn next">06. 线程的创建与生命周期 →</a>
+  </div>
+
+</div>
+</body>
+</html>

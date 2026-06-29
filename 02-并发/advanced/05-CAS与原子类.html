@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>05. CAS 与原子类 atomic — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #c084fc; }
+    p code, li code { color: #c084fc; }
+    h2 { color: #c084fc; border-left-color: #c084fc; }
+    .hero .tag { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 无锁与底层原理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 无锁与底层原理</div>
+    <h1>05. CAS 与原子类 atomic</h1>
+    <p>从 CPU 指令到 Java API — 读懂无锁并发的核心引擎</p>
+  </div>
+
+  <!-- 1. 为什么需要 CAS -->
+  <h2>1. 锁的代价 — 为什么要无锁？</h2>
+  <p>
+    传统的 <code>synchronized</code> 和 <code>ReentrantLock</code> 都依赖操作系统的互斥量（mutex）。
+    当线程拿不到锁时，会从 <strong>用户态切换到内核态</strong> 进行上下文切换，代价极高（通常数百纳秒到数微秒）。
+    在竞争不激烈或临界区极短的场景下，这种切换的开销甚至远超临界区本身的工作量。
+  </p>
+  <p>
+    <strong>无锁（Lock-Free）</strong> 的思路是：不阻塞线程，而是让线程乐观地假设"当前没有人竞争"，
+    直接去改数据；如果失败了，就重试。实现这一思路的硬件原语就是 <strong>CAS（Compare-And-Swap）</strong>。
+  </p>
+
+  <!-- 2. CAS 原理 -->
+  <h2>2. CAS 是什么 — 硬件级的原子三元操作</h2>
+  <p>
+    CAS 的语义可以用一句话描述：<strong>"如果内存地址 V 的当前值等于期望值 A，就把它原子地改为新值 B，否则什么都不做，并告知调用者是否成功。"</strong>
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>伪代码 — CAS 语义</span></div>
+    <pre><span class="com">// 这三步在 CPU 层面是一条不可分割的指令（x86: LOCK CMPXCHG）</span>
+<span class="kw">boolean</span> <span class="fn">compareAndSwap</span><span class="punct">(</span><span class="ty">Address</span> <span class="var">V</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">expected</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">newValue</span><span class="punct">) {</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">V</span><span class="punct">.</span><span class="fn">read</span><span class="punct">() ==</span> <span class="var">expected</span><span class="punct">) {</span>
+        <span class="var">V</span><span class="punct">.</span><span class="fn">write</span><span class="punct">(</span><span class="var">newValue</span><span class="punct">);</span>
+        <span class="kw">return true</span><span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="kw">return false</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    x86 通过 <code>LOCK CMPXCHG</code> 指令实现 CAS。<code>LOCK</code> 前缀会在执行期间锁住 <strong>CPU 缓存行</strong>（不是总线），
+    确保该操作在多核间的原子性，代价远低于操作系统级锁。
+  </p>
+
+  <div class="callout info">
+    <strong>与数据库乐观锁类比：</strong>
+    CAS 就像数据库的"版本号乐观锁"——先读版本号（expected），更新时带上版本号做条件，
+    若版本不匹配说明有人抢先修改，当前操作放弃并重试。
+  </div>
+
+  <!-- CAS 流程图 -->
+  <div class="tree">
+    线程读取 V 的当前值 = <span class="hi">A</span><br>
+    &nbsp;&nbsp;│<br>
+    &nbsp;&nbsp;▼<br>
+    执行业务，计算出新值 <span class="hi">B</span><br>
+    &nbsp;&nbsp;│<br>
+    &nbsp;&nbsp;▼<br>
+    CAS(V, <span class="hi">A</span>, <span class="hi">B</span>)  ──── V 还是 A ──▶ 成功，V = B ✓<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── V 已被改 ──▶ 失败，重新读取 V，再试
+  </div>
+
+  <!-- 3. Unsafe 与 JVM 桥接 -->
+  <h2>3. JVM 如何把 CAS 暴露给 Java — sun.misc.Unsafe</h2>
+  <p>
+    Java 没有直接操作 CPU 指令的能力，靠的是 <code>sun.misc.Unsafe</code> 这个"后门"类。
+    它提供了 <code>compareAndSwapInt</code>、<code>compareAndSwapLong</code>、<code>compareAndSwapObject</code>
+    等 native 方法，JIT 会将它们内联为单条 <code>LOCK CMPXCHG</code> 指令。
+  </p>
+  <p>
+    <strong>你不应该直接用 Unsafe</strong>——它要求传入对象的字段偏移量（offset），操作错误会直接导致 JVM 崩溃。
+    Java 官方在 <code>java.util.concurrent.atomic</code> 包里封装了所有原子类，这才是日常使用的 API。
+  </p>
+
+  <!-- 4. java.util.concurrent.atomic 全景 -->
+  <h2>4. atomic 包全景速览</h2>
+  <table>
+    <thead>
+      <tr><th>类别</th><th>代表类</th><th>典型用途</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>标量原子</td><td><code>AtomicInteger</code><br><code>AtomicLong</code><br><code>AtomicBoolean</code></td><td>计数器、开关标志、序列号生成</td></tr>
+      <tr><td>引用原子</td><td><code>AtomicReference&lt;V&gt;</code></td><td>无锁链表节点替换、状态机状态切换</td></tr>
+      <tr><td>带版本号引用</td><td><code>AtomicStampedReference&lt;V&gt;</code><br><code>AtomicMarkableReference&lt;V&gt;</code></td><td>解决 ABA 问题（下一节专讲）</td></tr>
+      <tr><td>数组元素原子</td><td><code>AtomicIntegerArray</code><br><code>AtomicLongArray</code><br><code>AtomicReferenceArray&lt;E&gt;</code></td><td>并发统计数组</td></tr>
+      <tr><td>字段更新器</td><td><code>AtomicIntegerFieldUpdater</code><br><code>AtomicLongFieldUpdater</code><br><code>AtomicReferenceFieldUpdater</code></td><td>对已有类的 volatile 字段做 CAS，不改类结构</td></tr>
+      <tr><td>高并发累加器<br>（JDK 8+）</td><td><code>LongAdder</code><br><code>LongAccumulator</code><br><code>DoubleAdder</code></td><td>高竞争场景的计数/求和，吞吐远高于 AtomicLong</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 5. AtomicInteger 深入 -->
+  <h2>5. AtomicInteger 核心方法与原理</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>AtomicInteger — 源码级解读（JDK 17 简化）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">AtomicInteger</span> <span class="kw">extends</span> <span class="ty">Number</span> <span class="punct">{</span>
+
+    <span class="com">// Unsafe 单例，通过反射获取</span>
+    <span class="kw">private static final</span> <span class="ty">Unsafe</span> <span class="var">U</span> <span class="punct">=</span> <span class="ty">Unsafe</span><span class="punct">.</span><span class="fn">getUnsafe</span><span class="punct">();</span>
+    <span class="com">// VALUE 是 value 字段在对象内存布局中的偏移量（编译期确定）</span>
+    <span class="kw">private static final</span> <span class="kw">long</span> <span class="var">VALUE</span>
+        <span class="punct">=</span> <span class="var">U</span><span class="punct">.</span><span class="fn">objectFieldOffset</span><span class="punct">(</span><span class="ty">AtomicInteger</span><span class="punct">.</span><span class="kw">class</span><span class="punct">,</span> <span class="str">"value"</span><span class="punct">);</span>
+
+    <span class="com">// volatile 保证可见性；CAS 保证原子性</span>
+    <span class="kw">private volatile int</span> <span class="var">value</span><span class="punct">;</span>
+
+    <span class="com">// 原子地 +1 并返回旧值（等价于 i++）</span>
+    <span class="kw">public final int</span> <span class="fn">getAndIncrement</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">U</span><span class="punct">.</span><span class="fn">getAndAddInt</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">VALUE</span><span class="punct">,</span> <span class="num">1</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// compareAndSet：暴露给用户的 CAS 接口</span>
+    <span class="kw">public final boolean</span> <span class="fn">compareAndSet</span><span class="punct">(</span><span class="kw">int</span> <span class="var">expectedValue</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">newValue</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">U</span><span class="punct">.</span><span class="fn">compareAndSetInt</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">VALUE</span><span class="punct">,</span> <span class="var">expectedValue</span><span class="punct">,</span> <span class="var">newValue</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// JDK 9+ 新增：支持内存语义参数（plain / opaque / release / acquire / volatile）</span>
+    <span class="kw">public final int</span> <span class="fn">getAndUpdate</span><span class="punct">(</span><span class="ty">IntUnaryOperator</span> <span class="var">updateFn</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">prev</span> <span class="punct">=</span> <span class="fn">get</span><span class="punct">(),</span> <span class="var">next</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">boolean</span> <span class="var">haveNext</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;;) {</span>
+            <span class="kw">if</span> <span class="punct">(!</span><span class="var">haveNext</span><span class="punct">)</span>
+                <span class="var">next</span> <span class="punct">=</span> <span class="var">updateFn</span><span class="punct">.</span><span class="fn">applyAsInt</span><span class="punct">(</span><span class="var">prev</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="fn">weakCompareAndSetVolatile</span><span class="punct">(</span><span class="var">prev</span><span class="punct">,</span> <span class="var">next</span><span class="punct">))</span>
+                <span class="kw">return</span> <span class="var">prev</span><span class="punct">;</span>  <span class="com">// CAS 成功，返回旧值</span>
+            <span class="var">haveNext</span> <span class="punct">= (</span><span class="var">prev</span> <span class="punct">== (</span><span class="var">prev</span> <span class="punct">=</span> <span class="fn">get</span><span class="punct">()));</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>volatile + CAS 的分工：</strong>
+    <code>volatile</code> 保证其他线程对 <code>value</code> 的写操作立即可见（解决可见性）；
+    CAS 保证"读—比较—写"三步的原子性（解决原子性）。两者缺一不可。
+  </div>
+
+  <!-- 6. 使用示例 -->
+  <h2>6. 实战示例 — 无锁计数器与无锁栈</h2>
+
+  <h3>6.1 反例：volatile 计数器（原子性不足）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>BadCounter.java — 并发下结果不正确</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BadCounter</span> <span class="punct">{</span>
+    <span class="com">// volatile 只保证可见性，不保证 ++ 的原子性</span>
+    <span class="kw">private volatile int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span>
+        <span class="var">count</span><span class="punct">++;</span>  <span class="com">// 实为 read → +1 → write，三步非原子</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 10 个线程各执行 10000 次 increment()，最终 count 通常 &lt; 100000</span></pre>
+  </div>
+
+  <h3>6.2 正例：AtomicInteger 计数器</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>AtomicCounter.java</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.atomic.AtomicInteger</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">AtomicCounter</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">count</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+
+    <span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span>
+        <span class="var">count</span><span class="punct">.</span><span class="fn">incrementAndGet</span><span class="punct">();</span>  <span class="com">// 单条 CAS 指令，原子且无锁</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public int</span> <span class="fn">get</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">count</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>6.3 使用 compareAndSet 实现自定义原子操作</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>AtomicMax.java — 原子地更新最大值</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.atomic.AtomicInteger</span><span class="punct">;</span>
+
+<span class="com">/**
+ * 无锁地维护一个"已见到的最大值"。
+ * 直接 synchronized 当然也行，但这里展示 CAS 自旋的惯用写法。
+ */</span>
+<span class="kw">public class</span> <span class="ty">AtomicMax</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">max</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="ty">Integer</span><span class="punct">.</span><span class="var">MIN_VALUE</span><span class="punct">);</span>
+
+    <span class="kw">public void</span> <span class="fn">update</span><span class="punct">(</span><span class="kw">int</span> <span class="var">value</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">cur</span><span class="punct">;</span>
+        <span class="com">// 自旋：只要 value 更大且 CAS 失败就重试</span>
+        <span class="kw">do</span> <span class="punct">{</span>
+            <span class="var">cur</span> <span class="punct">=</span> <span class="var">max</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">value</span> <span class="punct">&lt;=</span> <span class="var">cur</span><span class="punct">)</span> <span class="kw">return</span><span class="punct">;</span>  <span class="com">// 无需更新，提前退出</span>
+        <span class="punct">}</span> <span class="kw">while</span> <span class="punct">(!</span><span class="var">max</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">cur</span><span class="punct">,</span> <span class="var">value</span><span class="punct">));</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public int</span> <span class="fn">get</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">max</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(); }</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>6.4 无锁栈（Treiber Stack）</h3>
+  <p>
+    这是 CAS 最经典的数据结构应用：用 <code>AtomicReference</code> 原子替换栈顶指针，
+    实现线程安全的栈，完全不用锁。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>LockFreeStack.java — Treiber Stack</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.atomic.AtomicReference</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">LockFreeStack</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt; {</span>
+
+    <span class="kw">private static class</span> <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt; {</span>
+        <span class="kw">final</span> <span class="ty">T</span> <span class="var">item</span><span class="punct">;</span>
+        <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">next</span><span class="punct">;</span>
+        <span class="fn">Node</span><span class="punct">(</span><span class="ty">T</span> <span class="var">item</span><span class="punct">) {</span> <span class="kw">this</span><span class="punct">.</span><span class="var">item</span> <span class="punct">=</span> <span class="var">item</span><span class="punct">; }</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private final</span> <span class="ty">AtomicReference</span><span class="punct">&lt;</span><span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;&gt;</span> <span class="var">top</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicReference</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public void</span> <span class="fn">push</span><span class="punct">(</span><span class="ty">T</span> <span class="var">item</span><span class="punct">) {</span>
+        <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">newNode</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Node</span><span class="punct">&lt;&gt;(</span><span class="var">item</span><span class="punct">);</span>
+        <span class="kw">do</span> <span class="punct">{</span>
+            <span class="var">newNode</span><span class="punct">.</span><span class="var">next</span> <span class="punct">=</span> <span class="var">top</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+            <span class="com">// 原子地把 top 从 oldTop 换成 newNode</span>
+        <span class="punct">}</span> <span class="kw">while</span> <span class="punct">(!</span><span class="var">top</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">newNode</span><span class="punct">.</span><span class="var">next</span><span class="punct">,</span> <span class="var">newNode</span><span class="punct">));</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">T</span> <span class="fn">pop</span><span class="punct">() {</span>
+        <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">oldTop</span><span class="punct">;</span>
+        <span class="kw">do</span> <span class="punct">{</span>
+            <span class="var">oldTop</span> <span class="punct">=</span> <span class="var">top</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">oldTop</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">)</span> <span class="kw">return null</span><span class="punct">;</span>  <span class="com">// 栈空</span>
+        <span class="punct">}</span> <span class="kw">while</span> <span class="punct">(!</span><span class="var">top</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">oldTop</span><span class="punct">,</span> <span class="var">oldTop</span><span class="punct">.</span><span class="var">next</span><span class="punct">));</span>
+        <span class="kw">return</span> <span class="var">oldTop</span><span class="punct">.</span><span class="var">item</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. LongAdder vs AtomicLong -->
+  <h2>7. 高竞争场景：LongAdder 为什么比 AtomicLong 快</h2>
+  <p>
+    <code>AtomicLong</code> 在极高并发下，所有线程都抢同一个 <code>value</code> 字段的 CAS，
+    失败了就自旋重试，竞争越激烈、CPU 资源浪费越多。
+  </p>
+  <p>
+    <code>LongAdder</code>（JDK 8，Doug Lea 设计）采用 <strong>分段累加</strong> 策略：
+    内部维护一个 <code>base</code> 值和一个 <code>Cell[]</code> 数组，无竞争时更新 <code>base</code>，
+    有竞争时将线程哈希到不同的 <code>Cell</code>，最终求和时累加所有 <code>Cell</code>。
+  </p>
+
+  <div class="tree">
+    AtomicLong 结构：                LongAdder 结构：<br>
+    ┌──────────┐                    ┌────────┬──────────────────────┐<br>
+    │  value   │◀──所有线程竞争      │  base  │  Cell[0..N-1]        │<br>
+    └──────────┘                    └────────┴──────────────────────┘<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;▲              ▲<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;无竞争时     竞争时各线程<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;哈希到不同 Cell<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sum() = base + Cell[0] + Cell[1] + <span class="hi">…</span>
+  </div>
+
+  <div class="callout tip">
+    <strong>选型原则：</strong>
+    需要精确读取当前值（<code>get()</code> 有意义）→ 用 <code>AtomicLong</code>；
+    只需统计累加（最终求和）且并发极高 → 用 <code>LongAdder</code>。
+    <code>LongAdder</code> 没有 <code>compareAndSet</code>，不能做 CAS 条件更新。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>LongAdder 用法示例</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.atomic.LongAdder</span><span class="punct">;</span>
+
+<span class="ty">LongAdder</span> <span class="var">requestCount</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LongAdder</span><span class="punct">();</span>
+
+<span class="com">// 在每次请求处理线程中：</span>
+<span class="var">requestCount</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">();</span>
+
+<span class="com">// 统计上报时（允许少量误差）：</span>
+<span class="kw">long</span> <span class="var">total</span> <span class="punct">=</span> <span class="var">requestCount</span><span class="punct">.</span><span class="fn">sum</span><span class="punct">();</span>
+
+<span class="com">// 重置并获取：</span>
+<span class="kw">long</span> <span class="var">snapshot</span> <span class="punct">=</span> <span class="var">requestCount</span><span class="punct">.</span><span class="fn">sumThenReset</span><span class="punct">();</span></pre>
+  </div>
+
+  <!-- 8. 并发陷阱 -->
+  <h2>8. 并发陷阱与高频考点</h2>
+
+  <h3>陷阱 1：CAS 自旋浪费 CPU（Busy Waiting）</h3>
+  <p>
+    CAS 失败后会立即重试，在竞争极其激烈的场景下，线程不断循环消耗 CPU 但不产出任何结果，
+    称为 <strong>自旋浪费</strong>。症状是 CPU 使用率飙高但吞吐量不增反降。
+  </p>
+  <div class="callout warn">
+    <strong>解决方案：</strong>限制自旋次数（超过后降级为阻塞锁），或改用 <code>LongAdder</code> 减少竞争集中度。
+    JDK 内部的 <code>LockSupport.parkNanos</code> 就是在自旋一定次数后挂起线程的策略。
+  </div>
+
+  <h3>陷阱 2：复合操作的原子性错觉</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>错误示例 — 两次原子操作合起来不是原子的</span></div>
+    <pre><span class="ty">AtomicInteger</span> <span class="var">counter</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+
+<span class="com">// ❌ 错误：get() 和 set() 之间有窗口，其他线程可以插入</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">counter</span><span class="punct">.</span><span class="fn">get</span><span class="punct">() &lt;</span> <span class="num">10</span><span class="punct">) {</span>
+    <span class="var">counter</span><span class="punct">.</span><span class="fn">incrementAndGet</span><span class="punct">();</span>  <span class="com">// 可能超过 10</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正确：用 CAS 做"check-then-act"的原子版本</span>
+<span class="kw">int</span> <span class="var">cur</span><span class="punct">;</span>
+<span class="kw">do</span> <span class="punct">{</span>
+    <span class="var">cur</span> <span class="punct">=</span> <span class="var">counter</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">cur</span> <span class="punct">&gt;=</span> <span class="num">10</span><span class="punct">)</span> <span class="kw">break</span><span class="punct">;</span>
+<span class="punct">}</span> <span class="kw">while</span> <span class="punct">(!</span><span class="var">counter</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">cur</span><span class="punct">,</span> <span class="var">cur</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">));</span></pre>
+  </div>
+
+  <h3>陷阱 3：AtomicReference 的对象可变性问题</h3>
+  <p>
+    <code>AtomicReference</code> 保证的是<strong>引用替换</strong>的原子性，不保证引用指向的对象本身是不可变的。
+    如果多个线程在 CAS 成功后继续修改同一个对象内部状态，仍然需要额外同步。
+  </p>
+  <div class="callout warn">
+    <strong>最佳实践：</strong>配合 <code>AtomicReference</code> 使用的对象应当是<strong>不可变（immutable）</strong>的，
+    即字段全部 <code>final</code>，修改时整体替换引用而非修改字段。
+  </div>
+
+  <h3>陷阱 4：ABA 问题</h3>
+  <p>
+    CAS 只比较值是否相等，无法感知"值从 A 变成 B 又变回 A"的过程。
+    在某些场景（如链表节点复用）这会导致数据结构损坏。
+    这是下一节 <strong>06. ABA 问题与 AtomicStampedReference</strong> 的核心内容，此处先埋个眼。
+  </p>
+
+  <!-- 9. CAS vs synchronized 对比 -->
+  <h2>9. CAS vs synchronized — 不是替代，是互补</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>CAS / 原子类</th><th>synchronized / Lock</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>实现层</td><td>用户态，单条 CPU 指令</td><td>内核态互斥量（悲观锁）</td></tr>
+      <tr><td>线程等待</td><td>自旋（忙等）</td><td>阻塞（让出 CPU）</td></tr>
+      <tr><td>低竞争性能</td><td>极快（无切换）</td><td>较快（JDK 偏向锁优化后也快）</td></tr>
+      <tr><td>高竞争性能</td><td>自旋浪费 CPU，可能更差</td><td>阻塞队列，有序等待</td></tr>
+      <tr><td>适用临界区</td><td>极短（单个字段操作）</td><td>任意长度</td></tr>
+      <tr><td>死锁风险</td><td>无</td><td>有（需要规范加锁顺序）</td></tr>
+      <tr><td>ABA 问题</td><td>有（需 Stamped 解决）</td><td>无</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>经验法则：</strong>
+    临界区只涉及 1~2 个变量的原子更新 → 首选原子类；
+    临界区涉及多个变量的一致性、或需要条件等待 → 用 Lock / synchronized。
+  </div>
+
+  <!-- 10. 面试高频考点 -->
+  <h2>10. 面试高频考点速查</h2>
+  <ul>
+    <li><strong>CAS 是什么？</strong> — Compare-And-Swap，硬件级原子三元操作，x86 对应 <code>LOCK CMPXCHG</code> 指令。</li>
+    <li><strong>AtomicInteger 如何保证线程安全？</strong> — <code>volatile</code> 保证可见性，CAS（通过 Unsafe）保证原子性。</li>
+    <li><strong>CAS 的三大缺陷？</strong> — ① 自旋浪费 CPU；② 只能保证单个变量原子性；③ ABA 问题。</li>
+    <li><strong>LongAdder 为什么比 AtomicLong 快？</strong> — 分段 Cell 数组减少竞争，但 <code>sum()</code> 非精确实时值。</li>
+    <li><strong>Unsafe 是什么？</strong> — JVM 提供的底层 native API，原子类的底层支撑，不应在业务代码中直接使用。</li>
+    <li><strong>compareAndSet 和 weakCompareAndSet 的区别？</strong> — <code>weakCompareAndSet</code> 可能伪失败（spurious failure），但在某些平台开销更低；<code>compareAndSet</code> 有完整的 volatile 内存语义。</li>
+  </ul>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./04-Condition.html" class="nav-btn">← 04. Condition 条件变量</a>
+    <a href="./06-ABA问题.html" class="nav-btn next">06. ABA 问题与 AtomicStampedReference →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>05. 四种拒绝策略 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part III 结构化应用 / 线程池
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part III 结构化应用 · 线程池</div>
+    <h1>05. 四种拒绝策略</h1>
+    <p>当线程池的洪流遇上堤坝——拒绝不是失败，而是系统自保的最后一道闸门。</p>
+  </div>
+
+  <!-- 1. 为什么需要拒绝策略 -->
+  <h2>为什么需要拒绝策略？</h2>
+  <p>
+    回顾上一节 <code>ThreadPoolExecutor</code> 的七大参数：核心线程数、最大线程数、工作队列构成了三道缓冲。
+    当任务提交速率持续超过处理速率，这三道缓冲<strong>全部打满</strong>时，线程池进入饱和状态（saturated），
+    此时再提交新任务该怎么办？
+  </p>
+
+  <div class="tree">
+  提交新任务
+    │
+    ├─ 核心线程未满 ──────────────────→ 直接创建核心线程执行
+    │
+    ├─ 核心线程已满，队列未满 ─────────→ 任务入队等待
+    │
+    ├─ 队列已满，线程数 &lt; maximumPoolSize ─→ 创建非核心线程执行
+    │
+    └─ 队列已满，线程数 = maximumPoolSize ─→ <span class="hi">触发拒绝策略</span>
+  </div>
+
+  <p>
+    设计者在这里留了一个策略接口而不是写死行为，原因在于：
+    不同业务场景对"拒绝"的容忍度完全不同——
+    支付服务宁可抛异常让调用方感知，日志系统宁可丢弃，
+    而批量导入任务则希望由提交线程自己跑完以产生背压。
+    <strong>策略模式</strong>让这四种截然不同的处置方式可以即插即用。
+  </p>
+
+  <!-- 2. 接口定义 -->
+  <h2>RejectedExecutionHandler 接口</h2>
+  <p>整个拒绝机制只有一个接口，一个方法：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>java</span><span>RejectedExecutionHandler.java（JDK 源码）</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">RejectedExecutionHandler</span> <span class="punct">{</span>
+    <span class="com">// r  = 被拒绝的任务</span>
+    <span class="com">// e  = 触发拒绝的线程池实例</span>
+    <span class="kw">void</span> <span class="fn">rejectedExecution</span><span class="punct">(</span><span class="ty">Runnable</span> <span class="var">r</span><span class="punct">,</span> <span class="ty">ThreadPoolExecutor</span> <span class="var">e</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    JDK 在 <code>ThreadPoolExecutor</code> 内部以静态内部类的形式提供了四种标准实现，
+    全部位于 <code>java.util.concurrent</code> 包。
+  </p>
+
+  <!-- 3. 四种策略详解 -->
+  <h2>四种内置策略详解</h2>
+
+  <h3>① AbortPolicy — 中止（默认）</h3>
+  <p>
+    直接抛出 <code>RejectedExecutionException</code>（非受检异常），让调用方立即感知压力。
+    这是 <strong>Fail-Fast</strong> 思想：系统宁可暴露问题，也不要静默地吞掉任务。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>java</span><span>AbortPolicy 源码（精简）</span></div>
+    <pre><span class="kw">public static class</span> <span class="ty">AbortPolicy</span> <span class="kw">implements</span> <span class="ty">RejectedExecutionHandler</span> <span class="punct">{</span>
+    <span class="kw">public void</span> <span class="fn">rejectedExecution</span><span class="punct">(</span><span class="ty">Runnable</span> <span class="var">r</span><span class="punct">,</span> <span class="ty">ThreadPoolExecutor</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">throw new</span> <span class="ty">RejectedExecutionException</span><span class="punct">(</span>
+            <span class="str">"Task "</span> <span class="punct">+</span> <span class="var">r</span><span class="punct">.</span><span class="fn">toString</span><span class="punct">()</span> <span class="punct">+</span> <span class="str">" rejected from "</span> <span class="punct">+</span> <span class="var">e</span><span class="punct">.</span><span class="fn">toString</span><span class="punct">()</span>
+        <span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>AbortPolicy 是默认策略，但很多人忘记在调用处捕获
+    <code>RejectedExecutionException</code>，导致提交线程（往往是业务主线程）直接崩溃。
+    正确做法是在 <code>executor.submit(task)</code> 外包一层 try-catch。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>java</span><span>正确捕获拒绝异常</span></div>
+    <pre><span class="com">// 反例：提交不捕获，主线程会被异常打断</span>
+<span class="var">executor</span><span class="punct">.</span><span class="fn">execute</span><span class="punct">(</span><span class="var">task</span><span class="punct">);</span>  <span class="com">// 危险！</span>
+
+<span class="com">// 正例：显式捕获，记录告警或降级处理</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">executor</span><span class="punct">.</span><span class="fn">execute</span><span class="punct">(</span><span class="var">task</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">RejectedExecutionException</span> <span class="var">ex</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="var">log</span><span class="punct">.</span><span class="fn">warn</span><span class="punct">(</span><span class="str">"线程池饱和，任务被拒绝: {}"</span><span class="punct">,</span> <span class="var">task</span><span class="punct">);</span>
+    <span class="var">metrics</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">(</span><span class="str">"pool.rejected"</span><span class="punct">);</span>  <span class="com">// 上报监控</span>
+    <span class="com">// 视业务决定：入 MQ 重试 / 返回降级结果 / 直接丢弃</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <hr />
+
+  <h3>② CallerRunsPolicy — 调用者运行</h3>
+  <p>
+    不抛异常，也不丢弃，而是<strong>让提交任务的线程自己执行这个任务</strong>。
+    这天然产生了<strong>背压（back-pressure）</strong>机制：
+    提交线程被阻塞在任务执行上，无暇继续提交新任务，
+    给线程池争取到喘息时间，整个系统自动降速而不是崩溃。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>java</span><span>CallerRunsPolicy 源码（精简）</span></div>
+    <pre><span class="kw">public static class</span> <span class="ty">CallerRunsPolicy</span> <span class="kw">implements</span> <span class="ty">RejectedExecutionHandler</span> <span class="punct">{</span>
+    <span class="kw">public void</span> <span class="fn">rejectedExecution</span><span class="punct">(</span><span class="ty">Runnable</span> <span class="var">r</span><span class="punct">,</span> <span class="ty">ThreadPoolExecutor</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 线程池已关闭则直接丢弃，否则在调用方线程同步执行</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">e</span><span class="punct">.</span><span class="fn">isShutdown</span><span class="punct">())</span> <span class="punct">{</span>
+            <span class="var">r</span><span class="punct">.</span><span class="fn">run</span><span class="punct">();</span>  <span class="com">// 注意：是 run() 不是 start()，直接在当前线程执行</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>背压原理：</strong>假设生产者线程以 10000 QPS 提交任务，线程池只能处理 8000 QPS。
+    CallerRunsPolicy 让生产者线程每隔一段时间就被迫执行一个任务，提交速率自动从 10000 降到接近 8000，
+    系统平衡而非崩溃。这是响应式系统设计中"流量整形"的最简形式。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>如果提交线程是 Netty 的 I/O 线程或 Tomcat 的请求线程，
+    CallerRunsPolicy 会让网络 I/O 被任务长期占用，导致请求超时甚至连接堆积。
+    此时应选 AbortPolicy 配合调用方降级，而不是 CallerRunsPolicy。
+  </div>
+
+  <hr />
+
+  <h3>③ DiscardPolicy — 静默丢弃</h3>
+  <p>
+    最"沉默"的策略——直接丢弃被拒绝的任务，<strong>不抛异常，不通知任何人</strong>。
+    源码是一个空方法体，什么都不做。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>java</span><span>DiscardPolicy 源码</span></div>
+    <pre><span class="kw">public static class</span> <span class="ty">DiscardPolicy</span> <span class="kw">implements</span> <span class="ty">RejectedExecutionHandler</span> <span class="punct">{</span>
+    <span class="kw">public void</span> <span class="fn">rejectedExecution</span><span class="punct">(</span><span class="ty">Runnable</span> <span class="var">r</span><span class="punct">,</span> <span class="ty">ThreadPoolExecutor</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 什么都不做，任务就此消失</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    适用于任务本身具有<strong>幂等性且允许丢失</strong>的场景，
+    例如心跳上报、实时监控采样点、埋点日志——
+    偶尔丢一两个无关紧要，强行处理反而拖垮系统。
+  </p>
+
+  <div class="callout warn">
+    <strong>高频陷阱：</strong>DiscardPolicy 用于重要业务（如订单、支付）是灾难级错误。
+    任务被静默丢弃后没有任何日志，排查问题时毫无线索。
+    即便业务允许丢弃，也强烈建议自定义策略，在丢弃前打印 warn 日志并上报监控指标。
+  </div>
+
+  <hr />
+
+  <h3>④ DiscardOldestPolicy — 丢弃最老任务</h3>
+  <p>
+    从工作队列的<strong>队头</strong>取出等待最久的那个任务并丢弃，
+    然后尝试重新提交当前被拒绝的新任务。
+    逻辑上是"新任务比老任务更重要"的优先级假设。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>java</span><span>DiscardOldestPolicy 源码（精简）</span></div>
+    <pre><span class="kw">public static class</span> <span class="ty">DiscardOldestPolicy</span> <span class="kw">implements</span> <span class="ty">RejectedExecutionHandler</span> <span class="punct">{</span>
+    <span class="kw">public void</span> <span class="fn">rejectedExecution</span><span class="punct">(</span><span class="ty">Runnable</span> <span class="var">r</span><span class="punct">,</span> <span class="ty">ThreadPoolExecutor</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">e</span><span class="punct">.</span><span class="fn">isShutdown</span><span class="punct">())</span> <span class="punct">{</span>
+            <span class="var">e</span><span class="punct">.</span><span class="fn">getQueue</span><span class="punct">().</span><span class="fn">poll</span><span class="punct">();</span>  <span class="com">// 丢弃队头（最老）任务</span>
+            <span class="var">e</span><span class="punct">.</span><span class="fn">execute</span><span class="punct">(</span><span class="var">r</span><span class="punct">);</span>        <span class="com">// 重新提交当前任务</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>重大陷阱：配合 PriorityBlockingQueue 时会出现反直觉行为。</strong>
+    <code>poll()</code> 从队头取出的是优先级最高的任务，恰好与"丢旧留新"的初衷相反——
+    你把最重要的任务丢了，却保留了低优先级任务。
+    因此 <strong>DiscardOldestPolicy 不得与 PriorityBlockingQueue 组合使用</strong>。
+  </div>
+
+  <!-- 4. 四种策略对比表 -->
+  <h2>四种策略横向对比</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>策略</th>
+        <th>行为</th>
+        <th>任务是否丢失</th>
+        <th>是否通知调用方</th>
+        <th>典型场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>AbortPolicy</code></td>
+        <td>抛出 <code>RejectedExecutionException</code></td>
+        <td>是</td>
+        <td>是（异常）</td>
+        <td>支付、订单等核心链路</td>
+      </tr>
+      <tr>
+        <td><code>CallerRunsPolicy</code></td>
+        <td>由提交线程同步执行</td>
+        <td>否</td>
+        <td>间接（阻塞提交）</td>
+        <td>批量处理、允许降速的场景</td>
+      </tr>
+      <tr>
+        <td><code>DiscardPolicy</code></td>
+        <td>静默丢弃新任务</td>
+        <td>是</td>
+        <td>否</td>
+        <td>心跳、采样、埋点等可丢场景</td>
+      </tr>
+      <tr>
+        <td><code>DiscardOldestPolicy</code></td>
+        <td>丢弃队头最老任务，重提新任务</td>
+        <td>是（老任务）</td>
+        <td>否</td>
+        <td>实时性要求高、新数据优先的场景</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. 自定义拒绝策略 -->
+  <h2>自定义拒绝策略：生产实践</h2>
+  <p>
+    内置四种策略往往不够用——生产环境至少应该做到：
+    <strong>拒绝时记录日志 + 上报监控指标 + 根据任务类型差异化处置</strong>。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>java</span><span>生产级自定义拒绝策略示例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">MonitoredAbortPolicy</span> <span class="kw">implements</span> <span class="ty">RejectedExecutionHandler</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">String</span>  <span class="var">poolName</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">Counter</span> <span class="var">rejectedCounter</span><span class="punct">;</span>  <span class="com">// Micrometer / Prometheus 计数器</span>
+
+    <span class="kw">public</span> <span class="ty">MonitoredAbortPolicy</span><span class="punct">(</span><span class="ty">String</span> <span class="var">poolName</span><span class="punct">,</span> <span class="ty">MeterRegistry</span> <span class="var">registry</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">poolName</span> <span class="punct">=</span> <span class="var">poolName</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">rejectedCounter</span> <span class="punct">=</span> <span class="ty">Counter</span><span class="punct">.</span><span class="fn">builder</span><span class="punct">(</span><span class="str">"threadpool.rejected"</span><span class="punct">)</span>
+                <span class="punct">.</span><span class="fn">tag</span><span class="punct">(</span><span class="str">"pool"</span><span class="punct">,</span> <span class="var">poolName</span><span class="punct">)</span>
+                <span class="punct">.</span><span class="fn">register</span><span class="punct">(</span><span class="var">registry</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">rejectedExecution</span><span class="punct">(</span><span class="ty">Runnable</span> <span class="var">r</span><span class="punct">,</span> <span class="ty">ThreadPoolExecutor</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 1. 关键指标上报，触发告警</span>
+        <span class="var">rejectedCounter</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">();</span>
+
+        <span class="com">// 2. 结构化日志，方便排查</span>
+        <span class="var">log</span><span class="punct">.</span><span class="fn">warn</span><span class="punct">(</span><span class="str">"[{}] 任务被拒绝 | activeThreads={} | queueSize={} | task={}"</span><span class="punct">,</span>
+                <span class="var">poolName</span><span class="punct">,</span>
+                <span class="var">e</span><span class="punct">.</span><span class="fn">getActiveCount</span><span class="punct">(),</span>
+                <span class="var">e</span><span class="punct">.</span><span class="fn">getQueue</span><span class="punct">().</span><span class="fn">size</span><span class="punct">(),</span>
+                <span class="var">r</span>
+        <span class="punct">);</span>
+
+        <span class="com">// 3. 根据任务类型决定处置方式</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">r</span> <span class="kw">instanceof</span> <span class="ty">PersistableTask</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="com">// 重要任务：持久化到 DB/MQ 稍后重试</span>
+            <span class="punct">((</span><span class="ty">PersistableTask</span><span class="punct">)</span> <span class="var">r</span><span class="punct">).</span><span class="fn">persistForRetry</span><span class="punct">();</span>
+        <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+            <span class="com">// 非关键任务：抛异常让调用方感知</span>
+            <span class="kw">throw new</span> <span class="ty">RejectedExecutionException</span><span class="punct">(</span>
+                    <span class="str">"Pool ["</span> <span class="punct">+</span> <span class="var">poolName</span> <span class="punct">+</span> <span class="str">"] saturated"</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 6. 策略触发条件再确认 -->
+  <h2>触发时机的一个微妙细节</h2>
+  <p>
+    很多人以为"队列满 + 线程满"才触发拒绝，但有一个常见的误解：
+    使用 <code>SynchronousQueue</code>（Executors.newCachedThreadPool 的默认队列）时，
+    队列容量为 0，只要没有空闲线程可接收任务，<strong>立刻触发拒绝</strong>，
+    不必等到 maximumPoolSize 线程跑满。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>java</span><span>SynchronousQueue 触发拒绝的场景</span></div>
+    <pre><span class="com">// SynchronousQueue 不存储任务，每次 offer() 必须立即有线程接收</span>
+<span class="ty">ThreadPoolExecutor</span> <span class="var">pool</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+    <span class="num">2</span><span class="punct">,</span> <span class="num">4</span><span class="punct">,</span>                          <span class="com">// core=2, max=4</span>
+    <span class="num">60</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>
+    <span class="kw">new</span> <span class="ty">SynchronousQueue</span><span class="punct">&lt;&gt;(),</span>     <span class="com">// 零容量队列</span>
+    <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">.</span><span class="ty">AbortPolicy</span><span class="punct">()</span>
+<span class="punct">);</span>
+<span class="com">// 同时提交 5 个任务：前 4 个由线程执行，第 5 个立即被拒绝</span>
+<span class="com">// 因为 SynchronousQueue 无法缓存，没有第 5 条线程可接收它</span></pre>
+  </div>
+
+  <!-- 7. 如何选择 -->
+  <h2>如何选择合适的拒绝策略？</h2>
+
+  <ul>
+    <li><strong>核心业务链路（支付、订单）</strong>：<code>AbortPolicy</code> + 调用方捕获异常，配合熔断降级。</li>
+    <li><strong>CPU 密集批处理、允许降速</strong>：<code>CallerRunsPolicy</code>，利用背压自动平衡速率。</li>
+    <li><strong>可丢弃的实时数据（心跳、采样）</strong>：自定义策略（在 DiscardPolicy 基础上加日志和监控）。</li>
+    <li><strong>需要最新数据的实时推送</strong>：<code>DiscardOldestPolicy</code>，但<strong>必须用 LinkedBlockingQueue，禁止用 PriorityBlockingQueue</strong>。</li>
+    <li><strong>任何生产环境</strong>：都应自定义策略，最低要求是<strong>拒绝时打印日志 + 上报监控指标</strong>。</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>面试高频考点：</strong>
+    "线程池默认拒绝策略是什么？" → <code>AbortPolicy</code>。
+    "CallerRunsPolicy 为什么能产生背压？" → 提交线程被占用执行任务，提交速率自动降低，系统趋于平衡。
+    "DiscardOldestPolicy + PriorityBlockingQueue 有什么问题？" → poll() 取出的是优先级最高（最重要）的任务，与预期相反。
+  </div>
+
+  <hr />
+
+  <!-- nav -->
+  <div class="nav-footer">
+    <a href="./04-ThreadPoolExecutor.html" class="nav-btn">← 04. ThreadPoolExecutor 七大参数</a>
+    <a href="./06-为什么不用Executors.html" class="nav-btn next">06. 为什么不建议用 Executors 快捷工厂 →</a>
+  </div>
+
+</div>
+</body>
+</html>

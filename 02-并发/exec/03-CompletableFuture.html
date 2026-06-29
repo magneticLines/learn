@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>03. CompletableFuture 异步编排 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part III 结构化应用 / 任务执行
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part III 结构化应用 · 任务执行</div>
+    <h1>03. CompletableFuture 异步编排</h1>
+    <p>从阻塞式 Future 到响应式流水线——理解 Java 8 最重要的并发工具之一</p>
+  </div>
+
+  <!-- ===== 1. 为什么需要 CompletableFuture ===== -->
+  <h2>1. Future 的痛点：阻塞是原罪</h2>
+
+  <p>上一节我们学了 <code>Future&lt;T&gt;</code>。它确实能拿到异步任务的结果，但有一个根本缺陷：<strong>获取结果必须阻塞当前线程</strong>。</p>
+
+  <div class="callout warn">
+    <strong>场景还原：</strong>电商首页需要同时查询「商品信息」「库存」「用户推荐」三个服务，最后聚合返回。如果用 <code>Future.get()</code>，三次 get 都会顺序阻塞，实际退化成串行——白白浪费了多线程。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — Future 串行阻塞反例</span></div>
+    <pre><span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Product</span><span class="punct">&gt;</span> <span class="var">pf</span>   <span class="punct">=</span> <span class="var">executor</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt;</span> <span class="fn">fetchProduct</span><span class="punct">(</span><span class="var">id</span><span class="punct">));</span>
+<span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Stock</span><span class="punct">&gt;</span>   <span class="var">sf</span>   <span class="punct">=</span> <span class="var">executor</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt;</span> <span class="fn">fetchStock</span><span class="punct">(</span><span class="var">id</span><span class="punct">));</span>
+<span class="ty">Future</span><span class="punct">&lt;</span><span class="ty">Rec</span><span class="punct">&gt;</span>     <span class="var">rf</span>   <span class="punct">=</span> <span class="var">executor</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt;</span> <span class="fn">fetchRec</span><span class="punct">(</span><span class="var">userId</span><span class="punct">));</span>
+
+<span class="com">// 问题：三次 get() 顺序阻塞，总耗时 = T1 + T2 + T3，并非 max(T1,T2,T3)</span>
+<span class="ty">Product</span> <span class="var">p</span> <span class="punct">=</span> <span class="var">pf</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+<span class="ty">Stock</span>   <span class="var">s</span> <span class="punct">=</span> <span class="var">sf</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+<span class="ty">Rec</span>     <span class="var">r</span> <span class="punct">=</span> <span class="var">rf</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span></pre>
+  </div>
+
+  <p><code>CompletableFuture</code> 的核心思想是：<strong>把"拿到结果后做什么"注册成回调，让线程池驱动，当前线程完全不阻塞</strong>。这是 Promise/A+（JavaScript）、Scala Future、Reactor 等所有异步模型的共同设计哲学。</p>
+
+  <!-- ===== 2. 设计哲学 ===== -->
+  <h2>2. 设计哲学：可组合的异步状态机</h2>
+
+  <p><code>CompletableFuture&lt;T&gt;</code> 本质上是一个<strong>单次写入的共享状态容器</strong>，内部维护：</p>
+
+  <ul>
+    <li><strong>结果槽</strong>：初始为 null，完成后写入值或异常，<em>只写一次</em></li>
+    <li><strong>等待链</strong>：所有通过 <code>thenApply</code>、<code>thenCompose</code> 等方法注册的后续任务，形成一棵树</li>
+    <li><strong>触发机制</strong>：状态从"未完成"→"完成"时，通过 CAS 原子翻转，然后顺序唤醒等待链上的所有节点</li>
+  </ul>
+
+  <div class="tree">
+CompletableFuture 内部状态机
+<span class="hi">PENDING</span>
+    │  某线程调用 complete(v) / completeExceptionally(ex)
+    ▼
+<span class="hi">COMPLETED</span>  ──── CAS 写入结果，唤醒所有 Dependent
+    │
+    ├── thenApply  回调1 → 新 CF
+    ├── thenAccept 回调2 → 新 CF(Void)
+    └── whenComplete 回调3（无论成功/失败）
+  </div>
+
+  <p>这与 <code>FutureTask</code> 最大的区别是：<strong>CompletableFuture 支持链式注册 N 个后继，而 FutureTask 只能被动等 get()</strong>。这也是它能做"编排"的根本原因。</p>
+
+  <!-- ===== 3. 核心 API 分类 ===== -->
+  <h2>3. 核心 API 全景</h2>
+
+  <table>
+    <thead>
+      <tr><th>分类</th><th>方法</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>创建</strong></td><td><code>supplyAsync(Supplier)</code></td><td>有返回值，异步执行</td></tr>
+      <tr><td></td><td><code>runAsync(Runnable)</code></td><td>无返回值，异步执行</td></tr>
+      <tr><td></td><td><code>completedFuture(v)</code></td><td>直接创建已完成的 CF（常用于测试/默认值）</td></tr>
+      <tr><td><strong>串行变换</strong></td><td><code>thenApply(fn)</code></td><td>结果 → 新结果（同步函数，在上游线程执行）</td></tr>
+      <tr><td></td><td><code>thenApplyAsync(fn)</code></td><td>结果 → 新结果（异步，提交到线程池）</td></tr>
+      <tr><td></td><td><code>thenCompose(fn)</code></td><td>结果 → 新 CF（flatMap，避免 CF&lt;CF&lt;T&gt;&gt;）</td></tr>
+      <tr><td><strong>串行消费</strong></td><td><code>thenAccept(consumer)</code></td><td>消费结果，返回 CF&lt;Void&gt;</td></tr>
+      <tr><td></td><td><code>thenRun(runnable)</code></td><td>不关心结果，直接跑后续</td></tr>
+      <tr><td><strong>并行聚合</strong></td><td><code>thenCombine(other, fn)</code></td><td>等两个 CF 都完成，合并结果</td></tr>
+      <tr><td></td><td><code>allOf(cfs...)</code></td><td>等所有完成（返回 CF&lt;Void&gt;）</td></tr>
+      <tr><td></td><td><code>anyOf(cfs...)</code></td><td>任意一个完成即触发</td></tr>
+      <tr><td><strong>异常处理</strong></td><td><code>exceptionally(fn)</code></td><td>捕获异常，提供备用值</td></tr>
+      <tr><td></td><td><code>handle(fn)</code></td><td>无论成功/失败都执行，类似 try-finally</td></tr>
+      <tr><td></td><td><code>whenComplete(action)</code></td><td>副作用（不改变结果），常用于日志</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 4. 创建与基础链式 ===== -->
+  <h2>4. 创建 & 串行链式调用</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 基础链式：查用户 → 查订单 → 计算总额</span></div>
+    <pre><span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">Double</span><span class="punct">&gt;</span> <span class="var">totalFuture</span> <span class="punct">=</span>
+    <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">findUser</span><span class="punct">(</span><span class="num">42</span><span class="punct">),</span> <span class="var">executor</span><span class="punct">)</span>
+        <span class="com">// thenCompose：返回值本身是 CF，用它可以"展平"，避免 CF&lt;CF&lt;T&gt;&gt;</span>
+        <span class="punct">.</span><span class="fn">thenCompose</span><span class="punct">(</span><span class="var">user</span> <span class="punct">-&gt;</span>
+            <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">findOrders</span><span class="punct">(</span><span class="var">user</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">()),</span> <span class="var">executor</span><span class="punct">))</span>
+        <span class="com">// thenApply：同步变换，运行在上游完成的那个线程</span>
+        <span class="punct">.</span><span class="fn">thenApply</span><span class="punct">(</span><span class="var">orders</span> <span class="punct">-&gt;</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">mapToDouble</span><span class="punct">(</span><span class="ty">Order</span><span class="punct">::</span><span class="fn">getAmount</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">sum</span><span class="punct">());</span>
+
+<span class="com">// 链尾消费（仍然不阻塞主线程）</span>
+<span class="var">totalFuture</span><span class="punct">.</span><span class="fn">thenAccept</span><span class="punct">(</span><span class="var">total</span> <span class="punct">-&gt;</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"总金额: "</span> <span class="punct">+</span> <span class="var">total</span><span class="punct">));</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>thenApply vs thenCompose：</strong><br>
+    把 CF 类比 Stream：<code>thenApply</code> 像 <code>map</code>（T → R），<code>thenCompose</code> 像 <code>flatMap</code>（T → Stream&lt;R&gt;）。当下游操作本身返回 CF 时，用 thenApply 会得到 <code>CF&lt;CF&lt;T&gt;&gt;</code>——嵌套地狱；用 thenCompose 则自动展平为 <code>CF&lt;T&gt;</code>。
+  </div>
+
+  <!-- ===== 5. 并行聚合 ===== -->
+  <h2>5. 并行聚合：allOf / thenCombine</h2>
+
+  <p>这是 CompletableFuture 最能体现价值的场景——把多个独立的异步任务真正并发执行，然后等全部完成再聚合。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — allOf 并发查三个服务，总耗时 ≈ max(T1,T2,T3)</span></div>
+    <pre><span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">Product</span><span class="punct">&gt;</span> <span class="var">cfP</span> <span class="punct">=</span>
+    <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">fetchProduct</span><span class="punct">(</span><span class="var">id</span><span class="punct">),</span> <span class="var">executor</span><span class="punct">);</span>
+<span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">Stock</span><span class="punct">&gt;</span>   <span class="var">cfS</span> <span class="punct">=</span>
+    <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">fetchStock</span><span class="punct">(</span><span class="var">id</span><span class="punct">),</span> <span class="var">executor</span><span class="punct">);</span>
+<span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">Rec</span><span class="punct">&gt;</span>     <span class="var">cfR</span> <span class="punct">=</span>
+    <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">fetchRec</span><span class="punct">(</span><span class="var">userId</span><span class="punct">),</span> <span class="var">executor</span><span class="punct">);</span>
+
+<span class="com">// allOf 本身只返回 CF&lt;Void&gt;，需要自己再 join() 各子 CF</span>
+<span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">allOf</span><span class="punct">(</span><span class="var">cfP</span><span class="punct">,</span> <span class="var">cfS</span><span class="punct">,</span> <span class="var">cfR</span><span class="punct">)</span>
+    <span class="punct">.</span><span class="fn">thenRun</span><span class="punct">(() -&gt; {</span>
+        <span class="com">// 走到这里，三个 CF 均已完成，join() 不会阻塞</span>
+        <span class="ty">PageVO</span> <span class="var">vo</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">PageVO</span><span class="punct">(</span>
+            <span class="var">cfP</span><span class="punct">.</span><span class="fn">join</span><span class="punct">(),</span>
+            <span class="var">cfS</span><span class="punct">.</span><span class="fn">join</span><span class="punct">(),</span>
+            <span class="var">cfR</span><span class="punct">.</span><span class="fn">join</span><span class="punct">());</span>
+        <span class="fn">render</span><span class="punct">(</span><span class="var">vo</span><span class="punct">);</span>
+    <span class="punct">});</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — thenCombine：等两个 CF 都完成，合并结果</span></div>
+    <pre><span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">Double</span><span class="punct">&gt;</span> <span class="var">price</span>    <span class="punct">=</span>
+    <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">getPrice</span><span class="punct">(</span><span class="var">sku</span><span class="punct">),</span> <span class="var">executor</span><span class="punct">);</span>
+<span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">Double</span><span class="punct">&gt;</span> <span class="var">discount</span> <span class="punct">=</span>
+    <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">getDiscount</span><span class="punct">(</span><span class="var">userId</span><span class="punct">),</span> <span class="var">executor</span><span class="punct">);</span>
+
+<span class="com">// 两个并发跑，都完成时回调合并函数</span>
+<span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">Double</span><span class="punct">&gt;</span> <span class="var">finalPrice</span> <span class="punct">=</span>
+    <span class="var">price</span><span class="punct">.</span><span class="fn">thenCombine</span><span class="punct">(</span><span class="var">discount</span><span class="punct">, (</span><span class="var">p</span><span class="punct">,</span> <span class="var">d</span><span class="punct">) -&gt;</span> <span class="var">p</span> <span class="punct">*</span> <span class="punct">(</span><span class="num">1</span> <span class="punct">-</span> <span class="var">d</span><span class="punct">));</span></pre>
+  </div>
+
+  <!-- ===== 6. 异常处理 ===== -->
+  <h2>6. 异常处理：exceptionally / handle</h2>
+
+  <p>异步链中一旦某步抛出异常，异常会沿着 CF 链向下传播，后续所有 <code>thenApply</code> / <code>thenAccept</code> 都会被跳过，直到遇到 <code>exceptionally</code> 或 <code>handle</code>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 异常传播与恢复</span></div>
+    <pre><span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt; {</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">id</span> <span class="punct">&lt;</span> <span class="num">0</span><span class="punct">)</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"id 不合法"</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="fn">fetchUser</span><span class="punct">(</span><span class="var">id</span><span class="punct">);</span>
+<span class="punct">})</span>
+<span class="com">// 正常路径：user → orders</span>
+<span class="punct">.</span><span class="fn">thenApply</span><span class="punct">(</span><span class="var">user</span> <span class="punct">-&gt;</span> <span class="fn">fetchOrders</span><span class="punct">(</span><span class="var">user</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">()))</span>
+<span class="com">// 异常路径：提供兜底空列表，链路可以继续</span>
+<span class="punct">.</span><span class="fn">exceptionally</span><span class="punct">(</span><span class="var">ex</span> <span class="punct">-&gt; {</span>
+    <span class="var">log</span><span class="punct">.</span><span class="fn">warn</span><span class="punct">(</span><span class="str">"查询失败: {}"</span><span class="punct">,</span> <span class="var">ex</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+    <span class="kw">return</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">emptyList</span><span class="punct">();</span>
+<span class="punct">})</span>
+<span class="com">// handle：无论成功/失败都执行，ex 为 null 则代表成功</span>
+<span class="punct">.</span><span class="fn">handle</span><span class="punct">((</span><span class="var">orders</span><span class="punct">,</span> <span class="var">ex</span><span class="punct">) -&gt; {</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">ex</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="var">ex</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+    <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">ok</span><span class="punct">(</span><span class="var">orders</span><span class="punct">);</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>异常包装：</strong>CF 链内部抛出的所有异常都会被包装成 <code>CompletionException</code>，调用 <code>join()</code> 时抛出的也是它（而 <code>get()</code> 抛出 <code>ExecutionException</code>）。在 <code>exceptionally</code> 的回调里，参数 <code>ex</code> 是 <code>CompletionException</code>，真正原因在 <code>ex.getCause()</code>。
+  </div>
+
+  <!-- ===== 7. Async 后缀与线程池 ===== -->
+  <h2>7. Async 后缀 & 线程池选择</h2>
+
+  <p>几乎每个操作符都有三种重载：</p>
+
+  <div class="tree">
+<span class="hi">thenApply(fn)</span>         — 在上游任务完成的线程执行回调（可能是 ForkJoinPool 线程，也可能是调用线程）
+<span class="hi">thenApplyAsync(fn)</span>    — 提交到默认 ForkJoinPool.commonPool()
+<span class="hi">thenApplyAsync(fn, e)</span> — 提交到指定 Executor（推荐！）
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：默认 commonPool 的危险</strong><br>
+    <code>supplyAsync(fn)</code>（无 Executor 参数）使用 <code>ForkJoinPool.commonPool()</code>。这个池与所有使用默认参数的 CF、并行 Stream <strong>共享</strong>。如果 fn 里有 IO 操作（HTTP、DB）且并发量大，会把 commonPool 的线程耗尽，影响整个 JVM 的并行 Stream 性能。<strong>生产代码请始终传入自己的 Executor。</strong>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 正例：IO 密集型任务用专属线程池</span></div>
+    <pre><span class="com">// IO 密集型：核心线程数 = CPU核 * 2，允许充分等待</span>
+<span class="ty">ExecutorService</span> <span class="var">ioPool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span>
+    <span class="ty">Runtime</span><span class="punct">.</span><span class="fn">getRuntime</span><span class="punct">().</span><span class="fn">availableProcessors</span><span class="punct">()</span> <span class="punct">*</span> <span class="num">2</span><span class="punct">);</span>
+
+<span class="com">// CPU 密集型：用 ForkJoinPool，线程数 = CPU核</span>
+<span class="ty">ForkJoinPool</span> <span class="var">cpuPool</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ForkJoinPool</span><span class="punct">(</span>
+    <span class="ty">Runtime</span><span class="punct">.</span><span class="fn">getRuntime</span><span class="punct">().</span><span class="fn">availableProcessors</span><span class="punct">());</span>
+
+<span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">httpGet</span><span class="punct">(</span><span class="var">url</span><span class="punct">),</span> <span class="var">ioPool</span><span class="punct">)</span>
+    <span class="com">// 拿到原始数据后，CPU 密集的解析放到 cpuPool</span>
+    <span class="punct">.</span><span class="fn">thenApplyAsync</span><span class="punct">(</span><span class="ty">JsonParser</span><span class="punct">::</span><span class="fn">parse</span><span class="punct">,</span> <span class="var">cpuPool</span><span class="punct">)</span>
+    <span class="punct">.</span><span class="fn">thenAcceptAsync</span><span class="punct">(</span><span class="var">result</span> <span class="punct">-&gt;</span> <span class="fn">save</span><span class="punct">(</span><span class="var">result</span><span class="punct">),</span> <span class="var">ioPool</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- ===== 8. 常见并发陷阱 ===== -->
+  <h2>8. 并发陷阱汇总</h2>
+
+  <h3>陷阱 1：get() vs join() 的异常类型</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例 vs 正例</span></div>
+    <pre><span class="com">// ❌ 反例：get() 抛 checked Exception，代码冗余</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="ty">String</span> <span class="var">r</span> <span class="punct">=</span> <span class="var">cf</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="punct">|</span> <span class="ty">ExecutionException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="kw">throw</span> <span class="kw">new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正例：join() 抛 unchecked CompletionException，配合 exceptionally 更清晰</span>
+<span class="ty">String</span> <span class="var">r</span> <span class="punct">=</span> <span class="var">cf</span><span class="punct">.</span><span class="fn">exceptionally</span><span class="punct">(</span><span class="var">ex</span> <span class="punct">-&gt;</span> <span class="str">"default"</span><span class="punct">).</span><span class="fn">join</span><span class="punct">();</span></pre>
+  </div>
+
+  <h3>陷阱 2：在回调里抛出受检异常</h3>
+
+  <p>Lambda 内部如果要抛受检异常，必须手动包装。如果直接 <code>throw new IOException()</code> 会编译报错。推荐统一包装成 <code>CompletionException</code>：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span></div>
+    <pre><span class="var">cf</span><span class="punct">.</span><span class="fn">thenApply</span><span class="punct">(</span><span class="var">s</span> <span class="punct">-&gt; {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">return</span> <span class="fn">parseJson</span><span class="punct">(</span><span class="var">s</span><span class="punct">);</span>  <span class="com">// throws IOException</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="com">// 包装成 unchecked，让 exceptionally 能统一捕获</span>
+        <span class="kw">throw</span> <span class="kw">new</span> <span class="ty">CompletionException</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <h3>陷阱 3：completeOnTimeout 与 orTimeout（Java 9+）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java 9+ — 超时控制</span></div>
+    <pre><span class="com">// orTimeout：超时则以 TimeoutException 完成（异常路径）</span>
+<span class="var">cf</span><span class="punct">.</span><span class="fn">orTimeout</span><span class="punct">(</span><span class="num">3</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">)</span>
+  <span class="punct">.</span><span class="fn">exceptionally</span><span class="punct">(</span><span class="var">ex</span> <span class="punct">-&gt;</span> <span class="str">"timeout fallback"</span><span class="punct">);</span>
+
+<span class="com">// completeOnTimeout：超时则以默认值完成（正常路径，更优雅）</span>
+<span class="var">cf</span><span class="punct">.</span><span class="fn">completeOnTimeout</span><span class="punct">(</span><span class="str">"default"</span><span class="punct">,</span> <span class="num">3</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span></pre>
+  </div>
+
+  <h3>陷阱 4：泄漏——忘记处理异常导致 CF 永久悬挂</h3>
+
+  <div class="callout warn">
+    <strong>典型案例：</strong>某个 <code>supplyAsync</code> 回调里抛了异常，但整条链没有 <code>exceptionally</code>，也没人调 <code>join()</code>，这个 CF 对象就静静地悬浮在内存里，它引用的所有闭包变量也无法 GC。<br><br>
+    <strong>规范：</strong>所有 CF 链的末尾都应挂一个 <code>.exceptionally(ex -&gt; { log.error(...); return null; })</code>，即使只是打日志。
+  </div>
+
+  <h3>陷阱 5：thenApply 与 thenApplyAsync 的执行线程差异</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 执行线程演示</span></div>
+    <pre><span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt; {</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"supply: "</span> <span class="punct">+</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">getName</span><span class="punct">());</span>
+    <span class="kw">return</span> <span class="num">1</span><span class="punct">;</span>
+<span class="punct">})</span>
+<span class="com">// 若 supply 极快完成，这里可能在调用 thenApply 的「主线程」执行！</span>
+<span class="punct">.</span><span class="fn">thenApply</span><span class="punct">(</span><span class="var">n</span> <span class="punct">-&gt; {</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"apply: "</span> <span class="punct">+</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">getName</span><span class="punct">());</span>
+    <span class="kw">return</span> <span class="var">n</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">;</span>
+<span class="punct">});</span>
+
+<span class="com">// 使用 thenApplyAsync 则保证一定在线程池线程执行，行为可预测</span></pre>
+  </div>
+
+  <!-- ===== 9. 完整综合示例 ===== -->
+  <h2>9. 综合示例：电商首页聚合接口</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 生产级写法：超时 + 异常兜底 + 专属线程池</span></div>
+    <pre><span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">HomePageService</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">ExecutorService</span> <span class="var">ioPool</span> <span class="punct">=</span>
+        <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="num">20</span><span class="punct">);</span>
+
+    <span class="kw">public</span> <span class="ty">HomePageVO</span> <span class="fn">assemble</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">,</span> <span class="ty">Long</span> <span class="var">skuId</span><span class="punct">) {</span>
+
+        <span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">Product</span><span class="punct">&gt;</span> <span class="var">cfProduct</span> <span class="punct">=</span>
+            <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">productSvc</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">skuId</span><span class="punct">),</span> <span class="var">ioPool</span><span class="punct">)</span>
+                <span class="punct">.</span><span class="fn">completeOnTimeout</span><span class="punct">(</span><span class="ty">Product</span><span class="punct">.</span><span class="fn">empty</span><span class="punct">(),</span> <span class="num">2</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">)</span>
+                <span class="punct">.</span><span class="fn">exceptionally</span><span class="punct">(</span><span class="var">ex</span> <span class="punct">-&gt; {</span>
+                    <span class="var">log</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"product svc error"</span><span class="punct">,</span> <span class="var">ex</span><span class="punct">);</span>
+                    <span class="kw">return</span> <span class="ty">Product</span><span class="punct">.</span><span class="fn">empty</span><span class="punct">();</span>
+                <span class="punct">});</span>
+
+        <span class="ty">CompletableFuture</span><span class="punct">&lt;</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Rec</span><span class="punct">&gt;&gt;</span> <span class="var">cfRec</span> <span class="punct">=</span>
+            <span class="ty">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(() -&gt;</span> <span class="fn">recSvc</span><span class="punct">.</span><span class="fn">list</span><span class="punct">(</span><span class="var">userId</span><span class="punct">),</span> <span class="var">ioPool</span><span class="punct">)</span>
+                <span class="punct">.</span><span class="fn">completeOnTimeout</span><span class="punct">(</span><span class="ty">Collections</span><span class="punct">.</span><span class="fn">emptyList</span><span class="punct">(),</span> <span class="num">2</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">)</span>
+                <span class="punct">.</span><span class="fn">exceptionally</span><span class="punct">(</span><span class="var">ex</span> <span class="punct">-&gt; {</span>
+                    <span class="var">log</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"rec svc error"</span><span class="punct">,</span> <span class="var">ex</span><span class="punct">);</span>
+                    <span class="kw">return</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">emptyList</span><span class="punct">();</span>
+                <span class="punct">});</span>
+
+        <span class="com">// 等两个都完成，合并返回</span>
+        <span class="kw">return</span> <span class="var">cfProduct</span><span class="punct">.</span><span class="fn">thenCombine</span><span class="punct">(</span><span class="var">cfRec</span><span class="punct">, (</span><span class="var">p</span><span class="punct">,</span> <span class="var">r</span><span class="punct">) -&gt;</span>
+            <span class="kw">new</span> <span class="ty">HomePageVO</span><span class="punct">(</span><span class="var">p</span><span class="punct">,</span> <span class="var">r</span><span class="punct">)</span>
+        <span class="punct">).</span><span class="fn">join</span><span class="punct">();</span>  <span class="com">// Controller 层统一等待，业务线程只在此处短暂阻塞</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>实践建议：</strong>在 Spring MVC / Spring WebFlux 的 Controller 里，如果已经有 Servlet 线程池，不必一定把最后的 join() 改成非阻塞——<strong>把耗时操作并发化本身就是主要收益</strong>。真正需要全链路非阻塞的场景，请考虑 Project Reactor（Mono/Flux）或 Kotlin 协程。
+  </div>
+
+  <!-- ===== 10. 对比 Future ===== -->
+  <h2>10. CompletableFuture vs Future 对比</h2>
+
+  <table>
+    <thead>
+      <tr><th>能力</th><th>Future / FutureTask</th><th>CompletableFuture</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>获取结果</td><td>get()，必须阻塞</td><td>join() 或链式回调，可不阻塞</td></tr>
+      <tr><td>链式编排</td><td>不支持</td><td>thenApply / thenCompose / …</td></tr>
+      <tr><td>并行聚合</td><td>手动循环 get()</td><td>allOf / anyOf / thenCombine</td></tr>
+      <tr><td>异常处理</td><td>catch ExecutionException</td><td>exceptionally / handle，链式统一</td></tr>
+      <tr><td>超时</td><td>get(timeout) 阻塞</td><td>orTimeout / completeOnTimeout（非阻塞）</td></tr>
+      <tr><td>手动完成</td><td>不支持</td><td>complete(v) / completeExceptionally(e)</td></tr>
+      <tr><td>适用场景</td><td>简单单任务异步</td><td>多任务编排、微服务聚合、异步流水线</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 面试 ===== -->
+  <h2>11. 面试高频考点</h2>
+
+  <ul>
+    <li><strong>thenApply vs thenCompose：</strong>前者同步变换结果，后者用于下游也是异步操作（避免 CF 嵌套）</li>
+    <li><strong>thenApply vs thenApplyAsync：</strong>前者在上游线程执行（行为不确定），后者强制提交到线程池（推荐）</li>
+    <li><strong>allOf 的返回类型为何是 CF&lt;Void&gt;：</strong>因为各子 CF 泛型不同，无法统一类型；需要自己在回调里逐个 join() 子 CF</li>
+    <li><strong>默认线程池的危险：</strong>无 Executor 参数时使用 ForkJoinPool.commonPool()，IO 操作会造成全局线程饥饿</li>
+    <li><strong>join() vs get()：</strong>join() 抛 unchecked CompletionException，适合链式；get() 抛 checked，适合需要区分中断的场景</li>
+    <li><strong>CompletableFuture 是否取消：</strong>cancel() 只设置 CancellationException，不会真正中断正在执行的任务（与 Future.cancel(true) 语义不同）</li>
+  </ul>
+
+  <hr />
+
+  <!-- nav -->
+  <div class="nav-footer">
+    <a href="./02-Callable-Future.html" class="nav-btn">← 02. Callable / Future / FutureTask</a>
+    <a href="./04-ThreadPoolExecutor.html" class="nav-btn next">04. ThreadPoolExecutor 七大参数 →</a>
+  </div>
+
+</div>
+</body>
+</html>

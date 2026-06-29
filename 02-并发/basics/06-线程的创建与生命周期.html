@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>06. 线程的创建与生命周期 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part I 基础知识 / 线程基础
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part I 基础知识 · 线程基础</div>
+    <h1>06. 线程的创建与生命周期</h1>
+    <p>从 OS 调度单元到 JVM 线程模型——搞清楚线程是怎么生出来的、怎么活着、怎么死掉，是一切并发编程的起点。</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>为什么需要"线程"这个抽象</h2>
+
+  <p>
+    上一节讲过，进程的切换代价很高：虚拟内存映射、文件描述符表都要跟着换。
+    <strong>线程的设计目标就是：在同一进程内，提供多条独立的执行流，同时共享堆内存与文件资源。</strong>
+  </p>
+  <p>
+    这个设计决定了线程的两个核心特征，也是之后所有并发问题的根源：
+  </p>
+  <ul>
+    <li><strong>共享堆（heap）</strong>：数据交换成本低，但竞态条件从这里开始</li>
+    <li><strong>独占栈（stack）</strong>：局部变量天然隔离，无需同步</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>JVM 线程 vs OS 线程：</strong>现代 JVM（HotSpot）采用 <strong>1:1 映射</strong>——每个 Java 线程对应一个内核线程（KLT）。调度完全由操作系统负责，Java 层面无法控制具体在哪个 CPU 上跑。这也是 Java 19+ 引入虚拟线程（Project Loom）的动机：M:N 映射，用少量 KLT 承载海量 VThread。
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>线程的三种创建方式</h2>
+
+  <h3>方式一：继承 Thread（不推荐用于生产）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>继承 Thread</span></div>
+    <pre><span class="com">// 反例：把"任务"和"线程载体"耦合在一起</span>
+<span class="kw">class</span> <span class="ty">PrintTask</span> <span class="kw">extends</span> <span class="ty">Thread</span> <span class="punct">{</span>
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">run</span><span class="punct">() {</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"running in: "</span> <span class="punct">+</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">getName</span><span class="punct">());</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 问题：Java 是单继承，PrintTask 再也无法继承其他类</span>
+<span class="kw">new</span> <span class="ty">PrintTask</span><span class="punct">().</span><span class="fn">start</span><span class="punct">();</span></pre>
+  </div>
+
+  <h3>方式二：实现 Runnable（推荐，任务与线程解耦）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>实现 Runnable</span></div>
+    <pre><span class="com">// 正例：Runnable 描述"要做什么"，Thread 描述"谁来跑"</span>
+<span class="ty">Runnable</span> <span class="var">task</span> <span class="punct">=</span> <span class="punct">()</span> <span class="punct">-&gt;</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"hello from "</span> <span class="punct">+</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">getName</span><span class="punct">());</span>
+
+<span class="ty">Thread</span> <span class="var">t</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(</span><span class="var">task</span><span class="punct">,</span> <span class="str">"worker-1"</span><span class="punct">);</span>
+<span class="var">t</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>  <span class="com">// 通知 JVM 创建 OS 线程并调度，并非立即执行</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：<code>run()</code> vs <code>start()</code></strong><br>
+    直接调 <code>t.run()</code> 不会创建新线程，任务在当前线程同步执行——这是初学者最常踩的坑，也是面试必考点。
+  </div>
+
+  <h3>方式三：实现 Callable + FutureTask（可获取返回值）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>Callable + FutureTask</span></div>
+    <pre><span class="ty">Callable</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">calc</span> <span class="punct">=</span> <span class="punct">()</span> <span class="punct">-&gt;</span> <span class="punct">{</span>
+    <span class="com">// 模拟耗时计算</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">500</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="num">42</span><span class="punct">;</span>
+<span class="punct">};</span>
+
+<span class="ty">FutureTask</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">future</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FutureTask</span><span class="punct">&lt;&gt;(</span><span class="var">calc</span><span class="punct">);</span>
+<span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(</span><span class="var">future</span><span class="punct">,</span> <span class="str">"calc-thread"</span><span class="punct">).</span><span class="fn">start</span><span class="punct">();</span>
+
+<span class="com">// 主线程可以做别的事，再来取结果</span>
+<span class="ty">Integer</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">future</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>  <span class="com">// 阻塞直到任务完成</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"result = "</span> <span class="punct">+</span> <span class="var">result</span><span class="punct">);</span>  <span class="com">// 42</span></pre>
+  </div>
+
+  <p>
+    <code>Callable</code> 相比 <code>Runnable</code> 多了两点：<strong>有返回值</strong>、<strong>可抛受检异常</strong>。
+    <code>FutureTask</code> 同时实现了 <code>Runnable</code> 和 <code>Future</code>，是它们之间的桥梁。
+  </p>
+
+  <h3>三种方式对比</h3>
+  <table>
+    <tr>
+      <th>方式</th><th>返回值</th><th>异常处理</th><th>可复用任务对象</th><th>推荐场景</th>
+    </tr>
+    <tr>
+      <td><code>extends Thread</code></td><td>无</td><td>只能 try-catch</td><td>否（线程即任务）</td><td>学习演示</td>
+    </tr>
+    <tr>
+      <td><code>Runnable</code></td><td>无</td><td>只能 try-catch</td><td>是</td><td>提交给线程池</td>
+    </tr>
+    <tr>
+      <td><code>Callable</code></td><td>有</td><td>可抛受检异常</td><td>是</td><td>需要结果 / 异常传播</td>
+    </tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>实际工程中几乎不直接 new Thread：</strong>应当用 <code>ExecutorService</code>（线程池）统一管理线程的生命周期，避免线程数失控。
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>线程生命周期的六个状态</h2>
+
+  <p>
+    Java 用枚举 <code>Thread.State</code> 定义了六个状态，这与操作系统层面的"就绪/运行"合并成了同一个 <code>RUNNABLE</code>——因为 JVM 无法感知 OS 调度细节。
+  </p>
+
+  <div class="tree">
+    <span class="hi">NEW</span>
+    &nbsp;──<span class="hi"> start()</span> ──────────────────&gt; <span class="hi">RUNNABLE</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;↑ 获得 CPU
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│ 失去锁/等通知 ↓
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="hi">BLOCKED</span> / <span class="hi">WAITING</span> / <span class="hi">TIMED_WAITING</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│ 条件满足
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ run() 返回 / 抛出未捕获异常
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="hi">TERMINATED</span>
+  </div>
+
+  <table>
+    <tr>
+      <th>状态</th><th>含义</th><th>如何进入</th><th>如何离开</th>
+    </tr>
+    <tr>
+      <td><code>NEW</code></td>
+      <td>线程对象已创建，OS 线程尚未启动</td>
+      <td><code>new Thread()</code></td>
+      <td>调用 <code>start()</code></td>
+    </tr>
+    <tr>
+      <td><code>RUNNABLE</code></td>
+      <td>可运行（含在 CPU 上执行 + 等待 CPU 调度）</td>
+      <td><code>start()</code> / 锁/IO 恢复</td>
+      <td>主动阻塞 / 任务完成</td>
+    </tr>
+    <tr>
+      <td><code>BLOCKED</code></td>
+      <td>等待进入 <code>synchronized</code> 块/方法</td>
+      <td>争锁失败</td>
+      <td>获得 monitor</td>
+    </tr>
+    <tr>
+      <td><code>WAITING</code></td>
+      <td>无限期等待另一线程通知</td>
+      <td><code>Object.wait()</code> / <code>LockSupport.park()</code> / <code>Thread.join()</code>（无超时）</td>
+      <td><code>notify()</code> / <code>unpark()</code> / 被 join 的线程结束</td>
+    </tr>
+    <tr>
+      <td><code>TIMED_WAITING</code></td>
+      <td>有超时的等待</td>
+      <td><code>sleep(ms)</code> / <code>wait(ms)</code> / <code>join(ms)</code></td>
+      <td>超时或被唤醒</td>
+    </tr>
+    <tr>
+      <td><code>TERMINATED</code></td>
+      <td>线程已结束，不可重启</td>
+      <td><code>run()</code> 正常返回或异常退出</td>
+      <td>—（终态）</td>
+    </tr>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2>BLOCKED vs WAITING：两者的本质区别</h2>
+
+  <p>这是面试高频考点，很多人混淆。一句话区分：</p>
+  <ul>
+    <li><strong>BLOCKED</strong>：被动等锁，由 JVM/OS 控制，不需要显式唤醒——只要锁释放，竞争者自动醒来</li>
+    <li><strong>WAITING</strong>：主动挂起，必须有对应的 <code>notify()</code> / <code>unpark()</code> 才能恢复，否则永远等下去</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>观察状态</span></div>
+    <pre><span class="ty">Object</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+
+<span class="ty">Thread</span> <span class="var">blocker</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(()</span> <span class="punct">-&gt; {</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lock</span><span class="punct">) {</span>
+        <span class="kw">try</span> <span class="punct">{</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">5000</span><span class="punct">); }</span>
+        <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {}</span>
+    <span class="punct">}</span>
+<span class="punct">},</span> <span class="str">"holder"</span><span class="punct">);</span>
+
+<span class="ty">Thread</span> <span class="var">contender</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(()</span> <span class="punct">-&gt; {</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lock</span><span class="punct">) {}</span>  <span class="com">// 争不到锁 → BLOCKED</span>
+<span class="punct">},</span> <span class="str">"contender"</span><span class="punct">);</span>
+
+<span class="var">blocker</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+<span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">100</span><span class="punct">);</span>  <span class="com">// 确保 holder 先拿到锁</span>
+<span class="var">contender</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+<span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">100</span><span class="punct">);</span>
+
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">contender</span><span class="punct">.</span><span class="fn">getState</span><span class="punct">());</span>  <span class="com">// BLOCKED</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">blocker</span><span class="punct">.</span><span class="fn">getState</span><span class="punct">());</span>    <span class="com">// TIMED_WAITING (sleep)</span></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>线程属性：守护线程、优先级、中断标志</h2>
+
+  <h3>守护线程（Daemon Thread）</h3>
+  <p>
+    普通线程（用户线程）存活期间，JVM 不会退出。<strong>守护线程则相反：所有用户线程结束后，JVM 会强制终止所有守护线程并退出。</strong>
+    典型守护线程是 GC 线程、finalizer 线程。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>守护线程陷阱</span></div>
+    <pre><span class="ty">Thread</span> <span class="var">daemon</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(()</span> <span class="punct">-&gt; {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">10_000</span><span class="punct">);</span>
+        <span class="com">// ⚠️ 这行代码可能永远不会执行</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"done"</span><span class="punct">);</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {}</span>
+<span class="punct">});</span>
+<span class="com">// 必须在 start() 之前设置，否则抛 IllegalThreadStateException</span>
+<span class="var">daemon</span><span class="punct">.</span><span class="fn">setDaemon</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span>
+<span class="var">daemon</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+
+<span class="com">// 主线程结束 → JVM 退出 → daemon 被强杀，"done" 不会打印</span></pre>
+  </div>
+
+  <h3>线程优先级</h3>
+  <p>
+    Java 提供 1–10 的优先级（默认 5），但<strong>优先级只是对 OS 调度器的"建议"，不保证执行顺序</strong>。
+    不同 OS 对优先级的映射差异巨大（Linux 甚至会忽略），生产代码不应依赖优先级来保证正确性。
+  </p>
+
+  <h3>中断机制（Interruption）</h3>
+  <p>
+    Java 没有提供强制停止线程的 API（<code>Thread.stop()</code> 已废弃，因为它会破坏锁的语义）。
+    正确的停止方式是<strong>协作式中断</strong>：通过中断标志通知线程"请你自己停下来"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>反例 vs 正例：如何停止线程</span></div>
+    <pre><span class="com">// ❌ 反例：用 volatile 标志位（无法中断阻塞状态的线程）</span>
+<span class="kw">volatile boolean</span> <span class="var">stopped</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+<span class="ty">Thread</span> <span class="var">bad</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(()</span> <span class="punct">-&gt; {</span>
+    <span class="kw">while</span> <span class="punct">(!</span><span class="var">stopped</span><span class="punct">) {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="com">// 如果阻塞在这里，stopped=true 后线程依然不会退出</span>
+            <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {}</span>
+    <span class="punct">}</span>
+<span class="punct">});</span>
+
+<span class="com">// ✅ 正例：使用 interrupt() 协作停止</span>
+<span class="ty">Thread</span> <span class="var">good</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(()</span> <span class="punct">-&gt; {</span>
+    <span class="kw">while</span> <span class="punct">(!</span><span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">isInterrupted</span><span class="punct">()) {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="com">// sleep/wait 抛出 IE 后会清除中断标志，需要重新设置</span>
+            <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+            <span class="kw">break</span><span class="punct">;</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">});</span>
+<span class="var">good</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+<span class="var">good</span><span class="punct">.</span><span class="fn">interrupt</span><span class="punct">();</span>  <span class="com">// 通知线程停止</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>中断标志被"吃掉"是常见陷阱</strong><br>
+    当 <code>sleep()</code>/<code>wait()</code>/<code>join()</code> 因中断而抛出 <code>InterruptedException</code> 时，<strong>中断标志会被自动清除</strong>。
+    如果 catch 块什么都不做，调用者就无法感知到这次中断。要么重新设置标志（<code>Thread.currentThread().interrupt()</code>），要么直接向上抛出异常。
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>start() 背后发生了什么</h2>
+
+  <p>
+    调用 <code>t.start()</code> 是一条 JNI 调用链，最终到达 OS 创建内核线程：
+  </p>
+
+  <div class="tree">
+    <span class="hi">Thread.start()</span>  <span class="com">// Java 层</span>
+    &nbsp;&nbsp;└─ <span class="hi">start0()</span>  <span class="com">// native 方法 (JNI)</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <span class="hi">JVM_StartThread</span>  <span class="com">// JVM 内部 (thread.cpp)</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <span class="hi">os::create_thread()</span>  <span class="com">// OS 抽象层</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <span class="hi">pthread_create()</span>  <span class="com">// Linux 内核线程</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 内核分配 task_struct，加入调度队列
+  </div>
+
+  <p>
+    整个过程会在 JVM 堆外为新线程分配<strong>线程私有栈</strong>（默认 512KB–1MB，可用 <code>-Xss</code> 调整）。
+    这也是为什么线程不能无限创建——每个线程都要消耗一块连续的原生内存。
+  </p>
+
+  <!-- ============================================================ -->
+  <h2>线程数量的代价：从 Thread 到 ThreadPool</h2>
+
+  <p>每个 Java 线程背后的成本：</p>
+  <ul>
+    <li><strong>内存</strong>：栈空间（默认约 512KB），4000 个线程 = ~2GB 栈内存</li>
+    <li><strong>创建/销毁</strong>：<code>pthread_create</code> 涉及系统调用，耗时约 50–100μs</li>
+    <li><strong>上下文切换</strong>：寄存器保存/恢复，L1/L2 Cache 失效，吞吐量下降</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>正确做法：使用线程池</span></div>
+    <pre><span class="com">// 用 ExecutorService 管理线程，复用已有线程，控制并发上限</span>
+<span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="num">4</span><span class="punct">);</span>
+
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">100</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+    <span class="kw">final int</span> <span class="var">id</span> <span class="punct">=</span> <span class="var">i</span><span class="punct">;</span>
+    <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(()</span> <span class="punct">-&gt;</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"task "</span> <span class="punct">+</span> <span class="var">id</span> <span class="punct">+</span> <span class="str">" on "</span>
+            <span class="punct">+</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">getName</span><span class="punct">())</span>
+    <span class="punct">);</span>
+<span class="punct">}</span>
+<span class="var">pool</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>  <span class="com">// 等待已提交任务完成后关闭</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>Java 21 虚拟线程（Virtual Thread）</strong><br>
+    <code>Thread.ofVirtual().start(runnable)</code> 创建的虚拟线程由 JVM 调度，挂载在少量平台线程上。
+    阻塞时自动卸载（unmount），不占用 OS 线程。适合高并发 IO 密集型场景，每个请求一个虚拟线程成为可能。
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>面试高频考点总结</h2>
+
+  <ul>
+    <li><strong>start() vs run()</strong>：<code>start()</code> 创建新线程，<code>run()</code> 在当前线程同步调用</li>
+    <li><strong>线程能否重启</strong>：不能。TERMINATED 是终态，再次调 <code>start()</code> 会抛 <code>IllegalThreadStateException</code></li>
+    <li><strong>BLOCKED vs WAITING</strong>：前者等锁（JVM/OS 自动管理），后者等通知（需显式唤醒）</li>
+    <li><strong>守护线程不保证 finally</strong>：JVM 强杀时 finally 块不一定执行，不要在守护线程里做资源清理</li>
+    <li><strong>中断标志被清除</strong>：catch InterruptedException 后必须处理（重设标志或向上抛），不能吞掉</li>
+    <li><strong>线程优先级不可靠</strong>：不要用优先级保证执行顺序，这是平台相关行为</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-进程vs线程.html" class="nav-btn">← 05. 进程 vs 线程 · 为什么需要并发</a>
+    <a href="./07-线程安全的定义.html" class="nav-btn next">07. 线程安全的定义（原子性 / 可见性 / 有序性） →</a>
+  </div>
+
+</div>
+</body>
+</html>

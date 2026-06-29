@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>03. ReentrantReadWriteLock 读写锁 — Java 并发</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #c084fc; }
+    p code, li code { color: #c084fc; }
+    h2 { color: #c084fc; border-left-color: #c084fc; }
+    .hero .tag { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 显式锁
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 显式锁</div>
+    <h1>03. ReentrantReadWriteLock 读写锁</h1>
+    <p>允许多个读者并发访问，同时保证写者独占——用"读多写少"的业务特征换吞吐量。</p>
+  </div>
+
+  <!-- 1. 为什么需要读写锁 -->
+  <h2>为什么需要读写锁</h2>
+  <p>
+    互斥锁（<code>synchronized</code> / <code>ReentrantLock</code>）的语义是：<strong>任一时刻只有一个线程持锁</strong>。
+    这对"写"操作是必要的——写会改变共享状态，必须排他。
+    但对"读"操作来说，多个线程同时读<strong>不会产生数据竞争</strong>，互斥锁把本可并发的读操作全部串行化了，白白浪费了 CPU。
+  </p>
+  <p>
+    读写锁把锁拆成两把：<strong>读锁（共享锁）</strong> 和 <strong>写锁（排他锁）</strong>，
+    只要没有写者，所有读者可以同时持有读锁；一旦有写者，读者和其他写者都必须等待。
+  </p>
+
+  <div class="callout info">
+    典型场景：缓存、配置中心、数据字典——读 QPS 远大于写 QPS。
+    把互斥锁换成读写锁，读并发数可直接等于 CPU 核心数，吞吐量成倍提升。
+  </div>
+
+  <!-- 2. 三条核心规则 -->
+  <h2>三条核心规则</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>当前持锁状态</th>
+        <th>新请求：读锁</th>
+        <th>新请求：写锁</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>无锁</td>
+        <td>允许</td>
+        <td>允许</td>
+      </tr>
+      <tr>
+        <td>有线程持读锁（可多个）</td>
+        <td>允许（共享）</td>
+        <td><strong>阻塞</strong>（必须等所有读者释放）</td>
+      </tr>
+      <tr>
+        <td>有线程持写锁（仅一个）</td>
+        <td><strong>阻塞</strong></td>
+        <td><strong>阻塞</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>记忆口诀：<strong>读读不互斥，读写、写写互斥。</strong></p>
+
+  <!-- 3. AQS 内部实现原理 -->
+  <h2>AQS 内部实现原理</h2>
+  <p>
+    <code>ReentrantReadWriteLock</code> 基于 <code>AbstractQueuedSynchronizer</code>（AQS）实现，
+    它用一个 <code>int state</code>（32 位）<strong>同时编码读锁和写锁的持有计数</strong>：
+  </p>
+
+  <div class="tree">
+    state（32 bit）
+    ├── <span class="hi">高 16 位</span>  →  共享读锁持有线程数（读锁计数）
+    └── <span class="hi">低 16 位</span>  →  独占写锁重入次数（写锁计数）
+  </div>
+
+  <p>
+    读锁加锁：<code>state + (1 &lt;&lt; 16)</code>，CAS 更新高 16 位；
+    写锁加锁：<code>state + 1</code>，CAS 更新低 16 位，且要求高 16 位为 0（没有读者）。
+  </p>
+  <p>
+    这就是为什么读写锁最多支持 <code>65535</code> 个并发读线程或 65535 次写重入——超出会抛
+    <code>Error</code>。实践中不会触达此限制。
+  </p>
+
+  <!-- 4. API 速览 -->
+  <h2>API 速览</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>ReentrantReadWriteLock 结构</span></div>
+    <pre><span class="ty">ReentrantReadWriteLock</span> <span class="var">rwLock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantReadWriteLock</span><span class="punct">();</span>
+
+<span class="ty">Lock</span> <span class="var">readLock</span>  <span class="punct">=</span> <span class="var">rwLock</span><span class="punct">.</span><span class="fn">readLock</span><span class="punct">();</span>   <span class="com">// 共享锁</span>
+<span class="ty">Lock</span> <span class="var">writeLock</span> <span class="punct">=</span> <span class="var">rwLock</span><span class="punct">.</span><span class="fn">writeLock</span><span class="punct">();</span>  <span class="com">// 排他锁</span>
+
+<span class="com">// 读锁操作（与 ReentrantLock 接口一致）</span>
+<span class="var">readLock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+<span class="var">readLock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+<span class="var">readLock</span><span class="punct">.</span><span class="fn">tryLock</span><span class="punct">();</span>
+<span class="var">readLock</span><span class="punct">.</span><span class="fn">tryLock</span><span class="punct">(</span><span class="num">100</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">);</span>
+
+<span class="com">// 写锁额外能力：支持降级为读锁（见后文）</span>
+<span class="var">writeLock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+<span class="var">writeLock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+
+<span class="com">// 监控</span>
+<span class="var">rwLock</span><span class="punct">.</span><span class="fn">getReadLockCount</span><span class="punct">();</span>    <span class="com">// 当前读锁持有数</span>
+<span class="var">rwLock</span><span class="punct">.</span><span class="fn">isWriteLocked</span><span class="punct">();</span>        <span class="com">// 写锁是否被持有</span>
+<span class="var">rwLock</span><span class="punct">.</span><span class="fn">getWriteHoldCount</span><span class="punct">();</span>    <span class="com">// 当前线程写锁重入次数</span></pre>
+  </div>
+
+  <!-- 5. 正例：缓存实现 -->
+  <h2>正例：线程安全的本地缓存</h2>
+  <p>这是读写锁最经典的用法——用读锁保护批量读操作，用写锁保护更新操作。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>ReadWriteCache.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ReadWriteCache</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt; {</span>
+
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt;</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+    <span class="kw">private final</span> <span class="ty">ReentrantReadWriteLock</span> <span class="var">rwLock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantReadWriteLock</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Lock</span> <span class="var">r</span> <span class="punct">=</span> <span class="var">rwLock</span><span class="punct">.</span><span class="fn">readLock</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Lock</span> <span class="var">w</span> <span class="punct">=</span> <span class="var">rwLock</span><span class="punct">.</span><span class="fn">writeLock</span><span class="punct">();</span>
+
+    <span class="kw">public</span> <span class="ty">V</span> <span class="fn">get</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">) {</span>
+        <span class="var">r</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>                  <span class="com">// 多个读线程可同时进入</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">return</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">r</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">,</span> <span class="ty">V</span> <span class="var">value</span><span class="punct">) {</span>
+        <span class="var">w</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>                  <span class="com">// 排他：读者和写者全部阻塞</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">value</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">w</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>            <span class="com">// 务必在 finally 里解锁</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="com">/** 批量预热：一次写锁保护整个批量操作，比逐条 put 更高效 */</span>
+    <span class="kw">public void</span> <span class="fn">putAll</span><span class="punct">(</span><span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt;</span> <span class="var">data</span><span class="punct">) {</span>
+        <span class="var">w</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="var">cache</span><span class="punct">.</span><span class="fn">putAll</span><span class="punct">(</span><span class="var">data</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">w</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 6. 锁降级 -->
+  <h2>锁降级：写锁 → 读锁</h2>
+  <p>
+    锁降级指：<strong>持有写锁的线程，先获取读锁，再释放写锁</strong>，从而"降级"到读锁状态。
+    这样可以保证：写完数据后，当前线程能立刻以读锁读到自己刚写的值，
+    同时不让其他写线程在这个窗口内修改数据，避免"写完立刻被别人覆盖再读"的竞态。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>锁降级模板（官方推荐写法）</span></div>
+    <pre><span class="ty">ReentrantReadWriteLock</span> <span class="var">rwLock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantReadWriteLock</span><span class="punct">();</span>
+<span class="ty">Lock</span> <span class="var">r</span> <span class="punct">=</span> <span class="var">rwLock</span><span class="punct">.</span><span class="fn">readLock</span><span class="punct">();</span>
+<span class="ty">Lock</span> <span class="var">w</span> <span class="punct">=</span> <span class="var">rwLock</span><span class="punct">.</span><span class="fn">writeLock</span><span class="punct">();</span>
+<span class="kw">volatile boolean</span> <span class="var">cacheValid</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+<span class="ty">Object</span> <span class="var">data</span><span class="punct">;</span>
+
+<span class="kw">void</span> <span class="fn">processCachedData</span><span class="punct">() {</span>
+    <span class="var">r</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+    <span class="kw">if</span> <span class="punct">(!</span><span class="var">cacheValid</span><span class="punct">) {</span>
+        <span class="com">// 必须先释放读锁才能申请写锁（不能锁升级！）</span>
+        <span class="var">r</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="var">w</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">if</span> <span class="punct">(!</span><span class="var">cacheValid</span><span class="punct">) {</span>  <span class="com">// 二次检查，防止重复刷新</span>
+                <span class="var">data</span> <span class="punct">=</span> <span class="fn">loadFromDB</span><span class="punct">();</span>
+                <span class="var">cacheValid</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>
+            <span class="punct">}</span>
+            <span class="com">// ① 持有写锁期间先获取读锁 —— 降级开始</span>
+            <span class="var">r</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="com">// ② 释放写锁，此时仍持有读锁</span>
+            <span class="var">w</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">use</span><span class="punct">(</span><span class="var">data</span><span class="punct">);</span>             <span class="com">// ③ 以读锁保护后续使用</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">r</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>           <span class="com">// ④ 最终释放读锁</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>降级的关键顺序：</strong>获取读锁 → 释放写锁 → 使用数据 → 释放读锁。
+    先释放写锁再获取读锁则不算降级，中间有窗口期可被其他写线程抢占。
+  </div>
+
+  <!-- 7. 陷阱 -->
+  <h2>并发陷阱与反例</h2>
+
+  <h3>陷阱 1：试图"锁升级"——死锁</h3>
+  <p>
+    <code>ReentrantReadWriteLock</code> <strong>不支持锁升级</strong>（读锁 → 写锁）。
+    如果持有读锁的线程尝试再获取写锁，写锁必须等所有读锁释放，而自己又是读者之一，永远等不到——死锁。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例</span><span>锁升级导致死锁</span></div>
+    <pre><span class="var">r</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>           <span class="com">// 持有读锁</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="com">// ... 读操作 ...</span>
+    <span class="var">w</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>       <span class="ann">// ❌ 死锁！写锁等待读锁全部释放，但自己就是读者</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="com">// ... 永远到不了这里 ...</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span> <span class="var">w</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span> <span class="punct">}</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span> <span class="var">r</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span> <span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>正确做法：</strong>先完整释放读锁，再重新获取写锁（中间有窗口期，需二次检查状态）。</p>
+
+  <h3>陷阱 2：读锁内忘记 finally——锁泄漏</h3>
+  <p>
+    读锁和写锁都必须在 <code>finally</code> 块中释放。
+    读锁泄漏会导致后续所有写操作永久阻塞，表现为系统写功能"卡死"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例 vs 正例</span><span>锁泄漏</span></div>
+    <pre><span class="com">// ❌ 反例：异常时读锁永远不释放</span>
+<span class="var">r</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+<span class="ty">V</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>  <span class="com">// 若这里抛异常……</span>
+<span class="var">r</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>                    <span class="ann">// ← 这行永远不会执行！</span>
+
+<span class="com">// ✅ 正例：finally 保证一定释放</span>
+<span class="var">r</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">return</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="var">r</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱 3：写者饥饿（非公平模式）</h3>
+  <p>
+    默认非公平模式下，读锁是"连续可插队"的：只要当前有读者，新来的读者可以不排队直接进入。
+    如果读请求持续不断，写者可能长时间抢不到写锁，造成<strong>写者饥饿</strong>。
+  </p>
+  <p>
+    解决方案：构造时传入 <code>true</code> 开启公平模式，或改用 JDK 8+ 的
+    <code>StampedLock</code>（乐观读，写者优先）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>公平模式</span></div>
+    <pre><span class="com">// 公平模式：所有线程按 FIFO 排队，写者不会饿死</span>
+<span class="com">// 代价：读读操作也要排队，吞吐量低于非公平模式</span>
+<span class="ty">ReentrantReadWriteLock</span> <span class="var">fairLock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantReadWriteLock</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span></pre>
+  </div>
+
+  <h3>陷阱 4：读锁不支持 Condition</h3>
+  <p>
+    <code>readLock().newCondition()</code> 会直接抛出
+    <code>UnsupportedOperationException</code>。
+    <code>Condition</code> 只能配合写锁（排他锁）使用，原因是共享锁语义下无法安全地实现等待/唤醒队列。
+    如果需要在读写锁中使用条件等待，只能在写锁侧创建 <code>Condition</code>。
+  </p>
+
+  <!-- 8. 与 synchronized / ReentrantLock 对比 -->
+  <h2>与其他锁的横向对比</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>特性</th>
+        <th><code>synchronized</code></th>
+        <th><code>ReentrantLock</code></th>
+        <th><code>ReentrantReadWriteLock</code></th>
+        <th><code>StampedLock</code> (JDK8)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>读并发</td>
+        <td>串行</td>
+        <td>串行</td>
+        <td><strong>并发</strong></td>
+        <td>乐观并发（最高）</td>
+      </tr>
+      <tr>
+        <td>写排他</td>
+        <td>是</td>
+        <td>是</td>
+        <td>是</td>
+        <td>是</td>
+      </tr>
+      <tr>
+        <td>可重入</td>
+        <td>是</td>
+        <td>是</td>
+        <td>写锁可重入；读锁可重入</td>
+        <td>否</td>
+      </tr>
+      <tr>
+        <td>锁降级</td>
+        <td>不支持</td>
+        <td>不支持</td>
+        <td><strong>支持</strong></td>
+        <td>支持（转换）</td>
+      </tr>
+      <tr>
+        <td>Condition</td>
+        <td>Object.wait/notify</td>
+        <td>支持</td>
+        <td>仅写锁支持</td>
+        <td>不支持</td>
+      </tr>
+      <tr>
+        <td>写者饥饿风险</td>
+        <td>无</td>
+        <td>无</td>
+        <td>非公平模式有</td>
+        <td>无（写者优先）</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>通用</td>
+        <td>通用增强</td>
+        <td><strong>读多写少</strong></td>
+        <td>极致读多写少</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 9. 完整示例：带 LoadingCache 语义的缓存 -->
+  <h2>进阶示例：带 LoadingCache 语义的安全缓存</h2>
+  <p>
+    实际业务中，缓存未命中时需要从数据库加载，同时要防止<strong>缓存击穿</strong>（同一 key 同时大量请求打到 DB）。
+    下面结合读写锁和二次检查实现这一目标：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>LoadingReadWriteCache.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">LoadingReadWriteCache</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt; {</span>
+
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt;</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+    <span class="kw">private final</span> <span class="ty">ReentrantReadWriteLock</span> <span class="var">rwLock</span>
+            <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantReadWriteLock</span><span class="punct">();</span>
+    <span class="kw">private final</span> <span class="ty">Function</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt;</span> <span class="var">loader</span><span class="punct">;</span>  <span class="com">// DB 加载函数</span>
+
+    <span class="kw">public</span> <span class="ty">LoadingReadWriteCache</span><span class="punct">(</span><span class="ty">Function</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span> <span class="ty">V</span><span class="punct">&gt;</span> <span class="var">loader</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">loader</span> <span class="punct">=</span> <span class="var">loader</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">V</span> <span class="fn">get</span><span class="punct">(</span><span class="ty">K</span> <span class="var">key</span><span class="punct">) {</span>
+        <span class="com">// 第一次：读锁快速检查</span>
+        <span class="var">rwLock</span><span class="punct">.</span><span class="fn">readLock</span><span class="punct">().</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="ty">V</span> <span class="var">val</span> <span class="punct">=</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">val</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="kw">return</span> <span class="var">val</span><span class="punct">;</span>  <span class="com">// 命中，直接返回</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">rwLock</span><span class="punct">.</span><span class="fn">readLock</span><span class="punct">().</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+
+        <span class="com">// 未命中：升级为写锁（先完整释放读锁）</span>
+        <span class="var">rwLock</span><span class="punct">.</span><span class="fn">writeLock</span><span class="punct">().</span><span class="fn">lock</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="com">// 第二次检查：防止多个线程同时到达写锁时重复加载</span>
+            <span class="ty">V</span> <span class="var">val</span> <span class="punct">=</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">val</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+                <span class="var">val</span> <span class="punct">=</span> <span class="var">loader</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>  <span class="com">// 只有真正未命中才调 DB</span>
+                <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">val</span><span class="punct">);</span>
+            <span class="punct">}</span>
+            <span class="kw">return</span> <span class="var">val</span><span class="punct">;</span>
+        <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+            <span class="var">rwLock</span><span class="punct">.</span><span class="fn">writeLock</span><span class="punct">().</span><span class="fn">unlock</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    注意：<code>loader.apply(key)</code> 在写锁内执行，如果 DB 调用耗时很长，写锁会长时间阻塞所有读操作。
+    生产环境通常改用 <code>ConcurrentHashMap.computeIfAbsent</code> 或 Guava <code>LoadingCache</code>，
+    它们以更细粒度的分段锁规避此问题。读写锁版本适合 DB 较快、并发量不极端的场景。
+  </div>
+
+  <!-- 10. 面试高频考点 -->
+  <h2>面试高频考点</h2>
+  <ul>
+    <li><strong>读写锁比互斥锁性能一定更好吗？</strong>不一定。写操作占比高时，读写锁因维护状态开销反而更慢；读多写少时才有优势。</li>
+    <li><strong>ReentrantReadWriteLock 能锁升级吗？</strong>不能，会死锁。只支持锁降级（写→读）。</li>
+    <li><strong>state 高低 16 位设计的好处？</strong>用单个 CAS 原子操作同时读写两个计数，避免额外同步开销。</li>
+    <li><strong>为什么读锁不支持 Condition？</strong>共享锁可被多个线程同时持有，<code>Condition.await()</code> 要求"原子性释放锁并入队等待"，共享语义下此语义无法正确定义。</li>
+    <li><strong>StampedLock 和 ReentrantReadWriteLock 怎么选？</strong>StampedLock 无重入、无 Condition、API 复杂，但乐观读不阻塞写者，适合极高读并发；日常业务首选 RRWL。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 知识树 -->
+  <h2>本节知识树</h2>
+  <div class="tree">
+显式锁体系
+├── Lock / ReentrantLock          (上一节)
+├── <span class="hi">ReentrantReadWriteLock</span>        ← 当前
+│   ├── <span class="hi">读锁（共享）</span>
+│   ├── <span class="hi">写锁（排他）</span>
+│   ├── <span class="hi">锁降级</span>
+│   └── <span class="hi">AQS state 高低位编码</span>
+└── Condition 条件变量             (下一节)
+  </div>
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./02-ReentrantLock.html" class="nav-btn">← 02. Lock / ReentrantLock vs synchronized</a>
+    <a href="./04-Condition.html" class="nav-btn next">04. Condition 条件变量 →</a>
+  </div>
+
+</div>
+</body>
+</html>

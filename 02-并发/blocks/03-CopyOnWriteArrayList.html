@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>03. CopyOnWriteArrayList — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part II 构建模块 / 容器
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part II 构建模块 · 容器</div>
+    <h1>03. CopyOnWriteArrayList</h1>
+    <p>写时复制（Copy-On-Write）—— 以空间换时间的无锁读并发容器，彻底解决「读写互斥」导致的性能瓶颈。</p>
+  </div>
+
+  <!-- 1. 问题背景 -->
+  <h2>为什么需要 CopyOnWriteArrayList？</h2>
+  <p>
+    <strong>并发场景下使用普通 ArrayList 会崩</strong>，而 <code>Collections.synchronizedList</code> 虽然线程安全，
+    却把所有读操作也加了锁——读写完全串行，高并发读的场景下性能极差。
+  </p>
+  <p>
+    生活类比：图书馆里有一本热门参考书，<strong>所有人来查阅都要等前一个人翻完才能进馆</strong>——这就是 <code>synchronizedList</code> 的做法。
+    但如果每次有人要修改这本书时，馆员<strong>先悄悄复印一份新版本改好，再原子替换上架</strong>，那么其他读者始终拿着旧版本自由翻阅，无需等待——这就是 Copy-On-Write。
+  </p>
+
+  <div class="callout info">
+    <strong>核心矛盾：</strong>在「读多写少」场景中，读操作为写操作的锁等待付出了不必要的代价。
+    CopyOnWriteArrayList 用「每次写都复制一份新数组」彻底解耦了读与写。
+  </div>
+
+  <!-- 2. 内部结构 -->
+  <h2>内部结构一览</h2>
+  <p>JDK 源码（简化）核心字段只有两个：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>CopyOnWriteArrayList.java（JDK 源码简化）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">CopyOnWriteArrayList</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt;</span> <span class="kw">implements</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt; {</span>
+
+    <span class="com">// 写操作专用锁，读操作完全不需要它</span>
+    <span class="kw">final transient</span> <span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>
+
+    <span class="com">// volatile 保证写完替换后，所有读线程立即可见新数组引用</span>
+    <span class="kw">private volatile</span> <span class="ty">Object</span><span class="punct">[]</span> <span class="var">array</span><span class="punct">;</span>
+
+    <span class="com">// 读：直接拿数组快照，无锁</span>
+    <span class="kw">public</span> <span class="ty">E</span> <span class="fn">get</span><span class="punct">(</span><span class="kw">int</span> <span class="var">index</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="fn">elementAt</span><span class="punct">(</span><span class="fn">getArray</span><span class="punct">(),</span> <span class="var">index</span><span class="punct">);</span>  <span class="com">// 无锁！</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 写：加锁 → 复制 → 修改 → 替换引用</span>
+    <span class="kw">public boolean</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">E</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lock</span><span class="punct">) {</span>
+            <span class="ty">Object</span><span class="punct">[]</span> <span class="var">es</span> <span class="punct">=</span> <span class="fn">getArray</span><span class="punct">();</span>
+            <span class="kw">int</span> <span class="var">len</span> <span class="punct">=</span> <span class="var">es</span><span class="punct">.</span><span class="var">length</span><span class="punct">;</span>
+            <span class="com">// 关键：复制出新数组，长度 +1</span>
+            <span class="ty">Object</span><span class="punct">[]</span> <span class="var">newEs</span> <span class="punct">=</span> <span class="ty">Arrays</span><span class="punct">.</span><span class="fn">copyOf</span><span class="punct">(</span><span class="var">es</span><span class="punct">,</span> <span class="var">len</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">);</span>
+            <span class="var">newEs</span><span class="punct">[</span><span class="var">len</span><span class="punct">]</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">;</span>
+            <span class="com">// volatile 写，发布新数组引用给所有读线程</span>
+            <span class="fn">setArray</span><span class="punct">(</span><span class="var">newEs</span><span class="punct">);</span>
+            <span class="kw">return true</span><span class="punct">;</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="tree">
+    写操作流程：<br>
+    ┌─ <span class="hi">加锁（ReentrantLock）</span><br>
+    │   ├─ 读取当前 array 引用（快照）<br>
+    │   ├─ Arrays.copyOf → 新数组<br>
+    │   ├─ 在新数组上修改<br>
+    │   └─ <span class="hi">setArray(newArray)  ← volatile 写，刷新主内存</span><br>
+    └─ 解锁<br>
+    <br>
+    读操作流程：<br>
+    └─ <span class="hi">直接读 volatile array 引用 → 无锁访问元素</span>
+  </div>
+
+  <!-- 3. 为什么读不加锁却安全 -->
+  <h2>为什么读操作不加锁也线程安全？</h2>
+  <p>
+    关键在于 <strong>Java 内存模型（JMM）对 volatile 的 happens-before 保证</strong>：
+  </p>
+  <ul>
+    <li>写线程对 <code>array</code> 字段的 <strong>volatile 写</strong>，happens-before 所有后续读线程对 <code>array</code> 字段的读。</li>
+    <li>读线程拿到的是一个<strong>完整的、不可变的数组快照</strong>——这个数组一旦被设置到 <code>array</code> 字段，就再也不会被修改（写操作总是复制出新数组再替换）。</li>
+    <li>因此读线程即使读的是"旧版本"数组，那也是一个合法的完整状态，不存在半初始化的情况。</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>类比 Git：</strong>每次 commit 都产生一个不可变的 snapshot，旧 snapshot 永远合法。
+    读线程就像 checkout 某个历史 commit，始终拿到完整且一致的状态。
+  </div>
+
+  <!-- 4. 实战代码 -->
+  <h2>实战：事件监听器列表</h2>
+  <p>
+    <code>CopyOnWriteArrayList</code> 最经典的用途是<strong>监听器/观察者列表</strong>：
+    注册/注销（写）远少于触发通知（读遍历），且遍历时不希望被其他线程的写操作打断。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>EventBus.java — 监听器列表的并发安全实现</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">EventBus</span> <span class="punct">{</span>
+
+    <span class="com">// 监听器列表：读多（每次发事件都遍历）写少（注册/注销）</span>
+    <span class="kw">private final</span> <span class="ty">CopyOnWriteArrayList</span><span class="punct">&lt;</span><span class="ty">EventListener</span><span class="punct">&gt;</span> <span class="var">listeners</span>
+            <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CopyOnWriteArrayList</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public void</span> <span class="fn">register</span><span class="punct">(</span><span class="ty">EventListener</span> <span class="var">l</span><span class="punct">) {</span>
+        <span class="var">listeners</span><span class="punct">.</span><span class="fn">addIfAbsent</span><span class="punct">(</span><span class="var">l</span><span class="punct">);</span>  <span class="com">// 防重复注册，COW 原子操作</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">unregister</span><span class="punct">(</span><span class="ty">EventListener</span> <span class="var">l</span><span class="punct">) {</span>
+        <span class="var">listeners</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">(</span><span class="var">l</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">publish</span><span class="punct">(</span><span class="ty">Event</span> <span class="var">event</span><span class="punct">) {</span>
+        <span class="com">// 遍历时无锁，且不会抛 ConcurrentModificationException</span>
+        <span class="com">// 此时其他线程注册新监听器不影响本次遍历（快照隔离）</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="ty">EventListener</span> <span class="var">l</span> <span class="punct">:</span> <span class="var">listeners</span><span class="punct">) {</span>
+            <span class="var">l</span><span class="punct">.</span><span class="fn">onEvent</span><span class="punct">(</span><span class="var">event</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>为什么不抛 ConcurrentModificationException？</strong><br>
+    普通 ArrayList 的 iterator 有一个 <code>modCount</code> 检查，一旦遍历中有写操作就抛异常。
+    CopyOnWriteArrayList 的 iterator 拿的是创建时刻的<strong>数组快照引用</strong>，写操作修改的是全新数组，两者互不干扰，因此永远不抛此异常。
+  </div>
+
+  <!-- 5. 陷阱 -->
+  <h2>并发陷阱与常见误区</h2>
+
+  <h3>陷阱一：迭代器只是快照，不反映实时状态</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 依赖迭代器做实时判断</span></div>
+    <pre><span class="ty">CopyOnWriteArrayList</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CopyOnWriteArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="str">"A"</span><span class="punct">);</span>
+
+<span class="com">// 线程 1：拿到 iterator（快照：["A"]）</span>
+<span class="ty">Iterator</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">it</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">.</span><span class="fn">iterator</span><span class="punct">();</span>
+
+<span class="com">// 线程 2：此刻 add("B")，list 内部已替换为新数组 ["A","B"]</span>
+<span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="str">"B"</span><span class="punct">);</span>
+
+<span class="com">// 线程 1 继续迭代：只能看到 "A"，看不到 "B" ← 弱一致性！</span>
+<span class="kw">while</span> <span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">hasNext</span><span class="punct">()) {</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">next</span><span class="punct">());</span>  <span class="com">// 只打印 "A"</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>弱一致性（Weakly Consistent）</strong>是 COW 迭代器的设计决策，不是 bug。
+    如果你的业务需要迭代时看到最新数据，COW 不适合，应考虑加锁或换用其他方案。
+  </div>
+
+  <h3>陷阱二：先检查后执行（Check-Then-Act）复合操作不原子</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 vs 正例 — 条件添加</span></div>
+    <pre><span class="com">// ❌ 反例：两步操作之间可能被其他线程插入</span>
+<span class="kw">if</span> <span class="punct">(!</span><span class="var">list</span><span class="punct">.</span><span class="fn">contains</span><span class="punct">(</span><span class="var">element</span><span class="punct">))</span> <span class="punct">{</span>
+    <span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">element</span><span class="punct">);</span>     <span class="com">// 可能重复添加！</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正例：使用原子的 addIfAbsent</span>
+<span class="var">list</span><span class="punct">.</span><span class="fn">addIfAbsent</span><span class="punct">(</span><span class="var">element</span><span class="punct">);</span>  <span class="com">// 内部加锁，contains + add 原子完成</span></pre>
+  </div>
+
+  <h3>陷阱三：高频写场景内存压力极大</h3>
+  <p>
+    每次 <code>add</code> / <code>remove</code> 都会复制整个数组。如果列表有 10 万个元素，每秒写 1000 次，
+    就要每秒创建 1000 个 10 万元素的数组——GC 压力巨大。
+  </p>
+
+  <div class="callout warn">
+    <strong>写频繁时的替代方案：</strong>
+    <ul style="margin: 8px 0 0 16px;">
+      <li>需要并发读写且写多读多 → 用 <code>ConcurrentHashMap</code> 或加锁的 <code>ArrayList</code></li>
+      <li>需要队列语义 → 用 <code>ConcurrentLinkedQueue</code> / <code>BlockingQueue</code></li>
+      <li>需要跳表 → 用 <code>ConcurrentSkipListSet</code></li>
+    </ul>
+  </div>
+
+  <h3>陷阱四：迭代器不支持 remove()</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 通过迭代器删除</span></div>
+    <pre><span class="ty">Iterator</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">it</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">.</span><span class="fn">iterator</span><span class="punct">();</span>
+<span class="kw">while</span> <span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">hasNext</span><span class="punct">()) {</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="fn">someCondition</span><span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">next</span><span class="punct">())) {</span>
+        <span class="var">it</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">();</span>  <span class="com">// ❌ 抛 UnsupportedOperationException！</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正例：用 removeIf（原子批量操作，JDK 8+）</span>
+<span class="var">list</span><span class="punct">.</span><span class="fn">removeIf</span><span class="punct">(</span><span class="var">element</span> <span class="punct">-&gt;</span> <span class="fn">someCondition</span><span class="punct">(</span><span class="var">element</span><span class="punct">));</span></pre>
+  </div>
+
+  <!-- 6. 对比表 -->
+  <h2>与其他并发 List 方案对比</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>方案</th>
+        <th>读性能</th>
+        <th>写性能</th>
+        <th>迭代安全</th>
+        <th>适用场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>ArrayList</code></td>
+        <td>最快</td>
+        <td>最快</td>
+        <td>❌ CME</td>
+        <td>单线程</td>
+      </tr>
+      <tr>
+        <td><code>synchronizedList</code></td>
+        <td>慢（全锁）</td>
+        <td>慢（全锁）</td>
+        <td>需手动加锁</td>
+        <td>读写均衡、低并发</td>
+      </tr>
+      <tr>
+        <td><code>CopyOnWriteArrayList</code></td>
+        <td>极快（无锁）</td>
+        <td>慢（复制）</td>
+        <td>✅ 快照隔离</td>
+        <td>读多写少、监听器列表</td>
+      </tr>
+      <tr>
+        <td><code>ConcurrentLinkedQueue</code></td>
+        <td>快</td>
+        <td>快（CAS）</td>
+        <td>✅ 弱一致</td>
+        <td>FIFO 队列语义</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 7. 适用判断树 -->
+  <h2>使用决策树</h2>
+
+  <div class="tree">
+    是否需要 List 语义（索引访问）？<br>
+    ├─ 否 → 考虑 Queue / Set / Map 系列<br>
+    └─ 是<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ 单线程？→ <span class="hi">ArrayList</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└─ 多线程？<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 读多写少，遍历频繁？→ <span class="hi">CopyOnWriteArrayList</span> ✓<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 写频繁，列表较大？→ <span class="hi">Collections.synchronizedList + 手动锁</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 高并发写且需要有序？→ <span class="hi">ConcurrentSkipListSet</span>（Set 语义）
+  </div>
+
+  <!-- 8. 面试高频 -->
+  <h2>面试高频考点</h2>
+
+  <ul>
+    <li>
+      <strong>COW 如何保证读线程看到完整数据？</strong>
+      — volatile 写保证 happens-before；新数组在发布前已完全初始化；读线程拿的是不可变快照。
+    </li>
+    <li>
+      <strong>为什么迭代不抛 ConcurrentModificationException？</strong>
+      — iterator 持有创建时刻的数组引用快照，写操作对新数组操作，两者独立，无 modCount 检查。
+    </li>
+    <li>
+      <strong>COW 的弱点是什么？</strong>
+      — 写开销大（O(n) 复制）；内存占用翻倍；迭代器只是快照，实时性弱。
+    </li>
+    <li>
+      <strong>CopyOnWriteArrayList 和 CopyOnWriteArraySet 的关系？</strong>
+      — <code>CopyOnWriteArraySet</code> 内部直接持有一个 <code>CopyOnWriteArrayList</code>，
+      <code>add</code> 委托给 <code>addIfAbsent</code> 实现去重。
+    </li>
+    <li>
+      <strong>remove 操作的时间复杂度？</strong>
+      — O(n)，需要遍历找到元素位置，再复制跳过该位置的新数组。
+    </li>
+  </ul>
+
+  <!-- 9. 源码关键点小结 -->
+  <h2>源码关键点速记</h2>
+
+  <div class="callout tip">
+    <strong>三句话记住 COW 核心：</strong><br>
+    1. <strong>读不加锁</strong>：volatile 读数组引用，直接访问元素，零竞争。<br>
+    2. <strong>写加锁复制</strong>：ReentrantLock 保证写-写互斥，Arrays.copyOf 产生新数组，修改后 volatile 写替换引用。<br>
+    3. <strong>迭代器持快照</strong>：创建时绑定当前数组引用，遍历期间外部任何修改都不影响它，永不抛 CME，但也看不到新数据。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-ConcurrentHashMap.html" class="nav-btn">← 02. ConcurrentHashMap（分段锁 → CAS+synchronized）</a>
+    <a href="./04-BlockingQueue.html" class="nav-btn next">04. 阻塞队列 BlockingQueue 与生产者-消费者 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>03. happens-before 初识 — Java 并发编程</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part I 基础知识 / 同步与可见性
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part I 基础知识 · 同步与可见性</div>
+    <h1>03. happens-before 初识</h1>
+    <p>JMM 对"谁先于谁可见"的正式承诺——读懂它，才能真正理解并发安全的边界。</p>
+  </div>
+
+  <!-- 1. 为什么需要 happens-before -->
+  <h2>为什么需要这个概念？</h2>
+  <p>
+    在上一节我们知道，<code>volatile</code> 能解决可见性问题。但"可见性"本身究竟是什么？
+    <strong>Java 内存模型（JMM）</strong> 用一个精确的偏序关系来回答这个问题，这个关系叫做
+    <strong>happens-before（先行发生）</strong>。
+  </p>
+  <p>
+    CPU 和编译器为了性能会做两件事：<strong>缓存写操作</strong>（写入寄存器/L1 而非主内存）和
+    <strong>指令重排序</strong>（改变执行顺序）。这两件事在单线程里完全安全，但在多线程里会造成
+    一个线程的写操作对另一个线程不可见，或者看到的顺序与源码顺序不符。
+  </p>
+  <p>
+    happens-before 是 JMM 给程序员的一份<strong>契约</strong>：
+    只要操作 A happens-before 操作 B，JMM 就保证 A 的写结果对 B 可见，且 A 在执行顺序上不会被重排到 B 之后。
+    它不是说"A 一定在时间上先执行"，而是说"就结果而言，B 能看见 A 的一切效果"。
+  </p>
+
+  <div class="callout info">
+    <strong>一句话定义</strong>：如果操作 A happens-before 操作 B，则 A 的执行结果对 B 可见，且 A 的执行顺序排在 B 之前。这是 JMM 对可见性与有序性的统一保证。
+  </div>
+
+  <!-- 2. 生活类比 -->
+  <h2>生活类比：白板与备忘录</h2>
+  <p>
+    想象两位程序员 Alice 和 Bob 共用一块白板（主内存），但各自还有一个随身便签（CPU 缓存）。
+  </p>
+  <ul>
+    <li>Alice 在便签上写了 <code>done = true</code>，还没贴到白板上。</li>
+    <li>Bob 看了眼白板，发现 <code>done</code> 仍是 <code>false</code>，继续等待。</li>
+    <li>这就是<strong>可见性问题</strong>：Alice 的写操作没有 happens-before Bob 的读操作。</li>
+  </ul>
+  <p>
+    而 happens-before 就像一个规则："<strong>把便签贴到白板</strong>（刷新到主内存）这件事，
+    必须在对方<strong>拿起笔看白板</strong>（从主内存读取）之前完成"。满足这条规则，Bob 才能保证看到 Alice 写的内容。
+  </p>
+
+  <!-- 3. JMM 内置的 happens-before 规则 -->
+  <h2>JMM 内置的八条 happens-before 规则</h2>
+  <p>JMM 规范（JSR-133）定义了以下规则，<strong>不需要任何额外同步</strong>即可自动成立：</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>规则名称</th>
+        <th>含义</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>程序顺序规则</strong></td>
+        <td>同一线程内，按代码顺序，前面的操作 happens-before 后面的操作（仅保证结果，不保证真实执行顺序）</td>
+      </tr>
+      <tr>
+        <td><strong>监视器锁规则</strong></td>
+        <td><code>unlock</code> happens-before 后续对同一锁的 <code>lock</code></td>
+      </tr>
+      <tr>
+        <td><strong>volatile 变量规则</strong></td>
+        <td>对 <code>volatile</code> 变量的写 happens-before 后续对它的读</td>
+      </tr>
+      <tr>
+        <td><strong>线程启动规则</strong></td>
+        <td><code>Thread.start()</code> happens-before 新线程的任何操作</td>
+      </tr>
+      <tr>
+        <td><strong>线程终止规则</strong></td>
+        <td>线程内所有操作 happens-before <code>Thread.join()</code> 返回</td>
+      </tr>
+      <tr>
+        <td><strong>线程中断规则</strong></td>
+        <td>对线程 <code>interrupt()</code> happens-before 被中断线程检测到中断</td>
+      </tr>
+      <tr>
+        <td><strong>对象终结规则</strong></td>
+        <td>对象构造函数执行完毕 happens-before <code>finalize()</code> 开始</td>
+      </tr>
+      <tr>
+        <td><strong>传递性规则</strong></td>
+        <td>若 A hb B，B hb C，则 A hb C</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>重点记住前四条</strong>：程序顺序、监视器锁、volatile、线程启动/终止。它们是日常并发编程的核心保证，传递性则让这些规则可以"串联"使用。
+  </div>
+
+  <!-- 4. 传递性是关键武器 -->
+  <h2>传递性：happens-before 的"乘法器"</h2>
+  <p>
+    单条规则的威力有限，真正强大的是<strong>传递性</strong>。通过一个中间操作把两条规则串联起来，
+    可以得出原本无关的两个操作之间也存在 happens-before 关系。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>传递性示例.java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">TransitivityDemo</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="kw">volatile</span> <span class="ty">boolean</span> <span class="var">ready</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">int</span> <span class="var">value</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>  <span class="com">// 普通变量，本身没有可见性保证</span>
+
+    <span class="kw">void</span> <span class="fn">writer</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="var">value</span> <span class="punct">=</span> <span class="num">42</span><span class="punct">;</span>          <span class="com">// ① 写普通变量</span>
+        <span class="var">ready</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>        <span class="com">// ② 写 volatile（刷新屏障）</span>
+    <span class="punct">}</span>
+
+    <span class="kw">void</span> <span class="fn">reader</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">ready</span><span class="punct">)</span> <span class="punct">{</span>         <span class="com">// ③ 读 volatile</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">value</span><span class="punct">);</span>  <span class="com">// ④ 读普通变量 —— 一定看到 42</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>传递链推导：</p>
+  <div class="tree">
+    ① 写 value=42
+    <br>&nbsp;&nbsp;→ <span class="hi">程序顺序规则</span>：① hb ②
+    <br>② 写 volatile ready=true
+    <br>&nbsp;&nbsp;→ <span class="hi">volatile 变量规则</span>：② hb ③
+    <br>③ 读 volatile ready（值为 true）
+    <br>&nbsp;&nbsp;→ <span class="hi">程序顺序规则</span>：③ hb ④
+    <br>④ 读 value
+    <br>
+    <br>由传递性：① hb ④ ✓ → value 的写对 ④ 可见，结果必为 42
+  </div>
+
+  <div class="callout warn">
+    <strong>反例陷阱</strong>：如果 <code>ready</code> 不是 <code>volatile</code>，传递链在第②步断裂，
+    ② hb ③ 不成立，④ 读到的 <code>value</code> 可能是 <code>0</code>（初始值）。
+    这是"标志位忘加 volatile"这一经典 Bug 的根因。
+  </div>
+
+  <!-- 5. 反例 vs 正例 -->
+  <h2>反例 → 问题 → 正例</h2>
+
+  <h3>反例：没有 happens-before 保证的标志位</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>BadFlag.java — 危险！</span></div>
+    <pre><span class="kw">class</span> <span class="ty">BadFlag</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">boolean</span> <span class="var">stop</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>  <span class="com">// 普通变量，无可见性保证</span>
+
+    <span class="kw">void</span> <span class="fn">run</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(()</span> <span class="punct">-&gt; {</span>
+            <span class="kw">while</span> <span class="punct">(!</span><span class="var">stop</span><span class="punct">)</span> <span class="punct">{</span>  <span class="com">// 可能永远读到缓存中的 false，死循环</span>
+                <span class="fn">doWork</span><span class="punct">();</span>
+            <span class="punct">}</span>
+        <span class="punct">}).</span><span class="fn">start</span><span class="punct">();</span>
+
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+        <span class="var">stop</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>  <span class="com">// 主线程写，但子线程不一定能看到</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    <strong>问题根因</strong>：主线程对 <code>stop</code> 的写与子线程的读之间，没有任何 happens-before 关系。
+    JIT 编译器甚至可能把循环优化成 <code>if (!stop) while(true)</code>，让子线程完全看不到写操作。
+  </p>
+
+  <h3>正例：用 volatile 建立 happens-before 链</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>GoodFlag.java — 正确</span></div>
+    <pre><span class="kw">class</span> <span class="ty">GoodFlag</span> <span class="punct">{</span>
+    <span class="com">// volatile 写 hb volatile 读，跨线程可见性得到保证</span>
+    <span class="kw">private</span> <span class="kw">volatile</span> <span class="ty">boolean</span> <span class="var">stop</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+
+    <span class="kw">void</span> <span class="fn">run</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(()</span> <span class="punct">-&gt; {</span>
+            <span class="kw">while</span> <span class="punct">(!</span><span class="var">stop</span><span class="punct">)</span> <span class="punct">{</span>  <span class="com">// 每次都从主内存读，不会被优化掉</span>
+                <span class="fn">doWork</span><span class="punct">();</span>
+            <span class="punct">}</span>
+        <span class="punct">}).</span><span class="fn">start</span><span class="punct">();</span>
+
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+        <span class="var">stop</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>  <span class="com">// 写 volatile → happens-before 子线程的下一次读</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 6. synchronized 与 happens-before -->
+  <h2>synchronized 的 happens-before 保证</h2>
+  <p>
+    监视器锁规则是另一个核心：<strong>解锁（unlock）happens-before 后续的加锁（lock）</strong>。
+    这意味着在临界区内的所有写操作，在锁释放时都会刷新到主内存，下一个获得锁的线程能看到全部写操作。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>SyncHB.java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">SyncHB</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">int</span> <span class="var">x</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">int</span> <span class="var">y</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="kw">synchronized</span> <span class="kw">void</span> <span class="fn">writer</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="var">x</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+        <span class="var">y</span> <span class="punct">=</span> <span class="num">2</span><span class="punct">;</span>
+    <span class="punct">}</span>  <span class="com">// unlock → happens-before → 下一个 lock</span>
+
+    <span class="kw">synchronized</span> <span class="kw">void</span> <span class="fn">reader</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="com">// 此处一定能看到 x=1, y=2（监视器锁规则 + 程序顺序规则 + 传递性）</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">x</span> <span class="punct">+</span> <span class="str">", "</span> <span class="punct">+</span> <span class="var">y</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. 常见误区 -->
+  <h2>常见误区与面试陷阱</h2>
+
+  <h3>误区 1：happens-before = 时间上先发生</h3>
+  <p>
+    <strong>错！</strong> happens-before 是<strong>可见性与顺序性的逻辑保证</strong>，
+    与物理时间无关。操作 A 可能在时间上比 B 晚执行（CPU 乱序），但只要 A hb B，
+    就等价于"B 能看到 A 的结果"。
+  </p>
+
+  <h3>误区 2：同一线程内不需要考虑 happens-before</h3>
+  <p>
+    程序顺序规则保证了同一线程内代码在<strong>结果等价</strong>上是顺序的，
+    但真实执行顺序可能被重排。这在单线程内没有影响（as-if-serial 语义），
+    但一旦涉及多线程共享，就需要显式建立跨线程的 happens-before 关系。
+  </p>
+
+  <h3>误区 3：只要加了 synchronized 就线程安全</h3>
+  <p>
+    <code>synchronized</code> 保证的是<strong>同一把锁</strong>下的互斥与 happens-before。
+    如果两个线程用了<strong>不同的锁对象</strong>（或者一个有锁一个没锁），监视器锁规则根本不成立，可见性仍然无法保证。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>WrongLock.java — 常见错误</span></div>
+    <pre><span class="kw">class</span> <span class="ty">WrongLock</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">Object</span> <span class="var">lockA</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">Object</span> <span class="var">lockB</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+
+    <span class="kw">void</span> <span class="fn">inc</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lockA</span><span class="punct">) {</span> <span class="var">count</span><span class="punct">++;</span> <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">void</span> <span class="fn">get</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="com">// 锁 lockB ≠ lockA，unlock(lockA) hb lock(lockB) 不成立！</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">lockB</span><span class="punct">) {</span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">count</span><span class="punct">); }</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 8. happens-before 在 JDK 源码中的体现 -->
+  <h2>happens-before 在 JDK 中的体现</h2>
+  <p>
+    JDK 并发工具的正确性几乎全部建立在 happens-before 之上，了解这些可以帮助你
+    "不背记 API，而是理解为什么它是安全的"：
+  </p>
+  <ul>
+    <li><code>CountDownLatch.countDown()</code> happens-before <code>await()</code> 返回（底层 volatile state）</li>
+    <li><code>Future.get()</code> 的返回 happens-before 你读取结果（任务写入 result 后设 volatile 状态）</li>
+    <li><code>ConcurrentHashMap</code> 的 put happens-before 后续 get 到相同 key（内部 volatile 写读链）</li>
+    <li><code>ThreadPoolExecutor</code> 提交任务 happens-before 任务开始执行（队列的 volatile 操作）</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>结论</strong>：happens-before 不是 Java 独有的概念，C++11 内存模型、Go 语言规范都有类似的偏序关系。理解它，意味着你理解了现代多核处理器上并发正确性的本质。
+  </div>
+
+  <!-- 9. 小结 -->
+  <h2>小结</h2>
+  <ul>
+    <li>happens-before 是 JMM 对可见性与有序性的统一形式化表达，不等于时间上先发生。</li>
+    <li>JMM 内置八条规则，最常用的是：程序顺序、监视器锁、volatile 变量、线程启动/终止。</li>
+    <li>传递性让这些规则可以"串联"，是推导跨线程可见性的核心工具。</li>
+    <li>没有 happens-before 关系的两个操作，JMM 不对可见性做任何承诺——这是并发 Bug 的根本来源。</li>
+    <li>下一节将进入"发布与逸出"：当对象在构造期间就被共享，happens-before 链可能在你意想不到的地方断裂。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-volatile与可见性.html" class="nav-btn">← 02. volatile 与可见性</a>
+    <a href="./04-发布与逸出.html" class="nav-btn next">04. 发布与逸出（this 逸出） →</a>
+  </div>
+
+</div>
+</body>
+</html>

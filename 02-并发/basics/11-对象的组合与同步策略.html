@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>11. 对象的组合与同步策略 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part I 基础知识 / 缩小共享 = 减少 Bug
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part I 基础知识 · 缩小共享 = 减少 Bug</div>
+    <h1>11. 对象的组合与同步策略</h1>
+    <p>把零散的线程安全技巧"封装"进对象边界，让并发正确性变成可组合、可推理的设计属性。</p>
+  </div>
+
+  <!-- 1. 为什么需要组合 -->
+  <h2>1. 零散同步 vs 有边界的封装</h2>
+  <p>
+    前面几节讲了 <code>volatile</code>、<code>synchronized</code>、原子类、安全发布……
+    但如果每处共享状态都需要调用者自己记住"先获取锁再操作"，系统就会充满隐患：
+    调用者一旦忘记，或者换了一个人维护代码，原有的不变量就悄悄被破坏。
+  </p>
+  <p>
+    <strong>对象的组合（Object Composition）</strong>解决的正是这个问题：
+    把同步策略内聚进类的实现，调用方无需关心锁在哪里，只要知道这个对象"是线程安全的"即可。
+    这是"缩小共享 = 减少 Bug"理念在设计层面的落地。
+  </p>
+
+  <div class="callout info">
+    <strong>核心思想</strong>：线程安全不是一堆 <code>synchronized</code> 的堆砌，
+    而是一组<strong>不变量（invariant）</strong>在所有可能并发执行路径下始终成立的承诺。
+    封装让这个承诺的维护范围缩小到类内部。
+  </div>
+
+  <!-- 2. 四种状态所有权模式 -->
+  <h2>2. 状态所有权：先想清楚"谁管这块状态"</h2>
+  <p>
+    设计线程安全类的第一步，不是选择什么锁，而是搞清楚<strong>对象状态的所有权</strong>。
+    Java 语言里对象状态通过域（field）体现，域的引用关系决定了哪些对象共同构成"状态"。
+  </p>
+
+  <div class="tree">
+    状态所有权模型<br>
+    ├── <span class="hi">独占所有权</span>  对象持有域的唯一引用，外部无法访问 → 最易推理<br>
+    ├── <span class="hi">共享所有权</span>  多个对象共享同一引用（如缓存）→ 需要协调<br>
+    ├── <span class="hi">发布后转移</span>  创建时独占，发布后交出控制权 → 见安全发布<br>
+    └── <span class="hi">借用</span>        临时传入，用完归还，不保留引用 → 方法参数常见
+  </div>
+
+  <p>
+    独占所有权让你可以只在类内部维护不变量，无需担心外部线程突然改写状态。
+    一旦把可变状态的引用"泄露"出去，所有权就变成共享的，同步策略也随之复杂化。
+  </p>
+
+  <!-- 3. 实例封闭 -->
+  <h2>3. 实例封闭（Instance Confinement）</h2>
+  <p>
+    如果一个对象本身不是线程安全的（如 <code>ArrayList</code>、<code>HashMap</code>），
+    但它被完全封闭在一个已做好同步的对象内部，外部线程无法直接访问它——
+    这就是<strong>实例封闭</strong>，也是最常用的组合策略。
+  </p>
+
+  <h3>反例：封闭被破坏，内部状态泄露</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>反例 — 返回内部集合引用</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">UnsafeTracker</span> <span class="punct">{</span>
+    <span class="com">// 用 HashMap 保存位置，HashMap 非线程安全</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">Point</span><span class="punct">&gt;</span> <span class="var">locations</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public synchronized void</span> <span class="fn">addVehicle</span><span class="punct">(</span><span class="ty">String</span> <span class="var">id</span><span class="punct">,</span> <span class="ty">Point</span> <span class="var">p</span><span class="punct">) {</span>
+        <span class="var">locations</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">id</span><span class="punct">,</span> <span class="var">p</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// ❌ 直接返回内部 Map 引用！外部拿到后可绕过同步直接修改</span>
+    <span class="kw">public</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">Point</span><span class="punct">&gt;</span> <span class="fn">getLocations</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">locations</span><span class="punct">;</span>   <span class="com">// 封闭被打破</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    外部代码拿到 <code>locations</code> 引用后，可以在没有锁的情况下直接 <code>put</code>，
+    完全绕过 <code>synchronized</code>，导致不变量被破坏。
+  </p>
+
+  <h3>正例：返回防御性副本，保持封闭</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>正例 — 返回不可变快照</span></div>
+    <pre><span class="ann">@ThreadSafe</span>
+<span class="kw">public class</span> <span class="ty">SafeTracker</span> <span class="punct">{</span>
+    <span class="ann">@GuardedBy</span><span class="punct">(</span><span class="str">"this"</span><span class="punct">)</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">Point</span><span class="punct">&gt;</span> <span class="var">locations</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public synchronized void</span> <span class="fn">addVehicle</span><span class="punct">(</span><span class="ty">String</span> <span class="var">id</span><span class="punct">,</span> <span class="ty">Point</span> <span class="var">p</span><span class="punct">) {</span>
+        <span class="var">locations</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">id</span><span class="punct">,</span> <span class="var">p</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// ✅ 返回一份不可变快照，外部修改不影响内部状态</span>
+    <span class="kw">public synchronized</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">Point</span><span class="punct">&gt;</span> <span class="fn">getLocations</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">unmodifiableMap</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;(</span><span class="var">locations</span><span class="punct">));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>Java 平台库的最佳实践</strong>：<code>Collections.unmodifiableMap</code>、
+    <code>List.copyOf</code>、<code>Map.copyOf</code> 都是这种思路的体现——
+    把可变状态的快照转成不可变视图再发布出去。
+  </div>
+
+  <!-- 4. @GuardedBy 与文档化 -->
+  <h2>4. 文档化同步策略：@GuardedBy</h2>
+  <p>
+    同步策略是类设计的核心契约，必须显式声明，而不是藏在代码里让人猜。
+    <code>@GuardedBy</code> 注解（来自 <code>net.jcip.annotations</code> 或手动约定）
+    明确标注"这个域由哪把锁保护"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>@GuardedBy 文档化示例</span></div>
+    <pre><span class="ann">@ThreadSafe</span>
+<span class="kw">public class</span> <span class="ty">ServerStatus</span> <span class="punct">{</span>
+
+    <span class="ann">@GuardedBy</span><span class="punct">(</span><span class="str">"this"</span><span class="punct">)</span>
+    <span class="kw">private</span> <span class="ty">int</span> <span class="var">activeConnections</span><span class="punct">;</span>
+
+    <span class="ann">@GuardedBy</span><span class="punct">(</span><span class="str">"this"</span><span class="punct">)</span>
+    <span class="kw">private final</span> <span class="ty">Set</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">connectedUsers</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashSet</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="com">// 注意：两个域必须在同一把锁下一起更新，保持 size == count 的不变量</span>
+    <span class="kw">public synchronized void</span> <span class="fn">userConnected</span><span class="punct">(</span><span class="ty">String</span> <span class="var">user</span><span class="punct">) {</span>
+        <span class="var">connectedUsers</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">user</span><span class="punct">);</span>
+        <span class="var">activeConnections</span><span class="punct">++;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public synchronized void</span> <span class="fn">userDisconnected</span><span class="punct">(</span><span class="ty">String</span> <span class="var">user</span><span class="punct">) {</span>
+        <span class="var">connectedUsers</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">(</span><span class="var">user</span><span class="punct">);</span>
+        <span class="var">activeConnections</span><span class="punct">--;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    <code>connectedUsers.size()</code> 与 <code>activeConnections</code> 必须始终相等——
+    这就是这个类的<strong>复合不变量</strong>。
+    只有把两个域都用同一把锁保护，并在同一个 <code>synchronized</code> 方法内同时更新，
+    这个不变量才能在并发下成立。
+  </p>
+
+  <!-- 5. 委托给线程安全组件 -->
+  <h2>5. 委托给线程安全组件</h2>
+  <p>
+    如果一个类的状态可以完全委托给一个（或多个独立的）线程安全组件来管理，
+    那么这个类本身就可以不需要额外的同步。这是比实例封闭更轻量的路线。
+  </p>
+
+  <h3>单个组件委托 — 直接委托即可</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>委托给 AtomicInteger</span></div>
+    <pre><span class="ann">@ThreadSafe</span>
+<span class="kw">public class</span> <span class="ty">Counter</span> <span class="punct">{</span>
+    <span class="com">// 把并发控制完全委托给 AtomicInteger，自己不需要任何同步</span>
+    <span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">count</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+
+    <span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span> <span class="var">count</span><span class="punct">.</span><span class="fn">incrementAndGet</span><span class="punct">();</span> <span class="punct">}</span>
+    <span class="kw">public int</span>  <span class="fn">get</span><span class="punct">()       {</span> <span class="kw">return</span> <span class="var">count</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>             <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>多个独立组件 — 各自委托，不存在跨组件不变量</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>两个独立的 AtomicLong，无复合不变量</span></div>
+    <pre><span class="ann">@ThreadSafe</span>
+<span class="kw">public class</span> <span class="ty">NumberRange</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">AtomicLong</span> <span class="var">lower</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicLong</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+    <span class="kw">private final</span> <span class="ty">AtomicLong</span> <span class="var">upper</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicLong</span><span class="punct">(</span><span class="num">100</span><span class="punct">);</span>
+
+    <span class="com">// 各自独立更新没问题，因为 lower 和 upper 之间没有联动约束</span>
+    <span class="kw">public void</span> <span class="fn">setLower</span><span class="punct">(</span><span class="kw">long</span> <span class="var">v</span><span class="punct">) {</span> <span class="var">lower</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="var">v</span><span class="punct">);</span> <span class="punct">}</span>
+    <span class="kw">public void</span> <span class="fn">setUpper</span><span class="punct">(</span><span class="kw">long</span> <span class="var">v</span><span class="punct">) {</span> <span class="var">upper</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="var">v</span><span class="punct">);</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>反例：多个组件存在复合不变量时，委托失败</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>反例 — lower ≤ upper 的不变量无法单靠委托保证</span></div>
+    <pre><span class="ann">@NotThreadSafe</span>
+<span class="kw">public class</span> <span class="ty">BrokenRange</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">lower</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+    <span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">upper</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">10</span><span class="punct">);</span>
+
+    <span class="com">// ❌ 先检查再设置：检查通过后，另一个线程可能已经改了 upper</span>
+    <span class="kw">public void</span> <span class="fn">setLower</span><span class="punct">(</span><span class="kw">int</span> <span class="var">v</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">v</span> <span class="punct">&gt;</span> <span class="var">upper</span><span class="punct">.</span><span class="fn">get</span><span class="punct">())</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">();</span>
+        <span class="var">lower</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="var">v</span><span class="punct">);</span>  <span class="com">// check-then-act，不原子！</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">setUpper</span><span class="punct">(</span><span class="kw">int</span> <span class="var">v</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">v</span> <span class="punct">&lt;</span> <span class="var">lower</span><span class="punct">.</span><span class="fn">get</span><span class="punct">())</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">();</span>
+        <span class="var">upper</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="var">v</span><span class="punct">);</span>  <span class="com">// 同理</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>委托失败条件</strong>：当多个状态变量之间存在<strong>复合不变量</strong>（如 lower ≤ upper），
+    单靠把每个变量委托给独立的原子类是不够的。
+    两个原子操作合在一起不是原子的，必须在一把锁的保护下统一更新。
+  </div>
+
+  <!-- 6. 扩展线程安全类 -->
+  <h2>6. 扩展已有的线程安全类</h2>
+  <p>
+    有时需要给现有线程安全类添加新的复合操作（如"若不存在则插入"）。
+    常见的三种方式各有利弊：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>方式</th><th>做法</th><th>风险</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>直接修改源码</strong></td>
+        <td>在原类里加方法</td>
+        <td>无法修改第三方库</td>
+      </tr>
+      <tr>
+        <td><strong>继承并重写</strong></td>
+        <td><code>extends Vector</code></td>
+        <td>依赖父类同步机制，父类改实现则失效（脆弱）</td>
+      </tr>
+      <tr>
+        <td><strong>客户端加锁</strong></td>
+        <td>在调用方对同一把锁 <code>synchronized</code></td>
+        <td>锁耦合，需要知道被委托类用的是哪把锁</td>
+      </tr>
+      <tr>
+        <td><strong>组合（推荐）</strong></td>
+        <td>包装类持有内部对象，用自己的锁保护一切</td>
+        <td>性能略有开销，但最安全、最解耦</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>正例：组合方式添加"若不存在则添加"</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>组合扩展 — 安全的 putIfAbsent</span></div>
+    <pre><span class="ann">@ThreadSafe</span>
+<span class="kw">public class</span> <span class="ty">ImprovedList</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">ImprovedList</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">) {</span> <span class="kw">this</span><span class="punct">.</span><span class="var">list</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">; }</span>
+
+    <span class="com">// 用 ImprovedList 自己的内置锁保护整个 check-then-act</span>
+    <span class="kw">public synchronized boolean</span> <span class="fn">putIfAbsent</span><span class="punct">(</span><span class="ty">T</span> <span class="var">x</span><span class="punct">) {</span>
+        <span class="kw">boolean</span> <span class="var">absent</span> <span class="punct">=</span> <span class="punct">!</span><span class="var">list</span><span class="punct">.</span><span class="fn">contains</span><span class="punct">(</span><span class="var">x</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">absent</span><span class="punct">)</span> <span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">x</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">absent</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 所有代理方法也需要同步，确保锁不被绕过</span>
+    <span class="kw">public synchronized boolean</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">T</span> <span class="var">x</span><span class="punct">)        {</span> <span class="kw">return</span> <span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">x</span><span class="punct">);</span>        <span class="punct">}</span>
+    <span class="kw">public synchronized boolean</span> <span class="fn">remove</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">) {</span> <span class="kw">return</span> <span class="var">list</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">(</span><span class="var">o</span><span class="punct">);</span>     <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    关键在于：<code>ImprovedList</code> 用的是<strong>自己的内置锁</strong>（<code>this</code>），
+    而不依赖被包装的 <code>list</code> 内部用什么锁。
+    无论传入的是 <code>ArrayList</code>（非线程安全）还是 <code>Collections.synchronizedList</code>，
+    组合层面的同步都由包装类统一负责，不会出现锁耦合问题。
+  </p>
+
+  <!-- 7. 客户端加锁的陷阱 -->
+  <h2>7. 客户端加锁：常见陷阱</h2>
+  <p>
+    有时为了复用已有的线程安全集合，开发者会在客户端加锁来实现复合操作。
+    这种方式可行，但极易出错。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>反例 — 客户端加锁用了错误的锁对象</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span> <span class="punct">=</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">synchronizedList</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;());</span>
+
+<span class="com">// ❌ 用的是 BuggyHelper.class 的锁，而 synchronizedList 内部用的是 list 本身</span>
+<span class="kw">public synchronized boolean</span> <span class="fn">putIfAbsent</span><span class="punct">(</span><span class="ty">String</span> <span class="var">x</span><span class="punct">) {</span>
+    <span class="kw">boolean</span> <span class="var">absent</span> <span class="punct">=</span> <span class="punct">!</span><span class="var">list</span><span class="punct">.</span><span class="fn">contains</span><span class="punct">(</span><span class="var">x</span><span class="punct">);</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">absent</span><span class="punct">)</span> <span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">x</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="var">absent</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 必须锁在 list 对象本身上，才和 synchronizedList 内部的锁一致</span>
+<span class="kw">public boolean</span> <span class="fn">putIfAbsentCorrect</span><span class="punct">(</span><span class="ty">String</span> <span class="var">x</span><span class="punct">) {</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">list</span><span class="punct">) {</span>
+        <span class="kw">boolean</span> <span class="var">absent</span> <span class="punct">=</span> <span class="punct">!</span><span class="var">list</span><span class="punct">.</span><span class="fn">contains</span><span class="punct">(</span><span class="var">x</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">absent</span><span class="punct">)</span> <span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">x</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">absent</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>并发陷阱</strong>：客户端加锁必须锁在被委托对象使用的<strong>同一把锁</strong>上。
+    <code>Collections.synchronizedList</code> 内部用包装后的 <code>list</code> 对象本身作为锁，
+    所以客户端也必须 <code>synchronized(list)</code>，而不是其他对象。
+    锁不一致 = 形同虚设。
+  </div>
+
+  <!-- 8. 同步策略文档化总结 -->
+  <h2>8. 设计清单：如何记录同步策略</h2>
+  <p>
+    一个设计良好的线程安全类，应在类级别和域级别都清晰记录同步策略。
+    以下是最小化的文档模板：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>同步策略文档模板</span></div>
+    <pre><span class="com">/**
+ * 线程安全的订单队列。
+ *
+ * &lt;p&gt;同步策略：所有可变状态由内置锁（this）保护。
+ * 调用方无需额外同步；不要将内部集合的引用暴露给外部。
+ *
+ * &lt;p&gt;不变量：
+ *   - pendingOrders.size() == pendingCount（两者必须一起更新）
+ *   - 已完成的订单不会再出现在 pendingOrders 中
+ */</span>
+<span class="ann">@ThreadSafe</span>
+<span class="kw">public class</span> <span class="ty">OrderQueue</span> <span class="punct">{</span>
+    <span class="ann">@GuardedBy</span><span class="punct">(</span><span class="str">"this"</span><span class="punct">)</span> <span class="kw">private final</span> <span class="ty">Queue</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">pendingOrders</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayDeque</span><span class="punct">&lt;&gt;();</span>
+    <span class="ann">@GuardedBy</span><span class="punct">(</span><span class="str">"this"</span><span class="punct">)</span> <span class="kw">private int</span> <span class="var">pendingCount</span><span class="punct">;</span>
+    <span class="com">// ...方法省略...</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 9. 总结 -->
+  <h2>9. 总结：组合策略的选择树</h2>
+
+  <div class="tree">
+    选择同步策略时的决策路径<br>
+    ├── 状态能完全委托给一个线程安全组件？<br>
+    │   └── <span class="hi">是</span> → 直接委托，类本身无需同步（最简单）<br>
+    ├── 状态由多个独立变量组成，无复合不变量？<br>
+    │   └── <span class="hi">是</span> → 各自委托独立的原子类<br>
+    ├── 状态间存在复合不变量？<br>
+    │   └── <span class="hi">是</span> → 用同一把锁保护所有相关域（实例封闭）<br>
+    ├── 需要给现有类添加复合操作？<br>
+    │   ├── <span class="hi">能修改源码</span>   → 直接在类里加同步方法<br>
+    │   ├── <span class="hi">不能修改源码</span> → 组合包装（优先），或客户端加锁（需知道正确的锁）<br>
+    └── 所有情况都要：记录同步策略（@ThreadSafe / @GuardedBy / JavaDoc）
+  </div>
+
+  <div class="callout info">
+    <strong>记住</strong>：同步策略是类的 API 的一部分。
+    调用者有权知道这个类是否线程安全、需要哪些外部协作。
+    不记录 = 对未来的维护者埋雷。
+  </div>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./10-安全发布.html" class="nav-btn">← 10. 安全发布的几种方式</a>
+    <a href="../concurrency-roadmap.html" class="nav-btn next">路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

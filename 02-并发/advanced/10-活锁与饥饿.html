@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>10. 活锁与饥饿 — Java 并发</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #c084fc; }
+    p code, li code { color: #c084fc; }
+    h2 { color: #c084fc; border-left-color: #c084fc; }
+    .hero .tag { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 活跃性与性能
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 活跃性与性能</div>
+    <h1>10. 活锁与饥饿</h1>
+    <p>死锁让线程永远阻塞，活锁让线程永远忙碌却毫无进展，饥饿让某些线程永远等不到 CPU。三者都是活跃性故障，但成因和解法截然不同。</p>
+  </div>
+
+  <!-- ===== 1. 活跃性问题全景 ===== -->
+  <h2>1. 活跃性问题全景</h2>
+  <p>
+    并发程序的正确性不仅要求"做到正确结果"，还要求"最终能做到"，后者称为<strong>活跃性（Liveness）</strong>。
+    违反活跃性的三种经典故障：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>故障</th><th>线程状态</th><th>是否占用 CPU</th><th>能否自行解除</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>死锁</strong></td><td>BLOCKED / WAITING</td><td>否</td><td>否（需外力）</td></tr>
+      <tr><td><strong>活锁</strong></td><td>RUNNABLE</td><td><strong>是</strong>（持续消耗）</td><td>有可能（引入随机抖动后）</td></tr>
+      <tr><td><strong>饥饿</strong></td><td>RUNNABLE 但极少被调度</td><td>极少</td><td>否（需调整优先级或公平策略）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>类比：</strong>死锁 = 两辆车在单行道正面相遇，谁都不退；活锁 = 两人在走廊相向而行，互相礼让却同向侧步，永远让不开；饥饿 = 食堂窗口总被高个子挡住，矮个子始终插不进去。
+  </div>
+
+  <!-- ===== 2. 活锁（Livelock） ===== -->
+  <h2>2. 活锁（Livelock）</h2>
+
+  <h3>2.1 本质：过度礼让导致的无进展循环</h3>
+  <p>
+    活锁的根源是<strong>每个线程都在"为对方让路"</strong>，却恰好以相同的节奏让到同一个方向，导致所有线程持续运行却无任何实质性进展。
+    与死锁不同，活锁中的线程是 <code>RUNNABLE</code> 状态，从外部看 CPU 使用率可能很高，但系统吞吐量为零。
+  </p>
+
+  <h3>2.2 反例：消息重试的活锁</h3>
+  <p>
+    消息处理系统中，两个 worker 共享一个消息队列。当某条消息处理失败时，各自将其放回队头重试——如果两个 worker 始终以相同节奏碰到同一条"毒消息"，就会陷入活锁。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>LivelockDemo.java — 反例</span><span>活锁</span></div>
+    <pre><span class="com">// 反例：两个线程在"对方退让"的循环中永远无法前进</span>
+<span class="kw">class</span> <span class="ty">Worker</span> <span class="kw">implements</span> <span class="ty">Runnable</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">name</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">Worker</span> <span class="var">partner</span><span class="punct">;</span>             <span class="com">// 协作对象</span>
+    <span class="kw">private volatile boolean</span> <span class="var">active</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">run</span><span class="punct">() {</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="var">active</span><span class="punct">) {</span>
+            <span class="com">// 只要对方也是 active，就"礼让"，把 active 改为 false 再改回 true</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">partner</span><span class="punct">.</span><span class="fn">isActive</span><span class="punct">()) {</span>
+                <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">name</span> <span class="punct">+</span> <span class="str">" 礼让，先暂停"</span><span class="punct">);</span>
+                <span class="var">active</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>  <span class="com">// 让出</span>
+                <span class="fn">sleep</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+                <span class="var">active</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>   <span class="com">// 恢复——但此时对方也已恢复！</span>
+            <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+                <span class="fn">doWork</span><span class="punct">();</span>        <span class="com">// 对方退让时才干活，但永远等不到这一刻</span>
+                <span class="var">active</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 两个 Worker 同时启动 → 永远互相礼让，doWork() 永远不执行</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>活锁在测试环境下极难复现——两个线程的调度时序必须高度对称才能触发。一旦出现 CPU 打满但无进展的现象，务必用 <code>jstack</code> 检查是否有大量 RUNNABLE 线程在重复执行同一段代码。
+  </div>
+
+  <h3>2.3 正例：引入随机退避（Randomized Backoff）</h3>
+  <p>
+    解决活锁的核心手段是<strong>打破对称性</strong>——让每个线程在退让时等待一段<strong>随机时长</strong>，使它们不再以相同节奏重试，从而错开冲突窗口。以太网的 CSMA/CD 协议正是用这个思路解决信号碰撞问题的。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>RetryWithBackoff.java — 正例</span><span>随机退避</span></div>
+    <pre><span class="kw">private static final</span> <span class="ty">Random</span> <span class="var">RNG</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Random</span><span class="punct">();</span>
+<span class="kw">private static final int</span> <span class="var">MAX_RETRIES</span> <span class="punct">=</span> <span class="num">5</span><span class="punct">;</span>
+
+<span class="kw">public boolean</span> <span class="fn">trySendMessage</span><span class="punct">(</span><span class="ty">Message</span> <span class="var">msg</span><span class="punct">) {</span>
+    <span class="kw">int</span> <span class="var">attempt</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="var">attempt</span> <span class="punct">&lt;</span> <span class="var">MAX_RETRIES</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="fn">channel</span><span class="punct">.</span><span class="fn">trySend</span><span class="punct">(</span><span class="var">msg</span><span class="punct">))</span> <span class="kw">return true</span><span class="punct">;</span>
+
+        <span class="com">// 关键：退避时长加入随机量，打破两端的时序对称</span>
+        <span class="kw">long</span> <span class="var">backoff</span> <span class="punct">=</span> <span class="punct">(</span><span class="num">1L</span> <span class="punct">&lt;&lt;</span> <span class="var">attempt</span><span class="punct">)</span>        <span class="com">// 指数基础：1, 2, 4, 8, 16 ms</span>
+                     <span class="punct">+</span> <span class="var">RNG</span><span class="punct">.</span><span class="fn">nextInt</span><span class="punct">(</span><span class="num">10</span><span class="punct">);</span>    <span class="com">// 0~9 ms 随机抖动（jitter）</span>
+        <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="var">backoff</span><span class="punct">);</span>
+        <span class="var">attempt</span><span class="punct">++;</span>
+    <span class="punct">}</span>
+    <span class="kw">return false</span><span class="punct">;</span>  <span class="com">// 超过最大重试次数，告知调用方</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>指数退避 + 随机抖动</strong>（Exponential Backoff with Jitter）是分布式系统中的标准模式。Java 生态中 <code>Spring Retry</code>、<code>Resilience4j</code> 的 <code>RetryRegistry</code> 都内置了此策略。
+  </div>
+
+  <h3>2.4 活锁的另一个经典场景：CAS 自旋</h3>
+  <p>
+    无锁算法中的 CAS 自旋在极高竞争下也可能退化为活锁——每个线程都在不停地 CAS 失败并重试，CPU 被白白消耗。
+    <code>LongAdder</code> 正是为了解决 <code>AtomicLong</code> 在高竞争下的这一问题而设计：将单个热点拆分为多个 Cell，从根本上降低竞争概率，而非靠退避"硬撑"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>CAS 自旋退化对比</span><span>概念示意</span></div>
+    <pre><span class="com">// 反例：高竞争下 AtomicLong.incrementAndGet() 内部自旋</span>
+<span class="com">// 所有线程同时 CAS(old, old+1) → 只有一个成功 → 其余全部重试</span>
+<span class="com">// 极端情况：N 个线程只有 1 个有效推进，活锁特征明显</span>
+
+<span class="com">// 正例：LongAdder 分散热点</span>
+<span class="ty">LongAdder</span> <span class="var">counter</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LongAdder</span><span class="punct">();</span>
+<span class="var">counter</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">();</span>  <span class="com">// 写入各自绑定的 Cell，sum() 时才汇总</span>
+<span class="com">// 竞争概率从 O(N) 降至 O(1)，彻底避免高竞争活锁</span></pre>
+  </div>
+
+  <!-- ===== 3. 饥饿（Starvation） ===== -->
+  <h2>3. 饥饿（Starvation）</h2>
+
+  <h3>3.1 本质：资源分配的不公平性</h3>
+  <p>
+    饥饿指某个线程<strong>长期无法获得所需资源</strong>（CPU 时间、锁、信号量槽位等），导致其任务迟迟无法推进。
+    造成饥饿的根本原因是<strong>资源分配策略存在偏向性</strong>，优先级高的线程或特定线程反复抢先，低优先级线程始终排不上队。
+  </p>
+
+  <h3>3.2 常见成因</h3>
+
+  <div class="tree">
+饥饿的根源
+├── <span class="hi">线程优先级滥用</span>：高优先级线程将 CPU 时间占尽
+├── <span class="hi">非公平锁实现</span>：synchronized / 非公平 ReentrantLock 允许插队
+├── <span class="hi">持锁时间过长</span>：某线程长期持有锁，其他线程长时间阻塞
+├── <span class="hi">无界任务队列 + 有界线程池</span>：老任务未完成，新任务永远排队
+└── <span class="hi">wait/notify 的惊群</span>：notifyAll 后优势线程反复抢占，弱势线程永远 wait
+  </div>
+
+  <h3>3.3 反例：优先级倒置（Priority Inversion）</h3>
+  <p>
+    优先级倒置是饥饿的一个特殊变体：<strong>低优先级线程持有高优先级线程需要的锁</strong>，而中等优先级线程持续占用 CPU，
+    导致低优先级线程无法释放锁，高优先级线程实际上以"低于中等优先级"的速度推进。
+    1997 年火星探路者任务的实时系统曾因此反复重启，是业界最著名的案例。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>PriorityInversion.java — 反例</span><span>优先级倒置</span></div>
+    <pre><span class="com">// 低优先级线程 L 持有锁 mutex，尚未释放</span>
+<span class="ty">Thread</span> <span class="var">low</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -></span> <span class="punct">{</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">mutex</span><span class="punct">) {</span>
+        <span class="fn">heavyWork</span><span class="punct">();</span>  <span class="com">// 长时间持锁</span>
+    <span class="punct">}</span>
+<span class="punct">});</span>
+<span class="var">low</span><span class="punct">.</span><span class="fn">setPriority</span><span class="punct">(</span><span class="ty">Thread</span><span class="punct">.</span><span class="var">MIN_PRIORITY</span><span class="punct">);</span>
+
+<span class="com">// 高优先级线程 H 等待同一把锁</span>
+<span class="ty">Thread</span> <span class="var">high</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -></span> <span class="punct">{</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">mutex</span><span class="punct">) {</span> <span class="fn">criticalTask</span><span class="punct">();</span> <span class="punct">}</span>
+<span class="punct">});</span>
+<span class="var">high</span><span class="punct">.</span><span class="fn">setPriority</span><span class="punct">(</span><span class="ty">Thread</span><span class="punct">.</span><span class="var">MAX_PRIORITY</span><span class="punct">);</span>
+
+<span class="com">// 中等优先级线程 M，不需要锁，疯狂占 CPU</span>
+<span class="ty">Thread</span> <span class="var">medium</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -></span> <span class="punct">{</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span> <span class="fn">cpuBoundTask</span><span class="punct">();</span> <span class="punct">}</span>  <span class="com">// 抢走 CPU，low 无法完成 heavyWork()</span>
+<span class="punct">});</span>
+<span class="var">medium</span><span class="punct">.</span><span class="fn">setPriority</span><span class="punct">(</span><span class="ty">Thread</span><span class="punct">.</span><span class="var">NORM_PRIORITY</span><span class="punct">);</span>
+
+<span class="com">// 结果：high 优先级最高，却被 medium 间接阻塞，实际以低于 medium 的速度运行</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>Java 优先级警告：</strong>Java 的线程优先级（1–10）仅是对底层 OS 的<strong>建议</strong>，JVM 并不保证其语义。在 Linux 上 <code>Thread.setPriority()</code> 通常被忽略（需 root 权限才能真正调整 nice 值），在 Windows 上才有一定效果。<strong>不要依赖线程优先级来设计并发逻辑。</strong>
+  </div>
+
+  <h3>3.4 反例：非公平锁导致的饥饿</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UnfairLockStarvation.java — 反例</span><span>非公平锁</span></div>
+    <pre><span class="com">// synchronized 和 new ReentrantLock(false) 都是非公平锁</span>
+<span class="com">// 当锁释放瞬间恰好有新线程 T_new 到来，T_new 可以"插队"直接获得锁</span>
+<span class="com">// 已在队列中等待的 T_old 可能反复被插队，长期得不到锁 → 饥饿</span>
+
+<span class="ty">ReentrantLock</span> <span class="var">unfair</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">();</span>   <span class="com">// 默认 false，非公平</span>
+<span class="ty">ReentrantLock</span> <span class="var">fair</span>   <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span>  <span class="com">// 公平锁，按等待顺序授予</span>
+
+<span class="com">// 非公平锁吞吐量更高（减少上下文切换），公平锁保证无饥饿</span>
+<span class="com">// 如无特殊需求，默认选非公平；对等待时间敏感的场景选公平锁</span></pre>
+  </div>
+
+  <h3>3.5 正例：用公平锁 + 合理超时消除饥饿</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>FairLockWithTimeout.java — 正例</span><span>公平锁 + 超时</span></div>
+    <pre><span class="kw">private final</span> <span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ReentrantLock</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span>  <span class="com">// 公平</span>
+
+<span class="kw">public void</span> <span class="fn">process</span><span class="punct">() {</span>
+    <span class="kw">boolean</span> <span class="var">acquired</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="com">// tryLock 带超时：即使公平队列排队，也不会无限等待</span>
+        <span class="var">acquired</span> <span class="punct">=</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">tryLock</span><span class="punct">(</span><span class="num">500</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">acquired</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="com">// 超时后执行降级逻辑，而不是无限阻塞</span>
+            <span class="fn">fallback</span><span class="punct">();</span>
+            <span class="kw">return</span><span class="punct">;</span>
+        <span class="punct">}</span>
+        <span class="fn">doCriticalWork</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">acquired</span><span class="punct">)</span> <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>  <span class="com">// 只有成功加锁才解锁</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>3.6 正例：用 Semaphore 实现公平的资源限流</h3>
+  <p>
+    数据库连接池、线程池等资源有限的场景下，用带公平标志的 <code>Semaphore</code> 可以保证"先等先得"，避免某些线程长期无法获得连接。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>FairSemaphore.java — 正例</span><span>公平信号量</span></div>
+    <pre><span class="com">// 公平 Semaphore：等待最久的线程优先获得许可</span>
+<span class="kw">private final</span> <span class="ty">Semaphore</span> <span class="var">pool</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Semaphore</span><span class="punct">(</span><span class="num">10</span><span class="punct">,</span> <span class="kw">true</span><span class="punct">);</span>
+
+<span class="kw">public</span> <span class="ty">Connection</span> <span class="fn">acquireConnection</span><span class="punct">() {</span>
+    <span class="var">pool</span><span class="punct">.</span><span class="fn">acquire</span><span class="punct">();</span>            <span class="com">// 按到达顺序排队，消除饥饿</span>
+    <span class="kw">return</span> <span class="fn">getFromPool</span><span class="punct">();</span>
+<span class="punct">}</span>
+
+<span class="kw">public void</span> <span class="fn">releaseConnection</span><span class="punct">(</span><span class="ty">Connection</span> <span class="var">conn</span><span class="punct">) {</span>
+    <span class="fn">returnToPool</span><span class="punct">(</span><span class="var">conn</span><span class="punct">);</span>
+    <span class="var">pool</span><span class="punct">.</span><span class="fn">release</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ===== 4. 诊断工具 ===== -->
+  <h2>4. 线上诊断：jstack + 监控</h2>
+
+  <h3>4.1 用 jstack 识别活锁</h3>
+  <p>
+    活锁的线程是 <code>RUNNABLE</code>，<code>jstack</code> 不会像死锁那样打出 "Found one Java-level deadlock" 提示。
+    需要<strong>间隔 2–3 秒抓两次快照</strong>，对比同一线程的栈帧——若栈帧相同但线程在运行，高度疑似活锁。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Shell</span><span>活锁诊断</span></div>
+    <pre><span class="com"># 抓两次快照，对比 RUNNABLE 线程的栈帧</span>
+jstack &lt;pid&gt; &gt; snap1.txt
+sleep 3
+jstack &lt;pid&gt; &gt; snap2.txt
+diff snap1.txt snap2.txt
+<span class="com"># 若大量 RUNNABLE 线程栈帧几乎不变 → 活锁嫌疑</span></pre>
+  </div>
+
+  <h3>4.2 用 jstack 识别饥饿</h3>
+  <p>
+    饥饿线程通常长期处于 <code>BLOCKED</code> 或 <code>WAITING</code> 状态。在快照中搜索 <code>"waiting to lock"</code>，
+    若同一线程在多次快照中始终处于等待同一把锁，且其他线程轮番持有该锁，即为饥饿。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Shell</span><span>饥饿诊断</span></div>
+    <pre><span class="com"># 在 jstack 输出中查找长期阻塞的线程</span>
+grep -A 5 "BLOCKED" snap1.txt | grep "waiting to lock"
+<span class="com"># 结合 JMX / Micrometer 监控 lock.waitTime 直方图</span>
+<span class="com"># 若 P99 等待时间远大于 P50，说明存在严重的不公平性</span></pre>
+  </div>
+
+  <h3>4.3 监控指标推荐</h3>
+
+  <table>
+    <thead>
+      <tr><th>指标</th><th>工具</th><th>活锁信号</th><th>饥饿信号</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>线程状态分布</td><td>JMX / jstack</td><td>RUNNABLE 占比高、吞吐量低</td><td>BLOCKED 线程长期不变</td></tr>
+      <tr><td>CPU 使用率 vs 吞吐量</td><td>Prometheus</td><td>CPU 高但 TPS 接近 0</td><td>CPU 低但部分任务无进展</td></tr>
+      <tr><td>锁等待时间直方图</td><td>Micrometer</td><td>无意义（线程未阻塞）</td><td>P99 >> P50，尾延迟爆炸</td></tr>
+      <tr><td>重试次数计数器</td><td>自定义 Meter</td><td>某操作重试次数趋于无穷</td><td>某线程任务积压持续增长</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 5. 对比总结 ===== -->
+  <h2>5. 活锁 vs 饥饿 vs 死锁 — 完整对比</h2>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th>死锁</th><th>活锁</th><th>饥饿</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>线程状态</td><td>BLOCKED/WAITING</td><td>RUNNABLE</td><td>BLOCKED 或极少获得 CPU</td></tr>
+      <tr><td>CPU 消耗</td><td>无</td><td>持续高（无意义运算）</td><td>极低（一直等待）</td></tr>
+      <tr><td>根本原因</td><td>循环等待 + 不可剥夺</td><td>过度礼让 / 对称重试</td><td>资源分配偏向性</td></tr>
+      <tr><td>能否自行解除</td><td>否</td><td>有可能（运气好时错开）</td><td>否</td></tr>
+      <tr><td>主要解法</td><td>锁顺序、超时、死锁检测</td><td>随机退避、减少对称性</td><td>公平锁、优先级继承、限制持锁时间</td></tr>
+      <tr><td>jstack 特征</td><td>自动提示 deadlock</td><td>RUNNABLE 栈帧不变</td><td>同一线程反复 BLOCKED</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 6. 实践清单 ===== -->
+  <h2>6. 实践清单</h2>
+
+  <ul>
+    <li>重试逻辑<strong>必须</strong>加随机抖动，避免多个实例同频碰撞形成活锁。</li>
+    <li>CAS 自旋循环若重试次数超过阈值（如 64 次），应主动 <code>Thread.yield()</code> 或升级为阻塞策略。</li>
+    <li>不要用 <code>Thread.setPriority()</code> 做业务逻辑调度，优先级在跨 OS 下语义不一致。</li>
+    <li>对等待时间敏感的资源（连接池、令牌桶），使用 <code>new ReentrantLock(true)</code> 或 <code>new Semaphore(n, true)</code>。</li>
+    <li>持锁时间尽量短：锁内只做必要操作，IO、计算应移到锁外，减少其他线程的等待窗口。</li>
+    <li>线上部署 <code>ThreadMXBean</code> 监控，定期采集 <code>getThreadCpuTime</code> 与 <code>getBlockedTime</code>，建立基线告警。</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>面试高频考点：</strong>活锁和死锁的区别是什么？——死锁线程<strong>不消耗 CPU</strong>，处于等待状态；活锁线程<strong>消耗 CPU</strong>，处于运行状态，但没有实质进展。活锁的解法核心是打破对称性（随机退避）；死锁的解法核心是破坏循环等待（锁顺序）。
+  </div>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./09-死锁.html" class="nav-btn">← 09. 死锁的成因与避免</a>
+    <a href="./11-锁竞争与可伸缩性.html" class="nav-btn next">11. 锁竞争与可伸缩性 →</a>
+  </div>
+
+</div>
+</body>
+</html>

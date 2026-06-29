@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>06. ABA 问题与 AtomicStampedReference — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #c084fc; }
+    p code, li code { color: #c084fc; }
+    h2 { color: #c084fc; border-left-color: #c084fc; }
+    .hero .tag { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 无锁与底层原理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 无锁与底层原理</div>
+    <h1>06. ABA 问题与 AtomicStampedReference</h1>
+    <p>CAS 看起来比较变了，但有时候"没变"只是一种幻觉——ABA 问题正是无锁编程最隐蔽的陷阱之一。</p>
+  </div>
+
+  <!-- 1. 为什么 CAS 不够 -->
+  <h2>1. CAS 的隐患：它只比较值，不关心历史</h2>
+  <p>
+    上一节讲到，CAS（Compare-And-Swap）的语义是：<strong>如果当前值等于期望值，就原子地把它改成新值</strong>。
+    这听起来很完美，但它有一个根本局限——<strong>它只比较"现在是什么"，不知道"中间发生了什么"</strong>。
+  </p>
+  <p>
+    试想一个场景：线程 T1 读到变量值是 <code>A</code>，正准备用 CAS 把它改成 <code>C</code>。
+    就在这个间隙，线程 T2 把它从 <code>A</code> 改成了 <code>B</code>，然后又改回了 <code>A</code>。
+    T1 醒来，发现值还是 <code>A</code>，CAS 成功执行——但它完全不知道中间那次"B"的存在。
+  </p>
+
+  <div class="tree">
+    T1: 读到 A ──────────────────────────── CAS(A → C) 成功 ✓（但它不知道中间发生了什么）
+    T2:           A → B ── B → A
+                  <span class="hi">↑ 这段历史对 T1 完全透明</span>
+  </div>
+
+  <p>
+    这就是 <strong>ABA 问题</strong>：值经历了 A → B → A 的变化，但 CAS 误以为"什么都没变"。
+    在许多场景下这无关紧要，但在某些数据结构（尤其是链表、栈的无锁实现）中，
+    这个"幻觉"会导致严重的内存错误。
+  </p>
+
+  <!-- 2. 具体复现 ABA 的危害 -->
+  <h2>2. 一个经典崩溃场景：无锁栈</h2>
+  <p>
+    无锁栈使用 CAS 来做 pop 操作。设栈顶链为 <code>A → B → C</code>，T1 和 T2 并发 pop：
+  </p>
+
+  <div class="callout warn">
+    <strong>危险场景（ABA 导致链表断裂）</strong><br>
+    ① T1 读栈顶 <code>head = A</code>，准备 CAS(A → B)，但被调度器暂停<br>
+    ② T2 连续 pop 出 A、B；再 push A（A 被重用，next 指针已变成 null 或其他节点）<br>
+    ③ T1 恢复，CAS(A → B) 成功——但此时 A.next 已不再是 B，而是 null 或悬空指针<br>
+    ④ 节点 C 从栈中消失，内存泄漏或访问非法地址
+  </div>
+
+  <!-- 3. 反例代码 -->
+  <h2>3. 反例：仅用 AtomicReference 实现无锁栈</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BadLockFreeStack.java — 存在 ABA 问题</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BadLockFreeStack</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt; {</span>
+
+    <span class="kw">private static class</span> <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt; {</span>
+        <span class="ty">T</span> <span class="var">value</span><span class="punct">;</span>
+        <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">next</span><span class="punct">;</span>
+        <span class="fn">Node</span><span class="punct">(</span><span class="ty">T</span> <span class="var">v</span><span class="punct">) {</span> <span class="kw">this</span><span class="punct">.</span><span class="var">value</span> <span class="punct">=</span> <span class="var">v</span><span class="punct">; }</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 只保存引用，没有版本信息——ABA 风险所在</span>
+    <span class="kw">private final</span> <span class="ty">AtomicReference</span><span class="punct">&lt;</span><span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;&gt;</span> <span class="var">head</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicReference</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public void</span> <span class="fn">push</span><span class="punct">(</span><span class="ty">T</span> <span class="var">val</span><span class="punct">) {</span>
+        <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">newNode</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Node</span><span class="punct">&lt;&gt;(</span><span class="var">val</span><span class="punct">);</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+            <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">cur</span> <span class="punct">=</span> <span class="var">head</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+            <span class="var">newNode</span><span class="punct">.</span><span class="var">next</span> <span class="punct">=</span> <span class="var">cur</span><span class="punct">;</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">head</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">cur</span><span class="punct">,</span> <span class="var">newNode</span><span class="punct">))</span> <span class="kw">return</span><span class="punct">;</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">T</span> <span class="fn">pop</span><span class="punct">() {</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+            <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">cur</span> <span class="punct">=</span> <span class="var">head</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">cur</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">)</span> <span class="kw">return null</span><span class="punct">;</span>
+            <span class="com">// ❌ 如果 cur 是被重用的节点，cur.next 已不可信</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">head</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">cur</span><span class="punct">,</span> <span class="var">cur</span><span class="punct">.</span><span class="var">next</span><span class="punct">))</span> <span class="kw">return</span> <span class="var">cur</span><span class="punct">.</span><span class="var">value</span><span class="punct">;</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    问题根源：<code>AtomicReference</code> 的 CAS 用的是对象引用地址（即 <code>==</code>），
+    如果同一个节点对象被 pop 后重新 push，地址完全一样，CAS 无法感知节点的 <code>next</code> 已经改变。
+  </p>
+
+  <!-- 4. 解决方案原理 -->
+  <h2>4. 本质解法：给值打上"版本戳"</h2>
+  <p>
+    解决 ABA 的核心思路是：<strong>把"值有没有变"转化为"(值, 版本号) 对有没有变"</strong>。
+    即使值从 A 变回 A，版本号也会单调递增，使得旧的期望对 <code>(A, v1)</code> 无法匹配新的实际对 <code>(A, v3)</code>。
+  </p>
+
+  <div class="tree">
+    旧方案：CAS 比较 <span class="hi">value</span>
+              A → B → A   →   CAS(A) 成功（错误）
+
+    新方案：CAS 比较 <span class="hi">(value, stamp)</span>
+              (A,1) → (B,2) → (A,3)   →   CAS((A,1)) 失败（正确）
+  </div>
+
+  <p>
+    Java 提供了两个类来实现这个思路：
+  </p>
+  <ul>
+    <li><code>AtomicStampedReference&lt;V&gt;</code>：stamp 是 <code>int</code> 版本号，每次修改手动递增</li>
+    <li><code>AtomicMarkableReference&lt;V&gt;</code>：mark 是 <code>boolean</code>，只能标记"是否被修改过"，不能区分多次修改</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>为什么 AtomicMarkableReference 不够用？</strong><br>
+    它只有 true/false 两个状态。A → B → A 后 mark 依然是 true，无法区分第一次和第二次出现的 A。
+    只适用于"标记删除"等一次性场景（如跳表的逻辑删除节点）。
+  </div>
+
+  <!-- 5. AtomicStampedReference API -->
+  <h2>5. AtomicStampedReference 核心 API</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>AtomicStampedReference — 关键方法签名</span></div>
+    <pre><span class="com">// 构造：初始值 + 初始版本号</span>
+<span class="kw">new</span> <span class="ty">AtomicStampedReference</span><span class="punct">&lt;&gt;(</span><span class="var">initialRef</span><span class="punct">,</span> <span class="var">initialStamp</span><span class="punct">);</span>
+
+<span class="com">// 读取当前引用</span>
+<span class="ty">V</span> <span class="fn">getReference</span><span class="punct">();</span>
+
+<span class="com">// 读取当前版本号</span>
+<span class="kw">int</span> <span class="fn">getStamp</span><span class="punct">();</span>
+
+<span class="com">// 同时读取引用和版本号（将 stamp 写入 int[] 数组中）</span>
+<span class="ty">V</span> <span class="fn">get</span><span class="punct">(</span><span class="kw">int</span><span class="punct">[]</span> <span class="var">stampHolder</span><span class="punct">);</span>
+
+<span class="com">// 核心：四元 CAS，同时比较引用和版本号，同时更新二者</span>
+<span class="kw">boolean</span> <span class="fn">compareAndSet</span><span class="punct">(</span>
+    <span class="ty">V</span>    <span class="var">expectedRef</span><span class="punct">,</span>   <span class="com">// 期望引用</span>
+    <span class="ty">V</span>    <span class="var">newRef</span><span class="punct">,</span>        <span class="com">// 新引用</span>
+    <span class="kw">int</span>  <span class="var">expectedStamp</span><span class="punct">,</span> <span class="com">// 期望版本号</span>
+    <span class="kw">int</span>  <span class="var">newStamp</span>        <span class="com">// 新版本号</span>
+<span class="punct">);</span>
+
+<span class="com">// 无条件设置（不走 CAS，直接覆盖）</span>
+<span class="kw">void</span> <span class="fn">set</span><span class="punct">(</span><span class="ty">V</span> <span class="var">newRef</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">newStamp</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>底层实现</strong>：<code>AtomicStampedReference</code> 内部有一个私有静态类 <code>Pair&lt;T&gt;</code>，
+    将 <code>(reference, stamp)</code> 封装为单个不可变对象，
+    再用 <code>Unsafe.compareAndSwapObject</code> 对这个 <code>Pair</code> 对象做原子替换。
+    本质上仍是单次 CAS，只是比较的粒度从"单个值"变成了"(值+版本)的包装对象"。
+  </div>
+
+  <!-- 6. 正例：用 AtomicStampedReference 修复 ABA -->
+  <h2>6. 正例：演示 ABA 问题被正确阻断</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ABADemo.java</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.atomic.AtomicStampedReference</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">ABADemo</span> <span class="punct">{</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+
+        <span class="com">// 初始值 "A"，版本号 1</span>
+        <span class="ty">AtomicStampedReference</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">ref</span> <span class="punct">=</span>
+            <span class="kw">new</span> <span class="ty">AtomicStampedReference</span><span class="punct">&lt;&gt;(</span><span class="str">"A"</span><span class="punct">,</span> <span class="num">1</span><span class="punct">);</span>
+
+        <span class="com">// T1：先记录快照，再睡眠，等待 T2 制造 ABA</span>
+        <span class="ty">Thread</span> <span class="var">t1</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="kw">int</span><span class="punct">[]</span> <span class="var">stampHolder</span> <span class="punct">=</span> <span class="kw">new int</span><span class="punct">[</span><span class="num">1</span><span class="punct">];</span>
+            <span class="ty">String</span> <span class="var">snapshot</span> <span class="punct">=</span> <span class="var">ref</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">stampHolder</span><span class="punct">);</span>
+            <span class="kw">int</span>    <span class="var">snapshotStamp</span> <span class="punct">=</span> <span class="var">stampHolder</span><span class="punct">[</span><span class="num">0</span><span class="punct">];</span>
+
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"T1 读到: "</span> <span class="punct">+</span> <span class="var">snapshot</span> <span class="punct">+</span> <span class="str">", stamp="</span> <span class="punct">+</span> <span class="var">snapshotStamp</span><span class="punct">);</span>
+
+            <span class="kw">try</span> <span class="punct">{</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">500</span><span class="punct">); }</span>
+            <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">(); }</span>
+
+            <span class="com">// T2 已完成 A→B→A，此时版本号是 3，而 T1 快照版本是 1</span>
+            <span class="kw">boolean</span> <span class="var">ok</span> <span class="punct">=</span> <span class="var">ref</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">snapshot</span><span class="punct">,</span> <span class="str">"C"</span><span class="punct">,</span> <span class="var">snapshotStamp</span><span class="punct">,</span> <span class="var">snapshotStamp</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">);</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"T1 CAS 结果: "</span> <span class="punct">+</span> <span class="var">ok</span><span class="punct">);</span>
+            <span class="com">// 打印: T1 CAS 结果: false  ← ABA 被正确阻断！</span>
+        <span class="punct">});</span>
+
+        <span class="com">// T2：制造 A → B → A，版本号从 1 递增到 3</span>
+        <span class="ty">Thread</span> <span class="var">t2</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="com">// A → B（stamp: 1 → 2）</span>
+            <span class="var">ref</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="str">"A"</span><span class="punct">,</span> <span class="str">"B"</span><span class="punct">,</span> <span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">);</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"T2: A→B, stamp=2"</span><span class="punct">);</span>
+
+            <span class="com">// B → A（stamp: 2 → 3）</span>
+            <span class="var">ref</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="str">"B"</span><span class="punct">,</span> <span class="str">"A"</span><span class="punct">,</span> <span class="num">2</span><span class="punct">,</span> <span class="num">3</span><span class="punct">);</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"T2: B→A, stamp=3"</span><span class="punct">);</span>
+        <span class="punct">});</span>
+
+        <span class="var">t1</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">100</span><span class="punct">); }</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {}</span>
+        <span class="var">t2</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+        <span class="var">t1</span><span class="punct">.</span><span class="fn">join</span><span class="punct">();</span>
+        <span class="var">t2</span><span class="punct">.</span><span class="fn">join</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    关键点：T1 读取时版本号是 <code>1</code>，T2 操作后版本号变为 <code>3</code>，
+    尽管引用值都是 <code>"A"</code>，但 <code>compareAndSet("A", "C", 1, 2)</code> 中
+    期望 stamp=1 与实际 stamp=3 不匹配，CAS 返回 <code>false</code>，ABA 被阻断。
+  </p>
+
+  <!-- 7. 正例：带版本号的无锁栈 -->
+  <h2>7. 正例：用 AtomicStampedReference 修复无锁栈</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>SafeLockFreeStack.java — 版本号防 ABA</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.concurrent.atomic.AtomicStampedReference</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">SafeLockFreeStack</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt; {</span>
+
+    <span class="kw">private static class</span> <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt; {</span>
+        <span class="kw">final</span> <span class="ty">T</span>       <span class="var">value</span><span class="punct">;</span>
+        <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span>       <span class="var">next</span><span class="punct">;</span>
+        <span class="fn">Node</span><span class="punct">(</span><span class="ty">T</span> <span class="var">v</span><span class="punct">) {</span> <span class="kw">this</span><span class="punct">.</span><span class="var">value</span> <span class="punct">=</span> <span class="var">v</span><span class="punct">; }</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 用 AtomicStampedReference 封装栈顶，stamp 作为操作计数器</span>
+    <span class="kw">private final</span> <span class="ty">AtomicStampedReference</span><span class="punct">&lt;</span><span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;&gt;</span> <span class="var">head</span> <span class="punct">=</span>
+        <span class="kw">new</span> <span class="ty">AtomicStampedReference</span><span class="punct">&lt;&gt;(</span><span class="kw">null</span><span class="punct">,</span> <span class="num">0</span><span class="punct">);</span>
+
+    <span class="kw">public void</span> <span class="fn">push</span><span class="punct">(</span><span class="ty">T</span> <span class="var">val</span><span class="punct">) {</span>
+        <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">newNode</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Node</span><span class="punct">&lt;&gt;(</span><span class="var">val</span><span class="punct">);</span>
+        <span class="kw">int</span><span class="punct">[]</span> <span class="var">stampHolder</span> <span class="punct">=</span> <span class="kw">new int</span><span class="punct">[</span><span class="num">1</span><span class="punct">];</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+            <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">cur</span> <span class="punct">=</span> <span class="var">head</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">stampHolder</span><span class="punct">);</span>
+            <span class="var">newNode</span><span class="punct">.</span><span class="var">next</span> <span class="punct">=</span> <span class="var">cur</span><span class="punct">;</span>
+            <span class="com">// 每次操作 stamp +1，即使节点被重用，版本号也不同</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">head</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">cur</span><span class="punct">,</span> <span class="var">newNode</span><span class="punct">,</span> <span class="var">stampHolder</span><span class="punct">[</span><span class="num">0</span><span class="punct">],</span> <span class="var">stampHolder</span><span class="punct">[</span><span class="num">0</span><span class="punct">]</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">))</span>
+                <span class="kw">return</span><span class="punct">;</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">T</span> <span class="fn">pop</span><span class="punct">() {</span>
+        <span class="kw">int</span><span class="punct">[]</span> <span class="var">stampHolder</span> <span class="punct">=</span> <span class="kw">new int</span><span class="punct">[</span><span class="num">1</span><span class="punct">];</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+            <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">cur</span> <span class="punct">=</span> <span class="var">head</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">stampHolder</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">cur</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">)</span> <span class="kw">return null</span><span class="punct">;</span>
+            <span class="com">// 同时比较节点引用和版本号，缺一不可</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">head</span><span class="punct">.</span><span class="fn">compareAndSet</span><span class="punct">(</span><span class="var">cur</span><span class="punct">,</span> <span class="var">cur</span><span class="punct">.</span><span class="var">next</span><span class="punct">,</span> <span class="var">stampHolder</span><span class="punct">[</span><span class="num">0</span><span class="punct">],</span> <span class="var">stampHolder</span><span class="punct">[</span><span class="num">0</span><span class="punct">]</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">))</span>
+                <span class="kw">return</span> <span class="var">cur</span><span class="punct">.</span><span class="var">value</span><span class="punct">;</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 8. 三者对比 -->
+  <h2>8. 三种方案对比</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>方案</th>
+        <th>能否防 ABA</th>
+        <th>版本粒度</th>
+        <th>适用场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>AtomicReference</code></td>
+        <td>❌ 不能</td>
+        <td>无版本信息</td>
+        <td>不涉及 ABA 的无锁操作</td>
+      </tr>
+      <tr>
+        <td><code>AtomicMarkableReference</code></td>
+        <td>部分能（一次性）</td>
+        <td>boolean（只有两态）</td>
+        <td>逻辑删除标记（跳表、链表节点软删除）</td>
+      </tr>
+      <tr>
+        <td><code>AtomicStampedReference</code></td>
+        <td>✅ 完全能</td>
+        <td>int（可无限递增）</td>
+        <td>需要区分多次修改的无锁数据结构</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 9. 性能代价 -->
+  <h2>9. 性能代价与使用建议</h2>
+
+  <p>
+    <code>AtomicStampedReference</code> 内部每次 CAS 都会创建一个新的 <code>Pair</code> 对象，
+    在高并发场景下会带来明显的 GC 压力。它的吞吐量比 <code>AtomicInteger</code> 低得多。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见陷阱：int stamp 溢出</strong><br>
+    <code>int</code> 最大值约 21 亿，理论上很难溢出；但如果用 <code>AtomicInteger</code> 的
+    <code>getAndIncrement()</code> 作为 stamp 来源，需要考虑正负边界。
+    实践中通常没问题，但要避免用 <code>System.currentTimeMillis()</code> 作为 stamp，
+    因为时钟回拨会导致版本号倒退。
+  </div>
+
+  <div class="callout tip">
+    <strong>何时真的需要 AtomicStampedReference？</strong><br>
+    实际工程中，ABA 问题多见于以下场景：<br>
+    ① <strong>无锁链表 / 无锁栈</strong>：节点被 pop 后放入对象池，再 push 回来<br>
+    ② <strong>内存池 / 对象池</strong>：同一块内存地址被反复分配/回收<br>
+    ③ <strong>数据库乐观锁</strong>（类比）：version 字段防止并发更新覆盖<br>
+    如果不涉及节点复用，普通 <code>AtomicReference</code> 已经足够。
+  </div>
+
+  <div class="callout info">
+    <strong>Java 9+ 的替代方案</strong><br>
+    <code>java.util.concurrent</code> 内部实现（如 <code>ConcurrentLinkedQueue</code>）倾向于
+    用"对象身份"（每次 new 一个新节点）而非版本号来规避 ABA，
+    用内存换并发正确性，比维护 stamp 更简单。
+    在写自定义无锁结构时，这是值得优先考虑的方向。
+  </div>
+
+  <!-- 10. 知识地图 -->
+  <h2>10. 知识连接</h2>
+
+  <div class="tree">
+    无锁并发全景
+    ├── <span class="hi">CAS 原语</span>（上节：Unsafe.compareAndSwapXxx）
+    │   └── 局限：只比较值，不记录历史
+    ├── <span class="hi">ABA 问题</span>（本节）
+    │   ├── AtomicStampedReference — int 版本号
+    │   └── AtomicMarkableReference — boolean 标记
+    ├── AQS（下节）
+    │   └── 用 volatile state + CAS 构建锁/同步器
+    └── 内存模型
+        └── volatile 保证可见性，CAS 保证原子性
+  </div>
+
+  <hr />
+
+  <!-- 总结 -->
+  <h2>小结</h2>
+  <ul>
+    <li>ABA 问题：值经历 A→B→A 后，CAS 误以为无事发生，可能引发链表断裂等严重 bug</li>
+    <li>根本原因：CAS 只比较"当前值"，不关心"中间历史"</li>
+    <li>解决思路：给每次修改打上单调递增的版本戳，<code>(值, stamp)</code> 二元组替代裸值比较</li>
+    <li><code>AtomicStampedReference</code> 通过内部 <code>Pair&lt;T&gt;</code> 对象的原子替换实现四元 CAS</li>
+    <li>代价是 GC 压力；如果能做到"每次 new 新节点"，可以完全规避 ABA 而不引入 stamp</li>
+  </ul>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-CAS与原子类.html" class="nav-btn">← 05. CAS 与原子类 atomic</a>
+    <a href="./07-AQS.html" class="nav-btn next">07. AQS 抽象队列同步器 →</a>
+  </div>
+
+</div>
+</body>
+</html>

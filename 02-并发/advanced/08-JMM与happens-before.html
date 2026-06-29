@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>08. Java 内存模型 JMM 与 happens-before</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #c084fc; }
+    p code, li code { color: #c084fc; }
+    h2 { color: #c084fc; border-left-color: #c084fc; }
+    .hero .tag { color: #c084fc; border-color: #4a1d96; }
+    .nav-btn.next { color: #c084fc; border-color: #4a1d96; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part IV 高级主题 / 无锁与底层原理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part IV 高级主题 · 无锁与底层原理</div>
+    <h1>08. Java 内存模型 JMM 与 happens-before</h1>
+    <p>理解多线程可见性、有序性问题的根源，掌握 JMM 给出的"承诺清单"——happens-before 规则，从此不再靠猜测写并发代码。</p>
+  </div>
+
+  <!-- ===== 1. 为什么需要内存模型 ===== -->
+  <h2>1. 从硬件现实出发：为什么需要内存模型</h2>
+
+  <p>
+    直觉告诉我们："我在线程 A 写了一个值，线程 B 应该能读到最新的值。"但现代硬件<strong>刻意</strong>打破了这个直觉，原因是性能。
+  </p>
+
+  <p>三层"破坏者"：</p>
+  <ul>
+    <li><strong>CPU 缓存（L1/L2/L3）</strong>：每个核心有私有缓存，写入先落在缓存里，何时同步到内存取决于缓存一致性协议（MESI）的时机。</li>
+    <li><strong>写缓冲区（Store Buffer）</strong>：写操作先进队列，CPU 继续执行后续指令，写缓冲区异步刷入缓存。这让写操作对其他核心<strong>暂时不可见</strong>。</li>
+    <li><strong>指令重排序</strong>：编译器（javac / JIT）和 CPU 都会在保证单线程语义的前提下乱序执行，两线程之间的"执行顺序"因此可能与源码不同。</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>类比：</strong>把内存想象成一块大白板，每个 CPU 核心盯着自己桌上的草稿纸（缓存）写写画画，偶尔才把结果抄到白板上。线程间共享的是白板，但每个线程却只看自己的草稿纸。JMM 就是规定"什么情况下必须把草稿抄到白板、什么情况下必须去白板读"的规则手册。
+  </div>
+
+  <h3>三大并发问题</h3>
+  <table>
+    <thead>
+      <tr><th>问题</th><th>根源</th><th>典型现象</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>可见性</strong></td><td>CPU 缓存 / 写缓冲区</td><td>线程 A 修改了 flag，线程 B 永远看到旧值</td></tr>
+      <tr><td><strong>有序性</strong></td><td>指令重排序</td><td>双重检查锁（DCL）在 JDK 1.4 之前的经典 bug</td></tr>
+      <tr><td><strong>原子性</strong></td><td>操作非原子</td><td><code>i++</code> 在多线程下丢失更新</td></tr>
+    </tbody>
+  </table>
+  <p>JMM 主要解决的是<strong>可见性</strong>和<strong>有序性</strong>；原子性依赖 <code>synchronized</code>、<code>CAS</code> 等手段。</p>
+
+  <!-- ===== 2. JMM 是什么 ===== -->
+  <h2>2. JMM 是什么——一份"最小承诺"契约</h2>
+
+  <p>
+    Java Memory Model（JMM）定义在 <strong>JSR-133</strong>（Java 5 正式落地），规定了：
+  </p>
+  <ul>
+    <li>哪些操作具有<strong>可见性保证</strong>（一个线程的写何时对另一个线程的读可见）</li>
+    <li>哪些操作具有<strong>有序性保证</strong>（禁止跨某些边界的指令重排）</li>
+  </ul>
+
+  <p>
+    JMM <strong>不是</strong>描述硬件如何工作；它是一个<strong>抽象规范</strong>，告诉 JVM 实现者：在任何平台（x86、ARM、RISC-V……）上都必须提供这些保证，不足的地方用内存屏障（Memory Barrier）补足。
+  </p>
+
+  <div class="tree">
+  源码顺序（程序员看到的）
+      │
+      ▼
+  编译器重排序  ←── JMM 在此插入禁止规则
+      │
+      ▼
+  指令级重排序  ←── JMM 要求 JVM 插入 CPU 屏障
+      │
+      ▼
+  内存系统重排序（写缓冲区、缓存）
+      │
+      ▼
+  最终执行效果（其他线程观察到的）
+  </div>
+
+  <p>JMM 的核心工具就是 <strong>happens-before</strong> 关系。</p>
+
+  <!-- ===== 3. happens-before ===== -->
+  <h2>3. happens-before 精解</h2>
+
+  <h3>3.1 定义</h3>
+  <p>
+    如果操作 A <strong>happens-before</strong> 操作 B，则 JMM 保证：
+  </p>
+  <ul>
+    <li>A 的所有写入结果对 B <strong>可见</strong>（不会读到 A 之前的旧值）</li>
+    <li>A 在执行顺序上被保证在 B 之前（禁止跨越 A→B 边界的重排）</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>注意：</strong>happens-before 描述的是"可见性与顺序的逻辑承诺"，不是说 A 的机器指令一定在 B 之前执行。JVM 可以自由重排，只要最终效果符合 happens-before 承诺即可。
+  </div>
+
+  <h3>3.2 八条天然 happens-before 规则（JSR-133）</h3>
+
+  <table>
+    <thead>
+      <tr><th>#</th><th>规则名</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td><strong>程序顺序规则</strong></td><td>同一线程内，前面的操作 hb 后面的操作（单线程语义保证）</td></tr>
+      <tr><td>2</td><td><strong>监视器锁规则</strong></td><td>unlock 操作 hb 后续对同一锁的 lock 操作</td></tr>
+      <tr><td>3</td><td><strong>volatile 变量规则</strong></td><td>volatile 写 hb 后续对同一变量的 volatile 读</td></tr>
+      <tr><td>4</td><td><strong>线程启动规则</strong></td><td><code>Thread.start()</code> hb 该线程内的任何操作</td></tr>
+      <tr><td>5</td><td><strong>线程终止规则</strong></td><td>线程内所有操作 hb 其他线程检测到该线程终止（<code>join()</code> 返回 / <code>isAlive()</code> 为 false）</td></tr>
+      <tr><td>6</td><td><strong>线程中断规则</strong></td><td><code>interrupt()</code> hb 被中断线程检测到中断的操作</td></tr>
+      <tr><td>7</td><td><strong>对象终结规则</strong></td><td>构造函数结束 hb <code>finalize()</code> 开始</td></tr>
+      <tr><td>8</td><td><strong>传递性规则</strong></td><td>若 A hb B 且 B hb C，则 A hb C</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    这八条是"免费"的；只要你的代码触发了其中一条，可见性和有序性就由 JVM 保证，不需要额外手段。
+  </p>
+
+  <!-- ===== 4. volatile ===== -->
+  <h2>4. volatile 与 JMM 内存屏障</h2>
+
+  <p>
+    <code>volatile</code> 是最轻量的同步原语，它触发<strong>规则 3（volatile 变量规则）</strong>。JVM 在 volatile 写/读前后各插入两道内存屏障：
+  </p>
+
+  <div class="tree">
+  volatile 写
+  ┌───────────────────────────────────┐
+  │  StoreStore 屏障  ← 写之前        │  <span class="hi">禁止上方普通写与本次 volatile 写重排</span>
+  │  ★ volatile write                 │
+  │  StoreLoad  屏障  ← 写之后        │  <span class="hi">禁止本次 volatile 写与下方 volatile 读重排</span>
+  └───────────────────────────────────┘
+
+  volatile 读
+  ┌───────────────────────────────────┐
+  │  LoadLoad   屏障  ← 读之后        │  <span class="hi">禁止本次 volatile 读与下方普通读重排</span>
+  │  ★ volatile read                  │
+  │  LoadStore  屏障  ← 读之后        │  <span class="hi">禁止本次 volatile 读与下方普通写重排</span>
+  └───────────────────────────────────┘
+  </div>
+
+  <h3>实战：用 volatile 实现可见性</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StopThread.java</span><span>反例 → 正例</span></div>
+    <pre><span class="com">// ❌ 反例：没有 volatile，JIT 可能将 stopRequested 缓存在寄存器</span>
+<span class="com">//    导致子线程永远看不到 main 线程的修改，陷入死循环</span>
+<span class="kw">public class</span> <span class="ty">StopThread</span> <span class="punct">{</span>
+    <span class="kw">private static</span> <span class="ty">boolean</span> <span class="var">stopRequested</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="ty">Thread</span> <span class="var">bg</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -></span> <span class="punct">{</span>
+            <span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+            <span class="kw">while</span> <span class="punct">(!</span><span class="var">stopRequested</span><span class="punct">)</span>  <span class="com">// JIT 可能提升为 if(!stopRequested) while(true)</span>
+                <span class="var">i</span><span class="punct">++;</span>
+        <span class="punct">});</span>
+        <span class="var">bg</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+        <span class="var">stopRequested</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">;</span>  <span class="com">// main 线程的写对 bg 线程不可见！</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正例：加上 volatile，触发 volatile 变量规则</span>
+<span class="com">//    main 的写 hb bg 的读，可见性有保证</span>
+<span class="kw">private static volatile</span> <span class="ty">boolean</span> <span class="var">stopRequested</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：volatile 不保证原子性。</strong><code>volatile int count; count++</code> 仍然是非线程安全的，因为 <code>count++</code> 是"读-改-写"三步，volatile 只保证读到最新值，不保证中间步骤的原子性。需要原子性请用 <code>AtomicInteger</code> 或 <code>synchronized</code>。
+  </div>
+
+  <!-- ===== 5. DCL 经典案例 ===== -->
+  <h2>5. 经典案例：双重检查锁（DCL）与有序性</h2>
+
+  <p>
+    这是 JMM 有序性保证最著名的教科书案例，曾让无数 Java 高手踩坑。
+  </p>
+
+  <h3>对象创建的三步分解</h3>
+
+  <div class="tree">
+  Singleton instance = <span class="hi">new</span> Singleton();
+  ──────────────────────────────────────
+  字节码层面拆分为三步：
+    1. <span class="hi">分配内存</span>  memory = allocate()
+    2. <span class="hi">初始化对象</span>  &lt;init&gt;(memory)
+    3. <span class="hi">赋值引用</span>  instance = memory
+
+  CPU/JIT 允许将步骤 2 和 3 重排为：
+    1. 分配内存
+    3. 赋值引用（instance 非 null，但对象未初始化！）
+    2. 初始化对象
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Singleton.java</span><span>DCL 反例 → 正例</span></div>
+    <pre><span class="com">// ❌ 反例：JDK 1.4 及以下，instance 赋值可能在初始化之前（步骤 3 先于 2）</span>
+<span class="com">//    线程 B 可能拿到一个半初始化的对象</span>
+<span class="kw">public class</span> <span class="ty">Singleton</span> <span class="punct">{</span>
+    <span class="kw">private static</span> <span class="ty">Singleton</span> <span class="var">instance</span><span class="punct">;</span>  <span class="com">// ← 没有 volatile</span>
+
+    <span class="kw">public static</span> <span class="ty">Singleton</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>                   <span class="com">// 第一次检查（无锁）</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="ty">Singleton</span><span class="punct">.</span><span class="kw">class</span><span class="punct">) {</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>           <span class="com">// 第二次检查（有锁）</span>
+                    <span class="var">instance</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Singleton</span><span class="punct">();</span> <span class="com">// ← 赋值可能先于初始化</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">instance</span><span class="punct">;</span>  <span class="com">// 线程 B 看到非 null 但字段未初始化的对象</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 正例（JDK 5+）：volatile 写 hb 后续 volatile 读，</span>
+<span class="com">//    且 volatile 写前的 StoreStore 屏障禁止 new 的步骤 2 与步骤 3 重排</span>
+<span class="kw">public class</span> <span class="ty">Singleton</span> <span class="punct">{</span>
+    <span class="kw">private static volatile</span> <span class="ty">Singleton</span> <span class="var">instance</span><span class="punct">;</span>  <span class="com">// ← 加 volatile</span>
+
+    <span class="kw">public static</span> <span class="ty">Singleton</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="ty">Singleton</span><span class="punct">.</span><span class="kw">class</span><span class="punct">) {</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+                    <span class="var">instance</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Singleton</span><span class="punct">();</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">instance</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅✅ 更推荐：静态内部类（Initialization-on-demand Holder）</span>
+<span class="com">//    利用类加载机制天然保证线程安全，无需 volatile，无锁开销</span>
+<span class="kw">public class</span> <span class="ty">Singleton</span> <span class="punct">{</span>
+    <span class="kw">private static class</span> <span class="ty">Holder</span> <span class="punct">{</span>
+        <span class="kw">static final</span> <span class="ty">Singleton</span> <span class="var">INSTANCE</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Singleton</span><span class="punct">();</span>
+    <span class="punct">}</span>
+    <span class="kw">public static</span> <span class="ty">Singleton</span> <span class="fn">getInstance</span><span class="punct">() {</span> <span class="kw">return</span> <span class="ty">Holder</span><span class="punct">.</span><span class="var">INSTANCE</span><span class="punct">; }</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ===== 6. synchronized 与 hb ===== -->
+  <h2>6. synchronized 与 happens-before</h2>
+
+  <p>
+    <code>synchronized</code> 触发<strong>规则 2（监视器锁规则）</strong>：<strong>unlock hb lock</strong>。这意味着：
+  </p>
+  <ul>
+    <li>退出同步块时，JVM 会刷新所有在同步块内的写操作到主内存（相当于 StoreLoad 屏障）</li>
+    <li>进入同步块时，JVM 会使本地缓存失效，强制从主内存读取（LoadLoad 屏障）</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Counter.java</span><span>synchronized hb 示意</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Counter</span> <span class="punct">{</span>
+    <span class="kw">private int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="com">// 线程 A 调用 increment 并退出同步块（unlock）</span>
+    <span class="com">// → unlock hb 后续对同一锁的 lock</span>
+    <span class="com">// → 线程 B 调用 get 进入同步块（lock）一定能看到 count 的最新值</span>
+    <span class="kw">public synchronized void</span> <span class="fn">increment</span><span class="punct">() {</span> <span class="var">count</span><span class="punct">++; }</span>
+    <span class="kw">public synchronized int</span>  <span class="fn">get</span><span class="punct">()       {</span> <span class="kw">return</span> <span class="var">count</span><span class="punct">; }</span>
+<span class="punct">}</span>
+
+<span class="com">// 💡 关键点：必须是同一把锁！</span>
+<span class="com">//    如果 increment 用 lockA，get 用 lockB，规则 2 不适用，可见性无保证</span></pre>
+  </div>
+
+  <!-- ===== 7. final 与 hb ===== -->
+  <h2>7. final 字段的特殊保证</h2>
+
+  <p>
+    JMM 对 <code>final</code> 字段有额外保证：<strong>构造函数结束 hb 其他线程读取 final 字段</strong>（规则 7 的延伸）。只要对象引用不在构造函数中"逃逸"，其他线程就能看到正确初始化的 final 字段——即使没有同步。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ImmutablePoint.java</span><span>final 字段安全发布</span></div>
+    <pre><span class="kw">public final class</span> <span class="ty">ImmutablePoint</span> <span class="punct">{</span>
+    <span class="kw">private final int</span> <span class="var">x</span><span class="punct">,</span> <span class="var">y</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">ImmutablePoint</span><span class="punct">(</span><span class="kw">int</span> <span class="var">x</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">y</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">x</span> <span class="punct">=</span> <span class="var">x</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">y</span> <span class="punct">=</span> <span class="var">y</span><span class="punct">;</span>
+        <span class="com">// ← 构造函数结束后，JMM 保证 x、y 对所有线程可见</span>
+        <span class="com">// ← 不需要 volatile 或 synchronized</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public int</span> <span class="fn">getX</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">x</span><span class="punct">; }</span>
+    <span class="kw">public int</span> <span class="fn">getY</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">y</span><span class="punct">; }</span>
+<span class="punct">}</span>
+
+<span class="com">// ❌ 陷阱：在构造函数内将 this 发布出去（this 逃逸），破坏 final 保证</span>
+<span class="kw">public</span> <span class="fn">BadPoint</span><span class="punct">(</span><span class="ty">EventSource</span> <span class="var">src</span><span class="punct">) {</span>
+    <span class="var">src</span><span class="punct">.</span><span class="fn">register</span><span class="punct">(</span><span class="kw">this</span><span class="punct">);</span>  <span class="com">// ← this 逃逸，其他线程可能在构造完成前看到未初始化的 final 字段</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">x</span> <span class="punct">=</span> <span class="num">10</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ===== 8. happens-before 链式推导 ===== -->
+  <h2>8. 利用传递性推导 happens-before 链</h2>
+
+  <p>
+    规则 8（传递性）是隐藏的"乘法器"。通过 happens-before 链，一个操作可以跨越多个线程、多个变量建立可见性保证。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>HBChain.java</span><span>happens-before 传递性示例</span></div>
+    <pre><span class="kw">volatile int</span> <span class="var">v</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+<span class="kw">int</span> <span class="var">a</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>  <span class="com">// 普通变量</span>
+
+<span class="com">// 线程 A：</span>
+<span class="var">a</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>           <span class="com">// 操作 1</span>
+<span class="var">v</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>           <span class="com">// 操作 2（volatile 写）</span>
+
+<span class="com">// 线程 B：</span>
+<span class="kw">int</span> <span class="var">r1</span> <span class="punct">=</span> <span class="var">v</span><span class="punct">;</span>      <span class="com">// 操作 3（volatile 读）</span>
+<span class="kw">int</span> <span class="var">r2</span> <span class="punct">=</span> <span class="var">a</span><span class="punct">;</span>      <span class="com">// 操作 4（普通读）</span>
+
+<span class="com">// happens-before 链推导：</span>
+<span class="com">// 操作1 hb 操作2  ← 程序顺序规则（同线程）</span>
+<span class="com">// 操作2 hb 操作3  ← volatile 变量规则</span>
+<span class="com">// 操作3 hb 操作4  ← 程序顺序规则（同线程）</span>
+<span class="com">// ∴ 操作1 hb 操作4  ← 传递性！</span>
+<span class="com">// 结论：线程 B 读到 v==1 时，一定能读到 a==1（即使 a 是普通变量）</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>实用技巧：</strong>当你无法确定某两个操作之间是否有 happens-before 时，沿着"程序顺序 → 锁/volatile/线程启动等规则 → 传递性"逐步推导，能找到则有保证，找不到链则<strong>无保证，必须加同步</strong>。
+  </div>
+
+  <!-- ===== 9. 常见并发陷阱汇总 ===== -->
+  <h2>9. 常见并发陷阱与 JMM 视角分析</h2>
+
+  <table>
+    <thead>
+      <tr><th>陷阱</th><th>JMM 根因</th><th>正确做法</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>共享 boolean 标志位不加 volatile</td>
+        <td>无 hb 关系，JIT 可能将读提升（hoisting）导致死循环</td>
+        <td>加 <code>volatile</code></td>
+      </tr>
+      <tr>
+        <td>DCL 不加 volatile（JDK 5 以前或遗留代码）</td>
+        <td>new 对象的步骤 2/3 重排，导致读到半初始化对象</td>
+        <td>加 <code>volatile</code> 或改用静态内部类</td>
+      </tr>
+      <tr>
+        <td><code>volatile long/double</code> 漏写</td>
+        <td>32 位 JVM 上 long/double 读写非原子（两次 32 位操作）</td>
+        <td>64 位 JVM 已保证原子，但加 <code>volatile</code> 更稳妥</td>
+      </tr>
+      <tr>
+        <td>用不同锁保护同一变量</td>
+        <td>规则 2 要求同一锁，不同锁之间无 hb</td>
+        <td>确保保护同一共享状态的所有操作使用同一把锁</td>
+      </tr>
+      <tr>
+        <td>在构造函数中 this 逃逸</td>
+        <td>破坏 final 字段的初始化保证</td>
+        <td>构造完成后再发布引用（工厂方法模式）</td>
+      </tr>
+      <tr>
+        <td>认为 <code>volatile</code> 能替代锁</td>
+        <td>volatile 只保证可见性和有序性，不保证复合操作原子性</td>
+        <td>复合操作（check-then-act、read-modify-write）需要锁或 CAS</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 10. 与 JDK 工具的连接 ===== -->
+  <h2>10. JMM 在 JDK 并发工具中的体现</h2>
+
+  <p>理解 JMM 后，JDK 并发包的设计思路就豁然开朗：</p>
+
+  <ul>
+    <li><strong>AQS（AbstractQueuedSynchronizer）</strong>：内部维护一个 <code>volatile int state</code>，所有锁/同步器的获取释放都通过读写 state 建立 hb 关系，把可见性传递给业务代码。</li>
+    <li><strong>ConcurrentHashMap（JDK 8）</strong>：桶数组用 <code>volatile</code> 读写，put/get 通过 volatile 建立 hb，无需全表加锁。</li>
+    <li><strong>AtomicInteger</strong>：底层 <code>volatile int value</code> + CAS，volatile 保证可见性，CAS 保证原子性。</li>
+    <li><strong>CountDownLatch / Semaphore</strong>：基于 AQS，<code>countDown()</code> 的写 hb <code>await()</code> 返回后的读，所以 await 之后能看到 countDown 之前的所有写入。</li>
+    <li><strong>ThreadLocal</strong>：每线程独立副本，完全规避共享，根本上消除了 hb 问题。</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>面试高频：</strong>"为什么 AQS 要用 volatile state？"——答案就在规则 3：volatile 写 hb 后续 volatile 读，释放锁的线程对 state 的 volatile 写，建立了 hb 后续获取锁线程对 state 的 volatile 读，从而将临界区内的所有写操作的可见性传递过去。
+  </div>
+
+  <!-- ===== 11. 总结 ===== -->
+  <h2>11. 知识点总结</h2>
+
+  <div class="tree">
+  Java 内存模型（JMM）
+  ├── 解决问题
+  │   ├── <span class="hi">可见性</span>：缓存/写缓冲区导致写操作对其他线程不可见
+  │   └── <span class="hi">有序性</span>：编译器/CPU 重排序导致多线程执行顺序不可预期
+  │
+  ├── 核心工具：happens-before
+  │   ├── 8 条天然规则（程序顺序、监视器锁、volatile、线程启动/终止…）
+  │   └── 传递性：A hb B，B hb C → A hb C（链式推导）
+  │
+  ├── 主要实现机制
+  │   ├── volatile → StoreStore / StoreLoad / LoadLoad / LoadStore 屏障
+  │   └── synchronized → lock 前清空缓存，unlock 后刷写主内存
+  │
+  └── 实践原则
+      ├── 共享变量的读写必须有 hb 关系覆盖
+      ├── volatile 解决可见性/有序性，锁解决原子性+可见性
+      └── 推导不出 hb 链 → 必须加同步，不要靠运气
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./07-AQS.html" class="nav-btn">← 07. AQS 抽象队列同步器</a>
+    <a href="./09-死锁.html" class="nav-btn next">09. 死锁的成因与避免 →</a>
+  </div>
+
+</div>
+</body>
+</html>

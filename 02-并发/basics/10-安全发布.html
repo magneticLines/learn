@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>10. 安全发布的几种方式 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> /
+    Part I 基础知识 /
+    缩小共享 = 减少 Bug
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part I 基础知识 · 缩小共享 = 减少 Bug</div>
+    <h1>10. 安全发布的几种方式</h1>
+    <p>对象构造完之后如何让其他线程"看到"它——这件看似平凡的事，暗藏 Java 内存模型最经典的并发陷阱。</p>
+  </div>
+
+  <!-- ① 什么是"发布"与"安全发布" -->
+  <h2>什么是"发布"与"安全发布"</h2>
+  <p>
+    <strong>发布（publish）</strong>是指让对象在其作用域之外可见——比如把它存入静态字段、传给其他对象的方法、或放进共享容器。
+    <strong>安全发布（safe publication）</strong>则要求：当其他线程看到这个引用时，它也能看到对象<em>完整初始化后的状态</em>。
+  </p>
+  <p>
+    听起来理所当然，但 Java 内存模型（JMM）并不保证"写操作对另一个线程立刻可见"——
+    除非两个操作之间存在 <strong>happens-before</strong> 关系。没有这条保证，编译器和 CPU 都可以对指令重排，
+    读线程可能看到一个"半初始化"的对象。
+  </p>
+
+  <div class="callout warn">
+    <strong>核心问题：</strong>对象引用的可见性 ≠ 对象内部字段的可见性。
+    线程 A 把引用写入共享变量，线程 B 读到了这个引用，却不保证能看到 A 在构造器里写的那些字段值。
+  </div>
+
+  <!-- ② 经典反例：不安全发布 -->
+  <h2>反例：不安全发布导致的半初始化对象</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>UnsafePublication.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">UnsafePublication</span> <span class="punct">{</span>
+
+    <span class="com">// 普通字段，无任何同步保护</span>
+    <span class="kw">public static</span> <span class="ty">Holder</span> <span class="var">holder</span><span class="punct">;</span>
+
+    <span class="kw">public static void</span> <span class="fn">initialize</span><span class="punct">() {</span>
+        <span class="var">holder</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Holder</span><span class="punct">(</span><span class="num">42</span><span class="punct">);</span>   <span class="com">// 线程 A 发布</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">class</span> <span class="ty">Holder</span> <span class="punct">{</span>
+    <span class="kw">private int</span> <span class="var">n</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">Holder</span><span class="punct">(</span><span class="kw">int</span> <span class="var">n</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">n</span> <span class="punct">=</span> <span class="var">n</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">assertSanity</span><span class="punct">() {</span>
+        <span class="com">// 线程 B 可能两次读到不同的 n——第一次 0（默认值），第二次 42</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">n</span> <span class="punct">!=</span> <span class="var">n</span><span class="punct">)</span>
+            <span class="kw">throw new</span> <span class="ty">AssertionError</span><span class="punct">(</span><span class="str">"This statement is false."</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    乍看 <code>n != n</code> 永远为 false，但 JMM 允许编译器将字段读取展开成两次独立加载。
+    如果第一次加载时 CPU 缓存还没刷新（看到 <code>0</code>），第二次刷新后（看到 <code>42</code>），
+    这个断言就会抛出 —— 现实中真实发生过。
+  </p>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>即使对象引用已经可见，字段值仍可能是"旧值"或"默认值"。
+    这不是偶发性的竞态条件，而是 JMM 规范允许的合法行为。
+  </div>
+
+  <!-- ③ happens-before 是安全发布的本质 -->
+  <h2>安全发布的本质：happens-before</h2>
+  <p>
+    JMM 用 <strong>happens-before（HB）</strong> 定义"谁能看到谁的写入"：
+    若操作 A happens-before 操作 B，则 A 的所有写入对 B 可见。
+    安全发布就是在"写引用"和"读引用"之间建立一条 HB 链。
+  </p>
+
+  <div class="tree">
+    写线程（构造 + 发布）
+    ├── 构造器内字段赋值 ──HB──▶ 构造完成
+    └── 构造完成 ──HB──▶ 安全发布动作
+                                   │
+                                   ▼
+                         读线程（看到引用）
+                         └── 读到引用 ──HB──▶ <span class="hi">读到完整初始化字段</span>
+  </div>
+
+  <p>
+    Java 规范给出了几种可以在写/读之间建立 HB 的机制，下面逐一讲解。
+  </p>
+
+  <!-- ④ 四种安全发布方式 -->
+  <h2>安全发布的四种方式</h2>
+
+  <!-- 方式 1 -->
+  <h3>方式 1：静态初始化器（最简单）</h3>
+  <p>
+    在静态初始化器中初始化对象引用，JVM 保证类加载时的 HB，所有后续读取均安全。
+    这是<strong>最安全也最简洁</strong>的方式，适合单例。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>StaticInit.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">StaticInit</span> <span class="punct">{</span>
+    <span class="com">// JVM 类加载时执行，天然线程安全</span>
+    <span class="kw">private static final</span> <span class="ty">Holder</span> <span class="var">HOLDER</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Holder</span><span class="punct">(</span><span class="num">42</span><span class="punct">);</span>
+
+    <span class="kw">public static</span> <span class="ty">Holder</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">HOLDER</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    JLS §12.4.2 规定：类初始化期间，JVM 持有类初始化锁（CL lock），所有线程对同一类的初始化操作是串行的，
+    初始化完成后的写入对所有后续读取线程可见。
+  </div>
+
+  <!-- 方式 2 -->
+  <h3>方式 2：volatile 字段</h3>
+  <p>
+    将共享引用声明为 <code>volatile</code>，JMM 对 volatile 写入和读取建立 HB：
+    写入 volatile 字段 HB 于后续所有读取该字段的操作。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>VolatilePublication.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">VolatilePublication</span> <span class="punct">{</span>
+    <span class="com">// volatile 写 happens-before volatile 读</span>
+    <span class="kw">public volatile</span> <span class="ty">Holder</span> <span class="var">holder</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">publish</span><span class="punct">() {</span>
+        <span class="com">// 先完整构造，再赋给 volatile —— 赋值那一刻建立 HB</span>
+        <span class="ty">Holder</span> <span class="var">tmp</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Holder</span><span class="punct">(</span><span class="num">42</span><span class="punct">);</span>
+        <span class="var">holder</span> <span class="punct">=</span> <span class="var">tmp</span><span class="punct">;</span>  <span class="com">// volatile write</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">consume</span><span class="punct">() {</span>
+        <span class="ty">Holder</span> <span class="var">h</span> <span class="punct">=</span> <span class="var">holder</span><span class="punct">;</span>  <span class="com">// volatile read，HB 已建立</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">h</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="var">h</span><span class="punct">.</span><span class="fn">assertSanity</span><span class="punct">();</span>  <span class="com">// 安全：可见到完整的 n=42</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong><code>volatile</code> 只保证引用本身的可见性与有序性，不保证对象内部的<em>原子复合操作</em>。
+    如果 <code>Holder</code> 发布后还会被修改（多字段更新），仍需额外同步。
+  </div>
+
+  <!-- 方式 3 -->
+  <h3>方式 3：synchronized 保护的字段</h3>
+  <p>
+    对同一把锁上的 unlock HB 于后续的 lock（监视器规则）。
+    用 <code>synchronized</code> 方法或块写入、读取共享引用，即可保证安全发布。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>SynchronizedPublication.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">SynchronizedPublication</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">Holder</span> <span class="var">holder</span><span class="punct">;</span>
+
+    <span class="kw">public synchronized void</span> <span class="fn">publish</span><span class="punct">(</span><span class="ty">Holder</span> <span class="var">h</span><span class="punct">) {</span>
+        <span class="var">holder</span> <span class="punct">=</span> <span class="var">h</span><span class="punct">;</span>  <span class="com">// unlock 时刷新到主内存</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public synchronized</span> <span class="ty">Holder</span> <span class="fn">get</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">holder</span><span class="punct">;</span>  <span class="com">// lock 时从主内存重新加载</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    <code>Vector</code>、<code>Hashtable</code>、<code>Collections.synchronizedXxx()</code>
+    内部就是这种方式——所有读写都在同一把锁上，安全但吞吐量受限。
+  </p>
+
+  <!-- 方式 4 -->
+  <h3>方式 4：并发容器（ConcurrentHashMap / BlockingQueue 等）</h3>
+  <p>
+    JDK 并发容器内部已实现了安全发布语义。将对象放入
+    <code>ConcurrentHashMap</code>、<code>BlockingQueue</code>、<code>CopyOnWriteArrayList</code> 等，
+    其他线程从中取出时即可安全访问。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>ConcurrentPublication.java</span></div>
+    <pre><span class="kw">import</span> <span class="ty">java.util.concurrent.*</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">ConcurrentPublication</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">BlockingQueue</span><span class="punct">&lt;</span><span class="ty">Holder</span><span class="punct">&gt;</span> <span class="var">queue</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="com">// 生产者线程：构造完毕后 put 进队列</span>
+    <span class="kw">public void</span> <span class="fn">producer</span><span class="punct">() {</span>
+        <span class="var">queue</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Holder</span><span class="punct">(</span><span class="num">42</span><span class="punct">));</span>  <span class="com">// BlockingQueue 内部有 volatile/lock，建立 HB</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 消费者线程：take 出来即安全可见</span>
+    <span class="kw">public void</span> <span class="fn">consumer</span><span class="punct">() {</span>
+        <span class="ty">Holder</span> <span class="var">h</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>
+        <span class="var">h</span><span class="punct">.</span><span class="fn">assertSanity</span><span class="punct">();</span>  <span class="com">// 安全</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ⑤ 特殊情况：final 字段的安全发布保证 -->
+  <h2>特殊情况：final 字段的特殊保证</h2>
+  <p>
+    JMM 为 <code>final</code> 字段提供了<strong>初始化安全性（initialization safety）</strong>保证：
+    只要对象在构造期间没有"逸出"（this 没有提前泄露），任何线程通过<em>任意方式</em>看到该引用时，
+    都能看到所有 <code>final</code> 字段的正确值——即使没有 volatile/synchronized。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>FinalSafety.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ImmutablePoint</span> <span class="punct">{</span>
+    <span class="kw">public final int</span> <span class="var">x</span><span class="punct">;</span>
+    <span class="kw">public final int</span> <span class="var">y</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">ImmutablePoint</span><span class="punct">(</span><span class="kw">int</span> <span class="var">x</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">y</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">x</span> <span class="punct">=</span> <span class="var">x</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">y</span> <span class="punct">=</span> <span class="var">y</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 即便用普通变量发布，其他线程也能看到 x=3, y=4</span>
+<span class="kw">public static</span> <span class="ty">ImmutablePoint</span> <span class="var">sharedPoint</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ImmutablePoint</span><span class="punct">(</span><span class="num">3</span><span class="punct">,</span> <span class="num">4</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>前提：构造器不能逸出 this！</strong>若在构造器里把 <code>this</code> 注册到监听器、启动线程、
+    或赋值给静态字段，final 保证立即失效。这是上一节"不变性与 final"的核心陷阱。
+  </div>
+
+  <!-- ⑥ 双重检查锁定（DCL）—— 经典并发陷阱 -->
+  <h2>经典陷阱：双重检查锁定（DCL）</h2>
+  <p>
+    双重检查锁定（Double-Checked Locking）是 Java 并发史上最著名的错误模式之一，
+    正确理解它需要同时掌握安全发布与 <code>volatile</code> 语义。
+  </p>
+
+  <h3>错误版本（Java 5 之前）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 有缺陷</span><span>BrokenDCL.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BrokenSingleton</span> <span class="punct">{</span>
+    <span class="kw">private static</span> <span class="ty">BrokenSingleton</span> <span class="var">instance</span><span class="punct">;</span>  <span class="com">// ❌ 缺少 volatile</span>
+
+    <span class="kw">public static</span> <span class="ty">BrokenSingleton</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>                <span class="com">// 第一次检查（无锁）</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="ty">BrokenSingleton</span><span class="punct">.</span><span class="kw">class</span><span class="punct">) {</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>        <span class="com">// 第二次检查（持锁）</span>
+                    <span class="var">instance</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BrokenSingleton</span><span class="punct">();</span>
+                    <span class="com">// 问题：new 分三步（分配内存 → 初始化字段 → 赋值给 instance）</span>
+                    <span class="com">// JIT 可能将步骤 2、3 重排：先赋值，再初始化</span>
+                    <span class="com">// 其他线程在第一次检查时看到非 null，却拿到未初始化的对象</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">instance</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>正确版本：volatile DCL（Java 5+）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 正确</span><span>VolatileDCL.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">SafeSingleton</span> <span class="punct">{</span>
+    <span class="com">// volatile 禁止"赋值"与"初始化"之间的重排序</span>
+    <span class="kw">private volatile static</span> <span class="ty">SafeSingleton</span> <span class="var">instance</span><span class="punct">;</span>
+
+    <span class="kw">public static</span> <span class="ty">SafeSingleton</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="ty">SafeSingleton</span><span class="punct">.</span><span class="kw">class</span><span class="punct">) {</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">instance</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+                    <span class="var">instance</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">SafeSingleton</span><span class="punct">();</span>  <span class="com">// ✅ volatile write，禁止重排</span>
+                <span class="punct">}</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">instance</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>更优雅：Initialization-on-demand Holder（推荐）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 最简洁</span><span>LazyHolder.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">LazyHolder</span> <span class="punct">{</span>
+    <span class="com">// 静态内部类，只在第一次调用 getInstance() 时被加载</span>
+    <span class="kw">private static class</span> <span class="ty">Holder</span> <span class="punct">{</span>
+        <span class="kw">static final</span> <span class="ty">LazyHolder</span> <span class="var">INSTANCE</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LazyHolder</span><span class="punct">();</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public static</span> <span class="ty">LazyHolder</span> <span class="fn">getInstance</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="ty">Holder</span><span class="punct">.</span><span class="var">INSTANCE</span><span class="punct">;</span>  <span class="com">// 利用类加载的线程安全性，零额外开销</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    Initialization-on-demand Holder 利用了 JVM 类加载天然的线程安全性，无需 <code>volatile</code> 或 <code>synchronized</code>，
+    是实现懒加载单例的最优雅方式。<code>Enum</code> 单例（《Effective Java》推荐）本质上也是静态初始化器，同理。
+  </div>
+
+  <!-- ⑦ 对比总览 -->
+  <h2>四种方式对比总览</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>方式</th>
+        <th>HB 来源</th>
+        <th>适用场景</th>
+        <th>性能</th>
+        <th>注意点</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>静态初始化器</td>
+        <td>类加载锁</td>
+        <td>饿汉单例、常量</td>
+        <td>最优（无运行时开销）</td>
+        <td>无法懒加载</td>
+      </tr>
+      <tr>
+        <td><code>volatile</code> 字段</td>
+        <td>volatile write → read</td>
+        <td>可变共享引用，DCL</td>
+        <td>良好（仅内存屏障）</td>
+        <td>不保护对象内部复合操作</td>
+      </tr>
+      <tr>
+        <td><code>synchronized</code></td>
+        <td>unlock → lock</td>
+        <td>任意可变状态</td>
+        <td>有锁竞争开销</td>
+        <td>读写都需同步同一把锁</td>
+      </tr>
+      <tr>
+        <td>并发容器</td>
+        <td>容器内部机制</td>
+        <td>生产者-消费者、缓存</td>
+        <td>良好（无锁或分段锁）</td>
+        <td>对象放入后不应再修改</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ⑧ 逸出：发布的反面 -->
+  <h2>逸出：无意间的不安全发布</h2>
+  <p>
+    <strong>逸出（escape）</strong>是指对象在构造完成前就被其他线程访问到，常见场景：
+  </p>
+  <ul>
+    <li>构造器中把 <code>this</code> 注册到事件监听器</li>
+    <li>构造器中启动一个新线程，并传入 <code>this</code></li>
+    <li>构造器中调用可覆盖的方法（子类可能泄露 <code>this</code>）</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 逸出反例</span><span>ThisEscape.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ThisEscape</span> <span class="punct">{</span>
+    <span class="kw">private final int</span> <span class="var">value</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">ThisEscape</span><span class="punct">(</span><span class="ty">EventSource</span> <span class="var">source</span><span class="punct">) {</span>
+        <span class="com">// ❌ 在构造器尚未完成时，this 就逸出到监听器</span>
+        <span class="var">source</span><span class="punct">.</span><span class="fn">registerListener</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">EventListener</span><span class="punct">() {</span>
+            <span class="kw">public void</span> <span class="fn">onEvent</span><span class="punct">(</span><span class="ty">Event</span> <span class="var">e</span><span class="punct">) {</span>
+                <span class="fn">doSomething</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>  <span class="com">// 隐式引用了外部类的 this</span>
+            <span class="punct">}</span>
+        <span class="punct">});</span>
+        <span class="var">value</span> <span class="punct">=</span> <span class="num">42</span><span class="punct">;</span>  <span class="com">// 若事件在此之前触发，value 可能看到 0</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 工厂方法正例</span><span>SafePublish.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">SafeListener</span> <span class="punct">{</span>
+    <span class="kw">private final int</span> <span class="var">value</span><span class="punct">;</span>
+
+    <span class="com">// 私有构造器：确保构造完全完成</span>
+    <span class="kw">private</span> <span class="fn">SafeListener</span><span class="punct">() {</span>
+        <span class="var">value</span> <span class="punct">=</span> <span class="num">42</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// ✅ 工厂方法：构造完毕后再注册，避免 this 逸出</span>
+    <span class="kw">public static</span> <span class="ty">SafeListener</span> <span class="fn">newInstance</span><span class="punct">(</span><span class="ty">EventSource</span> <span class="var">source</span><span class="punct">) {</span>
+        <span class="ty">SafeListener</span> <span class="var">listener</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">SafeListener</span><span class="punct">();</span>
+        <span class="var">source</span><span class="punct">.</span><span class="fn">registerListener</span><span class="punct">(</span><span class="var">listener</span><span class="punct">);</span>  <span class="com">// 构造完成后再注册</span>
+        <span class="kw">return</span> <span class="var">listener</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ⑨ 小结 -->
+  <h2>小结</h2>
+  <p>
+    安全发布的本质是在"写入引用"和"读取引用"之间建立 <strong>happens-before</strong> 关系，
+    使读线程不仅能看到引用本身，还能看到对象所有字段的正确值。
+  </p>
+  <div class="tree">
+    安全发布的四条路
+    ├── 静态初始化器 ── 最简单，类加载天然保证
+    ├── volatile 字段 ── 轻量，适合"写一次读多次"的引用
+    ├── synchronized ── 万能，写读都需持同一把锁
+    └── 并发容器 ── 优雅，生产者-消费者首选
+    <span class="hi">
+    记住：对象在构造器中不能逸出 this，否则一切保证都失效</span>
+  </div>
+
+  <hr />
+
+  <div class="callout info">
+    <strong>面试高频考点：</strong>
+    DCL 为什么需要 <code>volatile</code>？—— 因为 <code>new</code> 操作在字节码层面是三步，JIT 可以将"赋值"提前到"初始化"之前。
+    <code>volatile</code> 写禁止了这个重排序，使其他线程要么看到 <code>null</code>，要么看到完整初始化的对象，没有中间状态。
+  </div>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./09-不变性与final.html" class="nav-btn">← 09. 不变性与 final</a>
+    <a href="./11-对象的组合与同步策略.html" class="nav-btn next">11. 对象的组合与同步策略 →</a>
+  </div>
+
+</div>
+</body>
+</html>

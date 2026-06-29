@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>04. 阻塞队列 BlockingQueue 与生产者-消费者</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part II 构建模块 / 队列与同步器
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part II 构建模块 · 队列与同步器</div>
+    <h1>04. 阻塞队列 BlockingQueue 与生产者-消费者</h1>
+    <p>并发程序中最优雅的解耦手段——用队列把"生产速度"和"消费速度"彻底分离。</p>
+  </div>
+
+  <!-- 1. 为什么需要阻塞队列 -->
+  <h2>1. 问题起点：无协调的生产者-消费者</h2>
+  <p>
+    想象一条流水线：上游工人（生产者）焊接零件，下游工人（消费者）喷漆。两者速度不一致，
+    不加协调会产生两类经典并发问题：
+  </p>
+  <ul>
+    <li><strong>消费者空转（busy-wait）</strong>：队列为空时消费者不断轮询，白白消耗 CPU。</li>
+    <li><strong>生产者撑爆内存</strong>：队列无界且消费慢，堆内存被积压任务耗尽，触发 OOM。</li>
+  </ul>
+  <p>
+    手动用 <code>wait/notifyAll</code> 实现需要正确处理锁、条件判断、虚假唤醒……
+    <strong>BlockingQueue</strong> 把这一切封装进接口契约，让你只需关注"放"与"取"的业务逻辑。
+  </p>
+
+  <div class="callout info">
+    <strong>设计哲学</strong>：BlockingQueue 是"条件等待"的高阶封装。内部用 <code>ReentrantLock</code> + 两个
+    <code>Condition</code>（notEmpty / notFull）实现，比 synchronized+wait 更精确地唤醒对应的等待方。
+  </div>
+
+  <!-- 2. BlockingQueue 接口全景 -->
+  <h2>2. BlockingQueue 接口：四组操作的对称设计</h2>
+  <p>
+    接口定义了四种行为模式，同一逻辑（入队/出队）对"队满/队空"时的处理方式不同：
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>操作</th>
+        <th>抛异常</th>
+        <th>返回特殊值</th>
+        <th><strong>阻塞</strong></th>
+        <th>超时阻塞</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>入队</td>
+        <td><code>add(e)</code></td>
+        <td><code>offer(e)</code></td>
+        <td><code>put(e)</code></td>
+        <td><code>offer(e, t, unit)</code></td>
+      </tr>
+      <tr>
+        <td>出队</td>
+        <td><code>remove()</code></td>
+        <td><code>poll()</code></td>
+        <td><code>take()</code></td>
+        <td><code>poll(t, unit)</code></td>
+      </tr>
+      <tr>
+        <td>查看队头</td>
+        <td><code>element()</code></td>
+        <td><code>peek()</code></td>
+        <td>—</td>
+        <td>—</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    生产者-消费者模型中最常用的是 <code>put</code> 和 <code>take</code>：队满时
+    <code>put</code> 自动挂起生产者线程，队空时 <code>take</code> 自动挂起消费者线程，
+    无需任何额外同步代码。
+  </p>
+
+  <!-- 3. 主要实现类对比 -->
+  <h2>3. 五大实现类：选哪个？</h2>
+  <table>
+    <thead>
+      <tr><th>实现类</th><th>底层结构</th><th>容量</th><th>公平性</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>ArrayBlockingQueue</code></td>
+        <td>循环数组</td>
+        <td>有界（必填）</td>
+        <td>可选公平锁</td>
+        <td>背压控制、内存敏感</td>
+      </tr>
+      <tr>
+        <td><code>LinkedBlockingQueue</code></td>
+        <td>单向链表</td>
+        <td>可选（默认 Integer.MAX_VALUE）</td>
+        <td>否</td>
+        <td>高吞吐，入队/出队用独立锁</td>
+      </tr>
+      <tr>
+        <td><code>SynchronousQueue</code></td>
+        <td>无存储</td>
+        <td>0（直接交付）</td>
+        <td>可选</td>
+        <td>直接握手传递，CachedThreadPool 用它</td>
+      </tr>
+      <tr>
+        <td><code>PriorityBlockingQueue</code></td>
+        <td>堆</td>
+        <td>无界</td>
+        <td>否</td>
+        <td>按优先级消费，注意饥饿</td>
+      </tr>
+      <tr>
+        <td><code>DelayQueue</code></td>
+        <td>堆 + Delayed</td>
+        <td>无界</td>
+        <td>否</td>
+        <td>定时任务、缓存过期</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱：LinkedBlockingQueue 的"默认无界"</strong><br/>
+    不传容量参数时，容量为 <code>Integer.MAX_VALUE</code>（约 21 亿）。
+    如果消费者比生产者慢，任务会无限堆积，最终 OOM。
+    <strong>线上环境务必显式指定容量</strong>，例如 <code>new LinkedBlockingQueue&lt;&gt;(1000)</code>。
+  </div>
+
+  <!-- 4. ArrayBlockingQueue 内部原理 -->
+  <h2>4. 原理深挖：ArrayBlockingQueue 如何实现阻塞</h2>
+  <p>
+    以 <code>ArrayBlockingQueue</code> 为例看源码骨架。它用<strong>一把 ReentrantLock</strong>
+    + 两个 Condition 实现读写互斥与条件等待：
+  </p>
+
+  <div class="tree">
+    ArrayBlockingQueue<br/>
+    ├── <span class="hi">final ReentrantLock lock</span><br/>
+    ├── <span class="hi">final Condition notEmpty</span>  ← take() 在此等待<br/>
+    ├── <span class="hi">final Condition notFull</span>   ← put() 在此等待<br/>
+    ├── Object[] items      ← 循环数组<br/>
+    ├── int putIndex        ← 下次写入位置<br/>
+    └── int takeIndex       ← 下次读取位置
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ArrayBlockingQueue — put / take 核心逻辑（简化）</span><span>Java</span></div>
+    <pre><span class="com">// -------- put：队满则等待 --------</span>
+<span class="kw">public void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">E</span> <span class="var">e</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+    <span class="fn">checkNotNull</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>
+    <span class="kw">final</span> <span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">lock</span><span class="punct">;</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lockInterruptibly</span><span class="punct">();</span>          <span class="com">// 可响应中断，优于 lock()</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span>   <span class="com">// 用 while 而非 if，防虚假唤醒</span>
+            <span class="var">notFull</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>           <span class="com">// 释放锁并挂起</span>
+        <span class="fn">enqueue</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>                    <span class="com">// 写入数组，putIndex 推进</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">private void</span> <span class="fn">enqueue</span><span class="punct">(</span><span class="ty">E</span> <span class="var">x</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="var">items</span><span class="punct">[</span><span class="var">putIndex</span><span class="punct">]</span> <span class="punct">=</span> <span class="var">x</span><span class="punct">;</span>
+    <span class="kw">if</span> <span class="punct">(++</span><span class="var">putIndex</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span> <span class="var">putIndex</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>  <span class="com">// 循环</span>
+    <span class="var">count</span><span class="punct">++;</span>
+    <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>               <span class="com">// 唤醒一个等待的消费者</span>
+<span class="punct">}</span>
+
+<span class="com">// -------- take：队空则等待 --------</span>
+<span class="kw">public</span> <span class="ty">E</span> <span class="fn">take</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+    <span class="kw">final</span> <span class="ty">ReentrantLock</span> <span class="var">lock</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">lock</span><span class="punct">;</span>
+    <span class="var">lock</span><span class="punct">.</span><span class="fn">lockInterruptibly</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span>              <span class="com">// 同样用 while 防虚假唤醒</span>
+            <span class="var">notEmpty</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+        <span class="kw">return</span> <span class="fn">dequeue</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">lock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">private</span> <span class="ty">E</span> <span class="fn">dequeue</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="ty">E</span> <span class="var">x</span> <span class="punct">=</span> <span class="punct">(</span><span class="ty">E</span><span class="punct">)</span> <span class="var">items</span><span class="punct">[</span><span class="var">takeIndex</span><span class="punct">];</span>
+    <span class="var">items</span><span class="punct">[</span><span class="var">takeIndex</span><span class="punct">]</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>          <span class="com">// help GC</span>
+    <span class="kw">if</span> <span class="punct">(++</span><span class="var">takeIndex</span> <span class="punct">==</span> <span class="var">items</span><span class="punct">.</span><span class="var">length</span><span class="punct">)</span> <span class="var">takeIndex</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+    <span class="var">count</span><span class="punct">--;</span>
+    <span class="var">notFull</span><span class="punct">.</span><span class="fn">signal</span><span class="punct">();</span>                <span class="com">// 唤醒一个等待的生产者</span>
+    <span class="kw">return</span> <span class="var">x</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么条件判断用 while 而非 if？</strong><br/>
+    虚假唤醒（Spurious Wakeup）：JVM 规范允许线程在没有 <code>notify</code> 的情况下从
+    <code>await</code> 返回。用 <code>while</code> 重新检查条件可以正确应对虚假唤醒，
+    这是所有"条件等待"的标准写法。
+  </div>
+
+  <!-- 5. LinkedBlockingQueue 的双锁优化 -->
+  <h2>5. LinkedBlockingQueue：双锁拆分提升吞吐</h2>
+  <p>
+    <code>ArrayBlockingQueue</code> 入队和出队共用同一把锁，高并发下互相阻塞。
+    <code>LinkedBlockingQueue</code> 用<strong>两把独立的锁</strong>（<code>putLock</code> 和
+    <code>takeLock</code>）分别保护队尾和队头，入队和出队可以真正并发执行，吞吐更高。
+  </p>
+  <div class="tree">
+    LinkedBlockingQueue<br/>
+    ├── <span class="hi">ReentrantLock putLock</span>  + Condition notFull<br/>
+    ├── <span class="hi">ReentrantLock takeLock</span> + Condition notEmpty<br/>
+    ├── AtomicInteger count        ← 原子计数，跨两把锁共享<br/>
+    ├── Node&lt;E&gt; head               ← 虚头节点<br/>
+    └── Node&lt;E&gt; last
+  </div>
+  <p>
+    代价是链表节点频繁分配，GC 压力比数组高。<strong>高吞吐选 LinkedBlockingQueue，
+    内存敏感或需要公平性选 ArrayBlockingQueue</strong>。
+  </p>
+
+  <!-- 6. 生产者-消费者完整示例 -->
+  <h2>6. 完整示例：文件扫描 + 内容搜索流水线</h2>
+  <p>
+    经典的"多生产者-多消费者"场景：一个线程扫描目录产出文件路径，多个消费者线程
+    并发读取文件内容并搜索关键词。队列把两阶段完全解耦。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>FileCrawler（生产者）+ FileSearcher（消费者）</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">IndexingService</span> <span class="punct">{</span>
+
+    <span class="com">// 有界队列：控制背压，防止扫描速度远超搜索速度时 OOM</span>
+    <span class="kw">private static final int</span> <span class="var">CAPACITY</span> <span class="punct">=</span> <span class="num">100</span><span class="punct">;</span>
+    <span class="kw">private static final</span> <span class="ty">Path</span> <span class="var">POISON</span> <span class="punct">=</span> <span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="str">"__POISON__"</span><span class="punct">);</span>  <span class="com">// 毒丸</span>
+
+    <span class="kw">public void</span> <span class="fn">start</span><span class="punct">(</span><span class="ty">Path</span> <span class="var">root</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">keyword</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">consumers</span><span class="punct">)</span>
+            <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+
+        <span class="ty">BlockingQueue</span><span class="punct">&lt;</span><span class="ty">Path</span><span class="punct">&gt;</span> <span class="var">queue</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;(</span><span class="var">CAPACITY</span><span class="punct">);</span>
+
+        <span class="com">// 生产者：扫描目录，遇到文件就 put</span>
+        <span class="ty">Thread</span> <span class="var">crawler</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="kw">try</span> <span class="punct">{</span>
+                <span class="fn">crawl</span><span class="punct">(</span><span class="var">root</span><span class="punct">,</span> <span class="var">queue</span><span class="punct">);</span>
+            <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+                <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+            <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+                <span class="com">// 每个消费者放一颗毒丸，保证所有消费者都能退出</span>
+                <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">consumers</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span>
+                    <span class="kw">try</span> <span class="punct">{</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">POISON</span><span class="punct">); }</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">ignored</span><span class="punct">) {}</span>
+            <span class="punct">}</span>
+        <span class="punct">},</span> <span class="str">"crawler"</span><span class="punct">);</span>
+
+        <span class="com">// 消费者：取出文件路径，读取内容搜索关键词</span>
+        <span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="var">consumers</span><span class="punct">);</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">consumers</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++)</span> <span class="punct">{</span>
+            <span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+                <span class="kw">try</span> <span class="punct">{</span>
+                    <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+                        <span class="ty">Path</span> <span class="var">file</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>     <span class="com">// 队空则阻塞</span>
+                        <span class="kw">if</span> <span class="punct">(</span><span class="var">file</span> <span class="punct">==</span> <span class="var">POISON</span><span class="punct">)</span> <span class="kw">break</span><span class="punct">;</span>  <span class="com">// 毒丸 = 退出信号</span>
+                        <span class="fn">search</span><span class="punct">(</span><span class="var">file</span><span class="punct">,</span> <span class="var">keyword</span><span class="punct">);</span>
+                    <span class="punct">}</span>
+                <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+                    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+                <span class="punct">}</span>
+            <span class="punct">});</span>
+        <span class="punct">}</span>
+
+        <span class="var">crawler</span><span class="punct">.</span><span class="fn">start</span><span class="punct">();</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">awaitTermination</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">HOURS</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private void</span> <span class="fn">crawl</span><span class="punct">(</span><span class="ty">Path</span> <span class="var">dir</span><span class="punct">,</span> <span class="ty">BlockingQueue</span><span class="punct">&lt;</span><span class="ty">Path</span><span class="punct">&gt;</span> <span class="var">q</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+        <span class="com">// Files.walk 遍历目录，只 put 普通文件</span>
+        <span class="kw">try</span> <span class="punct">(</span><span class="ty">Stream</span><span class="punct">&lt;</span><span class="ty">Path</span><span class="punct">&gt;</span> <span class="var">s</span> <span class="punct">=</span> <span class="ty">Files</span><span class="punct">.</span><span class="fn">walk</span><span class="punct">(</span><span class="var">dir</span><span class="punct">))</span> <span class="punct">{</span>
+            <span class="var">s</span><span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="ty">Files</span><span class="punct">::</span><span class="var">isRegularFile</span><span class="punct">)</span>
+             <span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="var">p</span> <span class="punct">-&gt; {</span>
+                 <span class="kw">try</span> <span class="punct">{</span> <span class="var">q</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">p</span><span class="punct">); }</span> <span class="com">// 队满则阻塞，实现背压</span>
+                 <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+                     <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+                 <span class="punct">}</span>
+             <span class="punct">});</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">e</span><span class="punct">) {</span> <span class="com">/* 日志 */</span> <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private void</span> <span class="fn">search</span><span class="punct">(</span><span class="ty">Path</span> <span class="var">file</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">keyword</span><span class="punct">) {</span>
+        <span class="com">// 实际搜索逻辑省略</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. 毒丸模式 -->
+  <h2>7. 停止信号：毒丸（Poison Pill）模式</h2>
+  <p>
+    如何优雅地通知消费者"没有更多任务了"？常见有两种方案：
+  </p>
+  <ul>
+    <li><strong>毒丸对象</strong>：放入一个哨兵元素，消费者取到后退出。简单，适合消费者数量固定时。</li>
+    <li><strong>标志位 + interrupt</strong>：设置 <code>volatile boolean shutdown</code>，
+      消费者检查标志后退出。但需要额外打断 <code>take()</code> 的阻塞。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>毒丸数量必须等于消费者线程数！</strong><br/>
+    只有每个消费者都能"喝到"一颗毒丸才能全部退出。如果有 N 个消费者，
+    生产者必须放 N 颗毒丸。否则某些消费者将永远阻塞在 <code>take()</code>。
+  </div>
+
+  <!-- 8. 反例 vs 正例 -->
+  <h2>8. 并发陷阱全解</h2>
+
+  <h3>陷阱一：用 if 而非 while 检查条件</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 虚假唤醒导致数据错乱</span><span>Java (bad)</span></div>
+    <pre><span class="com">// 手写版本，if 判断条件</span>
+<span class="kw">synchronized</span> <span class="kw">void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">E</span> <span class="var">e</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="var">capacity</span><span class="punct">)</span>   <span class="com">// ❌ 虚假唤醒后不重新检查</span>
+        <span class="fn">wait</span><span class="punct">();</span>
+    <span class="var">items</span><span class="punct">[</span><span class="var">putIndex</span><span class="punct">++]</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">;</span>     <span class="com">// 可能在队满时写入，越界或覆盖</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — while 循环重检条件</span><span>Java (good)</span></div>
+    <pre><span class="kw">synchronized</span> <span class="kw">void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">E</span> <span class="var">e</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">InterruptedException</span> <span class="punct">{</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="var">count</span> <span class="punct">==</span> <span class="var">capacity</span><span class="punct">)</span>  <span class="com">// ✅ 每次唤醒后重新检查</span>
+        <span class="fn">wait</span><span class="punct">();</span>
+    <span class="var">items</span><span class="punct">[</span><span class="var">putIndex</span><span class="punct">++]</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">;</span>
+    <span class="fn">notifyAll</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱二：put/take 与 interrupt 的交互</h3>
+  <p>
+    <code>put</code> 和 <code>take</code> 都声明了 <code>throws InterruptedException</code>，
+    意味着它们<strong>响应中断</strong>。线程池关闭时会调用 <code>shutdownNow</code>
+    中断所有线程，此时阻塞在 <code>take</code> 的消费者线程会被唤醒并抛出异常。
+    <strong>捕获到 InterruptedException 后必须重置中断标志</strong>：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>InterruptedException 的正确处理</span><span>Java</span></div>
+    <pre><span class="kw">try</span> <span class="punct">{</span>
+    <span class="ty">E</span> <span class="var">item</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>
+    <span class="fn">process</span><span class="punct">(</span><span class="var">item</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// ❌ 错误：直接 return 或吞掉异常，中断标志丢失</span>
+    <span class="com">// return;</span>
+
+    <span class="com">// ✅ 正确：恢复中断标志，让外层代码有机会响应</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>陷阱三：offer 的非阻塞误用</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>offer 失败时任务静默丢失</span><span>Java (bad)</span></div>
+    <pre><span class="com">// ❌ offer 在队满时返回 false，任务直接丢弃，没有任何日志或重试</span>
+<span class="kw">boolean</span> <span class="var">ok</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">offer</span><span class="punct">(</span><span class="var">task</span><span class="punct">);</span>
+<span class="com">// 没检查 ok！</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>offer 加超时或主动拒绝策略</span><span>Java (good)</span></div>
+    <pre><span class="com">// ✅ 方案一：带超时的 offer，超时后执行降级逻辑</span>
+<span class="kw">boolean</span> <span class="var">enqueued</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">offer</span><span class="punct">(</span><span class="var">task</span><span class="punct">,</span> <span class="num">500</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">MILLISECONDS</span><span class="punct">);</span>
+<span class="kw">if</span> <span class="punct">(!</span><span class="var">enqueued</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="var">log</span><span class="punct">.</span><span class="fn">warn</span><span class="punct">(</span><span class="str">"队列满，任务被丢弃: {}"</span><span class="punct">,</span> <span class="var">task</span><span class="punct">);</span>
+    <span class="var">metrics</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">(</span><span class="str">"task.dropped"</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 方案二：用 ThreadPoolExecutor 的 RejectedExecutionHandler</span>
+<span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span><span class="num">4</span><span class="punct">,</span> <span class="num">8</span><span class="punct">,</span> <span class="num">60</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>
+    <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;(</span><span class="num">200</span><span class="punct">),</span>
+    <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">.</span><span class="ty">CallerRunsPolicy</span><span class="punct">()</span>  <span class="com">// 队满时调用方线程直接执行，天然背压</span>
+<span class="punct">);</span></pre>
+  </div>
+
+  <!-- 9. SynchronousQueue 特殊用法 -->
+  <h2>9. SynchronousQueue：零缓冲直连</h2>
+  <p>
+    <code>SynchronousQueue</code> 没有内部存储。每次 <code>put</code> 都必须有一个线程
+    同时在 <code>take</code>，否则生产者阻塞（反之亦然）。
+    它的语义是"<strong>线程间直接握手传递</strong>"，而不是"缓冲"。
+  </p>
+  <p>
+    <code>Executors.newCachedThreadPool()</code> 内部就用了它：任务提交后若没有空闲线程，
+    立即创建新线程；若有空闲线程则直接交付，不做任何排队。
+  </p>
+  <div class="callout warn">
+    <strong>CachedThreadPool 的隐患</strong>：SynchronousQueue 不限流，
+    在任务爆发时线程数无上限增长，可能创建数万个线程导致 OOM 或系统崩溃。
+    线上服务用 <code>ThreadPoolExecutor</code> + 有界 <code>LinkedBlockingQueue</code> 更安全。
+  </div>
+
+  <!-- 10. 与 ThreadPoolExecutor 的关系 -->
+  <h2>10. BlockingQueue 与 ThreadPoolExecutor 的关系</h2>
+  <p>
+    <code>ThreadPoolExecutor</code> 的第五个参数就是一个 <code>BlockingQueue&lt;Runnable&gt;</code>，
+    队列的选型直接决定线程池的行为策略：
+  </p>
+  <table>
+    <thead>
+      <tr><th>队列类型</th><th>效果</th><th>风险</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>SynchronousQueue</code></td>
+        <td>提交直接给线程，核心满了就扩容</td>
+        <td>线程无上限，OOM</td>
+      </tr>
+      <tr>
+        <td><code>LinkedBlockingQueue</code>（无界）</td>
+        <td>任务永远排队，maxPoolSize 无效</td>
+        <td>内存 OOM，任务积压</td>
+      </tr>
+      <tr>
+        <td><code>LinkedBlockingQueue</code>（有界）</td>
+        <td>排队满后扩线程，扩到 max 再触发拒绝策略</td>
+        <td>最推荐</td>
+      </tr>
+      <tr>
+        <td><code>ArrayBlockingQueue</code>（有界）</td>
+        <td>同上，内存更稳定</td>
+        <td>推荐</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 11. 面试高频考点 -->
+  <h2>11. 面试高频考点</h2>
+  <ul>
+    <li><strong>ArrayBlockingQueue vs LinkedBlockingQueue 的区别？</strong><br/>
+      数组 vs 链表；单锁 vs 双锁；必须指定容量 vs 默认无界。</li>
+    <li><strong>BlockingQueue 为什么不允许 null？</strong><br/>
+      <code>poll()</code> 返回 null 表示"队列为空"，允许 null 元素会产生歧义。</li>
+    <li><strong>put 和 offer 的区别？</strong><br/>
+      put 无限阻塞；offer 立即返回 false 或带超时阻塞。生产者速度可控时优先 put + 有界队列实现背压。</li>
+    <li><strong>如何优雅停止消费者？</strong><br/>
+      毒丸模式（N 个消费者放 N 颗毒丸）或 <code>interrupt</code> + volatile 标志位。</li>
+    <li><strong>SynchronousQueue 有什么实际用途？</strong><br/>
+      <code>CachedThreadPool</code>、Exchanger 的底层思路、两个线程需要"同步握手"时。</li>
+  </ul>
+
+  <hr/>
+
+  <div class="callout tip">
+    <strong>一句话总结</strong>：BlockingQueue 是并发编程中"解耦速度差异"的标准工具——
+    用有界队列实现背压，用 put/take 屏蔽繁琐的 wait/notify，用毒丸或 interrupt 优雅停止。
+    选型上：内存敏感用 ArrayBlockingQueue，高吞吐用有界 LinkedBlockingQueue，
+    零缓冲直传用 SynchronousQueue。
+  </div>
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./03-CopyOnWriteArrayList.html" class="nav-btn">← 03. CopyOnWriteArrayList</a>
+    <a href="./05-CountDownLatch.html" class="nav-btn next">05. CountDownLatch →</a>
+  </div>
+
+</div>
+</body>
+</html>

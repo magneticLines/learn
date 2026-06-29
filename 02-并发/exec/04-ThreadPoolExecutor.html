@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>04. ThreadPoolExecutor 七大参数 — Java 并发编程实战</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part III 结构化应用 / 线程池
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part III 结构化应用 · 线程池</div>
+    <h1>04. ThreadPoolExecutor 七大参数</h1>
+    <p>彻底理解线程池的内部调度模型，掌握每个参数背后的设计动机，从此不再"黑盒"调参。</p>
+  </div>
+
+  <!-- 1. 为什么需要线程池 -->
+  <h2>为什么需要线程池？</h2>
+  <p>
+    每次 <code>new Thread(task).start()</code> 都需要在操作系统层面分配内核栈、用户栈（默认 512KB~1MB）、
+    并做上下文注册——在高并发场景下，这笔开销会迅速耗尽内存，还带来大量上下文切换。
+    线程池解决三个核心问题：
+  </p>
+  <ul>
+    <li><strong>复用</strong>：线程执行完任务后不销毁，等待新任务，省去反复创建/销毁的 OS 开销</li>
+    <li><strong>限流</strong>：通过最大线程数约束并发上限，防止系统被压垮</li>
+    <li><strong>缓冲</strong>：任务队列作为"削峰填谷"的蓄水池，平滑突发流量</li>
+  </ul>
+
+  <!-- 2. 构造函数全貌 -->
+  <h2>七大参数一览</h2>
+  <p><code>ThreadPoolExecutor</code> 最完整的构造函数签名如下：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>ThreadPoolExecutor.java（JDK 源码）</span></div>
+    <pre><span class="kw">public</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+    <span class="kw">int</span>             <span class="var">corePoolSize</span><span class="punct">,</span>          <span class="com">// ① 核心线程数</span>
+    <span class="kw">int</span>             <span class="var">maximumPoolSize</span><span class="punct">,</span>       <span class="com">// ② 最大线程数</span>
+    <span class="kw">long</span>            <span class="var">keepAliveTime</span><span class="punct">,</span>         <span class="com">// ③ 空闲线程存活时间</span>
+    <span class="ty">TimeUnit</span>        <span class="var">unit</span><span class="punct">,</span>                  <span class="com">// ④ 时间单位</span>
+    <span class="ty">BlockingQueue</span><span class="punct">&lt;</span><span class="ty">Runnable</span><span class="punct">&gt;</span> <span class="var">workQueue</span><span class="punct">,</span>   <span class="com">// ⑤ 任务队列</span>
+    <span class="ty">ThreadFactory</span>   <span class="var">threadFactory</span><span class="punct">,</span>         <span class="com">// ⑥ 线程工厂</span>
+    <span class="ty">RejectedExecutionHandler</span> <span class="var">handler</span>       <span class="com">// ⑦ 拒绝策略</span>
+<span class="punct">)</span></pre>
+  </div>
+
+  <p>
+    <code>Executors.newFixedThreadPool</code>、<code>newCachedThreadPool</code> 等工厂方法都是
+    对这个构造函数的封装，只是给了不同的默认值——理解七大参数，就能彻底掌控所有变体。
+  </p>
+
+  <!-- 3. 调度模型 -->
+  <h2>调度模型：三级缓冲</h2>
+  <p>任务提交到线程池时，JDK 按<strong>固定优先级</strong>依次判断：</p>
+
+  <div class="tree">
+    提交任务 execute(task)<br>
+    │<br>
+    ├─ 当前线程数 &lt; <span class="hi">corePoolSize</span> ──→ 直接创建核心线程执行<br>
+    │<br>
+    ├─ 队列未满 ──────────────────────→ 入队 <span class="hi">workQueue</span>，等待核心线程消费<br>
+    │<br>
+    ├─ 当前线程数 &lt; <span class="hi">maximumPoolSize</span> ─→ 创建非核心线程执行（救急线程）<br>
+    │<br>
+    └─ 以上均不满足 ──────────────────→ 触发 <span class="hi">RejectedExecutionHandler</span>
+  </div>
+
+  <div class="callout info">
+    <strong>关键洞察：</strong>队列优先于扩容。只有队列满了，才会尝试创建救急线程。
+    这与很多人直觉相反——"先排队，再扩线程"是 JDK 的刻意设计，目的是优先复用已有线程，
+    减少不必要的线程创建开销。
+  </div>
+
+  <!-- 4. 逐参数讲解 -->
+  <h2>① corePoolSize — 核心线程数</h2>
+  <p>
+    线程池"常驻"的线程数量。即使这些线程处于空闲状态，默认也<strong>不会被回收</strong>。
+    它们随时待命，响应新任务的延迟极低。
+  </p>
+  <p>
+    类比餐厅：核心线程就是编制内的正式员工，没客人时也照样领工资（占内存）。
+  </p>
+
+  <div class="callout tip">
+    <strong>经验值：</strong><br>
+    • CPU 密集型任务：<code>corePoolSize = CPU 核数 + 1</code>（+1 防止偶发 GC 停顿让 CPU 空转）<br>
+    • IO 密集型任务：<code>corePoolSize = CPU 核数 × (1 + 等待时间/计算时间)</code>，
+      实践中常设 <code>2 × CPU 核数</code> 作为起点
+  </div>
+
+  <p>
+    可通过 <code>allowCoreThreadTimeOut(true)</code> 让核心线程也参与超时回收，
+    适合任务量极不均匀的场景（如定时批处理）。
+  </p>
+
+  <h2>② maximumPoolSize — 最大线程数</h2>
+  <p>
+    线程池能同时存在的线程总上限，包含核心线程。
+    当队列已满、还有新任务进来时，线程池才会在 <code>corePoolSize</code> 之上继续创建线程，
+    直到达到 <code>maximumPoolSize</code>。
+  </p>
+  <p>
+    多出来的线程（<code>maximumPoolSize - corePoolSize</code> 部分）称为<strong>救急线程</strong>，
+    它们在空闲 <code>keepAliveTime</code> 后会被自动销毁。
+  </p>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>使用无界队列（如默认的 <code>LinkedBlockingQueue</code>）时，
+    队列永远不会"满"，<code>maximumPoolSize</code> 形同虚设——救急线程永远不会被创建。
+    这正是 <code>Executors.newFixedThreadPool</code> 的隐患所在。
+  </div>
+
+  <h2>③④ keepAliveTime + unit — 救急线程存活时间</h2>
+  <p>
+    救急线程执行完任务后，若在 <code>keepAliveTime</code> 时间内没有新任务可执行，
+    则被线程池回收销毁。单位由 <code>TimeUnit</code> 参数指定（秒、毫秒、纳秒均可）。
+  </p>
+  <p>
+    设置过短：流量波动时频繁创建/销毁救急线程，白白浪费 OS 资源。<br>
+    设置过长：流量低谷时救急线程长时间空占内存。
+  </p>
+
+  <h2>⑤ workQueue — 任务队列</h2>
+  <p>JDK 提供了三种常用队列，各有取舍：</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>队列类型</th>
+        <th>容量</th>
+        <th>特点</th>
+        <th>适用场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>LinkedBlockingQueue</code></td>
+        <td>默认无界（Integer.MAX_VALUE）</td>
+        <td>永不拒绝，但可能 OOM</td>
+        <td>任务量可预期、不会暴增</td>
+      </tr>
+      <tr>
+        <td><code>ArrayBlockingQueue</code></td>
+        <td>固定有界</td>
+        <td>队列满时触发扩线程/拒绝</td>
+        <td>需要严格限流的生产系统</td>
+      </tr>
+      <tr>
+        <td><code>SynchronousQueue</code></td>
+        <td>容量为 0（直接交付）</td>
+        <td>每个任务必须立刻被线程接手，否则触发扩线程</td>
+        <td><code>newCachedThreadPool</code>，短时高并发</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>生产高频踩坑：</strong><code>Executors.newFixedThreadPool(n)</code> 内部使用
+    <code>new LinkedBlockingQueue()</code>（无界），任务堆积时内存会被耗尽，引发 OOM。
+    阿里 Java 开发手册明确禁止直接使用 <code>Executors</code> 工厂方法创建线程池，
+    原因正在于此。
+  </div>
+
+  <h2>⑥ threadFactory — 线程工厂</h2>
+  <p>
+    负责创建新线程。默认实现 <code>Executors.defaultThreadFactory()</code> 创建的线程
+    名字形如 <code>pool-1-thread-1</code>，在日志和监控里几乎无法定位来源。
+  </p>
+  <p>
+    生产环境<strong>必须自定义</strong> <code>ThreadFactory</code>，至少要：
+  </p>
+  <ul>
+    <li>给线程命名（如 <code>order-pool-</code>），方便排查死锁、CPU 打满等问题</li>
+    <li>设置 <code>UncaughtExceptionHandler</code>，防止异常被线程池默默吞掉</li>
+    <li>按需设置 <code>daemon</code> 属性（守护线程会随 JVM 退出而终止）</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>自定义 ThreadFactory 示例</span></div>
+    <pre><span class="ty">ThreadFactory</span> <span class="var">factory</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadFactory</span><span class="punct">() {</span>
+    <span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">counter</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public</span> <span class="ty">Thread</span> <span class="fn">newThread</span><span class="punct">(</span><span class="ty">Runnable</span> <span class="var">r</span><span class="punct">) {</span>
+        <span class="ty">Thread</span> <span class="var">t</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(</span><span class="var">r</span><span class="punct">,</span> <span class="str">"order-pool-"</span> <span class="punct">+</span> <span class="var">counter</span><span class="punct">.</span><span class="fn">getAndIncrement</span><span class="punct">());</span>
+        <span class="com">// 非守护线程：JVM 不会强制中断正在处理的订单任务</span>
+        <span class="var">t</span><span class="punct">.</span><span class="fn">setDaemon</span><span class="punct">(</span><span class="kw">false</span><span class="punct">);</span>
+        <span class="com">// 统一捕获未处理异常，接入监控告警</span>
+        <span class="var">t</span><span class="punct">.</span><span class="fn">setUncaughtExceptionHandler</span><span class="punct">((</span><span class="var">thread</span><span class="punct">,</span> <span class="var">ex</span><span class="punct">) -&gt;</span>
+            <span class="var">log</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"[{}] 未捕获异常"</span><span class="punct">,</span> <span class="var">thread</span><span class="punct">.</span><span class="fn">getName</span><span class="punct">(),</span> <span class="var">ex</span><span class="punct">)</span>
+        <span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">t</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">};</span></pre>
+  </div>
+
+  <h2>⑦ handler — 拒绝策略</h2>
+  <p>
+    当队列已满且线程数已达 <code>maximumPoolSize</code>，继续提交的任务触发拒绝策略。
+    JDK 内置四种，详见下一篇。这里先了解调用时机：
+  </p>
+
+  <div class="tree">
+    队列已满 AND 线程数 == <span class="hi">maximumPoolSize</span><br>
+    │<br>
+    └─ 调用 <span class="hi">handler.rejectedExecution(task, executor)</span>
+  </div>
+
+  <!-- 5. 完整示例 -->
+  <h2>正例：生产级线程池配置</h2>
+  <p>综合七大参数，写出一个可用于生产的订单处理线程池：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java</span><span>OrderExecutorConfig.java</span></div>
+    <pre><span class="kw">int</span> <span class="var">cpuCores</span> <span class="punct">=</span> <span class="ty">Runtime</span><span class="punct">.</span><span class="fn">getRuntime</span><span class="punct">().</span><span class="fn">availableProcessors</span><span class="punct">();</span>
+
+<span class="ty">ThreadPoolExecutor</span> <span class="var">executor</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+    <span class="var">cpuCores</span><span class="punct">,</span>                          <span class="com">// ① corePoolSize：CPU 核数，轻量 IO 可乘以 2</span>
+    <span class="var">cpuCores</span> <span class="punct">*</span> <span class="num">2</span><span class="punct">,</span>                      <span class="com">// ② maximumPoolSize：流量洪峰时最多扩到 2 倍核数</span>
+    <span class="num">60</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>             <span class="com">// ③④ keepAliveTime：救急线程空闲 60s 后销毁</span>
+    <span class="kw">new</span> <span class="ty">ArrayBlockingQueue</span><span class="punct">&lt;&gt;(</span><span class="num">500</span><span class="punct">),</span>    <span class="com">// ⑤ 有界队列：队满才触发扩线程，防止 OOM</span>
+    <span class="var">factory</span><span class="punct">,</span>                           <span class="com">// ⑥ 自定义 ThreadFactory（见上方代码）</span>
+    <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">.</span><span class="ty">CallerRunsPolicy</span><span class="punct">()</span> <span class="com">// ⑦ 调用者自己跑：天然背压，不丢任务</span>
+<span class="punct">);</span>
+
+<span class="com">// 优雅关闭：不再接收新任务，等待已提交任务跑完</span>
+<span class="ty">Runtime</span><span class="punct">.</span><span class="fn">getRuntime</span><span class="punct">().</span><span class="fn">addShutdownHook</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+    <span class="var">executor</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">executor</span><span class="punct">.</span><span class="fn">awaitTermination</span><span class="punct">(</span><span class="num">30</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">)) {</span>
+            <span class="var">executor</span><span class="punct">.</span><span class="fn">shutdownNow</span><span class="punct">();</span> <span class="com">// 超时强制中断</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="var">executor</span><span class="punct">.</span><span class="fn">shutdownNow</span><span class="punct">();</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}));</span></pre>
+  </div>
+
+  <!-- 6. 反例对比 -->
+  <h2>反例：Executors 工厂方法的隐患</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例（禁止在生产使用）</span></div>
+    <pre><span class="com">// 反例 1：newFixedThreadPool —— 无界队列，任务堆积 → OOM</span>
+<span class="ty">ExecutorService</span> <span class="var">bad1</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="num">10</span><span class="punct">);</span>
+<span class="com">// 内部等价于：new ThreadPoolExecutor(10, 10, 0, MILLISECONDS,
+//   new LinkedBlockingQueue())  ← 无界！</span>
+
+<span class="com">// 反例 2：newCachedThreadPool —— 无上限线程数，高并发 → 线程爆炸 → OOM</span>
+<span class="ty">ExecutorService</span> <span class="var">bad2</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newCachedThreadPool</span><span class="punct">();</span>
+<span class="com">// 内部等价于：new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60, SECONDS,
+//   new SynchronousQueue())  ← 最大线程数无限！</span></pre>
+  </div>
+
+  <!-- 7. 并发陷阱汇总 -->
+  <h2>并发陷阱与面试高频考点</h2>
+
+  <h3>陷阱一：任务里抛异常被线程池吞掉</h3>
+  <p>
+    <code>execute(task)</code> 提交的任务抛出未检查异常时，线程池会<strong>静默回收该线程</strong>并创建新线程，
+    没有任何日志输出。必须在 <code>ThreadFactory</code> 里设置 <code>UncaughtExceptionHandler</code>，
+    或改用 <code>submit(task)</code>（异常被封装进 <code>Future</code>，调用 <code>get()</code> 时才抛出）。
+  </p>
+
+  <h3>陷阱二：线程池共享导致任务互相阻塞（线程饥饿死锁）</h3>
+  <p>
+    父任务和子任务共用同一个线程池，且父任务调用 <code>future.get()</code> 等待子任务完成。
+    若线程都被父任务占满，子任务无线程可用，形成死锁。
+    解法：子任务使用独立线程池，或改用 <code>CompletableFuture</code> 异步编排。
+  </p>
+
+  <h3>陷阱三：shutdown 后 submit 新任务</h3>
+  <p>
+    调用 <code>shutdown()</code> 后继续提交任务会直接触发拒绝策略（默认抛
+    <code>RejectedExecutionException</code>），常见于应用关闭流程写得不严谨时。
+  </p>
+
+  <h3>面试高频：核心线程数为 0 时的行为</h3>
+  <p>
+    当 <code>corePoolSize = 0</code>（如 <code>newCachedThreadPool</code>），
+    提交任务时线程池会<strong>先尝试入队</strong>（<code>SynchronousQueue.offer()</code> 立即返回 false），
+    失败后直接创建救急线程执行。因此即使没有核心线程，任务也能立即被执行而不是被放入队列等待。
+  </p>
+
+  <!-- 8. 参数速查表 -->
+  <h2>七大参数速查表</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>参数名</th>
+        <th>作用</th>
+        <th>常见问题</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>①</td>
+        <td><code>corePoolSize</code></td>
+        <td>常驻线程数，默认不回收</td>
+        <td>IO 密集型设置过小，CPU 打不满</td>
+      </tr>
+      <tr>
+        <td>②</td>
+        <td><code>maximumPoolSize</code></td>
+        <td>线程总上限（含核心线程）</td>
+        <td>无界队列时此值无效</td>
+      </tr>
+      <tr>
+        <td>③④</td>
+        <td><code>keepAliveTime / unit</code></td>
+        <td>救急线程空闲超时时间</td>
+        <td>过短导致频繁创建/销毁</td>
+      </tr>
+      <tr>
+        <td>⑤</td>
+        <td><code>workQueue</code></td>
+        <td>任务缓冲队列</td>
+        <td>无界队列导致 OOM</td>
+      </tr>
+      <tr>
+        <td>⑥</td>
+        <td><code>threadFactory</code></td>
+        <td>线程创建策略（命名、异常处理）</td>
+        <td>默认命名无法定位问题</td>
+      </tr>
+      <tr>
+        <td>⑦</td>
+        <td><code>handler</code></td>
+        <td>队列满且线程满时的兜底策略</td>
+        <td>默认抛异常，任务会丢失</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./03-CompletableFuture.html" class="nav-btn">← 03. CompletableFuture 异步编排</a>
+    <a href="./05-拒绝策略.html" class="nav-btn next">05. 四种拒绝策略 →</a>
+  </div>
+
+</div>
+</body>
+</html>

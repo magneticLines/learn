@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>09. 不变性与 final | Java 并发编程实战</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+.page { max-width: 720px; margin: 0 auto; }
+.breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+.breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+.hero { margin-bottom: 40px; }
+.hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+.hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+.hero p { color: #64748b; font-size: 0.9rem; }
+h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+.code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+.code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+.code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+.kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+.com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+.callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+.callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+.callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+.callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+tr:nth-child(even) td { background: #13151f; }
+td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+.tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+.nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+.nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+.nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+/* 主题色补丁 */
+.tree .hi { color: #f87171; }
+p code, li code { color: #f87171; }
+h2 { color: #f87171; border-left-color: #f87171; }
+.hero .tag { color: #f87171; border-color: #7f1d1d; }
+.nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part I 基础知识 / 缩小共享 = 减少 Bug
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part I 基础知识 · 缩小共享 = 减少 Bug</div>
+    <h1>09. 不变性与 final</h1>
+    <p>彻底消灭可变状态——不可变对象天生线程安全，无需任何同步。</p>
+  </div>
+
+  <!-- ① 为什么并发 Bug 的根源是"可变共享状态" -->
+  <h2>① 并发 Bug 的根本原因</h2>
+  <p>
+    并发程序出错，几乎都指向同一个病灶：<strong>多个线程同时访问同一个可变状态</strong>，
+    而访问没有被充分同步。消灭其中任一要素，Bug 就消失了：
+  </p>
+  <ul>
+    <li><strong>消灭"多个线程"</strong>：线程封闭（上一节）</li>
+    <li><strong>消灭"可变状态"</strong>：不变性（本节）</li>
+    <li><strong>保证"充分同步"</strong>：锁、volatile、原子类（后续节）</li>
+  </ul>
+  <p>
+    不变性（Immutability）是三条路里最干净的一条——根本就没有状态变化，
+    就根本不存在竞态条件（Race Condition）、数据竞争（Data Race）。
+    你不需要加锁，不需要用 <code>volatile</code>，也不需要担心"看到了过期值"。
+  </p>
+
+  <div class="callout info">
+    <strong>JMM 视角：</strong>Java 内存模型（JMM）要求对共享变量的读写必须通过同步动作才能建立 happens-before 关系。
+    不可变对象一旦构造完毕，其字段就再也不会改变，自然不存在"写"，也就不需要 happens-before 了。
+  </div>
+
+  <!-- ② 什么是真正的不可变对象 -->
+  <h2>② 什么是"真正的"不可变对象</h2>
+  <p>很多人以为"加了 <code>final</code> 就不可变了"，这是最常见的误区。不可变对象需要满足三个条件：</p>
+  <ol>
+    <li>对象创建后其<strong>状态不能被修改</strong>（没有 setter，也没有任何修改内部状态的方法）</li>
+    <li>所有字段都是 <code>final</code> 的</li>
+    <li>对象被<strong>正确构造</strong>（构造期间 <code>this</code> 引用没有逸出）</li>
+  </ol>
+
+  <div class="callout warn">
+    <strong>陷阱：final 字段 ≠ 字段引用的对象不可变</strong><br>
+    <code>final List&lt;String&gt; list</code> 只保证 <code>list</code> 引用本身不变，
+    但 <code>list.add("x")</code> 仍然合法。这种对象<strong>不是不可变对象</strong>，
+    而只是一个"引用不可变"的对象。
+  </div>
+
+  <!-- 反例 vs 正例 -->
+  <h2>③ 反例 → 问题 → 正例</h2>
+
+  <h3>反例：以为加了 final 就安全</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>MutablePoint.java — 错误示范</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">MutablePoint</span> <span class="punct">{</span>
+    <span class="com">// final 只是防止引用被重新赋值，x/y 本身仍可改变</span>
+    <span class="kw">public final</span> <span class="ty">int</span><span class="punct">[]</span> <span class="var">coords</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">MutablePoint</span><span class="punct">(</span><span class="ty">int</span> <span class="var">x</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">y</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">coords</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">int</span><span class="punct">[]</span> <span class="punct">{</span><span class="var">x</span><span class="punct">,</span> <span class="var">y</span><span class="punct">};</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 线程 A 和线程 B 同时操作同一个 point：</span>
+<span class="var">point</span><span class="punct">.</span><span class="var">coords</span><span class="punct">[</span><span class="num">0</span><span class="punct">]</span> <span class="punct">=</span> <span class="num">10</span><span class="punct">;</span>  <span class="com">// 线程 A 写</span>
+<span class="ty">int</span> <span class="var">x</span> <span class="punct">=</span> <span class="var">point</span><span class="punct">.</span><span class="var">coords</span><span class="punct">[</span><span class="num">0</span><span class="punct">];</span>  <span class="com">// 线程 B 读 —— 数据竞争！</span></pre>
+  </div>
+
+  <p>
+    数组是引用类型，<code>final coords</code> 只保证 <code>coords</code> 变量不会指向别的数组，
+    但数组元素本身完全可以被任意修改，多线程访问时依然存在竞态条件。
+  </p>
+
+  <h3>正例：真正的不可变点</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>ImmutablePoint.java — 正确示范</span></div>
+    <pre><span class="com">// 满足三个条件：状态不可变 + 全 final + 正确构造</span>
+<span class="kw">public final class</span> <span class="ty">ImmutablePoint</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">int</span> <span class="var">x</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">int</span> <span class="var">y</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">ImmutablePoint</span><span class="punct">(</span><span class="ty">int</span> <span class="var">x</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">y</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">x</span> <span class="punct">=</span> <span class="var">x</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">y</span> <span class="punct">=</span> <span class="var">y</span><span class="punct">;</span>
+        <span class="com">// 构造结束前绝不把 this 传出去（不逸出）</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">int</span> <span class="fn">getX</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">x</span><span class="punct">; }</span>
+    <span class="kw">public</span> <span class="ty">int</span> <span class="fn">getY</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">y</span><span class="punct">; }</span>
+
+    <span class="com">// "修改"操作返回新对象，原对象不变</span>
+    <span class="kw">public</span> <span class="ty">ImmutablePoint</span> <span class="fn">translate</span><span class="punct">(</span><span class="ty">int</span> <span class="var">dx</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">dy</span><span class="punct">) {</span>
+        <span class="kw">return new</span> <span class="ty">ImmutablePoint</span><span class="punct">(</span><span class="var">x</span> <span class="punct">+</span> <span class="var">dx</span><span class="punct">,</span> <span class="var">y</span> <span class="punct">+</span> <span class="var">dy</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    任意多个线程同时读取同一个 <code>ImmutablePoint</code>，永远安全，
+    不需要任何同步。
+  </p>
+
+  <!-- ④ final 的内存语义 -->
+  <h2>④ final 的内存语义（JMM 保证）</h2>
+  <p>
+    <code>final</code> 在 JMM 里有特殊地位，远比你想象的重要。JMM 规定：
+  </p>
+  <ul>
+    <li>
+      <strong>写 final 字段的重排序规则</strong>：构造函数对 <code>final</code> 字段的写入，
+      不能被重排序到构造函数返回之后。也就是说，当其他线程看到这个对象引用时，
+      <code>final</code> 字段已经完成初始化。
+    </li>
+    <li>
+      <strong>读 final 字段的重排序规则</strong>：首次读对象引用和随后读该对象的 <code>final</code> 字段，
+      不能被重排序。
+    </li>
+  </ul>
+
+  <div class="callout info">
+    <strong>这意味着什么？</strong><br>
+    不可变对象的 <code>final</code> 字段，即使在没有同步的情况下发布（例如把引用直接存入普通变量），
+    其他线程也能<strong>安全地读取</strong>到正确初始化后的值。
+    这是 <code>final</code> 独有的特权，普通字段没有这个保证。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>FinalFieldVisibility.java — final 的可见性保证</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">FinalFieldVisibility</span> <span class="punct">{</span>
+    <span class="kw">final</span> <span class="ty">int</span> <span class="var">x</span><span class="punct">;</span>
+    <span class="ty">int</span> <span class="var">y</span><span class="punct">;</span>  <span class="com">// 普通字段，无保证</span>
+
+    <span class="fn">FinalFieldVisibility</span><span class="punct">() {</span>
+        <span class="var">x</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span>
+        <span class="var">y</span> <span class="punct">=</span> <span class="num">2</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 发布（无同步）</span>
+<span class="kw">static</span> <span class="ty">FinalFieldVisibility</span> <span class="var">obj</span><span class="punct">;</span>
+<span class="com">// 线程 A：</span>
+<span class="var">obj</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FinalFieldVisibility</span><span class="punct">();</span>
+
+<span class="com">// 线程 B：</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">obj</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">) {</span>
+    <span class="ty">int</span> <span class="var">a</span> <span class="punct">=</span> <span class="var">obj</span><span class="punct">.</span><span class="var">x</span><span class="punct">;</span>  <span class="com">// JMM 保证一定看到 1（final 保证）</span>
+    <span class="ty">int</span> <span class="var">b</span> <span class="punct">=</span> <span class="var">obj</span><span class="punct">.</span><span class="var">y</span><span class="punct">;</span>  <span class="com">// 可能看到 0（普通字段，无保证）</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ⑤ 含可变引用的不可变类 -->
+  <h2>⑤ 含可变引用的不可变类：防御性拷贝</h2>
+  <p>
+    如果不可变类的字段中包含可变对象的引用（如数组、集合），
+    必须在构造时做<strong>防御性拷贝（Defensive Copy）</strong>，
+    同时 getter 也不能直接返回内部引用。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ImmutablePeriod.java — 防御性拷贝</span></div>
+    <pre><span class="kw">import</span> <span class="var">java.util.Date</span><span class="punct">;</span>
+
+<span class="kw">public final class</span> <span class="ty">ImmutablePeriod</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">Date</span> <span class="var">start</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">Date</span> <span class="var">end</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">ImmutablePeriod</span><span class="punct">(</span><span class="ty">Date</span> <span class="var">start</span><span class="punct">,</span> <span class="ty">Date</span> <span class="var">end</span><span class="punct">) {</span>
+        <span class="com">// 防御性拷贝：不信任外部传入的 Date，立刻复制一份</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">start</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Date</span><span class="punct">(</span><span class="var">start</span><span class="punct">.</span><span class="fn">getTime</span><span class="punct">());</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">end</span>   <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Date</span><span class="punct">(</span><span class="var">end</span><span class="punct">.</span><span class="fn">getTime</span><span class="punct">());</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">start</span><span class="punct">.</span><span class="fn">after</span><span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">end</span><span class="punct">))</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"start after end"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">Date</span> <span class="fn">getStart</span><span class="punct">() {</span>
+        <span class="com">// 返回副本，不暴露内部引用</span>
+        <span class="kw">return new</span> <span class="ty">Date</span><span class="punct">(</span><span class="var">start</span><span class="punct">.</span><span class="fn">getTime</span><span class="punct">());</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">Date</span> <span class="fn">getEnd</span><span class="punct">() {</span>
+        <span class="kw">return new</span> <span class="ty">Date</span><span class="punct">(</span><span class="var">end</span><span class="punct">.</span><span class="fn">getTime</span><span class="punct">());</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>常见漏洞：</strong>只在构造时拷贝，但 getter 直接返回 <code>this.start</code>。
+    调用者拿到引用后执行 <code>period.getStart().setTime(0)</code>，
+    就悄悄修改了"不可变"对象内部。这是《Effective Java》第 50 条重点警告的问题。
+  </div>
+
+  <!-- ⑥ 用不可变对象配合 volatile 实现原子复合操作 -->
+  <h2>⑥ 不可变对象 + volatile 实现原子更新</h2>
+  <p>
+    不可变对象有一个经典用法：将多个相关字段打包成一个不可变对象，
+    再用 <code>volatile</code> 引用持有它，就能在无锁的情况下保证"读到的一组数据是一致的"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>CachedFactorizer.java — 不可变对象 + volatile 的惯用法</span></div>
+    <pre><span class="com">// 把"上次输入"和"上次结果"打包，保证两者的一致性</span>
+<span class="ann">@Immutable</span>
+<span class="kw">class</span> <span class="ty">OneValueCache</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">BigInteger</span> <span class="var">lastNumber</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">BigInteger</span><span class="punct">[]</span> <span class="var">lastFactors</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">OneValueCache</span><span class="punct">(</span><span class="ty">BigInteger</span> <span class="var">i</span><span class="punct">,</span> <span class="ty">BigInteger</span><span class="punct">[]</span> <span class="var">factors</span><span class="punct">) {</span>
+        <span class="var">lastNumber</span>  <span class="punct">=</span> <span class="var">i</span><span class="punct">;</span>
+        <span class="com">// 防御性拷贝</span>
+        <span class="var">lastFactors</span> <span class="punct">=</span> <span class="ty">Arrays</span><span class="punct">.</span><span class="fn">copyOf</span><span class="punct">(</span><span class="var">factors</span><span class="punct">,</span> <span class="var">factors</span><span class="punct">.</span><span class="var">length</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">BigInteger</span><span class="punct">[]</span> <span class="fn">getFactors</span><span class="punct">(</span><span class="ty">BigInteger</span> <span class="var">i</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">lastNumber</span> <span class="punct">==</span> <span class="kw">null</span> <span class="punct">||</span> <span class="punct">!</span><span class="var">lastNumber</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">i</span><span class="punct">))</span>
+            <span class="kw">return null</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="ty">Arrays</span><span class="punct">.</span><span class="fn">copyOf</span><span class="punct">(</span><span class="var">lastFactors</span><span class="punct">,</span> <span class="var">lastFactors</span><span class="punct">.</span><span class="var">length</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="ann">@ThreadSafe</span>
+<span class="kw">public class</span> <span class="ty">CachedFactorizer</span> <span class="punct">{</span>
+    <span class="com">// volatile 保证引用的可见性；不可变对象保证状态的一致性</span>
+    <span class="kw">private volatile</span> <span class="ty">OneValueCache</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">OneValueCache</span><span class="punct">(</span><span class="kw">null</span><span class="punct">,</span> <span class="kw">null</span><span class="punct">);</span>
+
+    <span class="kw">public</span> <span class="ty">BigInteger</span><span class="punct">[]</span> <span class="fn">service</span><span class="punct">(</span><span class="ty">BigInteger</span> <span class="var">i</span><span class="punct">) {</span>
+        <span class="ty">BigInteger</span><span class="punct">[]</span> <span class="var">cached</span> <span class="punct">=</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">getFactors</span><span class="punct">(</span><span class="var">i</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">cached</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="kw">return</span> <span class="var">cached</span><span class="punct">;</span>
+        <span class="punct">}</span>
+        <span class="ty">BigInteger</span><span class="punct">[]</span> <span class="var">factors</span> <span class="punct">=</span> <span class="fn">factor</span><span class="punct">(</span><span class="var">i</span><span class="punct">);</span>
+        <span class="com">// 整体替换引用，无锁，无竞态</span>
+        <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">OneValueCache</span><span class="punct">(</span><span class="var">i</span><span class="punct">,</span> <span class="var">factors</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">factors</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    关键思路：<strong>读-修改-写</strong>被拆成"构造新对象"和"替换引用"两步，
+    任何线程读到的 <code>cache</code> 引用，要么是旧的完整状态，要么是新的完整状态，
+    绝不会看到"lastNumber 更新了但 lastFactors 还没更新"这种半截子状态。
+  </p>
+
+  <!-- ⑦ Java 标准库中的不可变类 -->
+  <h2>⑦ 标准库中的不可变类</h2>
+  <table>
+    <tr><th>类</th><th>备注</th></tr>
+    <tr><td><code>String</code></td><td>最常用的不可变类，<code>substring</code>/<code>concat</code> 均返回新对象</td></tr>
+    <tr><td><code>Integer</code>/<code>Long</code>/… 等基本类型包装类</td><td>运算结果返回新实例</td></tr>
+    <tr><td><code>BigInteger</code>/<code>BigDecimal</code></td><td>所有算术操作均返回新对象</td></tr>
+    <tr><td><code>LocalDate</code>/<code>LocalDateTime</code>（Java 8+）</td><td>新时间 API 设计为不可变，彻底取代线程不安全的 <code>Date</code></td></tr>
+    <tr><td><code>List.of()</code>/<code>Map.of()</code>（Java 9+）</td><td>返回不可修改（unmodifiable）视图，注意≠深度不可变</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>注意：</strong><code>Collections.unmodifiableList()</code> 和 <code>List.of()</code>
+    只是"不可修改视图"，不是真正的不可变——若底层集合被修改，视图也会变。
+    只有字段全为 <code>final</code> 且字段指向的对象也不可变，才算深度不可变。
+  </div>
+
+  <!-- ⑧ 设计不可变类的最佳实践 -->
+  <h2>⑧ 设计不可变类的最佳实践</h2>
+  <div class="tree">
+    ✅ 声明类为 <span class="hi">final</span>（防止子类破坏不变性）
+    ✅ 所有字段声明为 <span class="hi">private final</span>
+    ✅ 构造时对可变引用做 <span class="hi">防御性拷贝</span>
+    ✅ getter 返回可变对象时也做 <span class="hi">防御性拷贝</span>
+    ✅ 不提供任何修改状态的方法（no setter）
+    ✅ "修改"操作返回 <span class="hi">新对象</span>（函数式风格）
+    ✅ 构造期间 <span class="hi">不让 this 逸出</span>
+    ⚠️  字段 final ≠ 字段引用的对象不可变
+    ⚠️  unmodifiable 视图 ≠ 真正不可变
+  </div>
+
+  <!-- ⑨ 面试高频考点 -->
+  <h2>⑨ 面试高频考点</h2>
+  <ul>
+    <li>
+      <strong>String 为什么设计成不可变？</strong>
+      安全性（字符串常量池、类加载）、线程安全、hashCode 缓存三个原因。
+    </li>
+    <li>
+      <strong>final 能保证可见性吗？</strong>
+      能，但仅限于 <code>final</code> 字段在构造函数中的初始化写入——
+      这是 JMM 对 <code>final</code> 的特殊内存语义，普通字段没有这个保证。
+    </li>
+    <li>
+      <strong>不可变对象一定线程安全吗？</strong>
+      对象本身是线程安全的，但持有它的引用变量不一定——
+      若引用变量是普通变量（非 <code>volatile</code>、非 <code>final</code>），
+      其他线程读引用本身可能拿到 null 或过期值。
+    </li>
+    <li>
+      <strong>String 的 <code>+</code> 拼接为什么慢？</strong>
+      每次 <code>+</code> 都创建新的 <code>String</code> 对象（不可变的代价），
+      循环中应用 <code>StringBuilder</code>。
+    </li>
+  </ul>
+
+  <!-- ⑩ 小结 -->
+  <h2>⑩ 小结</h2>
+  <p>
+    不可变性是并发安全的终极武器：<strong>没有状态变化，就没有竞态</strong>。
+    <code>final</code> 的内存语义由 JMM 保障，让不可变对象的字段在构造完成后对所有线程安全可见。
+    设计不可变类的关键在于"<strong>全 final 字段 + 防御性拷贝 + 不逸出 this</strong>"，
+    三者缺一不可。当需要"修改"时，返回新对象而不是改旧对象，这也是函数式编程的核心思想。
+  </p>
+
+  <div class="callout tip">
+    <strong>下一步：</strong>即使对象本身不可变，发布（publication）这个行为本身依然需要正确处理——
+    下一节「安全发布的几种方式」将介绍如何把对象引用安全地传递给其他线程。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./08-线程封闭.html" class="nav-btn">← 08. 线程封闭（ThreadLocal / 栈封闭）</a>
+    <a href="./10-安全发布.html" class="nav-btn next">10. 安全发布的几种方式 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>01. 同步容器及其问题（Vector / Collections.synchronizedXxx）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #4ade80; }
+    p code, li code { color: #4ade80; }
+    h2 { color: #4ade80; border-left-color: #4ade80; }
+    .hero .tag { color: #4ade80; border-color: #166534; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part II 构建模块 / 容器
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part II 构建模块 · 容器</div>
+    <h1>01. 同步容器及其问题</h1>
+    <p>Vector、Hashtable 与 Collections.synchronizedXxx —— 粗粒度锁的设计哲学、线程安全的假象，以及复合操作的致命陷阱。</p>
+  </div>
+
+  <!-- 1. 为什么需要同步容器 -->
+  <h2>1. 问题从哪里来：普通容器为何不安全</h2>
+  <p>Java 早期的 <code>ArrayList</code>、<code>HashMap</code> 等集合类，内部状态（数组、链表节点）没有任何同步保护。多线程并发修改时，典型危害包括：</p>
+  <ul>
+    <li><strong>数据丢失</strong>：两个线程同时 <code>add</code>，都读到相同的 <code>size</code>，写入同一个槽位，后者覆盖前者。</li>
+    <li><strong>无限循环</strong>：JDK 7 及以下 <code>HashMap</code> 在并发扩容时链表成环，导致 <code>get</code> 永不退出（CPU 飙升经典案例）。</li>
+    <li><strong>数组越界 / NPE</strong>：一个线程正在扩容，另一个线程读到旧引用，越界访问。</li>
+  </ul>
+  <div class="callout info">
+    <strong>根本原因：</strong>可见性 + 原子性双重缺失。读-改-写不是一个原子操作，且没有 happens-before 保证，多核下各自的缓存行会产生竞态。
+  </div>
+
+  <!-- 2. 同步容器的设计思路 -->
+  <h2>2. 同步容器的设计思路：给每个方法加锁</h2>
+  <p>JDK 1.0 时代的解法非常直接：<strong>把每个公开方法都用 <code>synchronized</code> 修饰</strong>，以 <code>this</code>（对象本身）作为内置锁。</p>
+
+  <div class="tree">
+    同步容器家族<br>
+    ├── <span class="hi">Vector</span>              ← ArrayList 的同步版，add/get/remove 全加 synchronized<br>
+    ├── <span class="hi">Hashtable</span>           ← HashMap 的同步版，同样方法级锁<br>
+    └── <span class="hi">Collections.synchronized*</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├── synchronizedList(list)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├── synchronizedMap(map)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└── synchronizedSet(set)
+  </div>
+
+  <h3>2.1 Vector 的锁实现</h3>
+  <p><code>Vector</code> 的核心方法在 JDK 源码中大致如下（简化）：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Vector.java（JDK 源码简化）</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Vector</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt;</span> <span class="kw">extends</span> <span class="ty">AbstractList</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt;</span> <span class="punct">{</span>
+
+    <span class="kw">protected</span> <span class="ty">Object</span><span class="punct">[]</span> <span class="var">elementData</span><span class="punct">;</span>
+    <span class="kw">protected int</span> <span class="var">elementCount</span><span class="punct">;</span>
+
+    <span class="com">// 每个方法都加 synchronized —— 锁是 this 本身</span>
+    <span class="kw">public synchronized boolean</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">E</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="fn">ensureCapacityHelper</span><span class="punct">(</span><span class="var">elementCount</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">);</span>
+        <span class="var">elementData</span><span class="punct">[</span><span class="var">elementCount</span><span class="punct">++] =</span> <span class="var">e</span><span class="punct">;</span>
+        <span class="kw">return true</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public synchronized</span> <span class="ty">E</span> <span class="fn">get</span><span class="punct">(</span><span class="kw">int</span> <span class="var">index</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">index</span> <span class="punct">&gt;=</span> <span class="var">elementCount</span><span class="punct">)</span>
+            <span class="kw">throw new</span> <span class="ty">ArrayIndexOutOfBoundsException</span><span class="punct">(</span><span class="var">index</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="fn">elementData</span><span class="punct">(</span><span class="var">index</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public synchronized int</span> <span class="fn">size</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">elementCount</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>2.2 Collections.synchronizedList 的包装思路</h3>
+  <p><code>Collections.synchronizedList</code> 采用<strong>装饰器模式</strong>：把原有 List 包一层，每个方法委托给内部 List，同时加锁。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Collections.java（源码简化）</span><span>Java</span></div>
+    <pre><span class="kw">static class</span> <span class="ty">SynchronizedList</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt;</span> <span class="kw">implements</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt; {</span>
+    <span class="kw">final</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">;</span>
+    <span class="kw">final</span> <span class="ty">Object</span> <span class="var">mutex</span><span class="punct">;</span>   <span class="com">// 锁对象，默认 = this</span>
+
+    <span class="fn">SynchronizedList</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">list</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">;</span>
+        <span class="var">mutex</span> <span class="punct">= this;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">E</span> <span class="fn">get</span><span class="punct">(</span><span class="kw">int</span> <span class="var">index</span><span class="punct">) {</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">mutex</span><span class="punct">) {</span> <span class="kw">return</span> <span class="var">list</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">index</span><span class="punct">); }</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public boolean</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">E</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">mutex</span><span class="punct">) {</span> <span class="kw">return</span> <span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">e</span><span class="punct">); }</span>
+    <span class="punct">}</span>
+
+    <span class="com">// ... 其余方法同理 ...</span>
+
+    <span class="com">// ⚠️ iterator() 没有加锁！调用方需要自己同步</span>
+    <span class="kw">public</span> <span class="ty">Iterator</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt;</span> <span class="fn">iterator</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">list</span><span class="punct">.</span><span class="fn">iterator</span><span class="punct">();</span>  <span class="com">// 未加锁！</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 3. 保证了什么 -->
+  <h2>3. 同步容器真正保证了什么</h2>
+  <p>同步容器通过方法级锁，保证了以下两件事：</p>
+  <ul>
+    <li><strong>单个方法的原子性</strong>：一次 <code>get</code> 或一次 <code>add</code> 不会被其他线程打断。</li>
+    <li><strong>可见性</strong>：<code>synchronized</code> 退出时会将工作内存刷回主内存，进入时会重新从主内存读取，满足 happens-before。</li>
+  </ul>
+  <div class="callout tip">
+    类比：把超市货架（容器）换成一间有保安的储藏室——每次只允许一个人进入拿货或放货，单次操作安全了。但如果你的业务逻辑需要"先看一眼有没有货，没有才补货"，两步之间保安不会帮你站着等，这就是后面要讲的陷阱。
+  </div>
+
+  <!-- 4. 核心陷阱 -->
+  <h2>4. 核心陷阱：复合操作不是原子的</h2>
+  <p>同步容器只保护<strong>单次方法调用</strong>。当业务逻辑需要多个方法调用组成一个逻辑单元时，<strong>锁会在两次调用之间释放</strong>，另一个线程可以趁虚而入。</p>
+
+  <h3>陷阱一：先检查后执行（Check-Then-Act）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>❌ 反例：看似安全，实则有竞态</span><span>Java</span></div>
+    <pre><span class="ty">Vector</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Vector</span><span class="punct">&lt;&gt;();</span>
+
+<span class="com">// 线程 A 和线程 B 同时执行 getLast()</span>
+<span class="kw">public</span> <span class="ty">String</span> <span class="fn">getLast</span><span class="punct">(</span><span class="ty">Vector</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">) {</span>
+    <span class="kw">int</span> <span class="var">lastIndex</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">.</span><span class="fn">size</span><span class="punct">() -</span> <span class="num">1</span><span class="punct">;</span>  <span class="com">// ① 调用 size()，锁获取后立即释放</span>
+    <span class="com">// ⚠️ 此处锁已释放！线程 B 可能调用 deleteLast() 删掉最后一个元素</span>
+    <span class="kw">return</span> <span class="var">list</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">lastIndex</span><span class="punct">);</span>      <span class="com">// ② 再次获取锁，但 lastIndex 可能已越界！</span>
+<span class="punct">}</span>
+
+<span class="kw">public void</span> <span class="fn">deleteLast</span><span class="punct">(</span><span class="ty">Vector</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">) {</span>
+    <span class="kw">int</span> <span class="var">lastIndex</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">.</span><span class="fn">size</span><span class="punct">() -</span> <span class="num">1</span><span class="punct">;</span>
+    <span class="var">list</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">(</span><span class="var">lastIndex</span><span class="punct">);</span>           <span class="com">// 删掉最后一个</span>
+<span class="punct">}</span>
+<span class="com">// 结果：getLast 抛出 ArrayIndexOutOfBoundsException！</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>✅ 正例：在客户端手动加锁，持有锁跨越整个复合操作</span><span>Java</span></div>
+    <pre><span class="kw">public</span> <span class="ty">String</span> <span class="fn">getLast</span><span class="punct">(</span><span class="ty">Vector</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">) {</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">list</span><span class="punct">) {</span>             <span class="com">// 锁住 list 对象本身（与 Vector 内置锁相同）</span>
+        <span class="kw">int</span> <span class="var">lastIndex</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">.</span><span class="fn">size</span><span class="punct">() -</span> <span class="num">1</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="var">list</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">lastIndex</span><span class="punct">);</span>    <span class="com">// size() 和 get() 在同一个锁块内，原子</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">public void</span> <span class="fn">deleteLast</span><span class="punct">(</span><span class="ty">Vector</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">) {</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">list</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">lastIndex</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">.</span><span class="fn">size</span><span class="punct">() -</span> <span class="num">1</span><span class="punct">;</span>
+        <span class="var">list</span><span class="punct">.</span><span class="fn">remove</span><span class="punct">(</span><span class="var">lastIndex</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>关键原则：</strong>客户端加锁必须使用<strong>与同步容器内部相同的锁对象</strong>。<code>Vector</code> 的内置锁是 <code>this</code>（即 Vector 实例本身），所以写 <code>synchronized (list)</code> 才能与 Vector 内部锁互斥。若用其他对象作锁，两个锁之间没有关系，复合操作仍然不安全。
+  </div>
+
+  <h3>陷阱二：迭代时被并发修改（ConcurrentModificationException）</h3>
+  <p>同步容器的迭代器是<strong>快速失败（fail-fast）</strong>的：迭代期间若容器被修改（<code>modCount</code> 变化），下一次 <code>next()</code> 就会抛出 <code>ConcurrentModificationException</code>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>❌ 反例：迭代被并发修改打断</span><span>Java</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">syncList</span> <span class="punct">=</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">synchronizedList</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;());</span>
+
+<span class="com">// 线程 A：迭代</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="ty">String</span> <span class="var">item</span> <span class="punct">:</span> <span class="var">syncList</span><span class="punct">) {</span>      <span class="com">// iterator() 未加锁</span>
+    <span class="fn">process</span><span class="punct">(</span><span class="var">item</span><span class="punct">);</span>                    <span class="com">// 线程 B 在这里 add/remove → CME ！</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>✅ 正例：手动同步整个迭代块</span><span>Java</span></div>
+    <pre><span class="kw">synchronized</span> <span class="punct">(</span><span class="var">syncList</span><span class="punct">) {</span>           <span class="com">// 整个迭代持有锁，阻止并发修改</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="ty">String</span> <span class="var">item</span> <span class="punct">:</span> <span class="var">syncList</span><span class="punct">) {</span>
+        <span class="fn">process</span><span class="punct">(</span><span class="var">item</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// 代价：迭代期间其他线程无法 add/get，吞吐量下降</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>隐蔽的迭代：</strong><code>toString()</code>、<code>hashCode()</code>、<code>equals()</code>、<code>containsAll()</code>、<code>addAll()</code> 等方法在内部都会触发迭代。把同步容器放进日志语句 <code>log.debug("list={}", list)</code> 都可能因此抛 CME，这是高并发系统中非常隐蔽的 bug。
+  </div>
+
+  <h3>陷阱三：若不存在则添加（put-if-absent）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>❌ 反例：Hashtable 也救不了你</span><span>Java</span></div>
+    <pre><span class="ty">Hashtable</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">Connection</span><span class="punct">&gt;</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Hashtable</span><span class="punct">&lt;&gt;();</span>
+
+<span class="kw">public</span> <span class="ty">Connection</span> <span class="fn">getConnection</span><span class="punct">(</span><span class="ty">String</span> <span class="var">key</span><span class="punct">) {</span>
+    <span class="kw">if</span> <span class="punct">(!</span><span class="var">cache</span><span class="punct">.</span><span class="fn">containsKey</span><span class="punct">(</span><span class="var">key</span><span class="punct">)) {</span>   <span class="com">// ① 锁获取、检查、释放</span>
+        <span class="com">// ⚠️ 此处锁已释放！两个线程可能同时到达 ② 并各自建立连接</span>
+        <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="fn">createConnection</span><span class="punct">(</span><span class="var">key</span><span class="punct">));</span>  <span class="com">// ② 建立多余连接，资源泄漏</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>✅ 正例：客户端加锁保护整个复合操作</span><span>Java</span></div>
+    <pre><span class="kw">public</span> <span class="ty">Connection</span> <span class="fn">getConnection</span><span class="punct">(</span><span class="ty">String</span> <span class="var">key</span><span class="punct">) {</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">cache</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">cache</span><span class="punct">.</span><span class="fn">containsKey</span><span class="punct">(</span><span class="var">key</span><span class="punct">)) {</span>
+            <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="fn">createConnection</span><span class="punct">(</span><span class="var">key</span><span class="punct">));</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">key</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// 更好的方案：直接换用 ConcurrentHashMap.computeIfAbsent()（下一节）</span></pre>
+  </div>
+
+  <!-- 5. 性能问题 -->
+  <h2>5. 性能瓶颈：粗粒度锁的代价</h2>
+  <p>同步容器的锁粒度极粗——一把锁管整个容器。这意味着：</p>
+  <ul>
+    <li><strong>读读互斥</strong>：两个线程同时读 <code>get()</code> 也要串行，因为 <code>get</code> 也是 <code>synchronized</code>。</li>
+    <li><strong>锁竞争升级</strong>：高并发下大量线程阻塞排队，上下文切换开销远超业务本身。</li>
+    <li><strong>迭代期间全部阻塞</strong>：若对迭代加外部锁，整个迭代过程中其他读写线程全部等待。</li>
+  </ul>
+
+  <table>
+    <thead>
+      <tr><th>场景</th><th>同步容器行为</th><th>影响</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>10 线程并发 <code>get()</code></td>
+        <td>全部串行，一次只有一个线程读</td>
+        <td>读吞吐量 = 单线程</td>
+      </tr>
+      <tr>
+        <td>1 线程写 + 9 线程读</td>
+        <td>写时 9 线程全部阻塞</td>
+        <td>读线程长时间饥饿</td>
+      </tr>
+      <tr>
+        <td>迭代 10 万条记录</td>
+        <td>外部加锁后，期间所有 add/get 排队</td>
+        <td>明显延迟其他操作</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 6. 何时该用 / 不该用 -->
+  <h2>6. 何时该用，何时该换</h2>
+  <table>
+    <thead>
+      <tr><th>场景</th><th>推荐方案</th><th>原因</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>单线程或线程封闭</td>
+        <td><code>ArrayList</code> / <code>HashMap</code></td>
+        <td>无竞争，零开销</td>
+      </tr>
+      <tr>
+        <td>低并发、简单加锁即可</td>
+        <td><code>Collections.synchronizedXxx</code></td>
+        <td>最简单，改造成本低</td>
+      </tr>
+      <tr>
+        <td>高并发读多写少</td>
+        <td><code>ConcurrentHashMap</code> / <code>CopyOnWriteArrayList</code></td>
+        <td>分段锁 / 读无锁，吞吐量数量级提升</td>
+      </tr>
+      <tr>
+        <td>需要原子复合操作</td>
+        <td><code>ConcurrentHashMap.computeIfAbsent</code> 等</td>
+        <td>内置原子复合操作，无需客户端加锁</td>
+      </tr>
+      <tr>
+        <td>发布-订阅、生产-消费</td>
+        <td><code>BlockingQueue</code></td>
+        <td>专门为生产者-消费者设计，内置阻塞语义</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>实战建议：</strong><code>Vector</code> 和 <code>Hashtable</code> 在新代码中几乎不应出现，它们是 Java 1.0 的遗留设计。<code>Collections.synchronizedXxx</code> 偶尔用于遗留代码改造（给现有集合加锁），但要牢记：<strong>必须把所有复合操作包进同步块，迭代也不例外</strong>。
+  </div>
+
+  <!-- 7. 面试高频考点 -->
+  <h2>7. 面试高频考点</h2>
+
+  <h3>Q1：Vector 是线程安全的，为什么还会出现 ArrayIndexOutOfBoundsException？</h3>
+  <p>因为 <code>size()</code> 和 <code>get()</code> 是两次独立加锁，中间另一个线程可能 <code>remove()</code> 了元素。<strong>方法级别线程安全 ≠ 复合操作线程安全</strong>。</p>
+
+  <h3>Q2：Collections.synchronizedList 的 iterator() 为什么不加锁？</h3>
+  <p>迭代器可能要遍历整个集合，若自动加锁则持有时间不可控，会极大损害并发性。JDK 把这个决策权交给调用方，文档明确要求：<em>"使用返回的 iterator 时，用户必须手动在 syncList 上同步。"</em></p>
+
+  <h3>Q3：客户端加锁时锁对象用错了会怎样？</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>❌ 常见错误：锁对象不一致</span><span>Java</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span> <span class="punct">=</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">synchronizedList</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;());</span>
+<span class="kw">private final</span> <span class="ty">Object</span> <span class="var">myLock</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Object</span><span class="punct">();</span>
+
+<span class="kw">public void</span> <span class="fn">addIfAbsent</span><span class="punct">(</span><span class="ty">String</span> <span class="var">s</span><span class="punct">) {</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">myLock</span><span class="punct">) {</span>          <span class="com">// ❌ myLock ≠ list（SynchronizedList 内部的 mutex）</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">list</span><span class="punct">.</span><span class="fn">contains</span><span class="punct">(</span><span class="var">s</span><span class="punct">))</span>
+            <span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">s</span><span class="punct">);</span>              <span class="com">// 与其他线程直接调用 list.add() 之间没有互斥</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>两把锁互不干扰，复合操作的原子性依然没有保证。</p>
+
+  <h3>Q4：Hashtable 和 ConcurrentHashMap 的本质区别是什么？</h3>
+  <p><code>Hashtable</code> 用一把锁锁住整张表；<code>ConcurrentHashMap</code>（JDK 8+）用 CAS + 对每个桶头节点加锁，并发度从 1 提升到接近桶数量，详见下一节。</p>
+
+  <hr />
+
+  <!-- 总结 -->
+  <h2>小结</h2>
+  <ul>
+    <li>同步容器通过<strong>方法级 synchronized</strong> 解决了单次操作的可见性与原子性问题。</li>
+    <li>但<strong>复合操作（check-then-act、迭代、put-if-absent）依然需要客户端手动加锁</strong>，且锁对象必须与容器内部锁一致。</li>
+    <li>一把粗粒度锁导致读读串行，高并发下性能很差。</li>
+    <li>新代码应优先选择 <code>java.util.concurrent</code> 包中的并发容器，它们既提供原子复合操作，又有更好的吞吐量。</li>
+  </ul>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../concurrency-roadmap.html" class="nav-btn">← 路线图</a>
+    <a href="./02-ConcurrentHashMap.html" class="nav-btn next">02. ConcurrentHashMap（分段锁 → CAS+synchronized） →</a>
+  </div>
+
+</div>
+</body>
+</html>

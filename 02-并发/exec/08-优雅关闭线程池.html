@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>08. 优雅关闭线程池（shutdown vs shutdownNow）</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">路线图</a> / Part III 结构化应用 / 取消与关闭
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Part III 结构化应用 · 取消与关闭</div>
+    <h1>08. 优雅关闭线程池（shutdown vs shutdownNow）</h1>
+    <p>理解线程池的生命周期状态机，掌握两种关闭语义的本质差异，写出在 JVM 退出时不丢任务、不泄漏线程的生产级代码。</p>
+  </div>
+
+  <!-- ─── 1. 为什么关闭线程池是个难题 ─── -->
+  <h2>1. 为什么关闭线程池是个难题</h2>
+
+  <p>
+    线程池内部维护着<strong>工作线程 + 阻塞队列</strong>两个资源。
+    关闭时至少要回答三个问题：
+  </p>
+  <ul>
+    <li>队列里还没来得及执行的任务，要不要继续跑？</li>
+    <li>正在执行的任务，要不要打断？</li>
+    <li>调用方如何知道"已经彻底关干净了"？</li>
+  </ul>
+  <p>
+    这三个问题对应了两种截然不同的语义：<code>shutdown()</code> 和 <code>shutdownNow()</code>。
+    它们不是强弱之分，而是<strong>适用场景不同的两种策略</strong>。
+  </p>
+
+  <!-- ─── 2. 线程池的五态状态机 ─── -->
+  <h2>2. 线程池的五态状态机</h2>
+
+  <p>
+    <code>ThreadPoolExecutor</code> 用一个 <code>AtomicInteger ctl</code>
+    将<strong>运行状态（高 3 位）</strong>和<strong>工作线程数（低 29 位）</strong>
+    打包进同一个整型——节省一次 CAS。
+    理解状态机是理解关闭语义的前提。
+  </p>
+
+  <div class="tree">
+RUNNING       <span class="hi">→ shutdown() →</span>    SHUTDOWN   (不再接新任务，队列继续消费)<br>
+RUNNING       <span class="hi">→ shutdownNow() →</span> STOP       (不接新任务，清空队列，中断工作线程)<br>
+SHUTDOWN      <span class="hi">→ 队列为空 →</span>       TIDYING    (所有任务执行完毕，工作线程数归零)<br>
+STOP          <span class="hi">→ 工作线程归零 →</span>   TIDYING<br>
+TIDYING       <span class="hi">→ terminated() →</span>   TERMINATED (钩子执行完，线程池彻底结束)
+  </div>
+
+  <div class="callout info">
+    <strong>关键设计</strong>：状态只能单向前进（数值递增），永远不会回退。
+    这保证了多线程下的可见性和 CAS 的正确性。
+  </div>
+
+  <!-- ─── 3. shutdown() 的语义与源码走读 ─── -->
+  <h2>3. shutdown() — 温柔的等待</h2>
+
+  <h3>语义</h3>
+  <ul>
+    <li>拒绝新提交（调用 <code>execute()</code> 会触发拒绝策略）</li>
+    <li>队列中的任务<strong>继续执行到完成</strong></li>
+    <li>正在跑的任务<strong>不中断</strong></li>
+    <li>返回后不代表关闭完成，需配合 <code>awaitTermination()</code></li>
+  </ul>
+
+  <h3>源码关键路径（JDK 17）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>ThreadPoolExecutor.java（简化）</span></div>
+    <pre><span class="kw">public</span> <span class="kw">void</span> <span class="fn">shutdown</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">final</span> <span class="ty">ReentrantLock</span> <span class="var">mainLock</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">mainLock</span><span class="punct">;</span>
+    <span class="var">mainLock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">checkShutdownAccess</span><span class="punct">();</span>
+        <span class="com">// ① CAS 将状态从 RUNNING → SHUTDOWN</span>
+        <span class="fn">advanceRunState</span><span class="punct">(</span><span class="var">SHUTDOWN</span><span class="punct">);</span>
+        <span class="com">// ② 只中断"空闲"的工作线程（正在 take() 阻塞的那些）</span>
+        <span class="fn">interruptIdleWorkers</span><span class="punct">();</span>
+        <span class="com">// ③ 给子类留的钩子（ScheduledThreadPoolExecutor 用来清理延迟队列）</span>
+        <span class="fn">onShutdown</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">mainLock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+    <span class="fn">tryTerminate</span><span class="punct">();</span>  <span class="com">// 尝试推进到 TERMINATED</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    注意 <code>interruptIdleWorkers()</code>：它只中断当前<strong>在 <code>getTask()</code>
+    里阻塞等待的线程</strong>，不中断正在执行任务的线程。
+    阻塞线程被唤醒后，发现状态是 SHUTDOWN 且队列为空，就自然退出。
+  </p>
+
+  <!-- ─── 4. shutdownNow() 的语义与源码走读 ─── -->
+  <h2>4. shutdownNow() — 强硬的驱逐</h2>
+
+  <h3>语义</h3>
+  <ul>
+    <li>状态推进到 STOP</li>
+    <li>清空并返回队列中<strong>尚未开始执行</strong>的任务列表</li>
+    <li>对<strong>所有</strong>工作线程调用 <code>interrupt()</code></li>
+    <li>正在执行的任务<strong>是否真的停下来，取决于任务自身是否响应中断</strong></li>
+  </ul>
+
+  <h3>源码关键路径（JDK 17）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>ThreadPoolExecutor.java（简化）</span></div>
+    <pre><span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Runnable</span><span class="punct">&gt;</span> <span class="fn">shutdownNow</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Runnable</span><span class="punct">&gt;</span> <span class="var">tasks</span><span class="punct">;</span>
+    <span class="kw">final</span> <span class="ty">ReentrantLock</span> <span class="var">mainLock</span> <span class="punct">=</span> <span class="kw">this</span><span class="punct">.</span><span class="var">mainLock</span><span class="punct">;</span>
+    <span class="var">mainLock</span><span class="punct">.</span><span class="fn">lock</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="fn">checkShutdownAccess</span><span class="punct">();</span>
+        <span class="com">// ① 状态推进到 STOP</span>
+        <span class="fn">advanceRunState</span><span class="punct">(</span><span class="var">STOP</span><span class="punct">);</span>
+        <span class="com">// ② 中断所有工作线程（包括正在跑任务的）</span>
+        <span class="fn">interruptWorkers</span><span class="punct">();</span>
+        <span class="com">// ③ 把队列里没跑的任务全部取出来，返回给调用方</span>
+        <span class="var">tasks</span> <span class="punct">=</span> <span class="fn">drainQueue</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">mainLock</span><span class="punct">.</span><span class="fn">unlock</span><span class="punct">();</span>
+    <span class="punct">}</span>
+    <span class="fn">tryTerminate</span><span class="punct">();</span>
+    <span class="kw">return</span> <span class="var">tasks</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱</strong>：<code>shutdownNow()</code> 发出的 <code>interrupt()</code>
+    只是<strong>请求</strong>，不是强制杀线程。如果你的任务里写了
+    <code>while(true)</code> 而不检查中断标志，它会永远跑下去，线程池永远不能 TERMINATED。
+  </div>
+
+  <!-- ─── 5. 核心对比表 ─── -->
+  <h2>5. shutdown vs shutdownNow 核心对比</h2>
+
+  <table>
+    <tr>
+      <th>维度</th>
+      <th><code>shutdown()</code></th>
+      <th><code>shutdownNow()</code></th>
+    </tr>
+    <tr>
+      <td>目标状态</td>
+      <td>SHUTDOWN</td>
+      <td>STOP</td>
+    </tr>
+    <tr>
+      <td>队列中的任务</td>
+      <td>继续执行</td>
+      <td>清空，以列表形式返回</td>
+    </tr>
+    <tr>
+      <td>正在执行的任务</td>
+      <td>不中断，跑完为止</td>
+      <td>发送 interrupt()，能否停取决于任务</td>
+    </tr>
+    <tr>
+      <td>返回值</td>
+      <td>void</td>
+      <td><code>List&lt;Runnable&gt;</code>（未执行的任务）</td>
+    </tr>
+    <tr>
+      <td>适用场景</td>
+      <td>批处理结束、应用正常退出</td>
+      <td>超时强制退出、紧急取消</td>
+    </tr>
+    <tr>
+      <td>数据安全</td>
+      <td>高（任务都跑完）</td>
+      <td>低（正在执行的任务可能处于中间状态）</td>
+    </tr>
+  </table>
+
+  <!-- ─── 6. awaitTermination ─── -->
+  <h2>6. awaitTermination() — 等待关闭完成的正确方式</h2>
+
+  <p>
+    <code>shutdown()</code> 和 <code>shutdownNow()</code>
+    都是<strong>异步</strong>的，调用后立即返回，线程池后台还在收尾。
+    必须用 <code>awaitTermination(timeout, unit)</code> 来阻塞等待。
+  </p>
+
+  <h3>反例：只调用 shutdown，不等待</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 可能在任务未完成时 JVM 已退出</span></div>
+    <pre><span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="ty">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="num">4</span><span class="punct">);</span>
+<span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="com">// 耗时 5 秒的任务</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">5000</span><span class="punct">);</span>
+<span class="punct">});</span>
+<span class="var">pool</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+<span class="com">// main 线程直接退出，但 JVM 里还有非守护线程在跑</span>
+<span class="com">// 如果之后还有 System.exit()，任务就被强制中断了</span></pre>
+  </div>
+
+  <h3>正例：标准两阶段关闭模式</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 《Java 并发编程实战》推荐的两阶段关闭</span></div>
+    <pre><span class="com">/**
+ * 优雅关闭线程池：先礼后兵。
+ * 先给 timeout 秒让任务自行完成，超时后强制中断，
+ * 再等 timeout 秒确认清理完毕。
+ */</span>
+<span class="kw">public static void</span> <span class="fn">shutdownAndAwaitTermination</span><span class="punct">(</span>
+        <span class="ty">ExecutorService</span> <span class="var">pool</span><span class="punct">,</span> <span class="kw">long</span> <span class="var">timeout</span><span class="punct">,</span> <span class="ty">TimeUnit</span> <span class="var">unit</span><span class="punct">)</span> <span class="punct">{</span>
+
+    <span class="com">// ① 第一阶段：温柔关闭，等待正在执行的任务跑完</span>
+    <span class="var">pool</span><span class="punct">.</span><span class="fn">shutdown</span><span class="punct">();</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">pool</span><span class="punct">.</span><span class="fn">awaitTermination</span><span class="punct">(</span><span class="var">timeout</span><span class="punct">,</span> <span class="var">unit</span><span class="punct">))</span> <span class="punct">{</span>
+            <span class="com">// ② 第二阶段：超时后强制中断，收回未开始的任务</span>
+            <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Runnable</span><span class="punct">&gt;</span> <span class="var">dropped</span> <span class="punct">=</span> <span class="var">pool</span><span class="punct">.</span><span class="fn">shutdownNow</span><span class="punct">();</span>
+            <span class="var">log</span><span class="punct">.</span><span class="fn">warn</span><span class="punct">(</span><span class="str">"线程池强制关闭，丢弃了 {} 个排队任务"</span><span class="punct">,</span> <span class="var">dropped</span><span class="punct">.</span><span class="fn">size</span><span class="punct">());</span>
+
+            <span class="com">// ③ 再等一轮，让被中断的任务有时间做清理</span>
+            <span class="kw">if</span> <span class="punct">(!</span><span class="var">pool</span><span class="punct">.</span><span class="fn">awaitTermination</span><span class="punct">(</span><span class="var">timeout</span><span class="punct">,</span> <span class="var">unit</span><span class="punct">))</span> <span class="punct">{</span>
+                <span class="var">log</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"线程池未能在限定时间内终止！"</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">ex</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 当前线程被中断：补发中断信号，并再次强制关闭</span>
+        <span class="var">pool</span><span class="punct">.</span><span class="fn">shutdownNow</span><span class="punct">();</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>  <span class="com">// 恢复中断状态，不要吞掉</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 使用方式：10 秒内完成则正常，否则强制</span>
+<span class="fn">shutdownAndAwaitTermination</span><span class="punct">(</span><span class="var">myPool</span><span class="punct">,</span> <span class="num">10</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- ─── 7. 让任务可被中断 ─── -->
+  <h2>7. 让任务真正响应中断</h2>
+
+  <p>
+    <code>shutdownNow()</code> 的中断只有在任务<strong>主动检查中断标志</strong>时才有效。
+    写任务时需要遵守中断协议。
+  </p>
+
+  <h3>反例：不响应中断的无限循环</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — shutdownNow() 对此任务无效</span></div>
+    <pre><span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 忽略中断，永远不退出</span>
+        <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <h3>正例：两种响应中断的写法</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>正例 A — 手动检查 isInterrupted()</span></div>
+    <pre><span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="com">// 每次循环检查中断标志；shutdownNow() 设置了标志后，下次循环即可退出</span>
+    <span class="kw">while</span> <span class="punct">(!</span><span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">isInterrupted</span><span class="punct">())</span> <span class="punct">{</span>
+        <span class="fn">doWork</span><span class="punct">();</span>
+    <span class="punct">}</span>
+    <span class="var">log</span><span class="punct">.</span><span class="fn">info</span><span class="punct">(</span><span class="str">"任务收到中断，清理资源后退出"</span><span class="punct">);</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 B — 依赖阻塞调用抛出 InterruptedException</span></div>
+    <pre><span class="var">pool</span><span class="punct">.</span><span class="fn">submit</span><span class="punct">(() -&gt; {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="com">// BlockingQueue.take() 在被中断时会抛 InterruptedException</span>
+            <span class="ty">WorkItem</span> <span class="var">item</span> <span class="punct">=</span> <span class="var">queue</span><span class="punct">.</span><span class="fn">take</span><span class="punct">();</span>
+            <span class="fn">process</span><span class="punct">(</span><span class="var">item</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 正常退出路径；不要再 swallow 这个异常</span>
+        <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <!-- ─── 8. JVM 关闭钩子集成 ─── -->
+  <h2>8. 与 JVM Shutdown Hook 集成</h2>
+
+  <p>
+    生产应用往往需要在 JVM 退出时自动清理线程池。
+    <code>Runtime.addShutdownHook()</code> 是标准做法。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Spring Boot 风格的线程池 Bean + 关闭钩子</span></div>
+    <pre><span class="ann">@Configuration</span>
+<span class="kw">public class</span> <span class="ty">AsyncConfig</span> <span class="punct">{</span>
+
+    <span class="ann">@Bean</span><span class="punct">(</span><span class="var">destroyMethod</span> <span class="punct">=</span> <span class="str">""</span><span class="punct">)</span>  <span class="com">// 关闭 Spring 默认的 destroy，由我们自己控制</span>
+    <span class="kw">public</span> <span class="ty">ExecutorService</span> <span class="fn">taskExecutor</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadPoolExecutor</span><span class="punct">(</span>
+            <span class="num">4</span><span class="punct">,</span> <span class="num">16</span><span class="punct">,</span> <span class="num">60L</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">,</span>
+            <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;(</span><span class="num">1000</span><span class="punct">),</span>
+            <span class="kw">new</span> <span class="ty">ThreadFactoryBuilder</span><span class="punct">().</span><span class="fn">setNameFormat</span><span class="punct">(</span><span class="str">"task-%d"</span><span class="punct">).</span><span class="fn">build</span><span class="punct">())</span><span class="punct">;</span>
+
+        <span class="com">// 注册 JVM 关闭钩子：进程收到 SIGTERM 时触发</span>
+        <span class="ty">Runtime</span><span class="punct">.</span><span class="fn">getRuntime</span><span class="punct">().</span><span class="fn">addShutdownHook</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="fn">shutdownAndAwaitTermination</span><span class="punct">(</span><span class="var">pool</span><span class="punct">,</span> <span class="num">30</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+        <span class="punct">},</span> <span class="str">"pool-shutdown-hook"</span><span class="punct">));</span>
+
+        <span class="kw">return</span> <span class="var">pool</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>Spring Boot 用户</strong>：<code>ThreadPoolTaskExecutor</code> 已内置
+    <code>setWaitForTasksToCompleteOnShutdown(true)</code> 和
+    <code>setAwaitTerminationSeconds(30)</code>，
+    配置这两个属性即可，无需手写钩子。
+  </div>
+
+  <!-- ─── 9. 常见陷阱汇总 ─── -->
+  <h2>9. 常见陷阱汇总</h2>
+
+  <table>
+    <tr>
+      <th>陷阱</th>
+      <th>后果</th>
+      <th>正确做法</th>
+    </tr>
+    <tr>
+      <td>只调用 <code>shutdown()</code>，不调用 <code>awaitTermination()</code></td>
+      <td>main 线程退出，任务被 JVM 强杀</td>
+      <td>两阶段关闭模式（见第 6 节）</td>
+    </tr>
+    <tr>
+      <td>捕获 <code>InterruptedException</code> 后不恢复中断状态</td>
+      <td>上层感知不到中断，<code>shutdownNow()</code> 失效</td>
+      <td><code>Thread.currentThread().interrupt()</code></td>
+    </tr>
+    <tr>
+      <td>任务里 <code>while(true)</code> 不检查中断</td>
+      <td><code>shutdownNow()</code> 后线程池永久悬挂</td>
+      <td>检查 <code>isInterrupted()</code> 或依赖阻塞 API</td>
+    </tr>
+    <tr>
+      <td>忽略 <code>shutdownNow()</code> 的返回值</td>
+      <td>队列里的任务静默丢失，无从追踪</td>
+      <td>记录返回的 <code>List&lt;Runnable&gt;</code>，必要时重投</td>
+    </tr>
+    <tr>
+      <td>对已关闭的线程池调用 <code>execute()</code></td>
+      <td>触发拒绝策略（默认抛异常），业务中断</td>
+      <td>用 <code>isShutdown()</code> 提前检查，或设合理拒绝策略</td>
+    </tr>
+    <tr>
+      <td>Shutdown Hook 里做耗时操作，无超时保护</td>
+      <td>进程超时被 SIGKILL 杀死，与不关闭一样</td>
+      <td>超时设置不超过容器/K8s <code>terminationGracePeriodSeconds</code></td>
+    </tr>
+  </table>
+
+  <!-- ─── 10. 状态查询 API ─── -->
+  <h2>10. 状态查询 API 速查</h2>
+
+  <p>实际开发中经常需要根据线程池状态做分支判断：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>状态查询 API</span></div>
+    <pre><span class="ty">ExecutorService</span> <span class="var">pool</span> <span class="punct">=</span> <span class="punct">...;</span>
+
+<span class="var">pool</span><span class="punct">.</span><span class="fn">isShutdown</span><span class="punct">();</span>        <span class="com">// true = 已调用过 shutdown/shutdownNow（含 SHUTDOWN/STOP/TIDYING/TERMINATED）</span>
+<span class="var">pool</span><span class="punct">.</span><span class="fn">isTerminated</span><span class="punct">();</span>     <span class="com">// true = 已完全终止（TERMINATED），所有任务+线程都结束了</span>
+<span class="var">pool</span><span class="punct">.</span><span class="fn">awaitTermination</span><span class="punct">(</span>
+    <span class="num">10</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span> <span class="com">// 阻塞最多 10 秒，返回 true 表示在超时前已 TERMINATED</span>
+
+<span class="com">// ThreadPoolExecutor 专有（需要向下转型）</span>
+<span class="punct">((</span><span class="ty">ThreadPoolExecutor</span><span class="punct">)</span> <span class="var">pool</span><span class="punct">).</span><span class="fn">getActiveCount</span><span class="punct">();</span>   <span class="com">// 正在执行任务的线程数</span>
+<span class="punct">((</span><span class="ty">ThreadPoolExecutor</span><span class="punct">)</span> <span class="var">pool</span><span class="punct">).</span><span class="fn">getQueue</span><span class="punct">().</span><span class="fn">size</span><span class="punct">();</span> <span class="com">// 队列中等待的任务数</span>
+<span class="punct">((</span><span class="ty">ThreadPoolExecutor</span><span class="punct">)</span> <span class="var">pool</span><span class="punct">).</span><span class="fn">getCompletedTaskCount</span><span class="punct">();</span> <span class="com">// 历史已完成任务总数</span></pre>
+  </div>
+
+  <!-- ─── 11. 面试高频考点 ─── -->
+  <h2>11. 面试高频考点</h2>
+
+  <ul>
+    <li>
+      <strong>shutdown 和 shutdownNow 的区别是什么？</strong>
+      — 前者等待队列任务执行完再关，后者清空队列并中断所有工作线程，但中断不保证任务立即停止。
+    </li>
+    <li>
+      <strong>线程池有哪几种状态，如何流转？</strong>
+      — 五态：RUNNING → SHUTDOWN / STOP → TIDYING → TERMINATED，状态单调递增，原子操作保证线程安全。
+    </li>
+    <li>
+      <strong>如何等待线程池彻底关闭？</strong>
+      — <code>awaitTermination(timeout, unit)</code>，返回 <code>true</code> 代表在超时内达到 TERMINATED。
+    </li>
+    <li>
+      <strong>shutdownNow 的中断为什么有时没有效果？</strong>
+      — 中断是协作式机制，任务必须主动检查 <code>isInterrupted()</code>
+      或使用可中断的阻塞调用，否则 interrupt 标志被设置后无任何行为变化。
+    </li>
+    <li>
+      <strong>Spring 中如何优雅关闭线程池？</strong>
+      — <code>ThreadPoolTaskExecutor</code> 设置
+      <code>waitForTasksToCompleteOnShutdown=true</code> 和
+      <code>awaitTerminationSeconds</code>；
+      或在 <code>@PreDestroy</code> 中调用两阶段关闭工具方法。
+    </li>
+  </ul>
+
+  <hr>
+
+  <!-- ─── 小结 ─── -->
+  <div class="callout tip">
+    <strong>一句话记忆</strong>：<code>shutdown()</code> 是"挂牌停止营业，等客人用完餐再关门"；
+    <code>shutdownNow()</code> 是"立刻清场，把还没上桌的菜原样退回厨房，但正在吃饭的客人能不能马上离席，取决于他们自己"。
+    两者都需要配合 <code>awaitTermination()</code> 才算真正等到门关上。
+  </div>
+
+  <!-- ─── 导航 ─── -->
+  <div class="nav-footer">
+    <a href="./07-interrupt中断.html" class="nav-btn">← 07. 中断机制 interrupt 的正确姿势</a>
+    <a href="../concurrency-roadmap.html" class="nav-btn next">路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>
