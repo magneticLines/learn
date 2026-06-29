@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>20. 谦卑对象模式（Humble Object）</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+.page { max-width: 720px; margin: 0 auto; }
+.breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+.breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+.hero { margin-bottom: 40px; }
+.hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+.hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+.hero p { color: #64748b; font-size: 0.9rem; }
+h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+.code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+.code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+.code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+.kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+.com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+.callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+.callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+.callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+.callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+tr:nth-child(even) td { background: #13151f; }
+td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+.tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+.nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+.nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+.nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+/* 主题色补丁 */
+.tree .hi { color: #fb923c; }
+p code, li code { color: #fb923c; }
+h2 { color: #fb923c; border-left-color: #fb923c; }
+.hero .tag { color: #fb923c; border-color: #7c2d12; }
+.nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-arch-roadmap.html">路线图</a> / 《架构整洁之道》 / 架构·边界·业务规则
+  </div>
+
+  <!-- 英雄区 -->
+  <div class="hero">
+    <div class="tag">《架构整洁之道》 · 架构·边界·业务规则</div>
+    <h1>20. 谦卑对象模式（Humble Object）</h1>
+    <p>将"难以测试的行为"与"可测试的逻辑"强制分离，让边界天然成为可测试性的分水岭。</p>
+  </div>
+
+  <!-- ① 核心主张 -->
+  <h2>作者的核心主张</h2>
+
+  <p>
+    Bob 大叔在《架构整洁之道》中提出：<strong>架构边界天然就是测试边界</strong>。
+    Humble Object 模式是他用来解释这一主张的具体手法——这个模式本身并不新鲜，
+    最早由 Gerard Meszaros 在《xUnit Test Patterns》中归纳，Bob 大叔把它提升到了
+    <strong>架构层面</strong>来理解。
+  </p>
+
+  <p>
+    出发点是一个真实痛点：有些代码<strong>天生难以测试</strong>。
+    GUI 渲染、数据库驱动、消息队列消费者、定时器回调——它们依赖运行环境，
+    在单元测试里构造起来成本极高，甚至根本无法构造。
+  </p>
+
+  <p>
+    Humble Object 的做法很朴素：<strong>把这些对象"变谦卑"</strong>——
+    剥掉里面一切业务判断、计算和决策，让它只剩下对外部世界的"机械调用"。
+    被剥走的那部分逻辑，搬进一个普通的、无副作用的对象里，
+    这个对象不依赖任何难以构造的外部设施，可以直接被单元测试覆盖。
+  </p>
+
+  <div class="callout info">
+    <strong>一句话总结：</strong>
+    把"行为"从"机制"中分离出去。Humble Object 只负责机制（如何与外界交互），
+    分离出去的那部分负责行为（做什么决策、计算什么结果）。
+  </div>
+
+  <!-- ② 为什么这样设计更好 -->
+  <h2>为什么这样设计代码更好</h2>
+
+  <h3>测试金字塔的现实困境</h3>
+  <p>
+    单元测试之所以快、稳定、便宜，是因为它不依赖 I/O。
+    一旦业务逻辑与 I/O 耦合在一起，你只剩下两个选择：
+    要么写昂贵的集成测试，要么放弃对这段逻辑的测试覆盖。
+    两者都是坏结果。
+  </p>
+
+  <h3>边界是天然的接缝</h3>
+  <p>
+    架构边界（UI 层 / 应用层 / 基础设施层之间的接缝）已经是代码的分割点。
+    Humble Object 的价值在于：<strong>它把可测试性的分割和架构边界的分割对齐在同一条线上</strong>。
+    这意味着你不需要为测试再额外引入抽象，边界本身就已经是接缝。
+  </p>
+
+  <h3>副作用被隔离到薄薄一层</h3>
+  <p>
+    Humble Object 越"谦卑"，副作用就越集中、越可控。
+    你不需要担心业务逻辑在某次数据库写入里偷偷修改了状态——
+    因为业务逻辑根本不接触数据库。
+  </p>
+
+  <!-- ③ 反例 → 问题 → 正例 -->
+  <h2>反例 → 问题 → 正例</h2>
+
+  <h3>场景：订单列表页——把渲染逻辑塞进 Presenter</h3>
+
+  <p>
+    下面以一个 MVC 风格的 Web 应用为例。
+    前端 Presenter 需要把订单列表格式化后交给视图显示：
+    金额超过 1000 元显示红色警告标签，否则显示绿色正常标签。
+  </p>
+
+  <!-- 反例 -->
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — OrderPresenter.java（业务判断与渲染机制混在一起）</span></div>
+    <pre><span class="com">// ❌ Presenter 直接依赖 HttpServletResponse，同时还做格式化判断</span>
+<span class="kw">public class</span> <span class="ty">OrderPresenter</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">HttpServletResponse</span> <span class="var">response</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">OrderPresenter</span><span class="punct">(</span><span class="ty">HttpServletResponse</span> <span class="var">response</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">response</span> <span class="punct">=</span> <span class="var">response</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">present</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">orders</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+        <span class="ty">StringBuilder</span> <span class="var">sb</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">StringBuilder</span><span class="punct">();</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="ty">Order</span> <span class="var">o</span> <span class="punct">:</span> <span class="var">orders</span><span class="punct">) {</span>
+            <span class="com">// 业务判断：金额阈值 1000</span>
+            <span class="ty">String</span> <span class="var">tag</span> <span class="punct">=</span> <span class="var">o</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">().</span><span class="fn">compareTo</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"1000"</span><span class="punct">))</span> <span class="punct">&gt;</span> <span class="num">0</span>
+                    <span class="punct">?</span> <span class="str">"&lt;span class='warn'&gt;高额&lt;/span&gt;"</span>
+                    <span class="punct">:</span> <span class="str">"&lt;span class='ok'&gt;正常&lt;/span&gt;"</span><span class="punct">;</span>
+            <span class="var">sb</span><span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="str">"&lt;li&gt;"</span><span class="punct">).</span><span class="fn">append</span><span class="punct">(</span><span class="var">o</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">())</span>
+              <span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="str">" - "</span><span class="punct">).</span><span class="fn">append</span><span class="punct">(</span><span class="var">o</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">())</span>
+              <span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="var">tag</span><span class="punct">).</span><span class="fn">append</span><span class="punct">(</span><span class="str">"&lt;/li&gt;"</span><span class="punct">);</span>
+        <span class="punct">}</span>
+        <span class="com">// 直接写入响应流——无法在单元测试中构造</span>
+        <span class="var">response</span><span class="punct">.</span><span class="fn">getWriter</span><span class="punct">().</span><span class="fn">write</span><span class="punct">(</span><span class="str">"&lt;ul&gt;"</span> <span class="punct">+</span> <span class="var">sb</span> <span class="punct">+</span> <span class="str">"&lt;/ul&gt;"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>问题：</strong>
+    想测试"金额超 1000 是否显示高额标签"这条规则，必须先构造一个真实的
+    <code>HttpServletResponse</code>，或者用 Mock 框架模拟它，然后再从响应流里
+    解析 HTML。测试代码比被测代码还复杂，没有人愿意写。
+    结果：这段最核心的格式化判断，长期处于零覆盖状态。
+  </div>
+
+  <!-- 正例 -->
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 第一步：抽出 ViewModel（纯数据，无副作用）</span></div>
+    <pre><span class="com">// ✅ 只是一个普通的数据载体，零依赖</span>
+<span class="kw">public class</span> <span class="ty">OrderViewModel</span> <span class="punct">{</span>
+    <span class="kw">public final</span> <span class="ty">String</span> <span class="var">id</span><span class="punct">;</span>
+    <span class="kw">public final</span> <span class="ty">String</span> <span class="var">amountText</span><span class="punct">;</span>    <span class="com">// 已格式化为字符串</span>
+    <span class="kw">public final</span> <span class="ty">String</span> <span class="var">tagCssClass</span><span class="punct">;</span>  <span class="com">// "warn" 或 "ok"</span>
+    <span class="kw">public final</span> <span class="ty">String</span> <span class="var">tagLabel</span><span class="punct">;</span>     <span class="com">// "高额" 或 "正常"</span>
+
+    <span class="kw">public</span> <span class="fn">OrderViewModel</span><span class="punct">(</span><span class="ty">String</span> <span class="var">id</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">amountText</span><span class="punct">,</span>
+                           <span class="ty">String</span> <span class="var">tagCssClass</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">tagLabel</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">id</span>          <span class="punct">=</span> <span class="var">id</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">amountText</span>  <span class="punct">=</span> <span class="var">amountText</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">tagCssClass</span> <span class="punct">=</span> <span class="var">tagCssClass</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">tagLabel</span>    <span class="punct">=</span> <span class="var">tagLabel</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 第二步：Formatter 承载全部判断逻辑（可纯单元测试）</span></div>
+    <pre><span class="com">// ✅ 这里放所有业务判断，不碰任何 I/O</span>
+<span class="kw">public class</span> <span class="ty">OrderViewModelFormatter</span> <span class="punct">{</span>
+
+    <span class="kw">private static final</span> <span class="ty">BigDecimal</span> <span class="var">HIGH_AMOUNT_THRESHOLD</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"1000"</span><span class="punct">);</span>
+
+    <span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderViewModel</span><span class="punct">&gt;</span> <span class="fn">format</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">orders</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="kw">this</span><span class="punct">::</span><span class="fn">toViewModel</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">collect</span><span class="punct">(</span><span class="ty">Collectors</span><span class="punct">.</span><span class="fn">toList</span><span class="punct">());</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private</span> <span class="ty">OrderViewModel</span> <span class="fn">toViewModel</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">o</span><span class="punct">) {</span>
+        <span class="kw">boolean</span> <span class="var">isHigh</span> <span class="punct">=</span> <span class="var">o</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">().</span><span class="fn">compareTo</span><span class="punct">(</span><span class="var">HIGH_AMOUNT_THRESHOLD</span><span class="punct">)</span> <span class="punct">&gt;</span> <span class="num">0</span><span class="punct">;</span>
+        <span class="kw">return new</span> <span class="ty">OrderViewModel</span><span class="punct">(</span>
+            <span class="var">o</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">(),</span>
+            <span class="var">o</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">().</span><span class="fn">toPlainString</span><span class="punct">(),</span>
+            <span class="var">isHigh</span> <span class="punct">?</span> <span class="str">"warn"</span> <span class="punct">:</span> <span class="str">"ok"</span><span class="punct">,</span>
+            <span class="var">isHigh</span> <span class="punct">?</span> <span class="str">"高额"</span> <span class="punct">:</span> <span class="str">"正常"</span>
+        <span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 第三步：Humble Presenter（谦卑对象，只做机械渲染）</span></div>
+    <pre><span class="com">// ✅ 这才是真正的"谦卑对象"——逻辑全被剥走，只剩机械的 HTML 拼接与写出</span>
+<span class="kw">public class</span> <span class="ty">OrderPresenter</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">HttpServletResponse</span> <span class="var">response</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">OrderViewModelFormatter</span> <span class="var">formatter</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">OrderPresenter</span><span class="punct">(</span><span class="ty">HttpServletResponse</span> <span class="var">response</span><span class="punct">,</span>
+                           <span class="ty">OrderViewModelFormatter</span> <span class="var">formatter</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">response</span>  <span class="punct">=</span> <span class="var">response</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">formatter</span> <span class="punct">=</span> <span class="var">formatter</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">present</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">orders</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+        <span class="com">// 1. 把判断委托给 Formatter（纯逻辑，可测）</span>
+        <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderViewModel</span><span class="punct">&gt;</span> <span class="var">vms</span> <span class="punct">=</span> <span class="var">formatter</span><span class="punct">.</span><span class="fn">format</span><span class="punct">(</span><span class="var">orders</span><span class="punct">);</span>
+        <span class="com">// 2. 自己只做没有判断的机械拼接</span>
+        <span class="ty">StringBuilder</span> <span class="var">sb</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">StringBuilder</span><span class="punct">();</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="ty">OrderViewModel</span> <span class="var">vm</span> <span class="punct">:</span> <span class="var">vms</span><span class="punct">) {</span>
+            <span class="var">sb</span><span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="str">"&lt;li&gt;"</span><span class="punct">).</span><span class="fn">append</span><span class="punct">(</span><span class="var">vm</span><span class="punct">.</span><span class="var">id</span><span class="punct">)</span>
+              <span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="str">" - "</span><span class="punct">).</span><span class="fn">append</span><span class="punct">(</span><span class="var">vm</span><span class="punct">.</span><span class="var">amountText</span><span class="punct">)</span>
+              <span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="str">"&lt;span class='"</span><span class="punct">).</span><span class="fn">append</span><span class="punct">(</span><span class="var">vm</span><span class="punct">.</span><span class="var">tagCssClass</span><span class="punct">)</span>
+              <span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="str">"'&gt;"</span><span class="punct">).</span><span class="fn">append</span><span class="punct">(</span><span class="var">vm</span><span class="punct">.</span><span class="var">tagLabel</span><span class="punct">)</span>
+              <span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="str">"&lt;/span&gt;&lt;/li&gt;"</span><span class="punct">);</span>
+        <span class="punct">}</span>
+        <span class="var">response</span><span class="punct">.</span><span class="fn">getWriter</span><span class="punct">().</span><span class="fn">write</span><span class="punct">(</span><span class="str">"&lt;ul&gt;"</span> <span class="punct">+</span> <span class="var">sb</span> <span class="punct">+</span> <span class="str">"&lt;/ul&gt;"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 对 Formatter 的单元测试（极简，无任何 Mock）</span></div>
+    <pre><span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">highAmountOrderShouldGetWarnTag</span><span class="punct">() {</span>
+    <span class="ty">OrderViewModelFormatter</span> <span class="var">fmt</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">OrderViewModelFormatter</span><span class="punct">();</span>
+    <span class="ty">Order</span> <span class="var">order</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Order</span><span class="punct">(</span><span class="str">"ORD-001"</span><span class="punct">,</span> <span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"1500"</span><span class="punct">));</span>
+
+    <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderViewModel</span><span class="punct">&gt;</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">fmt</span><span class="punct">.</span><span class="fn">format</span><span class="punct">(</span><span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="var">order</span><span class="punct">));</span>
+
+    <span class="fn">assertEquals</span><span class="punct">(</span><span class="str">"warn"</span><span class="punct">,</span> <span class="var">result</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">0</span><span class="punct">).</span><span class="var">tagCssClass</span><span class="punct">);</span>
+    <span class="fn">assertEquals</span><span class="punct">(</span><span class="str">"高额"</span><span class="punct">,</span>  <span class="var">result</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">0</span><span class="punct">).</span><span class="var">tagLabel</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">normalAmountOrderShouldGetOkTag</span><span class="punct">() {</span>
+    <span class="ty">OrderViewModelFormatter</span> <span class="var">fmt</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">OrderViewModelFormatter</span><span class="punct">();</span>
+    <span class="ty">Order</span> <span class="var">order</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Order</span><span class="punct">(</span><span class="str">"ORD-002"</span><span class="punct">,</span> <span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"500"</span><span class="punct">));</span>
+
+    <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderViewModel</span><span class="punct">&gt;</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">fmt</span><span class="punct">.</span><span class="fn">format</span><span class="punct">(</span><span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="var">order</span><span class="punct">));</span>
+
+    <span class="fn">assertEquals</span><span class="punct">(</span><span class="str">"ok"</span><span class="punct">,</span>    <span class="var">result</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">0</span><span class="punct">).</span><span class="var">tagCssClass</span><span class="punct">);</span>
+    <span class="fn">assertEquals</span><span class="punct">(</span><span class="str">"正常"</span><span class="punct">,</span>  <span class="var">result</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">0</span><span class="punct">).</span><span class="var">tagLabel</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>分离后的效果：</strong>
+    <code>OrderPresenter</code> 里已经没有任何 <code>if</code>，不需要测。
+    <code>OrderViewModelFormatter</code> 里全是纯函数，一行 Mock 都不用写，
+    测试极简、极快、极稳定。
+  </div>
+
+  <!-- ④ 模式结构图 -->
+  <h2>模式结构：谁是"谦卑对象"，谁是"逻辑对象"</h2>
+
+  <div class="tree">
+架构边界
+│
+├── 难以测试的一侧（框架/外部设施）
+│   └── <span class="hi">Humble Object</span>（谦卑对象）
+│       ├── 只做机械调用：write response / send event / render frame
+│       └── 内部不含任何 if / 计算 / 格式化判断
+│
+└── 可以测试的一侧（核心逻辑）
+    └── <span class="hi">Logic Object</span>（逻辑对象）
+        ├── Formatter / UseCase / Interactor / Policy
+        └── 只用纯粹的 Java 对象，无任何 I/O 依赖
+  </div>
+
+  <!-- ⑤ 常见落地场景 -->
+  <h2>常见落地场景</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>场景</th>
+        <th>Humble Object（谦卑侧）</th>
+        <th>Logic Object（逻辑侧）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>MVC Presenter</td>
+        <td>向 Response 写 HTML / JSON</td>
+        <td>ViewModel 构建、格式化规则</td>
+      </tr>
+      <tr>
+        <td>GUI / Android Activity</td>
+        <td>Activity / Fragment（调用 View API）</td>
+        <td>Presenter / ViewModel（业务状态）</td>
+      </tr>
+      <tr>
+        <td>数据库 Repository</td>
+        <td>JPA Repository 实现（SQL 执行）</td>
+        <td>领域对象、查询条件构造逻辑</td>
+      </tr>
+      <tr>
+        <td>消息队列 Consumer</td>
+        <td>Listener（消费消息、提交 offset）</td>
+        <td>消息反序列化与业务处理逻辑</td>
+      </tr>
+      <tr>
+        <td>定时任务</td>
+        <td>@Scheduled 方法（触发入口）</td>
+        <td>实际业务执行逻辑（独立 Service）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ⑥ 落地技巧 -->
+  <h2>实际开发落地技巧</h2>
+
+  <h3>1. 用"能否在没有 Spring Context 的情况下测试"作为判断标准</h3>
+  <p>
+    如果一个类必须依赖 <code>@SpringBootTest</code> 才能测，
+    说明它混入了不该混的东西。把业务判断剥离成一个无注解的普通 Java 类，
+    就可以用轻量的 JUnit 直接测。
+  </p>
+
+  <h3>2. ViewModel 是谦卑对象模式的最佳搭档</h3>
+  <p>
+    在 Spring MVC / React 架构下，<strong>Controller 只做参数绑定和结果写出，
+    Formatter/Assembler 负责将领域对象映射成 ViewModel</strong>，
+    ViewModel 是纯数据结构。这三层分工就是 Humble Object 模式的直接落地。
+  </p>
+
+  <h3>3. 谦卑对象的代码量应该极少</h3>
+  <p>
+    如果你的 Presenter / Listener / Controller 超过 30 行，
+    几乎可以断定里面还藏着业务逻辑没被剥离出去。
+    <strong>谦卑对象越小、越"无聊"越好</strong>——它就是一个纯粹的适配器。
+  </p>
+
+  <h3>4. 不要只在 Presenter 用，数据库层同样适用</h3>
+  <p>
+    Repository 实现类是另一个常见的 Humble Object。
+    SQL 的构造、查询条件的组合逻辑，应该提取到可测的 <code>QueryBuilder</code> 或
+    <code>Specification</code> 里，Repository 实现只做"执行 SQL、映射结果"。
+  </p>
+
+  <h3>5. 警惕"假谦卑"</h3>
+  <p>
+    有些团队会把业务逻辑放进私有方法，然后说"Presenter 只是调用私有方法"——
+    这是假谦卑。<strong>谦卑的标准是：逻辑对象可以被独立实例化并直接测试</strong>，
+    而不是逻辑被藏在私有方法里只是看起来小。
+  </p>
+
+  <!-- ⑦ 与其他概念的关系 -->
+  <h2>与其他概念的关系</h2>
+
+  <table>
+    <thead>
+      <tr><th>概念</th><th>与 Humble Object 的关系</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Clean Architecture 同心圆</td>
+        <td>Humble Object 通常位于最外圈（框架层），逻辑对象位于内圈</td>
+      </tr>
+      <tr>
+        <td>依赖倒置原则（DIP）</td>
+        <td>逻辑对象不直接依赖谦卑对象，通过接口解耦，进一步加强可测性</td>
+      </tr>
+      <tr>
+        <td>六边形架构（Ports &amp; Adapters）</td>
+        <td>Humble Object 对应 Adapter，逻辑对象对应 Port 背后的 Application Core</td>
+      </tr>
+      <tr>
+        <td>MVP 模式</td>
+        <td>View 是 Humble Object，Presenter 是 Logic Object</td>
+      </tr>
+      <tr>
+        <td>测试替身（Test Double）</td>
+        <td>Humble Object 模式做好后，往往不再需要对核心逻辑使用 Mock</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ⑧ 容易忽略的细节 -->
+  <h2>容易忽略的细节 / 面试高频考点</h2>
+
+  <div class="callout warn">
+    <strong>易错点 1：</strong>
+    认为"Humble Object 就是在 Controller 层套一层 Service"。
+    不对——重点不在于层数，而在于<strong>副作用是否被隔离</strong>。
+    Service 里如果直接调用 <code>sendEmail()</code> 同时又夹着业务条件判断，
+    它既不谦卑也不可测。
+  </div>
+
+  <div class="callout warn">
+    <strong>易错点 2：</strong>
+    把 ViewModel 设计成可变对象，然后在 Humble Object 里写入字段——
+    这会把格式化逻辑悄悄带回 Humble Object 里。
+    ViewModel 应当在 Formatter 里<strong>一次性构建完毕并不可变</strong>。
+  </div>
+
+  <div class="callout info">
+    <strong>面试角度：</strong>
+    "谦卑对象模式解决了什么问题？" — 标准答案的核心是
+    <strong>可测试性</strong>和<strong>边界清晰</strong>两个词，
+    而不是"减少代码量"或"提高复用"。后两者是副产品，不是出发点。
+  </div>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./19-尖叫架构.html" class="nav-btn">← 19. 尖叫架构（Screaming Architecture）</a>
+    <a href="./21-依赖方向与控制流分离.html" class="nav-btn next">21. 依赖方向与控制流分离 →</a>
+  </div>
+
+</div>
+</body>
+</html>

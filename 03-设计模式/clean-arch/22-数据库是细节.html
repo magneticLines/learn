@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>22. 数据库是细节 — 架构整洁之道</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+.page { max-width: 720px; margin: 0 auto; }
+.breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+.breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+.hero { margin-bottom: 40px; }
+.hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+.hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+.hero p { color: #64748b; font-size: 0.9rem; }
+h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+.code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+.code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+.code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+.kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+.com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+.callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+.callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+.callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+.callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+tr:nth-child(even) td { background: #13151f; }
+td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+.tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+.nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+.nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+.nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+.tree .hi { color: #fb923c; }
+p code, li code { color: #fb923c; }
+h2 { color: #fb923c; border-left-color: #fb923c; }
+.hero .tag { color: #fb923c; border-color: #7c2d12; }
+.nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-arch-roadmap.html">路线图</a> / 《架构整洁之道》 / 一切皆细节
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">《架构整洁之道》 · 一切皆细节</div>
+    <h1>22. 数据库是细节</h1>
+    <p>架构视角下，关系型数据库只是一种 I/O 设备，业务规则不应感知它的存在。</p>
+  </div>
+
+  <!-- 1. 核心主张 -->
+  <h2>核心主张：数据库不是架构，是实现细节</h2>
+  <p>
+    Robert C. Martin 在《架构整洁之道》中明确指出：<strong>数据库是一个细节（Detail）</strong>。
+    所谓"细节"，是指对业务规则没有本质影响、可以被替换的技术实现选择。
+    MySQL、PostgreSQL、MongoDB——换哪个，业务逻辑不应改变一行代码。
+  </p>
+  <p>
+    这个观点听起来颠覆常识。我们习惯把数据库放在架构图的正中央，
+    让 Entity、Service、Controller 全部依赖于它。
+    但 Clean Architecture 的核心原则恰恰相反：
+    <strong>依赖必须指向高层策略（业务规则），而非指向低层细节（数据库）。</strong>
+  </p>
+
+  <div class="callout info">
+    <strong>类比：</strong>数据库之于业务规则，就像硬盘之于 CPU——CPU 执行的指令不应该写死"数据在哪块硬盘的哪个扇区"。
+    数据的持久化方式是 I/O 策略，CPU（业务逻辑）只关心"给我数据"，不关心"从哪里取"。
+  </div>
+
+  <!-- 2. 为什么现实中总是反过来 -->
+  <h2>为什么我们总把数据库放在核心？</h2>
+  <p>历史原因让这个错误显得"天经地义"：</p>
+  <ul>
+    <li>早期开发工具（如 Visual Basic、Delphi）以数据库为中心构建 UI，数据库表即模型。</li>
+    <li>ORM 框架（Hibernate、MyBatis）把数据库表映射为"实体类"，名字都叫 <code>@Entity</code>，强化了"实体 = 数据库表"的误解。</li>
+    <li>初学者教程几乎都以"先建表、再写 DAO、再写 Service"为顺序，暗示数据库是出发点。</li>
+  </ul>
+  <p>
+    这种做法的代价是：业务规则与数据库实现<strong>紧耦合</strong>。
+    一旦要从 MySQL 迁移到 MongoDB，或者引入 Redis 缓存层，
+    业务代码就得大改——这不是数据库的错，是我们把细节渗透进了核心。
+  </p>
+
+  <!-- 3. 反例 -->
+  <h2>反例：业务逻辑直接依赖数据库框架</h2>
+
+  <div class="callout warn">
+    以下代码展示了一个常见的"坏味道"——Service 直接依赖 JPA Repository，业务逻辑与持久化实现混在一起。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UserService.java — 反例（依赖 JPA）</span></div>
+    <pre><span class="com">// 反例：Service 直接持有 Spring Data JPA 接口</span>
+<span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">UserService</span> <span class="punct">{</span>
+
+    <span class="com">// 直接依赖 JPA Repository —— 这是一个数据库框架接口</span>
+    <span class="kw">private final</span> <span class="ty">UserJpaRepository</span> <span class="var">userRepo</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">UserService</span><span class="punct">(</span><span class="ty">UserJpaRepository</span> <span class="var">userRepo</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">userRepo</span> <span class="punct">=</span> <span class="var">userRepo</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">register</span><span class="punct">(</span><span class="ty">String</span> <span class="var">email</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">password</span><span class="punct">) {</span>
+        <span class="com">// 业务规则：邮箱不能重复</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">userRepo</span><span class="punct">.</span><span class="fn">existsByEmail</span><span class="punct">(</span><span class="var">email</span><span class="punct">))</span> <span class="punct">{</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"Email already exists"</span><span class="punct">);</span>
+        <span class="punct">}</span>
+        <span class="com">// 直接操作 JPA Entity，Entity 携带 @Column、@Table 等注解</span>
+        <span class="ty">UserEntity</span> <span class="var">entity</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">UserEntity</span><span class="punct">();</span>
+        <span class="var">entity</span><span class="punct">.</span><span class="fn">setEmail</span><span class="punct">(</span><span class="var">email</span><span class="punct">);</span>
+        <span class="var">entity</span><span class="punct">.</span><span class="fn">setPassword</span><span class="punct">(</span><span class="fn">hash</span><span class="punct">(</span><span class="var">password</span><span class="punct">));</span>
+        <span class="var">userRepo</span><span class="punct">.</span><span class="fn">save</span><span class="punct">(</span><span class="var">entity</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// UserEntity 身兼两职：业务模型 + 数据库映射</span>
+<span class="ann">@Entity</span>
+<span class="ann">@Table</span><span class="punct">(</span><span class="var">name</span> <span class="punct">=</span> <span class="str">"users"</span><span class="punct">)</span>
+<span class="kw">public class</span> <span class="ty">UserEntity</span> <span class="punct">{</span>
+    <span class="ann">@Id</span> <span class="ann">@GeneratedValue</span>
+    <span class="kw">private</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">;</span>
+    <span class="ann">@Column</span><span class="punct">(</span><span class="var">unique</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">)</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">email</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">password</span><span class="punct">;</span>
+    <span class="com">// getter/setter ...</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>这段代码的问题</h3>
+  <ul>
+    <li><strong>业务规则与持久化混在一起：</strong><code>UserEntity</code> 既是业务对象，又是 JPA 表映射，改数据库 schema 就要改业务模型。</li>
+    <li><strong>测试困难：</strong>想单元测试 <code>register()</code> 的"邮箱不能重复"逻辑，必须启动 Spring 容器、准备 H2 内存库，测试速度慢、成本高。</li>
+    <li><strong>框架侵入：</strong>如果有一天换成 MongoDB，<code>UserService</code> 要全部重写，而它本质上只做了一件事——校验邮箱唯一性并保存。</li>
+  </ul>
+
+  <!-- 4. 正例 -->
+  <h2>正例：用依赖反转隔离数据库</h2>
+
+  <p>
+    解法是<strong>依赖反转原则（DIP）</strong>：业务层定义一个 Repository <em>接口</em>（抽象），
+    数据库实现类（JPA Adapter）在外层实现它。依赖箭头从"业务 → 数据库"变成了"数据库 → 业务"。
+  </p>
+
+  <div class="tree">
+src/<br>
+├── <span class="hi">domain/</span>               ← 内层：业务规则，零框架依赖<br>
+│   ├── <span class="hi">User.java</span>          ← 纯 POJO，无 @Entity<br>
+│   └── <span class="hi">UserRepository.java</span>  ← 接口，业务层定义<br>
+├── application/<br>
+│   └── UserService.java    ← 只依赖 domain 接口<br>
+└── infrastructure/<br>
+    └── persistence/<br>
+        ├── UserJpaEntity.java       ← JPA 映射对象<br>
+        ├── UserJpaRepository.java   ← Spring Data 接口<br>
+        └── UserRepositoryAdapter.java  ← 实现 domain.UserRepository
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>domain/User.java — 纯业务对象</span></div>
+    <pre><span class="kw">package</span> <span class="var">com.example.domain</span><span class="punct">;</span>
+
+<span class="com">// 没有任何 JPA 注解，不依赖任何框架</span>
+<span class="com">// 这才是真正的"领域实体"</span>
+<span class="kw">public class</span> <span class="ty">User</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">email</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">hashedPassword</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">User</span><span class="punct">(</span><span class="ty">String</span> <span class="var">email</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">hashedPassword</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">email</span> <span class="punct">=</span> <span class="var">email</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">hashedPassword</span> <span class="punct">=</span> <span class="var">hashedPassword</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">getEmail</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">email</span><span class="punct">; }</span>
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">getHashedPassword</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">hashedPassword</span><span class="punct">; }</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>domain/UserRepository.java — 业务层定义的接口（抽象）</span></div>
+    <pre><span class="kw">package</span> <span class="var">com.example.domain</span><span class="punct">;</span>
+
+<span class="com">// 这是业务层的"愿望清单"：我需要这些数据操作能力</span>
+<span class="com">// 我不在乎你用 MySQL、MongoDB 还是内存 Map 实现</span>
+<span class="kw">public interface</span> <span class="ty">UserRepository</span> <span class="punct">{</span>
+    <span class="ty">boolean</span> <span class="fn">existsByEmail</span><span class="punct">(</span><span class="ty">String</span> <span class="var">email</span><span class="punct">);</span>
+    <span class="kw">void</span> <span class="fn">save</span><span class="punct">(</span><span class="ty">User</span> <span class="var">user</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>application/UserService.java — 正例（只依赖接口）</span></div>
+    <pre><span class="kw">package</span> <span class="var">com.example.application</span><span class="punct">;</span>
+
+<span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">UserService</span> <span class="punct">{</span>
+
+    <span class="com">// 依赖的是 domain 层的接口，不是任何框架类</span>
+    <span class="kw">private final</span> <span class="ty">UserRepository</span> <span class="var">userRepo</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">UserService</span><span class="punct">(</span><span class="ty">UserRepository</span> <span class="var">userRepo</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">userRepo</span> <span class="punct">=</span> <span class="var">userRepo</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">register</span><span class="punct">(</span><span class="ty">String</span> <span class="var">email</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">rawPassword</span><span class="punct">) {</span>
+        <span class="com">// 业务规则：邮箱唯一性校验</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">userRepo</span><span class="punct">.</span><span class="fn">existsByEmail</span><span class="punct">(</span><span class="var">email</span><span class="punct">))</span> <span class="punct">{</span>
+            <span class="kw">throw new</span> <span class="ty">DuplicateEmailException</span><span class="punct">(</span><span class="var">email</span><span class="punct">);</span>
+        <span class="punct">}</span>
+        <span class="ty">User</span> <span class="var">user</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">User</span><span class="punct">(</span><span class="var">email</span><span class="punct">,</span> <span class="fn">hash</span><span class="punct">(</span><span class="var">rawPassword</span><span class="punct">));</span>
+        <span class="var">userRepo</span><span class="punct">.</span><span class="fn">save</span><span class="punct">(</span><span class="var">user</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>infrastructure/persistence/UserRepositoryAdapter.java — 适配器（在外层）</span></div>
+    <pre><span class="kw">package</span> <span class="var">com.example.infrastructure.persistence</span><span class="punct">;</span>
+
+<span class="com">// 外层（infrastructure）依赖内层（domain），方向正确</span>
+<span class="ann">@Component</span>
+<span class="kw">public class</span> <span class="ty">UserRepositoryAdapter</span> <span class="kw">implements</span> <span class="ty">UserRepository</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">UserJpaRepository</span> <span class="var">jpa</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">UserRepositoryAdapter</span><span class="punct">(</span><span class="ty">UserJpaRepository</span> <span class="var">jpa</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">jpa</span> <span class="punct">=</span> <span class="var">jpa</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public boolean</span> <span class="fn">existsByEmail</span><span class="punct">(</span><span class="ty">String</span> <span class="var">email</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">jpa</span><span class="punct">.</span><span class="fn">existsByEmail</span><span class="punct">(</span><span class="var">email</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">save</span><span class="punct">(</span><span class="ty">User</span> <span class="var">user</span><span class="punct">) {</span>
+        <span class="com">// domain.User → JPA Entity 转换，隔离在这里</span>
+        <span class="ty">UserJpaEntity</span> <span class="var">entity</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">UserJpaEntity</span><span class="punct">(</span>
+            <span class="var">user</span><span class="punct">.</span><span class="fn">getEmail</span><span class="punct">(),</span> <span class="var">user</span><span class="punct">.</span><span class="fn">getHashedPassword</span><span class="punct">()</span>
+        <span class="punct">);</span>
+        <span class="var">jpa</span><span class="punct">.</span><span class="fn">save</span><span class="punct">(</span><span class="var">entity</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>现在测试 UserService 的成本极低：</strong>只需 Mock 掉 <code>UserRepository</code> 接口，传入内存实现，完全不需要数据库。
+    业务规则测试与持久化实现彻底解耦。
+  </div>
+
+  <!-- 5. 依赖方向图 -->
+  <h2>依赖方向：谁依赖谁？</h2>
+
+  <div class="tree">
+<span class="com">──────────────────── 反例的依赖方向 ────────────────────</span><br>
+<br>
+  UserService  ──────────────→  UserJpaRepository (JPA)<br>
+                                       ↓<br>
+                                    MySQL<br>
+<br>
+  业务核心直接指向数据库框架，框架换了，业务也要改。<br>
+<br>
+<span class="com">──────────────────── 正例的依赖方向 ────────────────────</span><br>
+<br>
+  UserService  ─→  <span class="hi">UserRepository（接口，在 domain 层）</span><br>
+                         ↑<br>
+               UserRepositoryAdapter  ─→  UserJpaRepository  ─→  MySQL<br>
+<br>
+  所有箭头都指向内层（domain），外层（JPA/MySQL）依赖内层接口。<br>
+  替换 MySQL → MongoDB，只需换 Adapter，Service 零改动。
+  </div>
+
+  <!-- 6. 数据模型 vs 领域模型 -->
+  <h2>常见混淆：数据模型 ≠ 领域模型</h2>
+
+  <p>
+    ORM 框架起名叫 <code>@Entity</code> 是一种历史误导。
+    领域驱动设计（DDD）中的 Entity 是<strong>具有业务身份的领域对象</strong>，
+    而 JPA 的 <code>@Entity</code> 是<strong>数据库表的映射对象</strong>——两者责任完全不同。
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th>领域对象（Domain Model）</th>
+        <th>数据库映射对象（Persistence Model）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>所在层</td>
+        <td>domain（最内层）</td>
+        <td>infrastructure（最外层）</td>
+      </tr>
+      <tr>
+        <td>依赖</td>
+        <td>零框架依赖</td>
+        <td>JPA / MyBatis 等注解</td>
+      </tr>
+      <tr>
+        <td>职责</td>
+        <td>表达业务概念，封装业务规则</td>
+        <td>映射数据库表结构，处理 ORM 细节</td>
+      </tr>
+      <tr>
+        <td>变化原因</td>
+        <td>业务规则变了</td>
+        <td>数据库 schema 变了 / 换数据库</td>
+      </tr>
+      <tr>
+        <td>测试</td>
+        <td>纯单元测试，ms 级</td>
+        <td>需要数据库环境，集成测试</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见陷阱：</strong>把 JPA Entity 当 DTO 传给前端、或者直接在 Service 里调用 <code>entityManager.flush()</code>，
+    都是把数据库实现细节渗透进了业务层——未来每次数据库调整都会波及业务代码。
+  </div>
+
+  <!-- 7. 落地技巧 -->
+  <h2>实际开发中的落地技巧</h2>
+
+  <h3>技巧一：先写接口，再写实现</h3>
+  <p>
+    开发新功能时，先在 domain 层定义 Repository 接口，
+    用内存实现（<code>HashMap</code> 存储）跑通业务逻辑和测试，
+    再去写 JPA Adapter。这个顺序能自然检验业务逻辑是否独立于数据库。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>InMemoryUserRepository.java — 用于测试的内存实现</span></div>
+    <pre><span class="com">// 测试时注入这个实现，完全不需要 Spring 容器</span>
+<span class="kw">public class</span> <span class="ty">InMemoryUserRepository</span> <span class="kw">implements</span> <span class="ty">UserRepository</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">User</span><span class="punct">&gt;</span> <span class="var">store</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public boolean</span> <span class="fn">existsByEmail</span><span class="punct">(</span><span class="ty">String</span> <span class="var">email</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">store</span><span class="punct">.</span><span class="fn">containsKey</span><span class="punct">(</span><span class="var">email</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">save</span><span class="punct">(</span><span class="ty">User</span> <span class="var">user</span><span class="punct">) {</span>
+        <span class="var">store</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">user</span><span class="punct">.</span><span class="fn">getEmail</span><span class="punct">(),</span> <span class="var">user</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>技巧二：Module / Package 边界即是架构边界</h3>
+  <p>
+    用 Java 的 module 系统或者 Maven 多模块来强制边界：
+    <code>domain</code> 模块不得依赖 <code>infrastructure</code> 模块，
+    编译时就会报错，彻底杜绝"手滑"引入框架类。
+  </p>
+
+  <div class="tree">
+pom.xml (parent)<br>
+├── <span class="hi">domain/</span>         ← 无任何外部依赖<br>
+├── application/    ← 仅依赖 domain<br>
+└── infrastructure/ ← 依赖 domain + Spring + JPA
+  </div>
+
+  <h3>技巧三：接口方法用领域语言，不用数据库语言</h3>
+  <p>
+    Repository 接口方法命名要体现业务语义，而不是数据库操作语义：
+  </p>
+  <ul>
+    <li>好：<code>findActiveUsersByRegion(String region)</code></li>
+    <li>坏：<code>selectFromUsersWhereStatusEqActiveAndRegionEq(String region)</code></li>
+    <li>坏：<code>queryWithJpql(String jpql)</code>（把 JPQL 暴露给业务层）</li>
+  </ul>
+
+  <h3>技巧四：事务边界在应用层，不在领域层</h3>
+  <p>
+    <code>@Transactional</code> 属于持久化基础设施的概念，
+    理论上应放在 application service 层（协调层），
+    而不应出现在 domain 对象上。
+    这样即使换掉 Spring 事务管理，domain 层无感知。
+  </p>
+
+  <!-- 8. 常见误区 -->
+  <h2>容易忽略的细节与面试高频考点</h2>
+
+  <ul>
+    <li>
+      <strong>"数据库是细节"不代表数据库不重要。</strong>
+      架构上隔离数据库，并不是说可以随便选型——而是说数据库选型是一个可以被推迟、被替换的决策，
+      不应在项目初期就固化进业务代码。
+    </li>
+    <li>
+      <strong>Repository 接口不等于 DAO。</strong>
+      DAO（Data Access Object）是围绕表设计的，一张表一个 DAO；
+      Repository 是围绕业务聚合根设计的，接口方法语义属于业务层。
+    </li>
+    <li>
+      <strong>CQRS 场景下可以适当松动。</strong>
+      查询侧（Query）往往性能要求高，允许直接用 SQL/JOOQ 穿透到数据层；
+      写侧（Command）才是需要严格隔离的业务核心。两侧规则不同。
+    </li>
+    <li>
+      <strong>Spring Data JPA 的 Repository 接口本质是框架接口。</strong>
+      继承 <code>JpaRepository</code> 的接口不应该直接注入进 Service，
+      而应包一层 Adapter——除非你确定这个项目永远不会换数据库且测试都用集成测试。
+    </li>
+    <li>
+      <strong>面试常问：</strong>"为什么要用 Repository 模式而不是直接用 JPA？"
+      标准答案就是本章主旨：隔离业务规则与持久化细节，使业务逻辑可独立测试、持久化可独立替换。
+    </li>
+  </ul>
+
+  <hr />
+
+  <div class="callout info">
+    <strong>本章一句话总结：</strong>数据库只是把数据从内存搬到磁盘的 I/O 机制。
+    业务规则定义"数据是什么"，数据库决定"数据存在哪"。
+    前者是架构核心，后者是可替换的实现细节——用依赖反转让箭头指向正确的方向。
+  </div>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./21-依赖方向与控制流分离.html" class="nav-btn">← 21. 依赖方向与控制流分离</a>
+    <a href="./23-Web是细节.html" class="nav-btn next">23. Web 是细节 →</a>
+  </div>
+
+</div>
+</body>
+</html>

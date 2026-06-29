@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>07. 信息隐藏与信息泄漏 — 《软件设计的哲学》</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #38bdf8; }
+    p code, li code { color: #38bdf8; }
+    h2 { color: #38bdf8; border-left-color: #38bdf8; }
+    .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+    .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../aposd-roadmap.html">路线图</a> / 《软件设计的哲学》 / 信息隐藏
+  </div>
+
+  <!-- 头部 -->
+  <div class="hero">
+    <div class="tag">《软件设计的哲学》 · 信息隐藏</div>
+    <h1>07. 信息隐藏与信息泄漏</h1>
+    <p>John Ousterhout 认为信息隐藏是实现深模块最重要的手段——把决策锁在模块内部，让外部世界什么都不需要知道。</p>
+  </div>
+
+  <!-- 1. 核心主张 -->
+  <h2>作者的核心主张</h2>
+  <p>
+    Ousterhout 在第 5 章开门见山：<strong>信息隐藏（Information Hiding）是降低软件复杂性的最有力工具之一。</strong>
+    其本质是：把实现某个功能所需的<strong>知识（知识 = 决策 + 假设 + 算法选择）</strong>锁进单个模块，不让它渗透到系统其他地方。
+  </p>
+  <p>
+    为什么这样设计更好？答案来自复杂性的根源——<strong>依赖（dependencies）</strong>。
+    当模块 A 知道模块 B 的内部细节时，A 就依赖了 B 的实现；B 一旦改动，A 也得跟着改。
+    信息隐藏切断这条依赖链：外部只看到稳定的接口，内部细节随时可换，改动不扩散。
+  </p>
+
+  <div class="callout info">
+    <strong>一句话记忆：</strong>接口是模块向外暴露的"承诺"，实现是模块内部的"秘密"。
+    好的设计让承诺尽可能小，秘密尽可能多。
+  </div>
+
+  <!-- 2. 什么是信息泄漏 -->
+  <h2>信息泄漏是什么</h2>
+  <p>
+    <strong>信息泄漏（Information Leakage）</strong>是信息隐藏的反面：
+    某个设计决策被多个模块知晓并依赖，导致一处改动需要同步修改多处。
+    Ousterhout 把它列为最常见的红色警报之一。
+  </p>
+
+  <p>泄漏有两种形态：</p>
+  <ul>
+    <li><strong>显式泄漏（接口泄漏）</strong>：把内部细节直接写进方法签名或返回值。调用方被迫了解底层。</li>
+    <li><strong>隐式泄漏（时序泄漏）</strong>：两个方法必须按特定顺序调用才能正确工作，调用方需要了解这个约定。</li>
+  </ul>
+
+  <div class="tree">
+    信息泄漏的典型信号<br>
+    ├── <span class="hi">方法参数里出现实现层的类型</span>（如 FileInputStream、ByteBuffer）<br>
+    ├── <span class="hi">调用方需要判断内部状态</span>（如 isConnected() 后才能 send()）<br>
+    ├── <span class="hi">两个类共享同一个"隐含知识"</span>（如都知道文件格式是 UTF-8）<br>
+    └── <span class="hi">修改一个实现细节，需要同时改多个文件</span>
+  </div>
+
+  <!-- 3. 反例 → 问题 → 正例 -->
+  <h2>反例 → 问题 → 正例</h2>
+
+  <h3>场景：读取配置文件</h3>
+
+  <p>假设我们要封装"从文件读取应用配置"的功能。</p>
+
+  <!-- 反例 -->
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 信息泄漏</span><span>Java</span></div>
+    <pre><span class="com">// ❌ 接口暴露了"文件用 FileReader 读取"这一实现决策</span>
+<span class="kw">public class</span> <span class="ty">ConfigLoader</span> <span class="punct">{</span>
+
+    <span class="com">// 调用方被迫传入 FileReader，意味着调用方必须知道：</span>
+    <span class="com">// 1. 配置来自文件（而非数据库、环境变量…）</span>
+    <span class="com">// 2. 必须自己负责打开/关闭 FileReader</span>
+    <span class="kw">public</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">String</span><span class="punct">&gt;</span> <span class="fn">load</span><span class="punct">(</span><span class="ty">FileReader</span> <span class="var">reader</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+        <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">config</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+        <span class="ty">BufferedReader</span> <span class="var">br</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">BufferedReader</span><span class="punct">(</span><span class="var">reader</span><span class="punct">);</span>
+        <span class="ty">String</span> <span class="var">line</span><span class="punct">;</span>
+        <span class="kw">while</span> <span class="punct">((</span><span class="var">line</span> <span class="punct">=</span> <span class="var">br</span><span class="punct">.</span><span class="fn">readLine</span><span class="punct">()) !=</span> <span class="kw">null</span><span class="punct">) {</span>
+            <span class="ty">String</span><span class="punct">[]</span> <span class="var">parts</span> <span class="punct">=</span> <span class="var">line</span><span class="punct">.</span><span class="fn">split</span><span class="punct">(</span><span class="str">"="</span><span class="punct">,</span> <span class="num">2</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">parts</span><span class="punct">.</span><span class="var">length</span> <span class="punct">==</span> <span class="num">2</span><span class="punct">)</span> <span class="var">config</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">parts</span><span class="punct">[</span><span class="num">0</span><span class="punct">].</span><span class="fn">trim</span><span class="punct">(),</span> <span class="var">parts</span><span class="punct">[</span><span class="num">1</span><span class="punct">].</span><span class="fn">trim</span><span class="punct">());</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">config</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方代码 —— 已经"知道太多了"</span>
+<span class="ty">FileReader</span> <span class="var">fr</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileReader</span><span class="punct">(</span><span class="str">"app.properties"</span><span class="punct">);</span>
+<span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">cfg</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ConfigLoader</span><span class="punct">().</span><span class="fn">load</span><span class="punct">(</span><span class="var">fr</span><span class="punct">);</span>
+<span class="var">fr</span><span class="punct">.</span><span class="fn">close</span><span class="punct">();</span>  <span class="com">// 调用方还要管生命周期！</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>问题所在：</strong>方法签名里的 <code>FileReader</code> 把"从文件读"这个实现决策泄漏给了每一个调用方。
+    若将来改为从数据库或环境变量读取，所有调用方都得改。
+    更糟的是，调用方还要自己管 <code>FileReader</code> 的开关，资源泄漏风险暗藏其中。
+  </div>
+
+  <!-- 正例 -->
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 信息隐藏</span><span>Java</span></div>
+    <pre><span class="com">// ✅ 接口只暴露"我需要一个路径"，内部怎么读是秘密</span>
+<span class="kw">public class</span> <span class="ty">ConfigLoader</span> <span class="punct">{</span>
+
+    <span class="com">// 对外承诺：给我路径，给你配置 Map。仅此而已。</span>
+    <span class="kw">public</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">String</span><span class="punct">&gt;</span> <span class="fn">load</span><span class="punct">(</span><span class="ty">String</span> <span class="var">filePath</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">config</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+        <span class="com">// try-with-resources：资源生命周期是内部秘密，外部无感知</span>
+        <span class="kw">try</span> <span class="punct">(</span><span class="ty">BufferedReader</span> <span class="var">br</span> <span class="punct">=</span>
+                 <span class="ty">Files</span><span class="punct">.</span><span class="fn">newBufferedReader</span><span class="punct">(</span><span class="ty">Path</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="var">filePath</span><span class="punct">),</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">)) {</span>
+            <span class="var">br</span><span class="punct">.</span><span class="fn">lines</span><span class="punct">()</span>
+              <span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="var">l</span> <span class="punct">-&gt; !</span><span class="var">l</span><span class="punct">.</span><span class="fn">isBlank</span><span class="punct">() &amp;&amp; !</span><span class="var">l</span><span class="punct">.</span><span class="fn">startsWith</span><span class="punct">(</span><span class="str">"#"</span><span class="punct">))</span>
+              <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="var">l</span> <span class="punct">-&gt;</span> <span class="var">l</span><span class="punct">.</span><span class="fn">split</span><span class="punct">(</span><span class="str">"="</span><span class="punct">,</span> <span class="num">2</span><span class="punct">))</span>
+              <span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="var">p</span> <span class="punct">-&gt;</span> <span class="var">p</span><span class="punct">.</span><span class="var">length</span> <span class="punct">==</span> <span class="num">2</span><span class="punct">)</span>
+              <span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="var">p</span> <span class="punct">-&gt;</span> <span class="var">config</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">p</span><span class="punct">[</span><span class="num">0</span><span class="punct">].</span><span class="fn">trim</span><span class="punct">(),</span> <span class="var">p</span><span class="punct">[</span><span class="num">1</span><span class="punct">].</span><span class="fn">trim</span><span class="punct">()));</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="str">"Failed to load config: "</span> <span class="punct">+</span> <span class="var">filePath</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">config</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方极其简单，对文件读取一无所知</span>
+<span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">, </span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">cfg</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ConfigLoader</span><span class="punct">().</span><span class="fn">load</span><span class="punct">(</span><span class="str">"app.properties"</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>改变了什么：</strong>
+    <code>FileReader</code>、<code>BufferedReader</code>、<code>UTF-8</code>、资源关闭——这四个决策全部锁在了 <code>ConfigLoader</code> 内部。
+    未来改成读 YAML 或从环境变量合并，调用方代码零修改。
+  </div>
+
+  <!-- 4. 隐式泄漏：时序依赖 -->
+  <h2>隐式泄漏：时序依赖</h2>
+  <p>
+    接口泄漏容易被发现，<strong>时序泄漏（Temporal Leakage）</strong>更隐蔽。
+    两个操作必须按顺序调用，本身就是一种"内部状态"被迫暴露给调用方。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 时序泄漏</span><span>Java</span></div>
+    <pre><span class="com">// ❌ 调用方必须知道"先 connect，再 send"这条内部约定</span>
+<span class="kw">public class</span> <span class="ty">MessageClient</span> <span class="punct">{</span>
+    <span class="kw">private boolean</span> <span class="var">connected</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">connect</span><span class="punct">(</span><span class="ty">String</span> <span class="var">host</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">port</span><span class="punct">) { ...;</span> <span class="var">connected</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">; }</span>
+
+    <span class="kw">public void</span> <span class="fn">send</span><span class="punct">(</span><span class="ty">String</span> <span class="var">message</span><span class="punct">) {</span>
+        <span class="com">// 调用方必须在外部保证先调了 connect()，否则 NPE / 状态错误</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">connected</span><span class="punct">)</span> <span class="kw">throw new</span> <span class="ty">IllegalStateException</span><span class="punct">(</span><span class="str">"Not connected!"</span><span class="punct">);</span>
+        <span class="com">// ...</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方代码</span>
+<span class="ty">MessageClient</span> <span class="var">client</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">MessageClient</span><span class="punct">();</span>
+<span class="var">client</span><span class="punct">.</span><span class="fn">connect</span><span class="punct">(</span><span class="str">"localhost"</span><span class="punct">,</span> <span class="num">8080</span><span class="punct">);</span>  <span class="com">// 必须记得先调这一行！</span>
+<span class="var">client</span><span class="punct">.</span><span class="fn">send</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 隐藏时序</span><span>Java</span></div>
+    <pre><span class="com">// ✅ 把"连接"的知识封装进工厂方法，外部只看到"可用的客户端"</span>
+<span class="kw">public class</span> <span class="ty">MessageClient</span> <span class="punct">{</span>
+
+    <span class="com">// 构造函数私有，强制通过工厂方法获取"已连接"的实例</span>
+    <span class="kw">private</span> <span class="ty">MessageClient</span><span class="punct">() {}</span>
+
+    <span class="kw">public static</span> <span class="ty">MessageClient</span> <span class="fn">connect</span><span class="punct">(</span><span class="ty">String</span> <span class="var">host</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">port</span><span class="punct">) {</span>
+        <span class="ty">MessageClient</span> <span class="var">c</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">MessageClient</span><span class="punct">();</span>
+        <span class="com">// 内部完成连接——调用方得到的对象天生就是"已连接"状态</span>
+        <span class="var">c</span><span class="punct">.</span><span class="fn">doConnect</span><span class="punct">(</span><span class="var">host</span><span class="punct">,</span> <span class="var">port</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">c</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">send</span><span class="punct">(</span><span class="ty">String</span> <span class="var">message</span><span class="punct">) { </span><span class="com">/* 直接用，无需检查 */</span><span class="punct"> }</span>
+    <span class="kw">private void</span> <span class="fn">doConnect</span><span class="punct">(</span><span class="ty">String</span> <span class="var">host</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">port</span><span class="punct">) { ... }</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方：时序约定已消失，根本没机会"忘记 connect"</span>
+<span class="ty">MessageClient</span> <span class="var">client</span> <span class="punct">=</span> <span class="ty">MessageClient</span><span class="punct">.</span><span class="fn">connect</span><span class="punct">(</span><span class="str">"localhost"</span><span class="punct">,</span> <span class="num">8080</span><span class="punct">);</span>
+<span class="var">client</span><span class="punct">.</span><span class="fn">send</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- 5. 信息隐藏 vs 信息泄漏对比表 -->
+  <h2>关键指标对比</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th>信息隐藏（好）</th>
+        <th>信息泄漏（坏）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>接口大小</td>
+        <td>最小化，只暴露必要的</td>
+        <td>暴露内部类型、状态、算法</td>
+      </tr>
+      <tr>
+        <td>调用方负担</td>
+        <td>不需要了解实现细节</td>
+        <td>需要了解顺序、格式、资源管理</td>
+      </tr>
+      <tr>
+        <td>修改影响范围</td>
+        <td>改动仅限模块内部</td>
+        <td>改动波及所有调用方</td>
+      </tr>
+      <tr>
+        <td>测试难度</td>
+        <td>只需针对接口编写测试</td>
+        <td>需要模拟内部细节才能测试</td>
+      </tr>
+      <tr>
+        <td>典型代码信号</td>
+        <td><code>String path</code>、工厂方法</td>
+        <td><code>FileReader</code>、<code>isConnected()</code> 暴露</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 6. 实际开发落地技巧 -->
+  <h2>实际开发落地技巧</h2>
+
+  <h3>技巧 1：用构造函数 / 工厂方法消灭时序泄漏</h3>
+  <p>
+    若一个对象需要初始化步骤，把步骤放进构造函数或静态工厂。
+    让对象"生来即可用"，调用方不可能拿到"未初始化"的实例。
+    这也是 Effective Java 条目 1 的背后逻辑。
+  </p>
+
+  <h3>技巧 2：参数类型越抽象越好</h3>
+  <p>
+    方法参数用 <code>InputStream</code> 而非 <code>FileInputStream</code>，
+    用 <code>List</code> 而非 <code>ArrayList</code>，
+    用 <code>Path</code> 而非 <code>File</code>（更现代）。
+    抽象层越高，暴露的实现细节越少。
+  </p>
+
+  <h3>技巧 3：同一知识只存一份（Single Source of Truth）</h3>
+  <p>
+    如果"文件编码是 UTF-8"这个知识在 A、B 两个类里都硬编码了，就已经泄漏。
+    应把它提炼为常量或配置，集中在一处。修改时只改一处，不会漏改。
+  </p>
+
+  <h3>技巧 4：私有化 + 最小可见性原则</h3>
+  <p>
+    字段默认 <code>private</code>，方法能 <code>private</code> 就不 <code>package-private</code>，
+    能 <code>package-private</code> 就不 <code>public</code>。
+    IDE 的"减小访问修饰符"重构是快速执行此原则的捷径。
+  </p>
+
+  <h3>技巧 5：警惕"过度分解"带来的泄漏</h3>
+  <p>
+    Ousterhout 特别指出：<strong>把一个完整操作拆成多个小方法，反而会制造时序泄漏。</strong>
+    <code>readHeader()</code> + <code>readBody()</code> 两个方法，要求调用方知道"先 Header 后 Body"的顺序；
+    而一个 <code>readMessage()</code> 才是真正的信息隐藏。
+    不是分得越细越好，而是<strong>每个方法完成一个完整的、有意义的操作</strong>。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见陷阱：</strong>把"数据容器类"（如 <code>UserDTO</code>）的所有字段都加 getter/setter，
+    等同于把所有字段都设成了 <code>public</code>。
+    如果某字段只是内部状态，不提供 getter 才是正确的信息隐藏。
+  </div>
+
+  <!-- 7. 与深模块的联系 -->
+  <h2>与深模块的联系</h2>
+  <p>
+    信息隐藏是实现<strong>深模块（deep module）</strong>的核心手段。
+    回忆深模块的定义：<em>接口简单，功能强大</em>。
+    接口之所以能简单，正是因为大量的实现知识被隐藏在模块内部。
+  </p>
+
+  <div class="tree">
+    深模块 = 大接口面积的"功能" / 小接口面积的"暴露"<br>
+    <br>
+    ┌─────────────────────────┐<br>
+    │    接口（对外暴露）      │  &lt;── 越小越好<br>
+    ├─────────────────────────┤<br>
+    │  实现（对外隐藏）        │<br>
+    │  · 算法选择              │<br>
+    │  · 数据结构              │  &lt;── <span class="hi">越多越好</span><br>
+    │  · 错误处理细节          │<br>
+    │  · 并发策略              │<br>
+    └─────────────────────────┘
+  </div>
+
+  <p>
+    Unix 的 <code>read(fd, buf, count)</code> 系统调用是经典案例：
+    三个参数的接口背后隐藏了磁盘寻址、缓冲区管理、中断处理、文件系统差异——
+    这正是信息隐藏创造出的"深度"。
+  </p>
+
+  <!-- 8. 面试高频考点 -->
+  <h2>面试高频考点</h2>
+  <ul>
+    <li><strong>封装 vs 信息隐藏的区别？</strong> 封装是机制（访问控制符），信息隐藏是设计目标（减少依赖）。封装是手段，信息隐藏是目的。用了 <code>private</code> 不等于做到了信息隐藏（getter 把一切都暴露出去了）。</li>
+    <li><strong>如何识别信息泄漏？</strong> 问自己：修改模块 A 的某个实现细节，有哪些模块需要跟着改？需要改的越多，泄漏越严重。</li>
+    <li><strong>接口 vs 实现，划界标准是什么？</strong> 接口里只放"调用方做决策必须知道的"，其余全部是实现。</li>
+    <li><strong>什么情况下信息必须"泄漏"？</strong> 性能敏感路径（调用方需要选择缓冲区大小）、安全场景（调用方需要知道加密算法以便审计）。这种情况是合理权衡，要有意识地记录为文档。</li>
+  </ul>
+
+  <hr />
+
+  <!-- nav-footer -->
+  <div class="nav-footer">
+    <a href="./06-复杂性下沉.html" class="nav-btn">← 06. 复杂性下沉 pull-complexity-downward</a>
+    <a href="./08-通用比专用更简单.html" class="nav-btn next">08. 通用比专用更简单（general-purpose） →</a>
+  </div>
+
+</div>
+</body>
+</html>

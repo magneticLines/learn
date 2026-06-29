@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>06. 错误处理（用异常而非返回码） — 代码整洁之道</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fcd34d; }
+    p code, li code { color: #fcd34d; }
+    h2 { color: #fcd34d; border-left-color: #fcd34d; }
+    .hero .tag { color: #fcd34d; border-color: #78350f; }
+    .nav-btn.next { color: #fcd34d; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-code-roadmap.html">路线图</a> / 《代码整洁之道》 / 对象·异常·边界
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">《代码整洁之道》 · 对象·异常·边界</div>
+    <h1>06. 错误处理（用异常而非返回码）</h1>
+    <p>异常不是"高级语法糖"，而是把错误处理从主流程中彻底分离的设计决策。</p>
+  </div>
+
+  <!-- 1. 核心主张 -->
+  <h2>核心主张：错误处理是独立关注点</h2>
+  <p>
+    Bob 大叔在第七章开门见山：<strong>错误处理很重要，但如果它遮蔽了逻辑，那就是写错了。</strong>
+    用返回码处理错误的根本问题在于——它把"检测错误"和"处理业务逻辑"两件事强行混在一起，
+    逼调用方在每次调用后都要检查返回值，否则错误就被静默吞掉了。
+  </p>
+  <p>
+    异常机制的设计哲学是：<strong>让主流程只描述"事情正确发生时的样子"，
+    错误路径交由异常体系单独承载</strong>。这样阅读代码时，你的注意力不会被
+    一串 <code>if (result == -1)</code> 打断。
+  </p>
+
+  <div class="callout info">
+    <strong>一句话总结：</strong>返回码是"内联"的错误处理，异常是"分离"的错误处理。
+    整洁代码追求关注点分离，因此偏好异常。
+  </div>
+
+  <!-- 2. 反例 vs 正例 -->
+  <h2>反例 → 问题 → 正例</h2>
+
+  <h3>反例：靠返回码传递错误</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 返回码风格（Bad）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">DeviceController</span> <span class="punct">{</span>
+
+    <span class="kw">public void</span> <span class="fn">sendShutdown</span><span class="punct">() {</span>
+        <span class="com">// 每一步都要手动检查，主逻辑几乎被淹没</span>
+        <span class="ty">DeviceHandle</span> <span class="var">handle</span> <span class="punct">=</span> <span class="fn">getHandle</span><span class="punct">(</span><span class="var">DEV1</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">handle</span> <span class="punct">!=</span> <span class="ty">DeviceHandle</span><span class="punct">.</span><span class="var">INVALID</span><span class="punct">) {</span>
+            <span class="fn">retrieveDeviceRecord</span><span class="punct">(</span><span class="var">handle</span><span class="punct">);</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">record</span><span class="punct">.</span><span class="fn">getStatus</span><span class="punct">() !=</span> <span class="var">DEVICE_SUSPENDED</span><span class="punct">) {</span>
+                <span class="fn">pauseDevice</span><span class="punct">(</span><span class="var">handle</span><span class="punct">);</span>
+                <span class="fn">clearDeviceWorkQueue</span><span class="punct">(</span><span class="var">handle</span><span class="punct">);</span>
+                <span class="fn">closeDevice</span><span class="punct">(</span><span class="var">handle</span><span class="punct">);</span>
+            <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+                <span class="var">logger</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"Device suspended. Unable to shut down"</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+            <span class="var">logger</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">"Invalid handle for: "</span> <span class="punct">+</span> <span class="var">DEV1</span><span class="punct">.</span><span class="fn">toString</span><span class="punct">());</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>问题出在哪里？</strong></p>
+  <ul>
+    <li>嵌套 <code>if-else</code> 把关机逻辑（暂停、清队列、关闭）淹没在错误检查里。</li>
+    <li>调用者必须"记得"检查返回值，一旦忘记，错误被静默忽略，产生隐藏 Bug。</li>
+    <li>新增一步操作就要新增一层 <code>if</code>，维护成本随步骤线性增长。</li>
+  </ul>
+
+  <h3>正例：用异常分离主流程与错误路径</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 异常风格（Good）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">DeviceController</span> <span class="punct">{</span>
+
+    <span class="kw">public void</span> <span class="fn">sendShutdown</span><span class="punct">() {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="fn">tryToShutDown</span><span class="punct">();</span>        <span class="com">// 主流程：只描述"正确的事"</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">DeviceShutDownException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="var">logger</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>            <span class="com">// 错误路径：集中在一处</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 主流程方法：一眼看清业务意图，没有任何 if-else 噪声</span>
+    <span class="kw">private void</span> <span class="fn">tryToShutDown</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">DeviceShutDownException</span> <span class="punct">{</span>
+        <span class="ty">DeviceHandle</span> <span class="var">handle</span> <span class="punct">=</span> <span class="fn">getHandle</span><span class="punct">(</span><span class="var">DEV1</span><span class="punct">);</span>
+        <span class="ty">DeviceRecord</span> <span class="var">record</span>  <span class="punct">=</span> <span class="fn">retrieveDeviceRecord</span><span class="punct">(</span><span class="var">handle</span><span class="punct">);</span>
+        <span class="fn">pauseDevice</span><span class="punct">(</span><span class="var">handle</span><span class="punct">);</span>
+        <span class="fn">clearDeviceWorkQueue</span><span class="punct">(</span><span class="var">handle</span><span class="punct">);</span>
+        <span class="fn">closeDevice</span><span class="punct">(</span><span class="var">handle</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private</span> <span class="ty">DeviceHandle</span> <span class="fn">getHandle</span><span class="punct">(</span><span class="ty">DeviceId</span> <span class="var">id</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">DeviceShutDownException</span> <span class="punct">{</span>
+        <span class="com">// 若无效，直接抛异常——调用方无需检查返回值</span>
+        <span class="ty">DeviceHandle</span> <span class="var">handle</span> <span class="punct">=</span> <span class="var">deviceRegistry</span><span class="punct">.</span><span class="fn">lookup</span><span class="punct">(</span><span class="var">id</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">handle</span> <span class="punct">==</span> <span class="ty">DeviceHandle</span><span class="punct">.</span><span class="var">INVALID</span><span class="punct">)</span>
+            <span class="kw">throw new</span> <span class="ty">DeviceShutDownException</span><span class="punct">(</span><span class="str">"Invalid handle for device: "</span> <span class="punct">+</span> <span class="var">id</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">handle</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    重构后，<code>tryToShutDown()</code> 方法的每一行都在推进业务——
+    <strong>阅读主流程时，你的大脑不需要在"正常路径"和"错误路径"之间反复切换</strong>。
+    错误路径被收拢在 <code>catch</code> 块，互不干扰。
+  </p>
+
+  <!-- 3. 先写 try-catch 再写主体 -->
+  <h2>先写 try-catch，再填主体逻辑</h2>
+  <p>
+    这是 Clean Code 提出的一个容易被忽视的实战技巧：
+    <strong>当你知道某段代码会抛异常时，先把 <code>try-catch-finally</code> 骨架写出来，
+    再往里填内容</strong>。
+  </p>
+  <p>
+    原因在于：<code>try</code> 块相当于一个"事务边界"——进入它时系统处于某种状态，
+    退出时（无论正常还是异常）调用者能对系统状态有确定性预期。
+    先写骨架，有助于你从"调用者视角"设计接口契约，而不是写完逻辑后再补充错误处理。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — TDD 风格：先有 try-catch 骨架</span></div>
+    <pre><span class="ann">@Test</span>
+<span class="kw">public void</span> <span class="fn">retrieveSectionShouldThrowOnInvalidFileName</span><span class="punct">() {</span>
+    <span class="var">sectionStore</span><span class="punct">.</span><span class="fn">retrieveSection</span><span class="punct">(</span><span class="str">"invalid - file"</span><span class="punct">);</span> <span class="com">// 期望抛异常</span>
+<span class="punct">}</span>
+
+<span class="com">// 先让测试通过（抛异常），再填充正确逻辑</span>
+<span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">RecordedGrip</span><span class="punct">&gt;</span> <span class="fn">retrieveSection</span><span class="punct">(</span><span class="ty">String</span> <span class="var">sectionName</span><span class="punct">) {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="ty">FileInputStream</span> <span class="var">stream</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="var">sectionName</span><span class="punct">);</span>
+        <span class="com">// ... 后续业务逻辑在这里展开</span>
+        <span class="var">stream</span><span class="punct">.</span><span class="fn">close</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">FileNotFoundException</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="kw">throw new</span> <span class="ty">StorageException</span><span class="punct">(</span><span class="str">"retrieval error"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="kw">return new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 4. Unchecked vs Checked -->
+  <h2>使用非受检异常（Unchecked Exception）</h2>
+  <p>
+    Bob 大叔明确主张：<strong>在大多数业务代码中，偏好 <code>RuntimeException</code>（非受检）而非 Checked Exception</strong>。
+  </p>
+  <p>
+    Checked Exception 的问题在于它违反了"开闭原则"：
+    底层方法新增一个受检异常，调用链上每一层方法签名都要跟着修改（要么 <code>throws</code>，要么 <code>catch</code>），
+    造成大范围的级联改动——<strong>这是一种隐性的强耦合</strong>。
+  </p>
+
+  <div class="tree">
+    <span class="hi">Service</span> → <span class="hi">Repository</span> → <span class="hi">DB Driver</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;↑ 若 DB Driver 新增 checked exception<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;  Repository 必须 throws / catch<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;  Service 必须 throws / catch<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;  Controller 必须 throws / catch<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;  ……每一层都被迫感知底层实现细节
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th>Checked Exception</th>
+        <th>Unchecked Exception</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>编译器强制处理</td>
+        <td>是</td>
+        <td>否</td>
+      </tr>
+      <tr>
+        <td>修改底层时影响范围</td>
+        <td>调用链全部层</td>
+        <td>仅实际 catch 的层</td>
+      </tr>
+      <tr>
+        <td>适合场景</td>
+        <td>IO/网络等可预期且调用者必须处理</td>
+        <td>业务违规、编程错误等大多数情况</td>
+      </tr>
+      <tr>
+        <td>Java 标准库例子</td>
+        <td><code>IOException</code>, <code>SQLException</code></td>
+        <td><code>IllegalArgumentException</code>, <code>NullPointerException</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>注意：</strong>这不是说 Checked Exception 一无是处。
+    在库/框架的最底层、或者"调用者必须感知并恢复"的场景（如文件不存在后让用户重新选路径），
+    Checked Exception 仍是合理选择。重点是：不要因为图方便而把底层受检异常透传给上层。
+  </div>
+
+  <!-- 5. 异常携带上下文 -->
+  <h2>异常要携带足够的上下文信息</h2>
+  <p>
+    抛出异常时，<strong>要让接收者能定位问题，而不只是知道"出错了"</strong>。
+    包含：操作名称、失败对象的标识符、以及原始异常（cause）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 携带上下文的异常</span></div>
+    <pre><span class="com">// Bad：没有上下文，日志里只有一个类名</span>
+<span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">();</span>
+
+<span class="com">// Bad：有消息，但丢失了原始 cause，排查链路被截断</span>
+<span class="kw">throw new</span> <span class="ty">OrderException</span><span class="punct">(</span><span class="str">"order process failed"</span><span class="punct">);</span>
+
+<span class="com">// Good：操作 + 标识符 + 原始异常全部保留</span>
+<span class="kw">throw new</span> <span class="ty">OrderException</span><span class="punct">(</span>
+    <span class="str">"Failed to create order for userId="</span> <span class="punct">+</span> <span class="var">userId</span>
+        <span class="punct">+</span> <span class="str">", productId="</span> <span class="punct">+</span> <span class="var">productId</span><span class="punct">,</span>
+    <span class="var">cause</span>    <span class="com">// 透传原始异常，保留完整 stack trace</span>
+<span class="punct">);</span></pre>
+  </div>
+
+  <!-- 6. 不要返回 null -->
+  <h2>不要返回 null，也不要传入 null</h2>
+
+  <h3>不要返回 null</h3>
+  <p>
+    返回 <code>null</code> 是比返回错误码更隐蔽的陷阱——调用者如果忘记 null 检查，
+    会在一个完全不相关的地方触发 <code>NullPointerException</code>，让 Bug 难以定位。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 不返回 null 的替代方案</span></div>
+    <pre><span class="com">// Bad：返回 null，调用者必须记得检查</span>
+<span class="kw">public</span> <span class="ty">Employee</span> <span class="fn">findEmployee</span><span class="punct">(</span><span class="ty">String</span> <span class="var">name</span><span class="punct">) {</span>
+    <span class="kw">if</span> <span class="punct">(!</span><span class="var">db</span><span class="punct">.</span><span class="fn">contains</span><span class="punct">(</span><span class="var">name</span><span class="punct">))</span> <span class="kw">return null</span><span class="punct">;</span>  <span class="com">// 定时炸弹</span>
+    <span class="kw">return</span> <span class="var">db</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// Good 1：返回 Optional，强制调用者显式处理"无值"情况</span>
+<span class="kw">public</span> <span class="ty">Optional</span><span class="punct">&lt;</span><span class="ty">Employee</span><span class="punct">&gt;</span> <span class="fn">findEmployee</span><span class="punct">(</span><span class="ty">String</span> <span class="var">name</span><span class="punct">) {</span>
+    <span class="kw">return</span> <span class="ty">Optional</span><span class="punct">.</span><span class="fn">ofNullable</span><span class="punct">(</span><span class="var">db</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">name</span><span class="punct">));</span>
+<span class="punct">}</span>
+
+<span class="com">// Good 2：返回空集合而非 null（集合场景）</span>
+<span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Employee</span><span class="punct">&gt;</span> <span class="fn">getEmployees</span><span class="punct">() {</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">db</span><span class="punct">.</span><span class="fn">isEmpty</span><span class="punct">())</span>
+        <span class="kw">return</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">emptyList</span><span class="punct">();</span>  <span class="com">// 永远可迭代，不会 NPE</span>
+    <span class="kw">return</span> <span class="var">db</span><span class="punct">.</span><span class="fn">getAll</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>不要传入 null</h3>
+  <p>
+    把 <code>null</code> 当参数传入，同样危险——你在把"防御责任"推给被调用方。
+    大多数方法根本不知道如何合理处理 <code>null</code> 参数。
+    <strong>最好的策略是：在方法入口用断言或 <code>Objects.requireNonNull()</code> 快速失败，
+    让错误在最靠近根因的地方暴露</strong>。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 入口防御</span></div>
+    <pre><span class="kw">public</span> <span class="ty">Metric</span> <span class="fn">xProjection</span><span class="punct">(</span><span class="ty">Point</span> <span class="var">p1</span><span class="punct">,</span> <span class="ty">Point</span> <span class="var">p2</span><span class="punct">) {</span>
+    <span class="com">// 快速失败：比在内部某处 NPE 更容易调试</span>
+    <span class="ty">Objects</span><span class="punct">.</span><span class="fn">requireNonNull</span><span class="punct">(</span><span class="var">p1</span><span class="punct">,</span> <span class="str">"p1 must not be null"</span><span class="punct">);</span>
+    <span class="ty">Objects</span><span class="punct">.</span><span class="fn">requireNonNull</span><span class="punct">(</span><span class="var">p2</span><span class="punct">,</span> <span class="str">"p2 must not be null"</span><span class="punct">);</span>
+    <span class="kw">return new</span> <span class="ty">Metric</span><span class="punct">(</span><span class="var">p2</span><span class="punct">.</span><span class="var">x</span> <span class="punct">-</span> <span class="var">p1</span><span class="punct">.</span><span class="var">x</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. 落地技巧 -->
+  <h2>落地技巧与常见陷阱</h2>
+
+  <h3>按调用者需求定义异常类</h3>
+  <p>
+    异常类型的划分粒度取决于<strong>调用者如何区分处理这些错误</strong>，
+    而不是按底层技术类型划分。如果调用者对所有数据库错误的处理方式都一样（记录日志 + 重试），
+    那就用一个 <code>DatabaseException</code> 包装，而不是分别暴露
+    <code>MySQLException</code>、<code>ConnectionTimeoutException</code>……
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 用包装类统一第三方异常</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">LocalPort</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">ACMEPort</span> <span class="var">innerPort</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">open</span><span class="punct">() {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="var">innerPort</span><span class="punct">.</span><span class="fn">open</span><span class="punct">();</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">DeviceResponseException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">throw new</span> <span class="ty">PortDeviceFailure</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>  <span class="com">// 统一成业务异常</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">ATM1212UnlockedException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">throw new</span> <span class="ty">PortDeviceFailure</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">GMXError</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">throw new</span> <span class="ty">PortDeviceFailure</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方现在只需关心一种异常——简洁、可测试</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">port</span><span class="punct">.</span><span class="fn">open</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">PortDeviceFailure</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="var">reportError</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>
+    <span class="var">logger</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="var">e</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>特例模式（Special Case Pattern）</h3>
+  <p>
+    有时候"异常情况"其实有默认行为可以内化，不需要调用者处理。
+    这时可以创建一个"特例对象"——它实现相同接口，但以默认行为应对边界情况。
+    <strong>调用者完全不感知空值或错误的存在</strong>。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — Special Case Pattern</span></div>
+    <pre><span class="com">// Bad：调用方要处理 null</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="ty">MealExpenses</span> <span class="var">expenses</span> <span class="punct">=</span> <span class="var">expenseRepo</span><span class="punct">.</span><span class="fn">getMealsFor</span><span class="punct">(</span><span class="var">employee</span><span class="punct">);</span>
+    <span class="var">total</span> <span class="punct">+=</span> <span class="var">expenses</span><span class="punct">.</span><span class="fn">getTotal</span><span class="punct">();</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">MealExpensesNotFound</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="var">total</span> <span class="punct">+=</span> <span class="var">getMealPerDiem</span><span class="punct">();</span>  <span class="com">// 没有餐费记录时使用日补贴</span>
+<span class="punct">}</span>
+
+<span class="com">// Good：让 getMealsFor 返回特例对象，调用方不再需要 catch</span>
+<span class="kw">public class</span> <span class="ty">PerDiemMealExpenses</span> <span class="kw">implements</span> <span class="ty">MealExpenses</span> <span class="punct">{</span>
+    <span class="kw">public int</span> <span class="fn">getTotal</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="fn">MEAL_PER_DIEM</span><span class="punct">();</span>   <span class="com">// 默认行为内化在对象里</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方现在干净到不能再干净</span>
+<span class="ty">MealExpenses</span> <span class="var">expenses</span> <span class="punct">=</span> <span class="var">expenseRepo</span><span class="punct">.</span><span class="fn">getMealsFor</span><span class="punct">(</span><span class="var">employee</span><span class="punct">);</span>
+<span class="var">total</span> <span class="punct">+=</span> <span class="var">expenses</span><span class="punct">.</span><span class="fn">getTotal</span><span class="punct">();</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>技巧：</strong>Special Case Pattern 和 Null Object Pattern 是同一思想的两种叫法。
+    Spring 中 <code>Collections.emptyList()</code>、<code>Optional.empty()</code>
+    都是这个模式的具体体现。
+  </div>
+
+  <!-- 8. 总结 -->
+  <h2>总结：错误处理的整洁准则</h2>
+
+  <div class="tree">
+    错误处理整洁准则<br>
+    ├── <span class="hi">用异常代替返回码</span> — 主流程与错误路径分离<br>
+    ├── <span class="hi">先写 try-catch 骨架</span> — 从调用者视角设计契约<br>
+    ├── <span class="hi">偏好 Unchecked Exception</span> — 避免级联签名污染<br>
+    ├── <span class="hi">异常携带上下文</span> — 操作名 + 标识符 + cause<br>
+    ├── <span class="hi">不返回 null</span> — 用 Optional / 空集合 / 特例对象<br>
+    ├── <span class="hi">不传入 null</span> — 入口快速失败<br>
+    ├── <span class="hi">按调用者需求分类异常</span> — 用包装类隔离第三方<br>
+    └── <span class="hi">特例模式</span> — 把边界行为内化到对象，消除 catch
+  </div>
+
+  <div class="callout info">
+    <strong>记住核心原则：</strong>错误处理不应当掩盖代码逻辑。
+    当你读完一个方法，脑子里留下的应该是"这个方法做了什么业务"，
+    而不是"这个方法处理了哪些错误"。
+    如果错误处理代码比业务逻辑更显眼，说明两者尚未分离干净。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-对象和数据结构.html" class="nav-btn">← 05. 对象和数据结构（得墨忒耳律）</a>
+    <a href="./07-边界.html" class="nav-btn next">07. 边界（Boundaries） →</a>
+  </div>
+
+</div>
+</body>
+</html>

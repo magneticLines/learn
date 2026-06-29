@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>12. ADP 无依赖环原则 — 架构整洁之道</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fb923c; }
+    p code, li code { color: #fb923c; }
+    h2 { color: #fb923c; border-left-color: #fb923c; }
+    .hero .tag { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-arch-roadmap.html">路线图</a> / 《架构整洁之道》 / 组件耦合
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">《架构整洁之道》 · 组件耦合</div>
+    <h1>12. ADP — 无依赖环原则</h1>
+    <p>Acyclic Dependencies Principle：组件依赖图中不能出现环。一旦有环，牵一发而动全身，构建与发布都会陷入泥潭。</p>
+  </div>
+
+  <!-- 1. 核心主张 -->
+  <h2>核心主张：让依赖图保持有向无环（DAG）</h2>
+  <p>
+    Bob 大叔在《架构整洁之道》第 14 章提出 ADP（Acyclic Dependencies Principle）：
+    <strong>组件之间的依赖关系图中不允许存在环。</strong>
+  </p>
+  <p>
+    "组件"在 Java 中可以理解为一个 Maven/Gradle 模块、一个 JAR 包，或者一个独立部署单元。
+    ADP 要求这些组件之间形成一张<strong>有向无环图（DAG）</strong>，每条边只能从"使用者"指向"被使用者"，绝对不允许出现 A → B → C → A 这样的环路。
+  </p>
+
+  <div class="callout info">
+    <strong>为什么叫"原则"而不是"规范"？</strong><br>
+    原则意味着有其背后的工程动机。ADP 的动机是：<strong>独立开发、独立发布、独立构建</strong>。
+    有了它，团队才能拆分职责，组件才能单独升级，测试才能隔离运行。
+  </div>
+
+  <!-- 2. 没有环时 vs 有环时 -->
+  <h2>没有环 vs 有环：两个世界的对比</h2>
+
+  <h3>没有环时——DAG 的世界</h3>
+  <p>依赖关系清晰，构建顺序唯一确定，发布互不影响。</p>
+
+  <div class="tree">
+    <span class="hi">Main</span>
+     └──▶ <span class="hi">Application</span>
+           ├──▶ Domain
+           │     └──▶ Common
+           └──▶ Infrastructure
+                 └──▶ Common
+  </div>
+
+  <p>
+    <code>Common</code> 不依赖任何其他模块，它可以<strong>独立发版</strong>。
+    <code>Domain</code> 只依赖 <code>Common</code>，升级 <code>Common</code> 后只需重新构建 <code>Domain</code> 及其上游，不会波及 <code>Infrastructure</code>。
+  </p>
+
+  <h3>有环时——牵一发而动全身</h3>
+
+  <div class="tree">
+    <span class="hi">UserService</span> ──▶ OrderService ──▶ <span class="hi">UserService</span>
+                                           （循环！）
+  </div>
+
+  <p>此时你无法单独构建 <code>UserService</code>，因为它需要 <code>OrderService</code>，而 <code>OrderService</code> 又需要 <code>UserService</code>。Maven 构建时会报"循环依赖"错误；即使绕过，任何一方改动都必须同时重新构建对方，独立发版彻底失去意义。</p>
+
+  <div class="callout warn">
+    <strong>真实的痛点</strong>：有环的系统，一个程序员改了 <code>OrderService</code> 里的一个枚举，
+    另一个只在写 <code>UserService</code> 的程序员发现自己的代码突然编译不过了——他甚至不知道发生了什么。
+    Bob 把这种现象叫做"晨后综合征"（The Morning After Syndrome）。
+  </div>
+
+  <!-- 3. 反例 → 问题 → 正例 -->
+  <h2>反例 → 问题 → 正例</h2>
+
+  <h3>反例：两个模块互相依赖</h3>
+  <p>
+    假设电商系统中 <code>user-service</code> 需要查询用户的订单数，<code>order-service</code> 需要校验用户是否存在，
+    两位开发者各自"图方便"直接调用对方的接口类，于是出现了循环依赖。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UserService.java（user-service 模块）</span><span>反例</span></div>
+    <pre><span class="com">// user-service 模块</span>
+<span class="kw">public class</span> <span class="ty">UserService</span> <span class="punct">{</span>
+    <span class="com">// 直接依赖 order-service 模块里的类 ← 危险！</span>
+    <span class="kw">private final</span> <span class="ty">OrderService</span> <span class="var">orderService</span><span class="punct">;</span>
+
+    <span class="kw">public int</span> <span class="fn">getOrderCount</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">orderService</span><span class="punct">.</span><span class="fn">countByUser</span><span class="punct">(</span><span class="var">userId</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java（order-service 模块）</span><span>反例</span></div>
+    <pre><span class="com">// order-service 模块</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="com">// 又反过来依赖 user-service 模块里的类 ← 形成环！</span>
+    <span class="kw">private final</span> <span class="ty">UserService</span> <span class="var">userService</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">placeOrder</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">userService</span><span class="punct">.</span><span class="fn">exists</span><span class="punct">(</span><span class="var">userId</span><span class="punct">))</span> <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"用户不存在"</span><span class="punct">);</span>
+        <span class="com">// ...</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>问题清单：</strong></p>
+  <ul>
+    <li>Maven 构建报 <code>cycle in dependency</code>，CI 流水线直接挂掉。</li>
+    <li>无法单独升级 <code>user-service</code>，每次必须同时发两个模块。</li>
+    <li>单元测试需要同时 mock 对方，测试依赖链无限膨胀。</li>
+    <li>两个团队每天互相等待对方接口稳定，开发节奏被绑死。</li>
+  </ul>
+
+  <hr />
+
+  <h3>正例方案 A：抽取共享接口到第三个模块</h3>
+  <p>
+    将双方共同依赖的<strong>抽象</strong>提取到独立模块 <code>user-api</code>，
+    两个服务都只依赖这个纯接口模块，依赖环彻底消失。
+  </p>
+
+  <div class="tree">
+    user-service ──▶ <span class="hi">user-api</span>
+    order-service ──▶ <span class="hi">user-api</span>
+    <span class="com">（user-service 与 order-service 之间不再有任何依赖）</span>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UserQueryPort.java（user-api 模块）</span><span>正例 A</span></div>
+    <pre><span class="com">// user-api 模块：只放接口，不放实现</span>
+<span class="kw">public interface</span> <span class="ty">UserQueryPort</span> <span class="punct">{</span>
+    <span class="kw">boolean</span> <span class="fn">exists</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">);</span>
+    <span class="kw">int</span>     <span class="fn">getOrderCount</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java（order-service 模块）</span><span>正例 A</span></div>
+    <pre><span class="com">// order-service 只依赖 user-api，不依赖 user-service 实现</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">UserQueryPort</span> <span class="var">userQuery</span><span class="punct">;</span>  <span class="com">// 依赖倒置</span>
+
+    <span class="kw">public void</span> <span class="fn">placeOrder</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">userQuery</span><span class="punct">.</span><span class="fn">exists</span><span class="punct">(</span><span class="var">userId</span><span class="punct">))</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"用户不存在"</span><span class="punct">);</span>
+        <span class="com">// ...</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UserService.java（user-service 模块）</span><span>正例 A</span></div>
+    <pre><span class="com">// user-service 实现接口，同时也依赖 user-api</span>
+<span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">UserServiceImpl</span> <span class="kw">implements</span> <span class="ty">UserQueryPort</span> <span class="punct">{</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public boolean</span> <span class="fn">exists</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">) {</span>
+        <span class="com">// 查 DB ...</span>
+        <span class="kw">return</span> <span class="kw">true</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public int</span> <span class="fn">getOrderCount</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">) {</span>
+        <span class="com">// 注意：这里改用事件或 RPC 获取，不再直接调 OrderService</span>
+        <span class="kw">return</span> <span class="var">orderCountCache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">userId</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>这正是 DIP（依赖倒置原则）与 ADP 协同发力的地方。</strong>
+    抽取接口模块既打破了环，又让高层策略（<code>OrderService</code>）不依赖低层细节（<code>UserServiceImpl</code>）。
+  </div>
+
+  <hr />
+
+  <h3>正例方案 B：用事件解耦（异步场景）</h3>
+  <p>
+    当两个组件的通信天然是异步的（如"用户注册后统计订单"），
+    可以改用领域事件代替直接调用，彻底消除编译期依赖。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UserRegisteredEvent.java（shared-events 模块）</span><span>正例 B</span></div>
+    <pre><span class="com">// 事件对象放入独立的 shared-events 模块，任何人都可以订阅</span>
+<span class="kw">public record</span> <span class="ty">UserRegisteredEvent</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">email</span><span class="punct">)</span> <span class="punct">{}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderModule 订阅事件（order-service 模块）</span><span>正例 B</span></div>
+    <pre><span class="ann">@EventListener</span>
+<span class="kw">public void</span> <span class="fn">onUserRegistered</span><span class="punct">(</span><span class="ty">UserRegisteredEvent</span> <span class="var">event</span><span class="punct">) {</span>
+    <span class="com">// 初始化该用户的订单统计，不需要调用 UserService</span>
+    <span class="var">orderStatsRepo</span><span class="punct">.</span><span class="fn">initForUser</span><span class="punct">(</span><span class="var">event</span><span class="punct">.</span><span class="fn">userId</span><span class="punct">());</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 4. 打破环的两种通用手法 -->
+  <h2>打破依赖环的两种通用手法</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>手法</th>
+        <th>思路</th>
+        <th>适用场景</th>
+        <th>代价</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>抽取共享模块</strong></td>
+        <td>把双方都需要的抽象（接口/DTO/事件定义）提到第三个模块</td>
+        <td>同步调用、强类型契约</td>
+        <td>多一个模块，需维护版本</td>
+      </tr>
+      <tr>
+        <td><strong>依赖倒置（DIP）</strong></td>
+        <td>让高层定义接口，低层实现，依赖方向与调用方向相反</td>
+        <td>想保留调用语义但消除编译期依赖</td>
+        <td>增加接口层，代码量微增</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>两种手法常常结合使用：DIP 倒置了方向，抽取模块解决了物理隔离问题。</p>
+
+  <!-- 5. 如何检测环 -->
+  <h2>如何检测依赖环</h2>
+
+  <h3>方式一：Maven Enforcer 插件（推荐，零成本）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>pom.xml</span><span>配置</span></div>
+    <pre><span class="punct">&lt;</span><span class="ty">plugin</span><span class="punct">&gt;</span>
+  <span class="punct">&lt;</span><span class="ty">groupId</span><span class="punct">&gt;</span>org.apache.maven.plugins<span class="punct">&lt;/</span><span class="ty">groupId</span><span class="punct">&gt;</span>
+  <span class="punct">&lt;</span><span class="ty">artifactId</span><span class="punct">&gt;</span>maven-enforcer-plugin<span class="punct">&lt;/</span><span class="ty">artifactId</span><span class="punct">&gt;</span>
+  <span class="punct">&lt;</span><span class="ty">executions</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">execution</span><span class="punct">&gt;</span>
+      <span class="punct">&lt;</span><span class="ty">goals</span><span class="punct">&gt;&lt;</span><span class="ty">goal</span><span class="punct">&gt;</span>enforce<span class="punct">&lt;/</span><span class="ty">goal</span><span class="punct">&gt;&lt;/</span><span class="ty">goals</span><span class="punct">&gt;</span>
+      <span class="punct">&lt;</span><span class="ty">configuration</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">rules</span><span class="punct">&gt;</span>
+          <span class="com">&lt;!-- 禁止依赖树中出现同一 artifact 的不同版本 --&gt;</span>
+          <span class="punct">&lt;</span><span class="ty">banDuplicatePomDependencyVersions</span><span class="punct">/&gt;</span>
+          <span class="com">&lt;!-- 禁止循环依赖 --&gt;</span>
+          <span class="punct">&lt;</span><span class="ty">noCyclicDependencies</span><span class="punct">/&gt;</span>
+        <span class="punct">&lt;/</span><span class="ty">rules</span><span class="punct">&gt;</span>
+      <span class="punct">&lt;/</span><span class="ty">configuration</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;/</span><span class="ty">execution</span><span class="punct">&gt;</span>
+  <span class="punct">&lt;/</span><span class="ty">executions</span><span class="punct">&gt;</span>
+<span class="punct">&lt;/</span><span class="ty">plugin</span><span class="punct">&gt;</span></pre>
+  </div>
+
+  <h3>方式二：ArchUnit 在测试中断言（细粒度到包级别）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>ArchitectureTest.java</span><span>单元测试</span></div>
+    <pre><span class="ann">@AnalyzeClasses</span><span class="punct">(</span><span class="var">packages</span> <span class="punct">=</span> <span class="str">"com.example"</span><span class="punct">)</span>
+<span class="kw">class</span> <span class="ty">ArchitectureTest</span> <span class="punct">{</span>
+
+    <span class="ann">@ArchTest</span>
+    <span class="kw">static final</span> <span class="ty">ArchRule</span> <span class="var">noCycles</span> <span class="punct">=</span>
+        <span class="ty">slices</span><span class="punct">().</span><span class="fn">matching</span><span class="punct">(</span><span class="str">"com.example.(*).."</span><span class="punct">)</span>
+               <span class="punct">.</span><span class="fn">should</span><span class="punct">().</span><span class="fn">beFreeOfCycles</span><span class="punct">();</span>
+    <span class="com">// 任何包间循环都会让 CI 红掉，把规则写进代码比文档靠谱得多</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 6. 落地技巧 -->
+  <h2>实际开发中的落地技巧</h2>
+
+  <ul>
+    <li>
+      <strong>模块命名即分层</strong>：用 <code>-api</code>、<code>-domain</code>、<code>-infra</code>、<code>-app</code> 后缀约定层次，
+      一眼看出谁能依赖谁，反向依赖自然显眼。
+    </li>
+    <li>
+      <strong>新模块加入前先画 DAG</strong>：在 Confluence/白板画出依赖图，确认没有新环再提 MR，比事后修复成本低 10 倍。
+    </li>
+    <li>
+      <strong>把 ArchUnit 或 Enforcer 加进 CI 门禁</strong>：人工 review 会漏，工具不会。
+    </li>
+    <li>
+      <strong>警惕"工具类模块"变成垃圾桶</strong>：<code>common</code>、<code>utils</code> 模块最容易悄悄反向依赖业务模块，
+      定期用 <code>mvn dependency:tree</code> 检查。
+    </li>
+    <li>
+      <strong>同一模块内的类循环引用不违反 ADP</strong>：ADP 的粒度是<em>组件（模块/包）</em>，不是单个类。
+      但类级别的循环往往是提取模块的信号。
+    </li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>容易踩的坑</strong>：Spring Boot 的 <code>@Autowired</code> 可以在运行时注入循环 bean（Spring 6 以前），
+    让开发者以为"没有循环依赖"，但编译期的 Maven 模块依赖环依然存在。
+    不要用运行时注入掩盖模块结构问题。
+  </div>
+
+  <!-- 7. 与其他原则的关系 -->
+  <h2>与其他原则的联系</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>原则</th>
+        <th>与 ADP 的关系</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>DIP</strong>（依赖倒置）</td>
+        <td>ADP 的打环手术刀。接口倒置依赖方向，是消除环最常用的外科手术</td>
+      </tr>
+      <tr>
+        <td><strong>SDP</strong>（稳定依赖）</td>
+        <td>ADP 解决了"有无环"，SDP 进一步规定"依赖方向应朝向更稳定的组件"</td>
+      </tr>
+      <tr>
+        <td><strong>CCP</strong>（共同闭包）</td>
+        <td>把一起变化的类聚合进同一组件，减少跨组件依赖，从源头降低产生环的概率</td>
+      </tr>
+      <tr>
+        <td><strong>ISP</strong>（接口隔离）</td>
+        <td>细粒度接口让抽取共享模块更轻量，减少共享模块膨胀</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 8. 一句话总结 -->
+  <hr />
+  <div class="callout tip">
+    <strong>一句话记住 ADP</strong>：把组件依赖画成图，如果图里有环，就用"抽接口"或"倒置依赖"把环剪断。
+    让 CI 来守门，不要靠人工记忆。
+  </div>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./11-CRP共同复用原则.html" class="nav-btn">← 11. CRP 共同复用原则</a>
+    <a href="./13-SDP稳定依赖原则.html" class="nav-btn next">13. SDP 稳定依赖原则 →</a>
+  </div>
+
+</div>
+</body>
+</html>

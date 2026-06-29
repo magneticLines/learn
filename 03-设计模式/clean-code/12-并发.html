@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>12. 并发（Concurrency）— 代码整洁之道</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fcd34d; }
+    p code, li code { color: #fcd34d; }
+    h2 { color: #fcd34d; border-left-color: #fcd34d; }
+    .hero .tag { color: #fcd34d; border-color: #78350f; }
+    .nav-btn.next { color: #fcd34d; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-code-roadmap.html">路线图</a> / 《代码整洁之道》 / 架构层面
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">《代码整洁之道》 · 架构层面</div>
+    <h1>12. 并发（Concurrency）</h1>
+    <p>并发是"做什么"与"何时做"的解耦。它提升吞吐量，但也把复杂性引入代码的每一个角落——Robert C. Martin 在本章的核心主张是：<strong>把并发当作独立的关注点</strong>，用设计将它隔离，而不是让它渗透到业务逻辑中。</p>
+  </div>
+
+  <!-- 1. 为什么并发难 -->
+  <h2>为什么并发本质上很难？</h2>
+  <p>并发的难不在于 API，而在于它颠覆了你对"程序执行顺序"的直觉。</p>
+  <ul>
+    <li><strong>时序不确定</strong>：两个线程交替执行，结果取决于操作系统调度，而不是你的代码顺序。</li>
+    <li><strong>共享状态是万恶之源</strong>：只要有可变的共享变量，所有读写该变量的代码路径都变成了潜在的竞态条件。</li>
+    <li><strong>Bug 不可复现</strong>：并发 Bug 往往在压测时才出现，甚至只在某台服务器的特定时间窗口出现，极难调试。</li>
+    <li><strong>性能与正确性常常对立</strong>：锁越细粒度，吞吐量越高；但代码越复杂，死锁风险越大。</li>
+  </ul>
+
+  <div class="callout info">
+    Martin 的原话："并发编程很难。如果你没有把它当作一个独立的关注点来对待，它就会腐蚀你的设计、你的测试，以及你保持代码整洁的能力。"
+  </div>
+
+  <!-- 2. 核心主张 -->
+  <h2>核心主张：并发防御原则</h2>
+
+  <h3>原则一：单一职责原则（SRP）同样适用于并发</h3>
+  <p>并发相关的代码有自己的开发节奏、自己的失败原因、自己的挑战。<strong>把并发代码和业务逻辑代码混在一起是最常见的错误</strong>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：业务逻辑与并发耦合在一起</span><span>Java</span></div>
+    <pre><span class="com">// 问题：OrderProcessor 既负责订单业务，又负责并发控制</span>
+<span class="kw">public class</span> <span class="ty">OrderProcessor</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">pendingOrders</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="com">// 业务逻辑与同步锁混杂——两种职责，一旦改业务逻辑就要小心锁</span>
+    <span class="kw">public synchronized void</span> <span class="fn">addOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">isValid</span><span class="punct">()) {</span>
+            <span class="var">order</span><span class="punct">.</span><span class="fn">applyDiscount</span><span class="punct">();</span>          <span class="com">// 业务</span>
+            <span class="var">order</span><span class="punct">.</span><span class="fn">updateInventory</span><span class="punct">();</span>       <span class="com">// 业务</span>
+            <span class="var">pendingOrders</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>    <span class="com">// 并发保护</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：并发隔离到独立的基础设施层</span><span>Java</span></div>
+    <pre><span class="com">// 业务逻辑类——对线程一无所知，专注订单规则</span>
+<span class="kw">public class</span> <span class="ty">OrderProcessor</span> <span class="punct">{</span>
+    <span class="kw">public</span> <span class="ty">Order</span> <span class="fn">process</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">order</span><span class="punct">.</span><span class="fn">isValid</span><span class="punct">())</span> <span class="kw">throw new</span> <span class="ty">InvalidOrderException</span><span class="punct">();</span>
+        <span class="var">order</span><span class="punct">.</span><span class="fn">applyDiscount</span><span class="punct">();</span>
+        <span class="var">order</span><span class="punct">.</span><span class="fn">updateInventory</span><span class="punct">();</span>
+        <span class="kw">return</span> <span class="var">order</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 并发容器——只负责线程安全的存储与调度，不含业务逻辑</span>
+<span class="kw">public class</span> <span class="ty">ConcurrentOrderQueue</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">BlockingQueue</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">queue</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">LinkedBlockingQueue</span><span class="punct">&lt;&gt;();</span>
+    <span class="kw">private final</span> <span class="ty">OrderProcessor</span> <span class="var">processor</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">submit</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="var">queue</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>   <span class="com">// 线程安全由 BlockingQueue 保证</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>原则二：限制共享数据的作用域</h3>
+  <p>共享数据越少，竞态条件越少。Martin 建议：<strong>尽可能使用局部变量，将共享数据封装在尽量小的范围内</strong>，并通过访问器方法统一保护。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：共享可变字段暴露给外部</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Counter</span> <span class="punct">{</span>
+    <span class="kw">public int</span> <span class="var">count</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>  <span class="com">// public 字段，任何线程随时读写，无保护</span>
+<span class="punct">}</span>
+
+<span class="com">// 两个线程同时执行 counter.count++</span>
+<span class="com">// count++ 实际是 read → add 1 → write，三步非原子</span>
+<span class="com">// 可能两个线程都读到 0，都写 1，最终 count=1 而非 2</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：用 AtomicInteger 封装，或用同步访问器</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Counter</span> <span class="punct">{</span>
+    <span class="com">// AtomicInteger 利用 CAS 指令，无锁且线程安全</span>
+    <span class="kw">private final</span> <span class="ty">AtomicInteger</span> <span class="var">count</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">AtomicInteger</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+
+    <span class="kw">public void</span> <span class="fn">increment</span><span class="punct">() {</span>
+        <span class="var">count</span><span class="punct">.</span><span class="fn">incrementAndGet</span><span class="punct">();</span>  <span class="com">// 原子操作，不可分割</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public int</span> <span class="fn">get</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">count</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>原则三：优先使用数据副本，而非共享</h3>
+  <p>如果对象不可变（immutable），就不需要同步。如果可以给每个线程发一份数据副本、最后再合并结果，代码简单得多。这正是 Java Stream 并行流、Hadoop MapReduce 的核心思想。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>示例：不可变值对象——天然线程安全</span><span>Java</span></div>
+    <pre><span class="com">// final 字段 + 无 setter = 不可变对象</span>
+<span class="com">// 任意多个线程可以同时读，没有竞态，不需要锁</span>
+<span class="kw">public final class</span> <span class="ty">Money</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">Currency</span>   <span class="var">currency</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">Money</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">,</span> <span class="ty">Currency</span> <span class="var">currency</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">amount</span>   <span class="punct">=</span> <span class="ty">Objects</span><span class="punct">.</span><span class="fn">requireNonNull</span><span class="punct">(</span><span class="var">amount</span><span class="punct">);</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">currency</span> <span class="punct">=</span> <span class="ty">Objects</span><span class="punct">.</span><span class="fn">requireNonNull</span><span class="punct">(</span><span class="var">currency</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// "修改"时返回新对象，原对象保持不变</span>
+    <span class="kw">public</span> <span class="ty">Money</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">Money</span> <span class="var">other</span><span class="punct">) {</span>
+        <span class="kw">return new</span> <span class="ty">Money</span><span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">amount</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">other</span><span class="punct">.</span><span class="var">amount</span><span class="punct">),</span> <span class="kw">this</span><span class="punct">.</span><span class="var">currency</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>原则四：线程应该尽量独立</h3>
+  <p>理想情况下，每个线程都像一座孤岛：拥有自己的数据来源，不和其他线程共享任何状态。Web 请求处理就是最好的例子——每个请求分配一个线程，数据来自请求参数，结果写入响应流，线程间互不干涉。</p>
+
+  <!-- 3. 了解执行模型 -->
+  <h2>了解常见的并发执行模型</h2>
+  <p>Martin 强调：在没搞清楚问题归属哪种模型之前，不要乱用锁。</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>模型</th>
+        <th>核心问题</th>
+        <th>典型场景</th>
+        <th>解决工具</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>生产者-消费者</strong></td>
+        <td>队列边界同步</td>
+        <td>异步任务、消息队列</td>
+        <td><code>BlockingQueue</code></td>
+      </tr>
+      <tr>
+        <td><strong>读者-写者</strong></td>
+        <td>读多写少时的吞吐 vs 一致性</td>
+        <td>缓存、配置热更新</td>
+        <td><code>ReadWriteLock</code></td>
+      </tr>
+      <tr>
+        <td><strong>哲学家进餐</strong></td>
+        <td>多个线程竞争多个资源，易死锁</td>
+        <td>转账、多资源预订</td>
+        <td>固定加锁顺序 / <code>tryLock</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    死锁的四个必要条件（Coffman 条件）：互斥、持有等待、不可抢占、循环等待。<strong>只要破坏其中一个</strong>就能避免死锁。最实用的手段：<strong>固定加锁顺序</strong>（破坏循环等待）。
+  </div>
+
+  <!-- 4. 同步方法与同步段 -->
+  <h2>同步方法 vs 同步代码块</h2>
+  <p>Martin 的建议：<strong>将同步方法设计为只含同步逻辑</strong>，把真正的业务计算移到同步范围之外。锁的持有时间越短，竞争越少，吞吐越高。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：锁的粒度太粗，计算逻辑也在锁内</span><span>Java</span></div>
+    <pre><span class="kw">public synchronized</span> <span class="ty">BigDecimal</span> <span class="fn">computeAndStore</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">orders</span><span class="punct">) {</span>
+    <span class="com">// 这段聚合计算可能耗时很长，但整个方法都持有锁</span>
+    <span class="com">// 其他线程全部阻塞等待——吞吐量大幅下降</span>
+    <span class="ty">BigDecimal</span> <span class="var">total</span> <span class="punct">=</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+        <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="ty">Order</span><span class="punct">::</span><span class="fn">getAmount</span><span class="punct">)</span>
+        <span class="punct">.</span><span class="fn">reduce</span><span class="punct">(</span><span class="ty">BigDecimal</span><span class="punct">.</span><span class="var">ZERO</span><span class="punct">,</span> <span class="ty">BigDecimal</span><span class="punct">::</span><span class="fn">add</span><span class="punct">);</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">cachedTotal</span> <span class="punct">=</span> <span class="var">total</span><span class="punct">;</span>
+    <span class="kw">return</span> <span class="var">total</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：计算在锁外完成，只在写入时加锁</span><span>Java</span></div>
+    <pre><span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">computeAndStore</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">orders</span><span class="punct">) {</span>
+    <span class="com">// 1. 耗时计算在锁外进行，不阻塞其他线程</span>
+    <span class="ty">BigDecimal</span> <span class="var">total</span> <span class="punct">=</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+        <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="ty">Order</span><span class="punct">::</span><span class="fn">getAmount</span><span class="punct">)</span>
+        <span class="punct">.</span><span class="fn">reduce</span><span class="punct">(</span><span class="ty">BigDecimal</span><span class="punct">.</span><span class="var">ZERO</span><span class="punct">,</span> <span class="ty">BigDecimal</span><span class="punct">::</span><span class="fn">add</span><span class="punct">);</span>
+
+    <span class="com">// 2. 仅在写入共享状态时加锁，持锁时间极短</span>
+    <span class="kw">synchronized</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">cachedTotal</span> <span class="punct">=</span> <span class="var">total</span><span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="var">total</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 5. 测试并发代码 -->
+  <h2>如何测试并发代码</h2>
+  <p>Martin 承认：<strong>并发 Bug 无法被测试完全消除，但可以通过设计降低其出现概率</strong>。几条核心建议：</p>
+
+  <ul>
+    <li>把并发与非并发代码分离——业务逻辑可以单线程充分测试，并发容器可以单独压测。</li>
+    <li>让非线程安全代码可以在不同配置下运行：单线程、多线程、随机线程数。</li>
+    <li>用 <code>Thread.yield()</code>、<code>Thread.sleep()</code> 在关键节点人为引入调度切换，提高并发问题暴露概率。</li>
+    <li>使用工具辅助：Java 的 <code>java.util.concurrent.atomic</code>、ThreadSanitizer（Go/C++）、FindBugs / SpotBugs 静态分析。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>示例：用 CountDownLatch 制造真实的并发竞争</span><span>Java</span></div>
+    <pre><span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">shouldMaintainCorrectCountUnderConcurrency</span><span class="punct">() throws Exception {</span>
+    <span class="ty">Counter</span> <span class="var">counter</span>     <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Counter</span><span class="punct">();</span>
+    <span class="kw">int</span> <span class="var">threadCount</span>     <span class="punct">=</span> <span class="num">100</span><span class="punct">;</span>
+    <span class="ty">CountDownLatch</span> <span class="var">ready</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="var">threadCount</span><span class="punct">);</span>
+    <span class="ty">CountDownLatch</span> <span class="var">start</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+    <span class="ty">CountDownLatch</span> <span class="var">done</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="ty">CountDownLatch</span><span class="punct">(</span><span class="var">threadCount</span><span class="punct">);</span>
+
+    <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="var">threadCount</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+        <span class="kw">new</span> <span class="ty">Thread</span><span class="punct">(() -&gt; {</span>
+            <span class="var">ready</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>   <span class="com">// 告知主线程：我已就位</span>
+            <span class="var">start</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>        <span class="com">// 等待发令枪，所有线程同时冲</span>
+            <span class="var">counter</span><span class="punct">.</span><span class="fn">increment</span><span class="punct">();</span>
+            <span class="var">done</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>
+        <span class="punct">}).</span><span class="fn">start</span><span class="punct">();</span>
+    <span class="punct">}</span>
+
+    <span class="var">ready</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>   <span class="com">// 等所有线程就位</span>
+    <span class="var">start</span><span class="punct">.</span><span class="fn">countDown</span><span class="punct">();</span>  <span class="com">// 同时放行，最大化竞争概率</span>
+    <span class="var">done</span><span class="punct">.</span><span class="fn">await</span><span class="punct">();</span>
+
+    <span class="fn">assertEquals</span><span class="punct">(</span><span class="var">threadCount</span><span class="punct">,</span> <span class="var">counter</span><span class="punct">.</span><span class="fn">get</span><span class="punct">());</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 6. 常见陷阱 -->
+  <h2>开发者最容易忽略的细节</h2>
+
+  <h3>陷阱一：复合操作不是原子操作</h3>
+  <p><code>if (map.containsKey(k)) map.get(k)</code> 这两步之间，另一个线程完全可能删掉该 key。使用 <code>ConcurrentHashMap.computeIfAbsent()</code> 替代。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 vs 正例</span><span>Java</span></div>
+    <pre><span class="com">// 反例：check-then-act 竞态</span>
+<span class="kw">if</span> <span class="punct">(!</span><span class="var">cache</span><span class="punct">.</span><span class="fn">containsKey</span><span class="punct">(</span><span class="var">key</span><span class="punct">)) {</span>
+    <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="fn">expensiveCompute</span><span class="punct">(</span><span class="var">key</span><span class="punct">));</span>  <span class="com">// 可能被两个线程重复计算</span>
+<span class="punct">}</span>
+
+<span class="com">// 正例：原子的 computeIfAbsent</span>
+<span class="var">cache</span><span class="punct">.</span><span class="fn">computeIfAbsent</span><span class="punct">(</span><span class="var">key</span><span class="punct">,</span> <span class="var">k</span> <span class="punct">-&gt;</span> <span class="fn">expensiveCompute</span><span class="punct">(</span><span class="var">k</span><span class="punct">));</span></pre>
+  </div>
+
+  <h3>陷阱二：volatile 不能替代 synchronized</h3>
+  <p><code>volatile</code> 只保证可见性（一个线程的写对其他线程立刻可见），<strong>不保证原子性</strong>。<code>count++</code> 加了 <code>volatile</code> 仍然是三步操作，仍然有竞态。</p>
+
+  <div class="tree">
+    <span class="hi">volatile</span> 保证：可见性（happens-before）<br>
+    <span class="hi">volatile</span> 不保证：原子性、有序性（指令重排序仍可能发生）<br>
+    <br>
+    需要原子性 → <span class="hi">AtomicXxx</span> / <span class="hi">synchronized</span> / <span class="hi">Lock</span><br>
+    只需可见性（如标志位 stop） → <span class="hi">volatile</span> 足够
+  </div>
+
+  <h3>陷阱三：使用 java.util.concurrent 而非手写锁</h3>
+  <p>JDK 并发工具经过大量工程实践验证，手写的双重检查锁、读写锁往往存在微妙 Bug。优先顺序：</p>
+
+  <div class="tree">
+    不可变对象 &gt; <span class="hi">java.util.concurrent</span> 容器<br>
+    &gt; <span class="hi">AtomicXxx</span> &gt; <span class="hi">synchronized</span> 方法/块<br>
+    &gt; <span class="hi">ReentrantLock</span> / <span class="hi">ReadWriteLock</span><br>
+    &gt; 手写底层同步（几乎永远不需要）
+  </div>
+
+  <h3>陷阱四：忽略中断机制</h3>
+  <p>如果线程在 <code>wait()</code>、<code>sleep()</code>、<code>join()</code> 时被中断，会抛出 <code>InterruptedException</code>。<strong>不要吞掉它</strong>——要么重新设置中断标志，要么向上抛出。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 vs 正例</span><span>Java</span></div>
+    <pre><span class="com">// 反例：吞掉中断，调用者无法感知线程被中断</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="com">// 啥都不做——中断信号消失了</span>
+<span class="punct">}</span>
+
+<span class="com">// 正例：恢复中断标志，让上层代码有机会处理</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000</span><span class="punct">);</span>
+<span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">) {</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">interrupt</span><span class="punct">();</span>  <span class="com">// 恢复中断状态</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. 落地清单 -->
+  <h2>落地技巧速查</h2>
+
+  <table>
+    <thead>
+      <tr><th>场景</th><th>推荐方案</th><th>避免</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>只读共享配置</td>
+        <td>不可变对象 + <code>volatile</code> 引用</td>
+        <td><code>synchronized</code> 读（过度锁）</td>
+      </tr>
+      <tr>
+        <td>计数器、序列号</td>
+        <td><code>AtomicLong</code></td>
+        <td><code>synchronized int</code></td>
+      </tr>
+      <tr>
+        <td>共享缓存</td>
+        <td><code>ConcurrentHashMap</code></td>
+        <td><code>synchronized HashMap</code></td>
+      </tr>
+      <tr>
+        <td>线程间任务传递</td>
+        <td><code>BlockingQueue</code></td>
+        <td>共享 <code>List</code> + 手写锁</td>
+      </tr>
+      <tr>
+        <td>并发读、偶尔写</td>
+        <td><code>ReadWriteLock</code> / <code>StampedLock</code></td>
+        <td>全程互斥锁</td>
+      </tr>
+      <tr>
+        <td>线程局部状态</td>
+        <td><code>ThreadLocal</code></td>
+        <td>共享字段 + 线程 ID 区分</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>Martin 的最终告诫：</strong>并发是一个持续演化的领域。语言和框架会提供更好的抽象（如 Java 的虚拟线程、Go 的 goroutine、Kotlin 的协程），但底层竞态和死锁的本质不会变。理解原理，才能正确使用任何工具。
+  </div>
+
+  <!-- 8. 与本书其他章节的联系 -->
+  <h2>与本书其他章节的联系</h2>
+  <ul>
+    <li><strong>单一职责（SRP）</strong>：并发代码应该是独立的类/模块，不与业务逻辑混合——正是 SRP 在架构层面的体现。</li>
+    <li><strong>开放-封闭原则</strong>：用 <code>BlockingQueue</code> 等抽象隔离并发，生产者和消费者对彼此封闭，对队列抽象开放。</li>
+    <li><strong>整洁测试</strong>：并发 Bug 的测试需要精心构造时序，测试代码本身也应当整洁，不要用 <code>Thread.sleep</code> 猜测时序。</li>
+    <li><strong>涌现式设计</strong>（上一节）：持续重构并发代码，把共享状态逐步减少，是让设计持续涌现的一部分。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./11-涌现式设计.html" class="nav-btn">← 11. 涌现式设计（Kent Beck 四原则）</a>
+    <a href="./13-代码味道与启发.html" class="nav-btn next">13. 代码味道与启发（Smells &amp; Heuristics） →</a>
+  </div>
+
+</div>
+</body>
+</html>

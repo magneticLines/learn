@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>03. 函数式编程（不可变性）— 《架构整洁之道》</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fb923c; }
+    p code, li code { color: #fb923c; }
+    h2 { color: #fb923c; border-left-color: #fb923c; }
+    .hero .tag { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-arch-roadmap.html">路线图</a> / 《架构整洁之道》 / 三种范式
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">《架构整洁之道》 · 三种范式</div>
+    <h1>03. 函数式编程（不可变性）</h1>
+    <p>赋值语句是并发 Bug 的温床——函数式编程用"禁止赋值"来从根上消灭竞态条件。</p>
+  </div>
+
+  <!-- 1. 作者的核心主张 -->
+  <h2>作者的核心主张</h2>
+  <p>
+    Bob 大叔在《架构整洁之道》第四章指出：<strong>函数式编程的核心约束只有一条——变量不可变（Immutability）</strong>。
+    其他一切特性（纯函数、高阶函数、惰性求值）都是这条约束自然衍生出来的结果，而不是目的本身。
+  </p>
+  <p>
+    为什么"禁止赋值"如此重要？因为<strong>软件中几乎所有的并发问题，根源都是多个线程/进程同时对同一块可变状态进行读写</strong>。
+    竞态条件（Race Condition）、死锁（Deadlock）、更新丢失（Lost Update）——它们的先决条件都是"某个变量的值会在某个时刻被改写"。
+    如果变量从创建之日起就永不改变，这些问题便无从发生。
+  </p>
+
+  <div class="callout info">
+    <strong>范式的本质是"约束"而非"能力"</strong><br/>
+    结构化编程限制了 goto；面向对象限制了函数指针（用多态封装）；函数式编程限制了赋值语句。
+    每一种范式都是主动放弃某种"自由"，换取可预测性与可维护性。
+  </div>
+
+  <!-- 2. 不可变性解决了什么问题 -->
+  <h2>不可变性解决了什么问题</h2>
+
+  <h3>可变状态 → 竞态条件（反例）</h3>
+  <p>下面是一个经典的银行转账场景。两个线程同时给同一账户加钱：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 可变状态导致数据丢失</span><span>反例 ✗</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BankAccount</span> <span class="punct">{</span>
+    <span class="kw">private int</span> <span class="var">balance</span> <span class="punct">=</span> <span class="num">100</span><span class="punct">;</span>   <span class="com">// 可变字段——危险根源</span>
+
+    <span class="kw">public void</span> <span class="fn">deposit</span><span class="punct">(</span><span class="kw">int</span> <span class="var">amount</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">current</span> <span class="punct">=</span> <span class="var">balance</span><span class="punct">;</span>          <span class="com">// Thread-A 读到 100</span>
+        <span class="com">// ← Thread-B 也读到 100，然后写入 150</span>
+        <span class="var">balance</span> <span class="punct">=</span> <span class="var">current</span> <span class="punct">+</span> <span class="var">amount</span><span class="punct">;</span>  <span class="com">// Thread-A 写入 150，B 的写入丢失！</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 期望：存两次 50，balance = 200</span>
+<span class="com">// 实际：两次写入互相覆盖，balance = 150</span></pre>
+  </div>
+
+  <h3>问题所在</h3>
+  <p>
+    问题不在于"多线程"，而在于 <code>balance</code> 这个字段<strong>可以被赋值</strong>。
+    只要一个值能被改写，就必须用锁来保护，而锁本身又带来死锁、优先级反转等新问题。
+    这是一个无底洞。
+  </p>
+
+  <h3>不可变值对象（正例）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 不可变 Value Object</span><span>正例 ✓</span></div>
+    <pre><span class="kw">public final class</span> <span class="ty">Money</span> <span class="punct">{</span>
+    <span class="kw">private final int</span> <span class="var">amount</span><span class="punct">;</span>   <span class="com">// final：创建后永不改变</span>
+
+    <span class="kw">public</span> <span class="fn">Money</span><span class="punct">(</span><span class="kw">int</span> <span class="var">amount</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">amount</span> <span class="punct">=</span> <span class="var">amount</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 不修改 this，而是返回新对象——"转换"而非"赋值"</span>
+    <span class="kw">public</span> <span class="ty">Money</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">Money</span> <span class="var">other</span><span class="punct">) {</span>
+        <span class="kw">return new</span> <span class="ty">Money</span><span class="punct">(</span><span class="kw">this</span><span class="punct">.</span><span class="var">amount</span> <span class="punct">+</span> <span class="var">other</span><span class="punct">.</span><span class="var">amount</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public int</span> <span class="fn">getAmount</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">amount</span><span class="punct">; }</span>
+<span class="punct">}</span>
+
+<span class="com">// 使用：无论多少线程同时调用 add()，Money 对象本身永不改变</span>
+<span class="ty">Money</span> <span class="var">a</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Money</span><span class="punct">(</span><span class="num">100</span><span class="punct">);</span>
+<span class="ty">Money</span> <span class="var">b</span> <span class="punct">=</span> <span class="var">a</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Money</span><span class="punct">(</span><span class="num">50</span><span class="punct">));</span>   <span class="com">// a 不变，b 是全新对象 150</span>
+<span class="ty">Money</span> <span class="var">c</span> <span class="punct">=</span> <span class="var">a</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Money</span><span class="punct">(</span><span class="num">50</span><span class="punct">));</span>   <span class="com">// 同样得到 150，天然线程安全</span></pre>
+  </div>
+
+  <!-- 3. 纯函数：不可变性在函数层面的体现 -->
+  <h2>纯函数：不可变性在函数层面的体现</h2>
+  <p>
+    不可变性不只体现在对象字段上，还体现在<strong>函数不产生副作用（Side Effect）</strong>这一要求上。
+    一个纯函数（Pure Function）满足两个条件：
+  </p>
+  <ul>
+    <li><strong>相同输入永远产生相同输出</strong>（引用透明性）</li>
+    <li><strong>不修改任何外部状态</strong>（无副作用）</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 有副作用 vs 纯函数</span><span>对比</span></div>
+    <pre><span class="com">// ——— 反例：依赖外部可变状态 ———</span>
+<span class="kw">private int</span> <span class="var">taxRate</span> <span class="punct">=</span> <span class="num">13</span><span class="punct">;</span>   <span class="com">// 外部可变字段</span>
+
+<span class="kw">public double</span> <span class="fn">calcTax</span><span class="punct">(</span><span class="kw">double</span> <span class="var">price</span><span class="punct">) {</span>
+    <span class="kw">return</span> <span class="var">price</span> <span class="punct">*</span> <span class="var">taxRate</span> <span class="punct">/</span> <span class="num">100</span><span class="punct">;</span>  <span class="com">// taxRate 随时可能被别处修改</span>
+<span class="punct">}</span>
+<span class="com">// 问题：同样传入 price=100，今天返回 13，明天可能返回 9</span>
+<span class="com">// 测试极难：必须先设置好 taxRate 的状态</span>
+
+<span class="com">// ——— 正例：纯函数，所有依赖都通过参数传入 ———</span>
+<span class="kw">public static double</span> <span class="fn">calcTax</span><span class="punct">(</span><span class="kw">double</span> <span class="var">price</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">taxRate</span><span class="punct">) {</span>
+    <span class="kw">return</span> <span class="var">price</span> <span class="punct">*</span> <span class="var">taxRate</span> <span class="punct">/</span> <span class="num">100</span><span class="punct">;</span>
+<span class="punct">}</span>
+<span class="com">// 好处：可单独测试，不依赖任何全局状态，可安全并行调用</span></pre>
+  </div>
+
+  <!-- 4. 不可变性 ≠ 完全没有状态变化 -->
+  <h2>不可变性 ≠ 完全没有状态变化</h2>
+  <p>
+    这是初学者最常见的误解。现实世界中状态变化是客观存在的，函数式编程并不否认这一点。
+    它的处理策略是：<strong>把"可变"隔离到系统边界，内部核心逻辑全部用不可变数据流表达</strong>。
+  </p>
+
+  <div class="tree">
+    系统边界（允许可变）<br/>
+    ├── <span class="hi">数据库写入</span>　　← I/O 副作用，集中在最外层<br/>
+    ├── <span class="hi">HTTP 请求/响应</span>　← 同上<br/>
+    └── 内部核心逻辑（禁止可变）<br/>
+    　　 ├── 领域计算：纯函数，输入 → 输出<br/>
+    　　 ├── 数据转换：旧集合 → 新集合（map/filter/reduce）<br/>
+    　　 └── 业务规则：无副作用，易测试
+  </div>
+
+  <p>
+    Bob 大叔在书中提出了一种实践方案：<strong>把组件分为可变组件和不可变组件两类</strong>，
+    可变组件（处理状态的部分）越小越好，不可变组件（纯计算的部分）越大越好。
+    这正是"六边形架构"/"端口适配器架构"的底层逻辑。
+  </p>
+
+  <!-- 5. Java 中的不可变实践 -->
+  <h2>Java 中的不可变实践</h2>
+
+  <h3>Record（Java 16+）：天然不可变的值对象</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java 16+ — Record 替代可变 DTO</span><span>推荐写法</span></div>
+    <pre><span class="com">// 一行声明，编译器自动生成 final 字段、构造器、equals/hashCode/toString</span>
+<span class="kw">public record</span> <span class="ty">OrderItem</span><span class="punct">(</span><span class="ty">String</span> <span class="var">productId</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">quantity</span><span class="punct">,</span> <span class="ty">Money</span> <span class="var">price</span><span class="punct">) {}</span>
+
+<span class="com">// "修改"操作 → 返回新 record，原对象不变</span>
+<span class="ty">OrderItem</span> <span class="var">item</span>    <span class="punct">=</span> <span class="kw">new</span> <span class="ty">OrderItem</span><span class="punct">(</span><span class="str">"P001"</span><span class="punct">,</span> <span class="num">2</span><span class="punct">,</span> <span class="kw">new</span> <span class="ty">Money</span><span class="punct">(</span><span class="num">50</span><span class="punct">));</span>
+<span class="ty">OrderItem</span> <span class="var">updated</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">OrderItem</span><span class="punct">(</span><span class="var">item</span><span class="punct">.</span><span class="fn">productId</span><span class="punct">(),</span> <span class="num">3</span><span class="punct">,</span> <span class="var">item</span><span class="punct">.</span><span class="fn">price</span><span class="punct">());</span></pre>
+  </div>
+
+  <h3>Stream API：不可变的集合处理管道</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — Stream vs 命令式循环</span><span>对比</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="var">orders</span> <span class="punct">=</span> <span class="fn">getOrders</span><span class="punct">();</span>
+
+<span class="com">// ——— 反例：命令式，累积可变状态 ———</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">result</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="ty">Order</span> <span class="var">o</span> <span class="punct">:</span> <span class="var">orders</span><span class="punct">) {</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">o</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">() &gt;</span> <span class="num">1000</span><span class="punct">) {</span>
+        <span class="var">result</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">o</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">());</span>   <span class="com">// 每次循环都在修改 result</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// ——— 正例：函数式管道，每步都产生新的数据流 ———</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">orders</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+    <span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="var">o</span> <span class="punct">-&gt;</span> <span class="var">o</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">() &gt;</span> <span class="num">1000</span><span class="punct">)</span>   <span class="com">// 不修改 orders，产生新流</span>
+    <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="ty">Order</span><span class="punct">::</span><span class="fn">getId</span><span class="punct">)</span>                    <span class="com">// 转换，不修改原对象</span>
+    <span class="punct">.</span><span class="fn">collect</span><span class="punct">(</span><span class="ty">Collectors</span><span class="punct">.</span><span class="fn">toList</span><span class="punct">());</span>       <span class="com">// 最终物化为新列表</span>
+<span class="com">// orders 原封不动；可并行：只需换 .parallelStream()</span></pre>
+  </div>
+
+  <!-- 6. 事件溯源：不可变性在架构层面的极致应用 -->
+  <h2>事件溯源：不可变性在架构层面的极致应用</h2>
+  <p>
+    Bob 大叔在书中举了一个深刻的例子：<strong>银行账户的余额，其实不是一个"值"，而是所有交易记录"相加"的结果</strong>。
+    如果我们不存储当前余额（可变状态），而是存储每一笔交易事件（不可变事件流），
+    那么任何时刻的余额都可以通过重放事件推算出来，系统永远不需要"更新"任何记录，只需"追加"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>概念示意 — 事件溯源（Event Sourcing）</span><span>架构思想</span></div>
+    <pre><span class="com">// 传统做法：存储可变状态</span>
+<span class="com">// UPDATE account SET balance = 150 WHERE id = 1;  ← 历史丢失</span>
+
+<span class="com">// 事件溯源：只追加不可变事件</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">AccountEvent</span><span class="punct">&gt;</span> <span class="var">events</span> <span class="punct">=</span> <span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span>
+    <span class="kw">new</span> <span class="ty">Deposited</span><span class="punct">(</span><span class="num">100</span><span class="punct">),</span>    <span class="com">// 永久保留，绝不修改</span>
+    <span class="kw">new</span> <span class="ty">Deposited</span><span class="punct">(</span><span class="num">50</span><span class="punct">),</span>
+    <span class="kw">new</span> <span class="ty">Withdrawn</span><span class="punct">(</span><span class="num">30</span><span class="punct">)</span>
+<span class="punct">);</span>
+
+<span class="com">// 当前余额 = 重放所有事件的聚合结果（纯函数）</span>
+<span class="kw">int</span> <span class="var">balance</span> <span class="punct">=</span> <span class="var">events</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+    <span class="punct">.</span><span class="fn">reduce</span><span class="punct">(</span><span class="num">0</span><span class="punct">,</span> <span class="punct">(</span><span class="var">acc</span><span class="punct">,</span> <span class="var">e</span><span class="punct">) -&gt;</span> <span class="var">e</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="var">acc</span><span class="punct">),</span> <span class="ty">Integer</span><span class="punct">::</span><span class="fn">sum</span><span class="punct">);</span>
+<span class="com">// balance = 120，且可以回溯任意时刻的历史状态</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>这就是 Bob 大叔的结论：</strong>如果存储空间和处理器速度足够快，应用程序完全可以没有可变状态——
+    所有状态都通过重放不可变事件来推算。现实中的妥协是定期做"快照"（Snapshot），
+    但核心思想不变：<strong>用追加替代更新，用转换替代赋值</strong>。
+  </div>
+
+  <!-- 7. 落地技巧与常见陷阱 -->
+  <h2>落地技巧与常见陷阱</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>场景</th>
+        <th>常见陷阱</th>
+        <th>推荐做法</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Java 集合</td>
+        <td>返回 <code>ArrayList</code>，调用方直接修改</td>
+        <td>返回 <code>List.copyOf()</code> 或 <code>Collections.unmodifiableList()</code></td>
+      </tr>
+      <tr>
+        <td>Builder 模式</td>
+        <td>build() 后继续修改 builder，影响已构建对象</td>
+        <td>build() 内部做防御性拷贝；或用 Record 替代</td>
+      </tr>
+      <tr>
+        <td>Lambda 捕获外部变量</td>
+        <td>在 lambda 内修改外部 <code>int[]</code> 数组绕过 effectively-final 检查</td>
+        <td>用 <code>AtomicInteger</code> 明确语义；或改用 <code>reduce</code></td>
+      </tr>
+      <tr>
+        <td>Date / Calendar</td>
+        <td><code>Date</code> 是可变的，传递后被修改</td>
+        <td>全面改用 <code>java.time</code>（<code>LocalDate</code> 等均不可变）</td>
+      </tr>
+      <tr>
+        <td>缓存优化</td>
+        <td>担心不可变对象创建开销大</td>
+        <td>小对象 JVM 逃逸分析可栈上分配；必要时才用对象池</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>最容易忽略的细节：浅不可变（Shallow Immutability）</strong><br/>
+    字段声明了 <code>final</code> 不代表对象真正不可变。如果字段是一个 <code>List</code>，
+    外部代码仍然可以调用 <code>list.add()</code> 修改其内容。
+    真正的不可变需要<strong>深层防御</strong>：在构造器中做防御性拷贝，并返回不可修改的视图。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 浅不可变陷阱与修复</span><span>细节</span></div>
+    <pre><span class="com">// ——— 陷阱：字段 final 但集合内容可变 ———</span>
+<span class="kw">public final class</span> <span class="ty">Order</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderItem</span><span class="punct">&gt;</span> <span class="var">items</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">Order</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderItem</span><span class="punct">&gt;</span> <span class="var">items</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">items</span> <span class="punct">=</span> <span class="var">items</span><span class="punct">;</span>   <span class="com">// 直接持有外部引用，外部可以修改！</span>
+    <span class="punct">}</span>
+    <span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderItem</span><span class="punct">&gt;</span> <span class="fn">getItems</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">items</span><span class="punct">; }</span>  <span class="com">// 暴露可变引用</span>
+<span class="punct">}</span>
+
+<span class="com">// ——— 修复：防御性拷贝 + 不可修改视图 ———</span>
+<span class="kw">public final class</span> <span class="ty">Order</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderItem</span><span class="punct">&gt;</span> <span class="var">items</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">Order</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderItem</span><span class="punct">&gt;</span> <span class="var">items</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">items</span> <span class="punct">=</span> <span class="ty">List</span><span class="punct">.</span><span class="fn">copyOf</span><span class="punct">(</span><span class="var">items</span><span class="punct">);</span>   <span class="com">// 拷贝入参，切断外部引用</span>
+    <span class="punct">}</span>
+    <span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderItem</span><span class="punct">&gt;</span> <span class="fn">getItems</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">items</span><span class="punct">;</span>   <span class="com">// List.copyOf() 返回的本身就是不可修改的</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 8. 与其他范式的联系 -->
+  <h2>与其他范式的联系</h2>
+  <p>三种范式共同构成了软件工程的基础约束，彼此互补而非竞争：</p>
+
+  <div class="tree">
+    结构化编程　　限制 <span class="hi">goto</span>　　　→ 控制流可推理（顺序、分支、循环）<br/>
+    面向对象编程　限制 <span class="hi">函数指针</span>　→ 依赖关系可反转（多态 + 接口）<br/>
+    函数式编程　　限制 <span class="hi">赋值语句</span>　→ 状态变化可追踪（不可变 + 纯函数）
+  </div>
+
+  <p>
+    在实际架构中，这三种范式通常<strong>混合使用</strong>：
+    用结构化编程写流程，用面向对象管理模块依赖，用函数式处理领域内的数据转换逻辑。
+    Spring 的 <code>@Service</code> 层持有状态（可变边界），而其内部的计算方法尽量写成纯函数——
+    这正是"可变组件最小化，不可变逻辑最大化"原则的体现。
+  </p>
+
+  <hr />
+
+  <!-- 面试高频 -->
+  <h2>面试高频考点</h2>
+  <ul>
+    <li><strong>函数式编程的本质约束是什么？</strong>——不是 Lambda，不是高阶函数，而是<strong>变量不可变</strong>。</li>
+    <li><strong>不可变对象为什么是线程安全的？</strong>——因为没有写操作，不存在写写/读写冲突，不需要加锁。</li>
+    <li><strong><code>String</code> 为什么设计成不可变？</strong>——字符串常量池复用、HashCode 缓存、线程安全——都依赖不可变性。</li>
+    <li><strong>Java 的 <code>final</code> 字段能保证不可变吗？</strong>——不能，只能保证引用不变，还需防御性拷贝和不可修改视图才能达到深层不可变。</li>
+    <li><strong>函数式和面向对象能共存吗？</strong>——完全可以，现代 Java/Kotlin/Scala 都是多范式语言，关键是把副作用推到系统边界。</li>
+  </ul>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-面向对象编程.html" class="nav-btn">← 02. 面向对象编程（多态是关键）</a>
+    <a href="./04-SRP单一职责原则.html" class="nav-btn next">04. SRP 单一职责原则 →</a>
+  </div>
+
+</div>
+</body>
+</html>

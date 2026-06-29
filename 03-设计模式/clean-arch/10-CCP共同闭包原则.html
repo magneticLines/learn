@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>10. CCP 共同闭包原则 — 架构整洁之道</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fb923c; }
+    p code, li code { color: #fb923c; }
+    h2 { color: #fb923c; border-left-color: #fb923c; }
+    .hero .tag { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-arch-roadmap.html">路线图</a> / 《架构整洁之道》 / 组件内聚
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">《架构整洁之道》 · 组件内聚</div>
+    <h1>10. CCP — 共同闭包原则</h1>
+    <p>Common Closure Principle：将因相同原因、在相同时间发生变化的类放在同一个组件中；将因不同原因或在不同时间变化的类放在不同组件中。</p>
+  </div>
+
+  <!-- 一、原则来源与核心主张 -->
+  <h2>一、原则来源与核心主张</h2>
+  <p>
+    Robert C. Martin 在《架构整洁之道》第13章"组件内聚"中提出了三条原则：REP、CCP、CRP。
+    其中 <strong>CCP（Common Closure Principle，共同闭包原则）</strong> 是 <strong>SRP（单一职责原则）在组件层面的投影</strong>。
+  </p>
+  <p>
+    SRP 说：一个类不应该有多于一个被修改的理由。<br />
+    CCP 说：<strong>一个组件不应该有多于一个被修改的理由</strong>——把同一类变更的代码集中在一起，把不同类变更的代码隔离开。
+  </p>
+
+  <div class="callout info">
+    <strong>一句话记忆：</strong>把同时变化的东西放在一起，把不同时变化的东西分开。<br />
+    就像办公室里的"项目文件"和"财务凭证"要分柜子放——混在一起，任何一方动了都要翻另一堆。
+  </div>
+
+  <p>
+    CCP 的终极目标是<strong>降低发布成本</strong>：当需求变更来临时，理想情况是只改动、测试、发布<strong>一个组件</strong>，
+    而不是同时牵动七八个模块、让整个团队都进入紧张状态。
+  </p>
+
+  <!-- 二、为什么需要这个原则 -->
+  <h2>二、为什么需要这个原则</h2>
+  <p>软件系统的变更大多是<strong>局部的业务变更</strong>，而不是全面重写。CCP 帮我们把变更的"影响半径"控制在最小范围内。</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>违反 CCP 的后果</th>
+        <th>遵守 CCP 的收益</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>一个需求要改动 5 个组件，5 个组件都需要单独构建、测试、发布</td>
+        <td>一个需求只改动 1 个组件，构建 CI 只跑一条流水线</td>
+      </tr>
+      <tr>
+        <td>其他组件的使用方被强制升级依赖版本，即使与他们无关</td>
+        <td>不相关的使用方版本不变，零影响</td>
+      </tr>
+      <tr>
+        <td>变更在多个组件之间"跳跃"，排查问题像捉迷藏</td>
+        <td>变更有明确的"领地"，定位快、回滚范围小</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 三、反例 → 问题 → 正例 -->
+  <h2>三、反例 → 问题 → 正例</h2>
+
+  <h3>场景背景</h3>
+  <p>
+    你在开发一个电商系统，有如下功能：<strong>订单校验</strong>、<strong>优惠券折扣计算</strong>、<strong>发票生成</strong>。
+    某位工程师把这三部分放进了同一个 Maven 模块 <code>order-core</code>。
+  </p>
+
+  <h3>反例：把不同原因变化的类塞进同一组件</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>order-core 模块（违反 CCP）</span><span>Java</span></div>
+    <pre><span class="com">// ❌ order-core 模块下混放了三类职责</span>
+
+<span class="kw">package</span> <span class="var">com.shop.ordercore</span><span class="punct">;</span>
+
+<span class="com">// 职责一：订单合法性校验（随业务规则变化）</span>
+<span class="kw">public class</span> <span class="ty">OrderValidator</span> <span class="punct">{</span>
+    <span class="kw">public boolean</span> <span class="fn">validate</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getItems</span><span class="punct">().</span><span class="fn">size</span><span class="punct">() &gt;</span> <span class="num">0</span>
+            <span class="punct">&amp;&amp;</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getTotalAmount</span><span class="punct">().</span><span class="fn">compareTo</span><span class="punct">(</span><span class="ty">BigDecimal</span><span class="punct">.</span><span class="var">ZERO</span><span class="punct">) &gt;</span> <span class="num">0</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 职责二：优惠券折扣（随营销策略变化）</span>
+<span class="kw">public class</span> <span class="ty">CouponDiscountCalculator</span> <span class="punct">{</span>
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">apply</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">,</span> <span class="ty">Coupon</span> <span class="var">coupon</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getTotalAmount</span><span class="punct">().</span><span class="fn">multiply</span><span class="punct">(</span><span class="var">coupon</span><span class="punct">.</span><span class="fn">getRate</span><span class="punct">());</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 职责三：发票生成（随税务/财务规则变化）</span>
+<span class="kw">public class</span> <span class="ty">InvoiceGenerator</span> <span class="punct">{</span>
+    <span class="kw">public</span> <span class="ty">Invoice</span> <span class="fn">generate</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// 按国家税率生成发票，税务政策每年可能调整</span>
+        <span class="kw">return new</span> <span class="ty">Invoice</span><span class="punct">(</span><span class="var">order</span><span class="punct">,</span> <span class="var">TAX_RATE</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>问题在哪里</h3>
+  <p>这三个类的<strong>变更驱动力来自完全不同的方向</strong>：</p>
+  <ul>
+    <li><code>OrderValidator</code> — 产品经理调整下单规则时修改（每季度可能改）</li>
+    <li><code>CouponDiscountCalculator</code> — 运营搞活动/调折扣策略时修改（可能每周改）</li>
+    <li><code>InvoiceGenerator</code> — 财务部门因税务政策调整时修改（一年改一次）</li>
+  </ul>
+  <p>
+    结果是：运营要改优惠券逻辑，却必须重新发布整个 <code>order-core</code>——
+    哪怕 <code>OrderValidator</code> 和 <code>InvoiceGenerator</code> 完全没动过。
+    依赖 <code>order-core</code> 的其他微服务也要跟着升级依赖版本，进行回归测试。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见后果：</strong>"我只改了一行优惠券逻辑，怎么还要让财务模块重新上线？"——这就是 CCP 被违反时发生的事。
+  </div>
+
+  <h3>正例：按变更原因拆分为独立组件</h3>
+
+  <div class="tree">
+    order-validation/         <span class="hi">← 随下单业务规则变化</span>
+    └── OrderValidator.java
+
+    order-promotion/          <span class="hi">← 随营销/折扣策略变化</span>
+    └── CouponDiscountCalculator.java
+
+    order-invoice/            <span class="hi">← 随税务/财务规则变化</span>
+    └── InvoiceGenerator.java
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>order-promotion 模块（遵守 CCP）</span><span>Java</span></div>
+    <pre><span class="com">// ✅ order-promotion 只关心"折扣如何计算"这一个变化轴</span>
+<span class="com">// 它只依赖 Order 和 Coupon 的只读接口，不引入校验/发票的任何逻辑</span>
+
+<span class="kw">package</span> <span class="var">com.shop.promotion</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">CouponDiscountCalculator</span> <span class="punct">{</span>
+
+    <span class="com">// 日后加"满减券"、"折扣上限"等营销规则，只改这一个组件</span>
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">apply</span><span class="punct">(</span><span class="ty">OrderSnapshot</span> <span class="var">order</span><span class="punct">,</span> <span class="ty">Coupon</span> <span class="var">coupon</span><span class="punct">) {</span>
+        <span class="ty">BigDecimal</span> <span class="var">discounted</span> <span class="punct">=</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getTotalAmount</span><span class="punct">().</span><span class="fn">multiply</span><span class="punct">(</span><span class="var">coupon</span><span class="punct">.</span><span class="fn">getRate</span><span class="punct">());</span>
+        <span class="com">// 折扣不能超过上限（营销策略，只在本组件内控制）</span>
+        <span class="kw">return</span> <span class="var">discounted</span><span class="punct">.</span><span class="fn">min</span><span class="punct">(</span><span class="var">coupon</span><span class="punct">.</span><span class="fn">getMaxDiscount</span><span class="punct">());</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    现在运营要改折扣上限逻辑，只需发布 <code>order-promotion</code> 这一个组件，
+    <code>order-validation</code> 和 <code>order-invoice</code> 的使用方完全不受影响，无需任何回归测试。
+  </p>
+
+  <!-- 四、CCP 与 OCP 的关系 -->
+  <h2>四、CCP 与 OCP 的关系</h2>
+  <p>
+    CCP 的名字里有"闭包（Closure）"，这个词直接来自 <strong>OCP（开闭原则）</strong>：
+    对扩展开放、对修改关闭。
+  </p>
+  <p>
+    OCP 说：理想的类应该对某类变更"封闭"——变更来了不需要修改这个类，只需要扩展。
+    但完美的 OCP 只是理想，现实中<strong>总有些类需要被修改</strong>。
+    CCP 的思路是：<strong>把必须一起修改的类，收拢进同一个组件</strong>，
+    这样至少把修改的"副作用"（重新构建、重新发布）限制在最小范围内。
+  </p>
+
+  <div class="callout info">
+    <strong>一个推论：</strong>如果两个类总是在同一次 PR 里被修改，那它们几乎一定应该放在同一个组件里。
+    代码审查中频繁出现"这两个文件又一起改了"，是提示你重新审视组件边界的信号。
+  </div>
+
+  <!-- 五、与 SRP 的对比 -->
+  <h2>五、CCP vs SRP：两个层次的同一思想</h2>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th>SRP（类层面）</th><th>CCP（组件层面）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>作用粒度</td>
+        <td>单个类 / 接口</td>
+        <td>JAR 包 / Maven 模块 / 微服务</td>
+      </tr>
+      <tr>
+        <td>核心问题</td>
+        <td>这个类有几个被修改的理由？</td>
+        <td>这个组件有几个被修改的理由？</td>
+      </tr>
+      <tr>
+        <td>违反时的痛点</td>
+        <td>类膨胀，测试困难，职责耦合</td>
+        <td>组件频繁发布，级联影响其他团队</td>
+      </tr>
+      <tr>
+        <td>修复手段</td>
+        <td>拆分类，提取接口</td>
+        <td>拆分组件，重新划定模块边界</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 六、落地技巧 -->
+  <h2>六、实际开发落地技巧</h2>
+
+  <h3>技巧 1：识别"变更轴"而不是"功能相关性"</h3>
+  <p>
+    初学者容易把"功能上相关"的类放在一起。比如 <code>OrderValidator</code> 和 <code>CouponCalculator</code>
+    都和订单有关，就放进了 <code>order-core</code>。
+    但 CCP 问的是<strong>谁来驱动这段代码改变</strong>：是产品、运营、财务、还是技术规范？
+    驱动者不同 = 变更轴不同 = 应该放在不同组件。
+  </p>
+
+  <h3>技巧 2：用 Git 历史验证你的组件边界</h3>
+  <p>
+    运行一次 <code>git log --name-only</code>，观察哪些文件总是出现在同一次 commit 里。
+    如果 <code>CouponCalculator.java</code> 和 <code>InvoiceGenerator.java</code> 从来没有在同一次提交里出现过，
+    那它们不应该在同一个组件。反之，若两个文件几乎每次都一起改，则它们属于同一个"闭包"。
+  </p>
+
+  <h3>技巧 3：在微服务架构下，CCP 决定服务边界</h3>
+  <p>
+    微服务拆分不是按"技术层"（controller/service/dao 各一个服务），而是按"变更轴"。
+    <strong>把同一个业务能力中、同频率变化的逻辑放在同一个服务里</strong>，
+    不同变更频率的能力才考虑拆分。
+    否则一个业务需求要改三个服务，CCP 就被完全违反了。
+  </p>
+
+  <h3>技巧 4：警惕"工具类陷阱"</h3>
+  <p>
+    很多项目有一个 <code>common</code> 或 <code>utils</code> 模块，里面塞满了 StringUtil、DateUtil、JsonUtil……
+    这些工具类几乎被所有模块依赖，但它们的变更原因各不相同。
+    一旦某个工具类被修改，所有依赖方都被迫升级——这是 CCP 的经典违反场景。
+    建议按领域拆分工具包，或者评估是否应该把工具逻辑内聚到对应的领域组件里。
+  </p>
+
+  <div class="callout tip">
+    <strong>判断口诀：</strong>改这个需求，我需要碰几个组件？如果答案大于 1，先问一句：这些组件是否应该合并？
+  </div>
+
+  <!-- 七、常见误区 -->
+  <h2>七、常见误区与面试高频考点</h2>
+
+  <h3>误区 1：CCP 要求把所有相关代码放在一起</h3>
+  <p>
+    不对。CCP 说的是<strong>同一变更原因</strong>，不是功能相关性。
+    "登录"和"权限校验"功能上相关，但如果登录逻辑随用户体验迭代而变、权限逻辑随安全合规要求而变，
+    它们就应该在不同组件里。
+  </p>
+
+  <h3>误区 2：CCP 和 CRP 是一个意思</h3>
+  <p>
+    CCP 说"应该放在一起的放一起"，CRP 说"不该放在一起的不要放在一起"。
+    两者是张力的两端——CCP 倾向于聚合（减少组件数），CRP 倾向于分离（减少不必要的依赖）。
+    架构师的工作是在两者之间找到平衡点（这将在下一节 CRP 中展开）。
+  </p>
+
+  <h3>面试高频：CCP 和 SRP 有什么区别？</h3>
+  <p>
+    标准回答：SRP 是类级别的设计原则，CCP 是组件级别的设计原则，两者的核心思想相同——
+    <strong>一个单元只应该有一个被修改的理由</strong>，区别在于"单元"的粒度。
+    CCP 在 SRP 的基础上回答了"类拆分后应该放进哪个包/模块"的问题。
+  </p>
+
+  <hr />
+
+  <!-- 总结 -->
+  <h2>小结</h2>
+  <ul>
+    <li>CCP 是 SRP 在组件层面的延伸：<strong>同一变更原因的类归同一组件，不同变更原因的类分属不同组件</strong></li>
+    <li>核心目标是<strong>将一次业务变更的影响半径控制在单个组件内</strong>，降低构建、测试、发布成本</li>
+    <li>识别"变更轴"（谁驱动变化）比识别"功能相关性"更重要</li>
+    <li>Git 历史是验证组件边界是否合理的有效工具</li>
+    <li>CCP 与 CRP 构成张力：CCP 倾向聚合，CRP 倾向分离，两者共同约束组件内聚的最优边界</li>
+  </ul>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./09-REP复用发布等同原则.html" class="nav-btn">← 09. REP 复用/发布等同原则</a>
+    <a href="./11-CRP共同复用原则.html" class="nav-btn next">11. CRP 共同复用原则 →</a>
+  </div>
+
+</div>
+</body>
+</html>

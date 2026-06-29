@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>21. 依赖方向与控制流分离 — 架构整洁之道</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .fn2{color:#fbbf24} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fb923c; }
+    p code, li code { color: #fb923c; }
+    h2 { color: #fb923c; border-left-color: #fb923c; }
+    .hero .tag { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-arch-roadmap.html">路线图</a> / 《架构整洁之道》 / 架构·边界·业务规则
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">《架构整洁之道》 · 架构·边界·业务规则</div>
+    <h1>21. 依赖方向与控制流分离</h1>
+    <p>源码依赖可以与运行时控制流方向相反——这是架构边界得以成立的根本手段。</p>
+  </div>
+
+  <!-- 1. 核心主张 -->
+  <h2>核心主张：依赖方向 ≠ 控制流方向</h2>
+  <p>
+    在没有任何设计介入的情况下，"调用者调用被调用者"意味着<strong>源码依赖方向与控制流方向完全一致</strong>：
+    A 调用 B，A 的源文件就必须 <code>import B</code>。看起来天经地义，却暗藏风险——
+    它使高层策略（业务规则）直接依赖低层细节（数据库、UI、第三方库），
+    细节一变，策略就得跟着重新编译、测试、部署。
+  </p>
+  <p>
+    Robert C. Martin（Uncle Bob）在《架构整洁之道》中明确指出：
+    <strong>利用多态，我们可以让源码依赖方向与控制流方向相反。</strong>
+    这一能力被称为"依赖反转"（Dependency Inversion），是架构边界得以存在的物理基础。
+  </p>
+
+  <div class="callout info">
+    <strong>一句话总结：</strong>控制流（谁在运行时调用谁）由业务逻辑决定，
+    源码依赖（谁在编译时 import 谁）则可以被我们人为扭转，从而保护业务规则不受细节污染。
+  </div>
+
+  <!-- 2. 两个方向的直觉 -->
+  <h2>用图建立直觉</h2>
+
+  <h3>未经设计时：依赖与控制流同向</h3>
+  <div class="tree">
+    控制流：<span class="hi">UseCase</span> ──调用──▶ <span class="var">MySQLOrderRepository</span><br>
+    源码依赖：<span class="hi">UseCase.java</span> ──import──▶ <span class="var">MySQLOrderRepository.java</span><br>
+    <br>
+    结果：UseCase 与 MySQL <strong>紧耦合</strong>，换数据库需修改业务层。
+  </div>
+
+  <h3>引入接口后：依赖反转，控制流不变</h3>
+  <div class="tree">
+    控制流：<span class="hi">UseCase</span> ──调用──▶ <span class="var">«interface» OrderRepository</span> ──(多态)──▶ <span class="var">MySQLOrderRepository</span><br>
+    <br>
+    源码依赖：<span class="hi">UseCase.java</span> ──import──▶ <span class="hi">OrderRepository.java</span>（接口，属于业务层）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="var">MySQLOrderRepository.java</span> ──implements──▶ <span class="hi">OrderRepository.java</span><br>
+    <br>
+    结果：MySQL 依赖业务层接口，<strong>依赖箭头反转</strong>，业务层零感知细节。
+  </div>
+
+  <p>
+    控制流的方向没有变（UseCase 依然在运行时驱动数据库操作），
+    但源码依赖的箭头被我们通过接口翻转了。
+    这就是"分离"的含义：<strong>两者可以独立选择方向。</strong>
+  </p>
+
+  <!-- 3. 反例 -->
+  <h2>反例：业务规则直接依赖数据库实现</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例（依赖与控制流同向）</span></div>
+    <pre><span class="com">// ❌ 业务用例直接 import 数据库实现</span>
+<span class="kw">import</span> <span class="var">com.example.infrastructure.MySQLOrderRepository</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">PlaceOrderUseCase</span> <span class="punct">{</span>
+
+    <span class="com">// 直接持有具体实现——编译期就与 MySQL 绑死</span>
+    <span class="kw">private final</span> <span class="ty">MySQLOrderRepository</span> <span class="var">repo</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">PlaceOrderUseCase</span><span class="punct">(</span><span class="ty">MySQLOrderRepository</span> <span class="var">repo</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">repo</span> <span class="punct">=</span> <span class="var">repo</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">execute</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// 业务逻辑 …</span>
+        <span class="var">repo</span><span class="punct">.</span><span class="fn">save</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>这样写有什么问题？</h3>
+  <ul>
+    <li><strong>无法独立测试业务规则</strong>：单元测试必须启动数据库，或者用反射 hack，才能替换 <code>MySQLOrderRepository</code>。</li>
+    <li><strong>细节变动波及业务层</strong>：从 MySQL 换成 PostgreSQL，需要修改 <code>PlaceOrderUseCase.java</code> 并重新编译，哪怕业务逻辑一行未改。</li>
+    <li><strong>无法单独部署</strong>：业务规则与数据库实现必须一起打包，无法将它们部署到不同服务。</li>
+    <li><strong>违反稳定依赖原则</strong>：稳定的业务规则依赖了不稳定的数据库细节，依赖方向与变化频率相反，极易出现"改了细节、整个系统受影响"。</li>
+  </ul>
+
+  <!-- 4. 正例 -->
+  <h2>正例：用接口反转源码依赖</h2>
+
+  <h3>第一步：在业务层定义接口（接口归属业务层，不归数据库层）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 业务层接口（属于 domain / usecase 包）</span></div>
+    <pre><span class="kw">package</span> <span class="var">com.example.domain.repository</span><span class="punct">;</span>
+
+<span class="com">// ✅ 接口定义在业务层，由业务层"拥有"</span>
+<span class="kw">public interface</span> <span class="ty">OrderRepository</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">save</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">);</span>
+    <span class="ty">Optional</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="fn">findById</span><span class="punct">(</span><span class="ty">OrderId</span> <span class="var">id</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>第二步：业务用例只依赖接口</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 业务用例（只 import 接口）</span></div>
+    <pre><span class="kw">package</span> <span class="var">com.example.usecase</span><span class="punct">;</span>
+
+<span class="kw">import</span> <span class="var">com.example.domain.repository.OrderRepository</span><span class="punct">;</span> <span class="com">// 仍在业务层内部</span>
+
+<span class="kw">public class</span> <span class="ty">PlaceOrderUseCase</span> <span class="punct">{</span>
+
+    <span class="com">// ✅ 只持有接口——编译期对 MySQL 零感知</span>
+    <span class="kw">private final</span> <span class="ty">OrderRepository</span> <span class="var">repo</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">PlaceOrderUseCase</span><span class="punct">(</span><span class="ty">OrderRepository</span> <span class="var">repo</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">repo</span> <span class="punct">=</span> <span class="var">repo</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">execute</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// 纯业务逻辑，不涉及任何基础设施</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">isValid</span><span class="punct">()) {</span>
+            <span class="var">repo</span><span class="punct">.</span><span class="fn">save</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>第三步：数据库实现依赖接口（依赖方向反转）</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 基础设施层实现（import 业务层接口）</span></div>
+    <pre><span class="kw">package</span> <span class="var">com.example.infrastructure.persistence</span><span class="punct">;</span>
+
+<span class="kw">import</span> <span class="var">com.example.domain.repository.OrderRepository</span><span class="punct">;</span> <span class="com">// ← 朝业务层方向依赖</span>
+
+<span class="com">// ✅ MySQL 实现 import 业务层接口，依赖箭头指向业务层</span>
+<span class="kw">public class</span> <span class="ty">MySQLOrderRepository</span> <span class="kw">implements</span> <span class="ty">OrderRepository</span> <span class="punct">{</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">save</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// JDBC / JPA 具体操作 …</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public</span> <span class="ty">Optional</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="fn">findById</span><span class="punct">(</span><span class="ty">OrderId</span> <span class="var">id</span><span class="punct">) {</span>
+        <span class="com">// …</span>
+        <span class="kw">return</span> <span class="ty">Optional</span><span class="punct">.</span><span class="fn">empty</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>第四步：在组合根（Main / DI 容器）装配</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 组合根（Spring 示例）</span></div>
+    <pre><span class="ann">@Configuration</span>
+<span class="kw">public class</span> <span class="ty">AppConfig</span> <span class="punct">{</span>
+
+    <span class="com">// 组合根是唯一知道"接口 → 实现"映射的地方</span>
+    <span class="ann">@Bean</span>
+    <span class="kw">public</span> <span class="ty">PlaceOrderUseCase</span> <span class="fn">placeOrderUseCase</span><span class="punct">(</span><span class="ty">OrderRepository</span> <span class="var">repo</span><span class="punct">) {</span>
+        <span class="kw">return new</span> <span class="ty">PlaceOrderUseCase</span><span class="punct">(</span><span class="var">repo</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Bean</span>
+    <span class="kw">public</span> <span class="ty">OrderRepository</span> <span class="fn">orderRepository</span><span class="punct">() {</span>
+        <span class="kw">return new</span> <span class="ty">MySQLOrderRepository</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>测试时替换实现：</strong>单元测试只需传入 <code>InMemoryOrderRepository</code>（也实现 <code>OrderRepository</code>），
+    业务用例代码不需要改一行，也不需要启动数据库。
+  </div>
+
+  <!-- 5. 为什么这样更好 -->
+  <h2>为什么这样设计代码更好？</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>关注点</th>
+        <th>同向（无接口）</th>
+        <th>反转（有接口）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>独立可测试性</td>
+        <td>必须启动数据库</td>
+        <td>内存实现即可测试业务逻辑</td>
+      </tr>
+      <tr>
+        <td>替换细节</td>
+        <td>修改业务层代码</td>
+        <td>只换实现类，业务层零改动</td>
+      </tr>
+      <tr>
+        <td>独立部署</td>
+        <td>业务 + 细节必须同包</td>
+        <td>可分 JAR / 微服务独立部署</td>
+      </tr>
+      <tr>
+        <td>编译依赖</td>
+        <td>业务层依赖基础设施 JAR</td>
+        <td>基础设施 JAR 依赖业务 JAR</td>
+      </tr>
+      <tr>
+        <td>稳定性</td>
+        <td>细节变化传染业务层</td>
+        <td>细节变化被接口隔离</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 6. 深入原理 -->
+  <h2>深入原理：多态是唯一的魔法</h2>
+  <p>
+    接口（或抽象类）之所以能反转依赖，靠的是<strong>运行时多态</strong>：
+    调用者在源码层只知道抽象类型，真正的实现在运行时由 JVM 的虚方法表（vtable）决定。
+    编译器只检查"是否实现了接口"，而不关心具体是哪个实现。
+  </p>
+  <p>
+    这也是 Uncle Bob 说的"面向对象语言最重要的特性不是封装、继承，而是<strong>多态对依赖方向的控制能力</strong>"。
+    C 语言靠函数指针也能做到，只是没有语言级别的安全保障。Java/Kotlin/C# 的接口把这个能力标准化了。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>接口必须放在"接口包"或"基础设施包"里。
+    错！<strong>接口应该归属于它的调用方（业务层）</strong>，而不是实现方（基础设施层）。
+    谁"拥有"接口，谁就能控制依赖方向。把接口放到 <code>infrastructure</code> 包里等于没有反转，只是多了个文件。
+  </div>
+
+  <!-- 7. 架构边界视角 -->
+  <h2>架构边界视角：跨越边界的规则</h2>
+  <p>
+    《架构整洁之道》的架构边界理论建立在一个规则上：
+    <strong>所有跨越边界的源码依赖，必须指向更高层次的策略（业务规则方向）。</strong>
+    控制流可以双向流动（请求进入业务层，结果返回 UI），但源码依赖必须单向——朝业务规则。
+  </p>
+
+  <div class="tree">
+    高层（稳定）<br>
+    &nbsp;&nbsp;<span class="hi">Entities（企业业务规则）</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;▲ 依赖只能向上<br>
+    &nbsp;&nbsp;<span class="hi">Use Cases（应用业务规则）</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;▲ 依赖只能向上<br>
+    &nbsp;&nbsp;<span class="var">Interface Adapters（控制器 / 网关 / Presenter）</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;▲ 依赖只能向上<br>
+    &nbsp;&nbsp;<span class="var">Frameworks &amp; Drivers（数据库 / Web / UI）</span><br>
+    低层（不稳定）
+  </div>
+
+  <p>
+    当控制流需要从高层流向低层时（如 Use Case 触发数据库写入），
+    就在高层定义接口，让低层实现它——这就是依赖反转的全部动作。
+  </p>
+
+  <!-- 8. 落地技巧 -->
+  <h2>实际开发中的落地技巧</h2>
+
+  <h3>1. 按"谁拥有接口"划分包结构</h3>
+  <div class="tree">
+    src/main/java/<br>
+    &nbsp;&nbsp;com.example.<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">domain/</span>              ← 业务实体 + 领域服务<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">domain/repository/</span>   ← 接口定义（属于业务层！）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">usecase/</span>             ← 用例，只 import domain<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="var">infrastructure/</span>      ← 实现类，import domain 接口<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="var">web/</span>                 ← Controller，import usecase<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="var">config/</span>              ← 组合根，唯一知道全局的地方
+  </div>
+
+  <h3>2. 用 ArchUnit 在 CI 中自动守护依赖规则</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — ArchUnit 规则示例</span></div>
+    <pre><span class="ann">@AnalyzeClasses</span><span class="punct">(</span><span class="var">packages</span> <span class="punct">=</span> <span class="str">"com.example"</span><span class="punct">)</span>
+<span class="kw">public class</span> <span class="ty">ArchitectureTest</span> <span class="punct">{</span>
+
+    <span class="ann">@ArchTest</span>
+    <span class="kw">static final</span> <span class="ty">ArchRule</span> <span class="var">domainMustNotDependOnInfrastructure</span> <span class="punct">=</span>
+        <span class="fn">noClasses</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">that</span><span class="punct">().</span><span class="fn">resideInAPackage</span><span class="punct">(</span><span class="str">"..domain.."</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">should</span><span class="punct">().</span><span class="fn">dependOnClassesThat</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">resideInAPackage</span><span class="punct">(</span><span class="str">"..infrastructure.."</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>3. 控制流跨边界时，数据结构也要独立</h3>
+  <p>
+    跨越边界传递的数据应该是简单的数据结构（DTO / Value Object），
+    而不是数据库 Entity 对象。否则边界两侧通过共享数据结构重新产生编译依赖，
+    接口虽然反转了，数据结构又把依赖拉回来了。
+  </p>
+
+  <h3>4. 组合根越小越好</h3>
+  <p>
+    <code>Main</code> 方法或 DI 配置类是唯一"知道一切"的地方，
+    它位于架构的最外层（最低层），允许依赖所有圈层。
+    但要保持它尽量薄——只做装配，不写业务逻辑。
+  </p>
+
+  <!-- 9. 常见陷阱 -->
+  <h2>容易忽略的细节与陷阱</h2>
+  <ul>
+    <li>
+      <strong>接口放错位置：</strong>把 <code>OrderRepository</code> 接口放到 <code>infrastructure</code> 包，
+      再让 <code>usecase</code> 去 import 它——依赖方向没有反转，只是多了一层空接口。
+      接口必须和它的<strong>调用方</strong>在同一圈层。
+    </li>
+    <li>
+      <strong>返回值类型泄露细节：</strong>接口方法返回 <code>JpaOrder</code>（JPA Entity）而非 <code>Order</code>（领域对象），
+      同样把底层类型引入了业务层，等于接口形同虚设。
+    </li>
+    <li>
+      <strong>静态工厂方法绕过接口：</strong><code>OrderRepository.getInstance()</code> 直接返回具体类，
+      或者用 <code>new MySQLOrderRepository()</code> 内嵌在业务代码里——依赖反转立刻失效。
+    </li>
+    <li>
+      <strong>过度抽象：</strong>不是所有依赖都需要反转。只有<strong>跨越架构边界</strong>、
+      或者<strong>需要在测试时替换</strong>的依赖才值得引入接口。
+      同一圈层内部的类之间直接依赖反而更清晰。
+    </li>
+    <li>
+      <strong>忘记 Output Port：</strong>业务用例调用 Presenter 输出结果时，同样需要接口（Output Port），
+      否则用例依赖了 UI 层，又一次让控制流方向绑架了源码依赖方向。
+    </li>
+  </ul>
+
+  <div class="callout info">
+    <strong>面试高频：</strong>"依赖倒置原则（DIP）"与"依赖注入（DI）"不是同一回事。
+    DIP 是设计原则（高层不依赖低层，二者都依赖抽象）；DI 是实现手段之一（通过构造器/setter 注入抽象）。
+    Spring IoC 容器让 DI 变得方便，但 DIP 靠的是接口，不靠容器。
+  </div>
+
+  <hr />
+
+  <!-- 小结 -->
+  <h2>小结</h2>
+  <p>
+    依赖方向与控制流分离，是整洁架构中所有"边界"得以维持的根本机制。
+    只需一个接口，就能让源码依赖箭头反转——高层业务规则不再被低层细节污染，
+    系统因此获得<strong>独立可测试、独立可部署、独立可替换</strong>的能力。
+    记住两个关键点：<strong>接口归属调用方</strong>，<strong>装配发生在组合根</strong>。
+  </p>
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./20-谦卑对象模式.html" class="nav-btn">← 20. 谦卑对象模式（Humble Object）</a>
+    <a href="./22-数据库是细节.html" class="nav-btn next">22. 数据库是细节 →</a>
+  </div>
+
+</div>
+</body>
+</html>

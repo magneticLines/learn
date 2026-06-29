@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>07. ISP 接口隔离原则 · 架构整洁之道</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fb923c; }
+    p code, li code { color: #fb923c; }
+    h2 { color: #fb923c; border-left-color: #fb923c; }
+    .hero .tag { color: #fb923c; border-color: #7c2d12; }
+    .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../clean-arch-roadmap.html">路线图</a> / 《架构整洁之道》 / 五大设计原则
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">《架构整洁之道》 · 五大设计原则</div>
+    <h1>07. ISP — 接口隔离原则</h1>
+    <p>Interface Segregation Principle · 不要强迫使用者依赖他们不需要的东西</p>
+  </div>
+
+  <!-- 1. 核心主张 -->
+  <h2>原则一句话</h2>
+  <p>
+    <strong>任何使用者都不应该被迫依赖它用不上的方法。</strong>
+    换言之：接口应该小而专，只包含特定使用者真正需要的那组操作。
+  </p>
+  <div class="callout info">
+    Bob Martin 的原话：<em>"Clients should not be forced to depend upon interfaces that they do not use."</em>
+    这里的"依赖"不只指调用，还包括<strong>编译依赖</strong>——只要你 import/实现了一个包含多余方法的接口，变动就会传染到你。
+  </div>
+
+  <!-- 2. 为什么这么设计 -->
+  <h2>为什么这么设计：脂肪接口的代价</h2>
+  <p>
+    想象一个"万能遥控器"接口，上面有 40 个按钮，却把电视、空调、风扇的所有功能全塞在一起。
+    你只想控制电视音量，却不得不拿着那把覆盖所有功能的遥控器——
+    改了空调的按钮逻辑，你的电视代码也得重新编译，甚至可能出现意料之外的副作用。
+  </p>
+  <p>
+    在代码层面，"脂肪接口"（Fat Interface）带来三个具体伤害：
+  </p>
+  <ol>
+    <li><strong>不必要的重新编译</strong>：接口新增/修改一个方法，所有实现类和调用方都受牵连，哪怕他们根本不用那个方法。</li>
+    <li><strong>测试变难</strong>：Mock 一个 20 个方法的接口，你要 stub 掉全部，或者用空实现到处放 <code>throws UnsupportedOperationException</code>，噪音极大。</li>
+    <li><strong>强迫空实现</strong>：实现类被迫提供它没有能力实现的方法，通常以抛异常或返回 null 收场，违反了 LSP。</li>
+  </ol>
+
+  <!-- 3. 反例 → 问题 → 正例 -->
+  <h2>代码示例：反例 → 问题 → 正例</h2>
+
+  <h3>场景：多功能打印机系统</h3>
+  <p>
+    系统中有三种设备：<strong>复合打印机</strong>（打印 + 扫描 + 传真）、
+    <strong>普通打印机</strong>（只能打印）、
+    <strong>扫描仪</strong>（只能扫描）。
+  </p>
+
+  <!-- 反例 -->
+  <h3>❌ 反例：脂肪接口</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 脂肪接口</span></div>
+    <pre><span class="com">// 一个接口把所有功能都塞进来</span>
+<span class="kw">public interface</span> <span class="ty">MultiFunctionDevice</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">print</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">);</span>
+    <span class="kw">void</span> <span class="fn">scan</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">);</span>
+    <span class="kw">void</span> <span class="fn">fax</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 普通打印机：被迫实现 scan / fax</span>
+<span class="kw">public class</span> <span class="ty">SimplePrinter</span> <span class="kw">implements</span> <span class="ty">MultiFunctionDevice</span> <span class="punct">{</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">print</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">)</span> <span class="punct">{</span>
+        System<span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"打印: "</span> <span class="punct">+</span> <span class="var">doc</span><span class="punct">.</span><span class="fn">getContent</span><span class="punct">());</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">scan</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 普通打印机没有扫描功能，只能抛异常</span>
+        <span class="kw">throw new</span> <span class="ty">UnsupportedOperationException</span><span class="punct">(</span><span class="str">"不支持扫描"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">fax</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 同上，被迫的空行为</span>
+        <span class="kw">throw new</span> <span class="ty">UnsupportedOperationException</span><span class="punct">(</span><span class="str">"不支持传真"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    问题清单：<br/>
+    1. <code>SimplePrinter</code> 依赖了 <code>scan</code>/<code>fax</code> 的签名——接口一旦修改这两个方法，它也要重新编译。<br/>
+    2. <code>UnsupportedOperationException</code> 是 LSP 违规的经典信号：调用方无法安全地多态替换。<br/>
+    3. 为 <code>MultiFunctionDevice</code> 写单元测试时，必须 stub 3 个方法，哪怕测试只关心打印。
+  </div>
+
+  <!-- 正例 -->
+  <h3>✅ 正例：拆分为小接口</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 隔离后的接口</span></div>
+    <pre><span class="com">// 按能力拆分：每个接口只描述一种职责</span>
+<span class="kw">public interface</span> <span class="ty">Printable</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">print</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="kw">public interface</span> <span class="ty">Scannable</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">scan</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="kw">public interface</span> <span class="ty">Faxable</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">fax</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 复合打印机：真正拥有全部能力，才实现全部接口</span>
+<span class="kw">public class</span> <span class="ty">MultiFunctionPrinter</span> <span class="kw">implements</span> <span class="ty">Printable</span><span class="punct">,</span> <span class="ty">Scannable</span><span class="punct">,</span> <span class="ty">Faxable</span> <span class="punct">{</span>
+    <span class="ann">@Override</span> <span class="kw">public void</span> <span class="fn">print</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">)</span> <span class="punct">{</span> <span class="com">/* 打印逻辑 */</span> <span class="punct">}</span>
+    <span class="ann">@Override</span> <span class="kw">public void</span> <span class="fn">scan</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">)</span>  <span class="punct">{</span> <span class="com">/* 扫描逻辑 */</span> <span class="punct">}</span>
+    <span class="ann">@Override</span> <span class="kw">public void</span> <span class="fn">fax</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">)</span>   <span class="punct">{</span> <span class="com">/* 传真逻辑 */</span> <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 普通打印机：只实现它实际具备的能力</span>
+<span class="kw">public class</span> <span class="ty">SimplePrinter</span> <span class="kw">implements</span> <span class="ty">Printable</span> <span class="punct">{</span>
+    <span class="ann">@Override</span>
+    <span class="kw">public void</span> <span class="fn">print</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">)</span> <span class="punct">{</span>
+        System<span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"打印: "</span> <span class="punct">+</span> <span class="var">doc</span><span class="punct">.</span><span class="fn">getContent</span><span class="punct">());</span>
+    <span class="punct">}</span>
+    <span class="com">// 没有多余实现，没有 throw，干净</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方只依赖自己真正需要的接口</span>
+<span class="kw">public class</span> <span class="ty">PrintService</span> <span class="punct">{</span>
+    <span class="com">// 只注入 Printable，不关心扫描/传真是否存在</span>
+    <span class="kw">private final</span> <span class="ty">Printable</span> <span class="var">printer</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">PrintService</span><span class="punct">(</span><span class="ty">Printable</span> <span class="var">printer</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">printer</span> <span class="punct">=</span> <span class="var">printer</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">printReport</span><span class="punct">(</span><span class="ty">Document</span> <span class="var">doc</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="var">printer</span><span class="punct">.</span><span class="fn">print</span><span class="punct">(</span><span class="var">doc</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    现在 <code>Faxable</code> 接口改变，<code>SimplePrinter</code> 和 <code>PrintService</code> 的编译单元<strong>完全不受影响</strong>。
+    这正是 ISP 追求的：变更的涟漪被接口边界截断，只扩散到真正关心它的人。
+  </div>
+
+  <!-- 4. 架构视角 -->
+  <h2>架构视角：ISP 不只是"接口拆分"</h2>
+  <p>
+    Bob Martin 在书中强调，ISP 的本质是一条<strong>关于依赖方向的原则</strong>，而不仅仅是 Java 接口的写法技巧。
+    他举了一个更宏观的例子：如果系统 A 依赖框架 F，而框架 F 又依赖数据库 D，
+    哪怕 A 根本不用到 D 的功能，只要 D 的版本变动，A 也可能受影响——这是模块级别的 ISP 问题。
+  </p>
+
+  <div class="tree">
+<span class="com">// 脂肪依赖：A 被迫依赖它不需要的 D</span>
+<span class="hi">System A</span>  ──依赖──▶  Framework F  ──依赖──▶  Database D
+                         (包含大量 DB 相关代码)
+
+<span class="com">// 隔离后：F 对外只暴露 A 真正用到的接口</span>
+<span class="hi">System A</span>  ──依赖──▶  &lt;&lt;interface&gt;&gt; FeaturePort  ◀──实现──  Framework F
+                                                              └─(内部依赖 D，对 A 不可见)
+  </div>
+
+  <p>
+    这个思路在微服务、插件系统、SDK 设计中都极其常见：
+    <strong>对外暴露最小接口，隐藏内部依赖</strong>，让使用者的编译依赖图尽可能窄。
+  </p>
+
+  <!-- 5. 与其他原则的关联 -->
+  <h2>与其他 SOLID 原则的关联</h2>
+  <table>
+    <thead>
+      <tr><th>原则</th><th>与 ISP 的关系</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>SRP</strong></td>
+        <td>SRP 说"一个模块只有一个变化原因"；ISP 说"使用者只依赖他需要的部分"。两者都在对抗耦合，方向互补。</td>
+      </tr>
+      <tr>
+        <td><strong>LSP</strong></td>
+        <td>脂肪接口经常导致 <code>UnsupportedOperationException</code>，违反 LSP。ISP 是 LSP 的前置保障。</td>
+      </tr>
+      <tr>
+        <td><strong>DIP</strong></td>
+        <td>DIP 要求依赖抽象；ISP 要求抽象要小且聚焦。两者配合才能实现真正解耦：小接口 + 依赖注入。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 6. 落地技巧 -->
+  <h2>实际开发落地技巧</h2>
+
+  <h3>1. 以"调用方视角"而非"实现方视角"设计接口</h3>
+  <p>
+    问自己：<em>"这个接口的每一个方法，同一个调用方真的会同时用到吗？"</em>
+    如果答案是否，就该拆分。不要因为实现类恰好支持所有功能就把所有方法放在一个接口里。
+  </p>
+
+  <h3>2. 接口组合优于继承层次</h3>
+  <p>
+    Java 支持一个类实现多个接口。与其设计一个大接口，不如设计多个小接口，
+    让能力强的类通过"实现多接口"来组合能力，调用方按需依赖其中一个。
+  </p>
+
+  <h3>3. 用 <code>default</code> 方法谨慎扩展，不要滥用</h3>
+  <p>
+    Java 8 的 <code>default</code> 方法让接口可以有默认实现，有时被用来"向旧接口加方法而不破坏现有实现"。
+    但这本质上是在变相加宽接口。若大量使用，会逐渐退化回脂肪接口的问题。
+    <strong>新增功能优先考虑新建接口，而不是在旧接口加 default 方法。</strong>
+  </p>
+
+  <h3>4. 测试是接口合理性的最好检验</h3>
+  <p>
+    为某个类写单元测试时，如果需要 Mock 超过 3~4 个方法，接口很可能太胖了。
+    精简的接口让 Mock 变得简单：<code>Mockito.mock(Printable.class)</code> 只有一个方法要打桩。
+  </p>
+
+  <h3>5. Spring 中的实践</h3>
+  <p>
+    Spring 自身大量遵循 ISP。例如 <code>ApplicationContext</code> 虽然功能丰富，
+    但它实现了多个小接口（<code>BeanFactory</code>、<code>ResourceLoader</code>、<code>ApplicationEventPublisher</code> 等）。
+    业务代码中注入依赖时，<strong>应尽量注入最小接口</strong>，而不是直接注入 <code>ApplicationContext</code>——
+    后者等于让业务类对整个容器产生了宽泛依赖。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java · Spring 中正确示范</span></div>
+    <pre><span class="com">// ❌ 注入整个上下文：依赖了 N 个你用不到的方法</span>
+<span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">NotificationService</span> <span class="punct">{</span>
+    <span class="ann">@Autowired</span>
+    <span class="kw">private</span> <span class="ty">ApplicationContext</span> <span class="var">ctx</span><span class="punct">;</span>  <span class="com">// 过宽依赖</span>
+
+    <span class="kw">public void</span> <span class="fn">send</span><span class="punct">(</span><span class="ty">String</span> <span class="var">msg</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="var">ctx</span><span class="punct">.</span><span class="fn">publishEvent</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">NotificationEvent</span><span class="punct">(</span><span class="var">msg</span><span class="punct">));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// ✅ 只注入真正用到的最小接口</span>
+<span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">NotificationService</span> <span class="punct">{</span>
+    <span class="ann">@Autowired</span>
+    <span class="kw">private</span> <span class="ty">ApplicationEventPublisher</span> <span class="var">publisher</span><span class="punct">;</span>  <span class="com">// 最小依赖</span>
+
+    <span class="kw">public void</span> <span class="fn">send</span><span class="punct">(</span><span class="ty">String</span> <span class="var">msg</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="var">publisher</span><span class="punct">.</span><span class="fn">publishEvent</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">NotificationEvent</span><span class="punct">(</span><span class="var">msg</span><span class="punct">));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. 常见误区 -->
+  <h2>容易忽略的细节与误区</h2>
+  <ul>
+    <li>
+      <strong>误区：接口越小越好</strong>——走极端把每个方法拆成一个接口，反而造成接口爆炸，类要实现几十个接口，可读性和维护性变差。
+      粒度应以"同一调用方会同时用到"为准，而不是"越小越好"。
+    </li>
+    <li>
+      <strong>误区：ISP 只适用于接口</strong>——抽象类、模块、包、甚至微服务的 API 设计都适用 ISP 思想。
+      一个提供了 50 个端点的 REST 服务，如果大多数消费者只用其中 3 个，就该考虑拆分或 BFF（Backend For Frontend）。
+    </li>
+    <li>
+      <strong>细节：接口拆分后要注意命名语义</strong>——接口名应该描述"能力"而非"实现"，
+      例如 <code>Printable</code>、<code>Exportable</code>、<code>Auditable</code>，而不是 <code>PrinterInterface</code>。
+    </li>
+    <li>
+      <strong>面试高频</strong>：ISP 与 SRP 的区别——SRP 针对<em>模块/类</em>（变化原因），ISP 针对<em>接口/调用方</em>（依赖范围）。
+      两者相辅相成，都在减小变更的影响范围。
+    </li>
+  </ul>
+
+  <!-- 8. 小结 -->
+  <h2>小结</h2>
+  <p>
+    ISP 的核心洞见是：<strong>依赖本身就是耦合</strong>。
+    就算你只用了接口里的一个方法，只要你依赖了这个接口，接口的其他变化也会波及你。
+    因此，设计接口时要站在<em>调用方</em>的立场，按"使用者真正需要的能力集合"来划定边界，
+    让变更的涟漪只扩散到真正关心它的代码，其余部分保持稳定。
+  </p>
+  <div class="callout tip">
+    一句话记住：<strong>接口是给使用者用的，按使用者的需求切割，而不是按实现者的方便堆砌。</strong>
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./06-LSP里氏替换原则.html" class="nav-btn">← 06. LSP 里氏替换原则</a>
+    <a href="./08-DIP依赖倒置原则.html" class="nav-btn next">08. DIP 依赖倒置原则 →</a>
+  </div>
+
+</div>
+</body>
+</html>
