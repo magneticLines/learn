@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>边界——隔离第三方代码</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+.page { max-width: 720px; margin: 0 auto; }
+.breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+.breadcrumb a { color: #475569; text-decoration: none; }
+.hero { margin-bottom: 40px; }
+.hero .tag { font-size: 0.72rem; border: 1px solid #166534; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; color: #4ade80; }
+.hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+.hero p { color: #64748b; font-size: 0.9rem; }
+h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; color: #4ade80; }
+h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+.code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+.code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+.code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+.kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24} .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+.callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+.callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+.callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+.callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+tr:nth-child(even) td { background: #13151f; }
+p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: #4ade80; }
+hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+.nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+.nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; }
+.nav-btn.next { color: #4ade80; border-color: #166534; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../engineering-roadmap.html">路线图</a> / 代码质量 / 边界
+  </div>
+
+  <div class="hero">
+    <div class="tag">Clean Code · 第 8 章</div>
+    <h1>边界——隔离第三方代码</h1>
+    <p>我们的代码总要与外部世界打交道——第三方库、框架、外部服务。边界管理的核心问题是：当外部世界变化时，如何让我们的代码保持稳定？</p>
+  </div>
+
+  <h2>为什么要隔离第三方库</h2>
+  <p>第三方库有自己的演化节奏，与我们的业务需求无关。直接在业务代码中大量使用第三方 API，会造成以下问题：</p>
+  <ul>
+    <li><strong>升级成本高：</strong>库升级/换库时，需要修改散落在各处的调用代码</li>
+    <li><strong>测试困难：</strong>第三方库往往难以 mock，导致单元测试难以隔离</li>
+    <li><strong>API 泄漏：</strong>库的类型、枚举、异常泄露到业务层，增加耦合</li>
+    <li><strong>接口不符合业务语义：</strong>库的 API 设计面向通用场景，不符合你的业务术语</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>核心思路：</strong>在你的代码和第三方代码之间建立一个「边界层」（Boundary Layer）——一个由你控制、符合你业务语义的接口。外部库在边界层背后实现细节，业务代码只依赖边界层。
+  </div>
+
+  <h2>Adapter/Wrapper 模式实现边界</h2>
+  <p>边界层最常用的实现方式是 Wrapper（包装器）或 Adapter（适配器）——对外暴露符合业务的接口，在内部调用第三方 API。</p>
+
+  <h3>反例：直接使用 Jackson，API 散落各处</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 反例：Jackson 直接调用</span></div>
+    <pre><span class="com">// UserService.java — Jackson API 直接出现在业务层，第三方细节泄漏</span>
+<span class="kw">public</span> <span class="ty">String</span> <span class="fn">exportUser</span><span class="punct">(</span><span class="ty">User</span> <span class="var">user</span><span class="punct">) {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="ty">ObjectMapper</span> <span class="var">mapper</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ObjectMapper</span><span class="punct">();</span>
+        <span class="var">mapper</span><span class="punct">.</span><span class="fn">configure</span><span class="punct">(</span><span class="ty">SerializationFeature</span><span class="punct">.</span><span class="var">WRITE_DATES_AS_TIMESTAMPS</span><span class="punct">,</span> <span class="kw">false</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">mapper</span><span class="punct">.</span><span class="fn">writeValueAsString</span><span class="punct">(</span><span class="var">user</span><span class="punct">);</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">JsonProcessingException</span> <span class="var">e</span><span class="punct">) {</span>  <span class="com">// Jackson 异常也泄漏到方法签名</span>
+        <span class="kw">throw new</span> <span class="ty">RuntimeException</span><span class="punct">(</span><span class="var">e</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>正例：用 Wrapper 封装 Jackson，定义业务边界接口</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 正例：JsonSerializer 边界层</span></div>
+    <pre><span class="com">// 1. 边界接口：业务代码只依赖这个接口，不知道 Jackson 的存在</span>
+<span class="kw">public interface</span> <span class="ty">JsonSerializer</span> <span class="punct">{</span>
+    <span class="ty">String</span> <span class="fn">serialize</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">obj</span><span class="punct">);</span>
+    <span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="ty">T</span> <span class="fn">deserialize</span><span class="punct">(</span><span class="ty">String</span> <span class="var">json</span><span class="punct">,</span> <span class="ty">Class</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="var">type</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 2. Jackson 实现：第三方细节被隔离在这里</span>
+<span class="ann">@Component</span>
+<span class="kw">public class</span> <span class="ty">JacksonJsonSerializer</span> <span class="kw">implements</span> <span class="ty">JsonSerializer</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">ObjectMapper</span> <span class="var">mapper</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">JacksonJsonSerializer</span><span class="punct">() {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">mapper</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ObjectMapper</span><span class="punct">();</span>
+        <span class="var">mapper</span><span class="punct">.</span><span class="fn">configure</span><span class="punct">(</span><span class="ty">SerializationFeature</span><span class="punct">.</span><span class="var">WRITE_DATES_AS_TIMESTAMPS</span><span class="punct">,</span> <span class="kw">false</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">serialize</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">obj</span><span class="punct">) {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">return</span> <span class="var">mapper</span><span class="punct">.</span><span class="fn">writeValueAsString</span><span class="punct">(</span><span class="var">obj</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">JsonProcessingException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="com">// 把 Jackson 异常转换为业务异常，不暴露第三方类型</span>
+            <span class="kw">throw new</span> <span class="ty">SerializationException</span><span class="punct">(</span><span class="str">"Failed to serialize"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 3. 业务代码：只知道 JsonSerializer 接口</span>
+<span class="kw">public class</span> <span class="ty">UserService</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">JsonSerializer</span> <span class="var">serializer</span><span class="punct">;</span>  <span class="com">// 依赖抽象，非具体</span>
+
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">exportUser</span><span class="punct">(</span><span class="ty">User</span> <span class="var">user</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">serializer</span><span class="punct">.</span><span class="fn">serialize</span><span class="punct">(</span><span class="var">user</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>现在如果把 Jackson 换成 Gson，只需新写一个 <code>GsonJsonSerializer</code> 实现，业务代码<strong>零修改</strong>。测试时也可以直接 mock <code>JsonSerializer</code> 接口，无需真实的 Jackson 依赖。</p>
+
+  <h2>学习性测试（Learning Tests）</h2>
+  <p>当引入一个新的第三方库时，Martin 推荐先写「学习性测试」——不是为了测试库本身，而是为了<strong>验证你对这个库的理解是否正确</strong>，并在库升级时检测 API 变化。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — Redis 学习性测试示例</span></div>
+    <pre><span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">redisSetAndGet_shouldReturnStoredValue</span><span class="punct">() {</span>
+    <span class="com">// 验证我们理解的 Redis 行为：set 后 get 返回同一值</span>
+    <span class="var">redisTemplate</span><span class="punct">.</span><span class="fn">opsForValue</span><span class="punct">().</span><span class="fn">set</span><span class="punct">(</span><span class="str">"test-key"</span><span class="punct">,</span> <span class="str">"hello"</span><span class="punct">);</span>
+    <span class="ty">String</span> <span class="var">value</span> <span class="punct">=</span> <span class="var">redisTemplate</span><span class="punct">.</span><span class="fn">opsForValue</span><span class="punct">().</span><span class="fn">get</span><span class="punct">(</span><span class="str">"test-key"</span><span class="punct">);</span>
+    <span class="fn">assertThat</span><span class="punct">(</span><span class="var">value</span><span class="punct">).</span><span class="fn">isEqualTo</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">redisExpiry_shouldExpireAfterTtl</span><span class="punct">() {</span>
+    <span class="com">// 验证 TTL 过期行为——库升级时此行为可能悄悄改变</span>
+    <span class="var">redisTemplate</span><span class="punct">.</span><span class="fn">opsForValue</span><span class="punct">().</span><span class="fn">set</span><span class="punct">(</span><span class="str">"expire-key"</span><span class="punct">,</span> <span class="str">"bye"</span><span class="punct">,</span> <span class="num">1</span><span class="punct">,</span> <span class="ty">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>
+    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1500</span><span class="punct">);</span>
+    <span class="fn">assertThat</span><span class="punct">(</span><span class="var">redisTemplate</span><span class="punct">.</span><span class="fn">opsForValue</span><span class="punct">().</span><span class="fn">get</span><span class="punct">(</span><span class="str">"expire-key"</span><span class="punct">)).</span><span class="fn">isNull</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>好处双重：</strong>学习性测试既帮你探索新 API，也在库升级时提供自动保护网——一旦库的行为发生变化，测试失败会立即提醒你。
+  </div>
+
+  <h2>边界管理的实践清单</h2>
+  <table>
+    <thead>
+      <tr><th>场景</th><th>推荐做法</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>引入新第三方库</td><td>先写学习性测试，再写 Wrapper 接口</td></tr>
+      <tr><td>第三方库异常</td><td>在 Wrapper 内部转换为业务异常，不暴露第三方类型</td></tr>
+      <tr><td>第三方数据类型</td><td>在边界层做类型转换，内部使用自定义类型</td></tr>
+      <tr><td>库升级</td><td>只修改 Wrapper 实现，业务代码不感知</td></tr>
+      <tr><td>单元测试</td><td>mock 边界接口，不依赖真实库实例</td></tr>
+    </tbody>
+  </table>
+
+  <div class="nav-footer">
+    <a href="./05-错误处理.html" class="nav-btn">← 错误处理</a>
+    <a href="./07-单元测试与TDD.html" class="nav-btn next">单元测试与 TDD →</a>
+  </div>
+
+</div>
+</body>
+</html>

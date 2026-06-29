@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>搬移特性（在对象间移动）— 重构 · 常用手法</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../engineering-roadmap.html">路线图</a> / 重构 / 常用手法
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">重构 · 常用手法</div>
+    <h1>搬移特性（在对象间移动）</h1>
+    <p>把函数、字段、语句放到它们"真正属于"的地方——这是重构中使用频率最高、收益最稳定的一类手法。</p>
+  </div>
+
+  <!-- 1. 为什么要搬移 -->
+  <h2>1. 为什么要搬移特性</h2>
+  <p>
+    一个设计良好的类有明确的<strong>职责边界</strong>：它只关心自己应该关心的数据，只做自己应该做的事。
+    现实中代码却常常发生"特性漂移"——某个方法其实在操作另一个对象的字段；某个字段只被一个外部类使用；
+    某几行语句放在调用方比放在方法体里更清晰。
+  </p>
+  <p>
+    <strong>搬移特性</strong>（Moving Features）包含四种子手法：
+  </p>
+  <div class="tree">
+    搬移特性<br>
+    ├── <span class="hi">搬移函数</span>（Move Function）<br>
+    ├── <span class="hi">搬移字段</span>（Move Field）<br>
+    ├── <span class="hi">搬移语句到函数</span>（Move Statements into Function）<br>
+    └── <span class="hi">搬移语句到调用者</span>（Move Statements to Callers）
+  </div>
+  <p>
+    判断是否需要搬移的核心信号：<strong>一个方法反复引用另一个对象的数据，远多于引用自身数据</strong>。
+    这说明它"住错了地方"。
+  </p>
+
+  <!-- 2. 搬移函数 -->
+  <h2>2. 搬移函数（Move Function）</h2>
+
+  <h3>场景：订单折扣计算散落在服务层</h3>
+  <p>
+    电商项目里，<code>OrderService</code> 里堆满了各种折扣规则判断，而这些判断全部依赖 <code>Order</code> 对象自身的字段。
+    这是最典型的"特性漂移"——折扣逻辑是订单自身的业务规则，不是服务层协调多个对象的编排逻辑。
+  </p>
+
+  <h3>反例 — 问题代码</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java（重构前）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+
+    <span class="com">// 问题：这个方法只用到了 order 自己的字段，根本没用到 Service 的任何状态</span>
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">calculateDiscount</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="ty">BigDecimal</span> <span class="var">discount</span> <span class="punct">=</span> <span class="ty">BigDecimal</span><span class="punct">.</span><span class="var">ZERO</span><span class="punct">;</span>
+
+        <span class="com">// 会员等级折扣</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getMemberLevel</span><span class="punct">() &gt;=</span> <span class="num">3</span><span class="punct">) {</span>
+            <span class="var">discount</span> <span class="punct">=</span> <span class="var">discount</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getTotalAmount</span><span class="punct">().</span><span class="fn">multiply</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.05"</span><span class="punct">)));</span>
+        <span class="punct">}</span>
+
+        <span class="com">// 满减折扣</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getTotalAmount</span><span class="punct">().</span><span class="fn">compareTo</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"200"</span><span class="punct">)) &gt;=</span> <span class="num">0</span><span class="punct">) {</span>
+            <span class="var">discount</span> <span class="punct">=</span> <span class="var">discount</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"20"</span><span class="punct">));</span>
+        <span class="punct">}</span>
+
+        <span class="kw">return</span> <span class="var">discount</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">submitOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// 调用方：Service 调自己算折扣，再减掉</span>
+        <span class="ty">BigDecimal</span> <span class="var">discount</span> <span class="punct">=</span> <span class="fn">calculateDiscount</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>
+        <span class="var">order</span><span class="punct">.</span><span class="fn">setPayableAmount</span><span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getTotalAmount</span><span class="punct">().</span><span class="fn">subtract</span><span class="punct">(</span><span class="var">discount</span><span class="punct">));</span>
+        <span class="com">// ... 持久化等操作</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>问题所在：</strong></p>
+  <ul>
+    <li><code>calculateDiscount</code> 只依赖 <code>order</code> 的字段，与 <code>OrderService</code> 的状态毫无关系；</li>
+    <li>写单测时必须构造整个 <code>OrderService</code> 才能测折扣逻辑，测试成本高；</li>
+    <li>其他地方（如退款模块）复用这段逻辑时，必须注入 <code>OrderService</code>，造成不必要的依赖；</li>
+    <li>折扣规则变更后，需要改一个"服务"而不是"订单"，与直觉相悖。</li>
+  </ul>
+
+  <h3>正例 — 搬移后</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Order.java（重构后）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Order</span> <span class="punct">{</span>
+
+    <span class="kw">private</span> <span class="ty">int</span>        <span class="var">memberLevel</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">BigDecimal</span> <span class="var">totalAmount</span><span class="punct">;</span>
+
+    <span class="com">// 折扣规则是订单自身的业务规则，搬到这里后：
+    // 1. 单测直接 new Order() 就能测，不依赖 Spring 容器
+    // 2. 任何地方用到 Order 就能算折扣，无需注入 Service</span>
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">calculateDiscount</span><span class="punct">() {</span>
+        <span class="ty">BigDecimal</span> <span class="var">discount</span> <span class="punct">=</span> <span class="ty">BigDecimal</span><span class="punct">.</span><span class="var">ZERO</span><span class="punct">;</span>
+
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">memberLevel</span> <span class="punct">&gt;=</span> <span class="num">3</span><span class="punct">) {</span>
+            <span class="var">discount</span> <span class="punct">=</span> <span class="var">discount</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">totalAmount</span><span class="punct">.</span><span class="fn">multiply</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.05"</span><span class="punct">)));</span>
+        <span class="punct">}</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">totalAmount</span><span class="punct">.</span><span class="fn">compareTo</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"200"</span><span class="punct">)) &gt;=</span> <span class="num">0</span><span class="punct">) {</span>
+            <span class="var">discount</span> <span class="punct">=</span> <span class="var">discount</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"20"</span><span class="punct">));</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> <span class="var">discount</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// getter / setter 省略</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java（重构后）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+
+    <span class="kw">public void</span> <span class="fn">submitOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// Service 只做编排：调用 Order 自己计算折扣</span>
+        <span class="var">order</span><span class="punct">.</span><span class="fn">setPayableAmount</span><span class="punct">(</span>
+            <span class="var">order</span><span class="punct">.</span><span class="fn">getTotalAmount</span><span class="punct">().</span><span class="fn">subtract</span><span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">calculateDiscount</span><span class="punct">())</span>
+        <span class="punct">);</span>
+        <span class="com">// ... 持久化等操作</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>判断准则：</strong>一个方法的入参如果只有一个对象，且方法体只访问这个对象的字段，
+    那它大概率应该是那个对象的方法——除非这个对象是 DTO / POJO，业务逻辑不应放进去（见下方陷阱）。
+  </div>
+
+  <!-- 3. 搬移字段 -->
+  <h2>3. 搬移字段（Move Field）</h2>
+
+  <h3>场景：折扣率字段放错了宿主</h3>
+  <p>
+    系统迭代后，每个<strong>会员等级</strong>对应一个固定折扣率。折扣率最初被存在 <code>Order</code> 里（因为最早只支持一种折扣），
+    后来引入了 <code>MemberLevel</code> 枚举，但折扣率字段没有随之迁移。
+  </p>
+
+  <h3>反例</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Order.java（反例）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Order</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">MemberLevel</span> <span class="var">memberLevel</span><span class="punct">;</span>
+    <span class="com">// 问题：discountRate 描述的是"等级"的属性，不是"订单"的属性
+    // 每次创建订单都要手动传这个值，极易与 memberLevel 不一致</span>
+    <span class="kw">private</span> <span class="ty">BigDecimal</span>  <span class="var">discountRate</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="kw">public enum</span> <span class="ty">MemberLevel</span> <span class="punct">{</span>
+    <span class="var">NORMAL</span><span class="punct">,</span> <span class="var">SILVER</span><span class="punct">,</span> <span class="var">GOLD</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>问题：</strong>不同订单可能因为构造时传值不同，导致同一会员等级出现不同折扣率——数据一致性难以保证。</p>
+
+  <h3>正例 — 字段归位</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>MemberLevel.java（重构后）</span></div>
+    <pre><span class="kw">public enum</span> <span class="ty">MemberLevel</span> <span class="punct">{</span>
+    <span class="var">NORMAL</span> <span class="punct">(</span><span class="ty">BigDecimal</span><span class="punct">.</span><span class="var">ZERO</span><span class="punct">),</span>
+    <span class="var">SILVER</span> <span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.03"</span><span class="punct">)),</span>
+    <span class="var">GOLD</span>   <span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.05"</span><span class="punct">));</span>
+
+    <span class="com">// discountRate 是等级的固有属性，枚举是它的天然宿主</span>
+    <span class="kw">private final</span> <span class="ty">BigDecimal</span> <span class="var">discountRate</span><span class="punct">;</span>
+
+    <span class="ty">MemberLevel</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">rate</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">discountRate</span> <span class="punct">=</span> <span class="var">rate</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">getDiscountRate</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">discountRate</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Order.java（重构后）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Order</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">MemberLevel</span> <span class="var">memberLevel</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">BigDecimal</span>  <span class="var">totalAmount</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">calculateDiscount</span><span class="punct">() {</span>
+        <span class="com">// 折扣率从等级本身取，永远不会不一致</span>
+        <span class="ty">BigDecimal</span> <span class="var">rateDiscount</span> <span class="punct">=</span> <span class="var">totalAmount</span><span class="punct">.</span><span class="fn">multiply</span><span class="punct">(</span><span class="var">memberLevel</span><span class="punct">.</span><span class="fn">getDiscountRate</span><span class="punct">());</span>
+        <span class="ty">BigDecimal</span> <span class="var">fullReduction</span> <span class="punct">=</span> <span class="var">totalAmount</span><span class="punct">.</span><span class="fn">compareTo</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"200"</span><span class="punct">)) &gt;=</span> <span class="num">0</span>
+                <span class="punct">?</span> <span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"20"</span><span class="punct">) :</span> <span class="ty">BigDecimal</span><span class="punct">.</span><span class="var">ZERO</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="var">rateDiscount</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">fullReduction</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 4. 搬移语句到函数 / 到调用者 -->
+  <h2>4. 搬移语句：进函数 vs 出函数</h2>
+  <p>
+    这两个手法是<strong>互逆操作</strong>，用来调整代码的"归属粒度"。
+    判断依据是：这段语句属于函数的核心职责，还是只属于某个特定调用场景？
+  </p>
+
+  <h3>4.1 搬移语句到函数</h3>
+  <p>当多个调用方都在调用某个函数前/后写了相同的前置/后置代码，说明这段代码应该被纳入函数本身。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 日志打印重复散落在调用方</span></div>
+    <pre><span class="com">// 调用方 A</span>
+<span class="var">log</span><span class="punct">.</span><span class="fn">info</span><span class="punct">(</span><span class="str">"开始渲染报表, reportId={}"</span><span class="punct">,</span> <span class="var">reportId</span><span class="punct">);</span>
+<span class="fn">renderReport</span><span class="punct">(</span><span class="var">reportId</span><span class="punct">);</span>
+
+<span class="com">// 调用方 B</span>
+<span class="var">log</span><span class="punct">.</span><span class="fn">info</span><span class="punct">(</span><span class="str">"开始渲染报表, reportId={}"</span><span class="punct">,</span> <span class="var">reportId</span><span class="punct">);</span>
+<span class="fn">renderReport</span><span class="punct">(</span><span class="var">reportId</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 日志纳入函数</span></div>
+    <pre><span class="kw">private void</span> <span class="fn">renderReport</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">reportId</span><span class="punct">) {</span>
+    <span class="com">// 日志是渲染动作不可分割的一部分，搬进来后调用方保持整洁</span>
+    <span class="var">log</span><span class="punct">.</span><span class="fn">info</span><span class="punct">(</span><span class="str">"开始渲染报表, reportId={}"</span><span class="punct">,</span> <span class="var">reportId</span><span class="punct">);</span>
+    <span class="com">// ... 渲染逻辑</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>4.2 搬移语句到调用者</h3>
+  <p>当同一个函数在不同场景下行为微妙不同，部分逻辑只对某些调用方有意义时，把差异化语句移回调用方。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 函数内部用 flag 区分场景</span></div>
+    <pre><span class="kw">public void</span> <span class="fn">exportData</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Record</span><span class="punct">&gt;</span> <span class="var">records</span><span class="punct">,</span> <span class="ty">boolean</span> <span class="var">needHeader</span><span class="punct">) {</span>
+    <span class="com">// 问题：needHeader 是调用方的关注点，不是导出逻辑的通用关注点
+    // 函数越来越多这种 flag，职责逐渐混乱</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">needHeader</span><span class="punct">) {</span>
+        <span class="fn">writeHeader</span><span class="punct">();</span>
+    <span class="punct">}</span>
+    <span class="fn">writeRows</span><span class="punct">(</span><span class="var">records</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 语句搬回调用者</span></div>
+    <pre><span class="kw">public void</span> <span class="fn">exportData</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Record</span><span class="punct">&gt;</span> <span class="var">records</span><span class="punct">) {</span>
+    <span class="com">// 函数只负责写数据行，职责单一</span>
+    <span class="fn">writeRows</span><span class="punct">(</span><span class="var">records</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方 A（需要 header）</span>
+<span class="fn">writeHeader</span><span class="punct">();</span>
+<span class="fn">exportData</span><span class="punct">(</span><span class="var">records</span><span class="punct">);</span>
+
+<span class="com">// 调用方 B（不需要 header）</span>
+<span class="fn">exportData</span><span class="punct">(</span><span class="var">records</span><span class="punct">);</span></pre>
+  </div>
+
+  <!-- 5. 综合案例 -->
+  <h2>5. 综合案例：告警模块重构</h2>
+  <p>
+    以下是生产系统中一个真实场景的简化版：告警触发逻辑最初全部写在 <code>AlertService</code> 中，
+    随着规则增多，代码开始崩溃。
+  </p>
+
+  <h3>重构前：服务类知道太多</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>AlertService.java（重构前）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">AlertService</span> <span class="punct">{</span>
+
+    <span class="kw">public void</span> <span class="fn">checkAndAlert</span><span class="punct">(</span><span class="ty">MetricSnapshot</span> <span class="var">snapshot</span><span class="punct">) {</span>
+
+        <span class="com">// ① 阈值判断 —— 完全依赖 snapshot 字段，跟 Service 无关</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">snapshot</span><span class="punct">.</span><span class="fn">getCpuUsage</span><span class="punct">() &gt;</span> <span class="num">0.9</span> <span class="punct">||</span> <span class="var">snapshot</span><span class="punct">.</span><span class="fn">getMemUsage</span><span class="punct">() &gt;</span> <span class="num">0.85</span><span class="punct">) {</span>
+
+            <span class="com">// ② 构造告警消息 —— 同样只依赖 snapshot</span>
+            <span class="ty">String</span> <span class="var">msg</span> <span class="punct">=</span> <span class="str">"[告警] 主机:"</span> <span class="punct">+</span> <span class="var">snapshot</span><span class="punct">.</span><span class="fn">getHostname</span><span class="punct">()</span>
+                    <span class="punct">+</span> <span class="str">" CPU:"</span> <span class="punct">+</span> <span class="var">snapshot</span><span class="punct">.</span><span class="fn">getCpuUsage</span><span class="punct">()</span>
+                    <span class="punct">+</span> <span class="str">" MEM:"</span> <span class="punct">+</span> <span class="var">snapshot</span><span class="punct">.</span><span class="fn">getMemUsage</span><span class="punct">();</span>
+
+            <span class="fn">sendAlert</span><span class="punct">(</span><span class="var">msg</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private void</span> <span class="fn">sendAlert</span><span class="punct">(</span><span class="ty">String</span> <span class="var">msg</span><span class="punct">) { </span><span class="com">/* 发送钉钉/邮件 */</span><span class="punct"> }</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>重构后：职责各归其位</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>MetricSnapshot.java（重构后）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">MetricSnapshot</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">hostname</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">double</span> <span class="var">cpuUsage</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">double</span> <span class="var">memUsage</span><span class="punct">;</span>
+
+    <span class="com">// 搬移函数：判断是否触发告警，属于 snapshot 自身的业务规则</span>
+    <span class="kw">public boolean</span> <span class="fn">shouldAlert</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">cpuUsage</span> <span class="punct">&gt;</span> <span class="num">0.9</span> <span class="punct">||</span> <span class="var">memUsage</span> <span class="punct">&gt;</span> <span class="num">0.85</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 搬移函数：构建告警描述，同属 snapshot 的职责</span>
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">buildAlertMessage</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="ty">String</span><span class="punct">.</span><span class="fn">format</span><span class="punct">(</span><span class="str">"[告警] 主机:%s CPU:%.0f%% MEM:%.0f%%"</span><span class="punct">,</span>
+                <span class="var">hostname</span><span class="punct">,</span> <span class="var">cpuUsage</span> <span class="punct">*</span> <span class="num">100</span><span class="punct">,</span> <span class="var">memUsage</span> <span class="punct">*</span> <span class="num">100</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// getter 省略</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>AlertService.java（重构后）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">AlertService</span> <span class="punct">{</span>
+
+    <span class="com">// Service 只剩编排职责：判断 → 发送，职责一目了然</span>
+    <span class="kw">public void</span> <span class="fn">checkAndAlert</span><span class="punct">(</span><span class="ty">MetricSnapshot</span> <span class="var">snapshot</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">snapshot</span><span class="punct">.</span><span class="fn">shouldAlert</span><span class="punct">()) {</span>
+            <span class="fn">sendAlert</span><span class="punct">(</span><span class="var">snapshot</span><span class="punct">.</span><span class="fn">buildAlertMessage</span><span class="punct">());</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private void</span> <span class="fn">sendAlert</span><span class="punct">(</span><span class="ty">String</span> <span class="var">msg</span><span class="punct">) { </span><span class="com">/* 发送钉钉/邮件 */</span><span class="punct"> }</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    重构前后 <strong>外部行为完全不变</strong>，但可测试性大幅提升：
+    现在可以直接对 <code>MetricSnapshot</code> 写单元测试，覆盖各种阈值边界，不需要构造 <code>AlertService</code>。
+  </div>
+
+  <!-- 6. 手法速查 -->
+  <h2>6. 手法速查对照表</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>手法</th>
+        <th>触发信号</th>
+        <th>常见场景</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>搬移函数</strong></td>
+        <td>方法大量使用另一个对象的字段/方法</td>
+        <td>Service 里的领域规则搬到实体/值对象</td>
+      </tr>
+      <tr>
+        <td><strong>搬移字段</strong></td>
+        <td>字段只被一个外部类使用，或字段语义归属另一个类</td>
+        <td>配置参数放错宿主、枚举属性外置</td>
+      </tr>
+      <tr>
+        <td><strong>语句入函数</strong></td>
+        <td>多处调用方有相同的前/后置代码</td>
+        <td>日志、参数校验、状态更新重复出现</td>
+      </tr>
+      <tr>
+        <td><strong>语句出函数</strong></td>
+        <td>函数内部靠 flag 区分不同调用场景</td>
+        <td>导出/渲染函数里的条件分支</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 7. 生产坑 -->
+  <h2>7. 生产环境常见坑</h2>
+
+  <div class="callout warn">
+    <strong>坑 1：把业务逻辑搬进 DTO / DO</strong><br>
+    DO（数据库实体）和 DTO 通常是纯数据载体，框架（MyBatis / JPA）会反射操作它们。
+    搬进去的方法如果依赖 Spring Bean 或有副作用，会与框架的生命周期冲突，
+    还会导致序列化问题（Fastjson / Jackson 可能调用看起来像 getter 的方法）。<br>
+    <strong>原则：只把"纯计算"搬进 DO/DTO，有 IO、事务的逻辑留在 Service。</strong>
+  </div>
+
+  <div class="callout warn">
+    <strong>坑 2：搬移后忘记删旧方法，导致双写</strong><br>
+    在分布式团队中，旧方法未删除而新方法已上线，其他人继续调旧方法。
+    建议：搬移的同时立刻用 <code>@Deprecated</code> 标记旧方法并写明迁移路径，
+    设定一个 Sprint 内完成删除。
+  </div>
+
+  <div class="callout warn">
+    <strong>坑 3：过度搬移造成实体膨胀</strong><br>
+    DDD 的充血模型虽然提倡逻辑归实体，但如果实体变成了"上帝对象"——
+    承载了几十个方法——就走向了反面。搬移的依据始终是"职责归属"，而不是"数量均衡"。
+  </div>
+
+  <div class="callout warn">
+    <strong>坑 4：忽略循环依赖风险</strong><br>
+    将方法从类 A 搬到类 B 时，若 B 已经依赖 A，就会产生循环依赖。
+    搬移前先画一张简单的依赖图，确认方向单向。
+  </div>
+
+  <!-- 8. 操作步骤 -->
+  <h2>8. 安全操作步骤（以搬移函数为例）</h2>
+  <ol>
+    <li><strong>确认目标宿主：</strong>找到方法最频繁访问的那个对象，它就是目标类。</li>
+    <li><strong>在目标类中新建方法：</strong>先复制，不要删原方法。</li>
+    <li><strong>修改原方法委托调用：</strong>让旧方法直接 <code>return target.newMethod()</code>，保证编译通过且行为不变。</li>
+    <li><strong>全量替换调用方：</strong>IDE 全局搜索所有调用处，逐一改为调用新方法。</li>
+    <li><strong>跑测试：</strong>确认没有回归。</li>
+    <li><strong>删除旧方法：</strong>没有调用方后，安全删除。</li>
+  </ol>
+
+  <div class="callout tip">
+    IntelliJ IDEA 的 <strong>Refactor → Move Instance Method</strong> 可以自动完成上述步骤 3-5，
+    建议优先使用 IDE 重构工具以避免手工操作失误。
+  </div>
+
+  <hr />
+
+  <nav class="nav-footer">
+    <a href="./03-提炼函数.html" class="nav-btn">← 提炼函数 / 内联函数</a>
+    <a href="./05-重新组织数据.html" class="nav-btn next">重新组织数据 →</a>
+  </nav>
+
+</div>
+</body>
+</html>

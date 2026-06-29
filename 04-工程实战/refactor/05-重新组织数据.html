@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>重新组织数据 — 工程实战 · 重构</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../engineering-roadmap.html">路线图</a> / 重构 / 常用手法
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">重构 · 常用手法</div>
+    <h1>重新组织数据</h1>
+    <p>让数据结构说真话——封装魔法值、用对象替代裸字段、消灭重复含义，是重构中最能提升可维护性的一类手法。</p>
+  </div>
+
+  <!-- 1. 为什么要重新组织数据 -->
+  <h2>为什么要重新组织数据</h2>
+  <p>代码里的数据结构往往是最早腐化的部分。一个系统诞生时只有几个字段，随着需求迭代，字段越加越多，魔法常量到处散落，一个"订单状态"可能同时存在 <code>int status</code>、<code>String statusCode</code>、<code>boolean isPaid</code> 三种表达方式，相互之间还可能不一致。</p>
+  <p><strong>重新组织数据</strong>是 Fowler《重构》中一类手法的统称，核心目标是：</p>
+  <ul>
+    <li>让数据有明确的类型边界，不依赖"约定"来理解含义</li>
+    <li>消灭散落各处的魔法值（magic number / magic string）</li>
+    <li>用值对象（Value Object）封装具有业务含义的组合数据</li>
+    <li>打破对外暴露可变内部集合的陷阱</li>
+  </ul>
+
+  <!-- 2. 手法一：以对象替代基本类型 -->
+  <h2>手法一：以对象替代基本类型</h2>
+  <p>当一个原始类型字段开始附带业务规则（范围校验、格式约束、派生计算），就应该把它提升为一个值对象。</p>
+
+  <h3>反例 — 裸 String 承载电话号码</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 反例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Customer</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">phoneNumber</span><span class="punct">;</span>  <span class="com">// 格式？+86？分机号？谁都不知道</span>
+
+    <span class="kw">public void</span> <span class="fn">setPhoneNumber</span><span class="punct">(</span><span class="ty">String</span> <span class="var">phoneNumber</span><span class="punct">) {</span>
+        <span class="com">// 每个调用方各自校验，格式验证散落在 Service / Controller / DTO</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">phoneNumber</span> <span class="punct">=</span> <span class="var">phoneNumber</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>问题：</strong>同一份校验逻辑散落在至少三个地方——Controller 接收时、Service 业务逻辑里、数据库存储前；一旦格式规则变化，需要改多处，极易遗漏。</p>
+
+  <h3>正例 — PhoneNumber 值对象</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 正例</span></div>
+    <pre><span class="com">// 值对象：不可变，校验内聚，equals/hashCode 按值语义</span>
+<span class="kw">public final class</span> <span class="ty">PhoneNumber</span> <span class="punct">{</span>
+    <span class="kw">private static final</span> <span class="ty">Pattern</span> <span class="var">PATTERN</span> <span class="punct">=</span>
+        <span class="ty">Pattern</span><span class="punct">.</span><span class="fn">compile</span><span class="punct">(</span><span class="str">"^1[3-9]\\d{9}$"</span><span class="punct">);</span>
+
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">value</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">PhoneNumber</span><span class="punct">(</span><span class="ty">String</span> <span class="var">raw</span><span class="punct">) {</span>
+        <span class="com">// 创建即合法，外部永远拿不到一个非法的 PhoneNumber</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">PATTERN</span><span class="punct">.</span><span class="fn">matcher</span><span class="punct">(</span><span class="var">raw</span><span class="punct">).</span><span class="fn">matches</span><span class="punct">())</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"无效手机号: "</span> <span class="punct">+</span> <span class="var">raw</span><span class="punct">);</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">value</span> <span class="punct">=</span> <span class="var">raw</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">desensitized</span><span class="punct">() {</span>
+        <span class="com">// 派生行为内聚在对象里，不再散落到 Utils 类</span>
+        <span class="kw">return</span> <span class="var">value</span><span class="punct">.</span><span class="fn">substring</span><span class="punct">(</span><span class="num">0</span><span class="punct">,</span> <span class="num">3</span><span class="punct">) +</span> <span class="str">"****"</span> <span class="punct">+</span> <span class="var">value</span><span class="punct">.</span><span class="fn">substring</span><span class="punct">(</span><span class="num">7</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Override</span> <span class="kw">public</span> <span class="ty">String</span> <span class="fn">toString</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">value</span><span class="punct">; }</span>
+    <span class="com">// equals / hashCode 省略（按 value 比较）</span>
+<span class="punct">}</span>
+
+<span class="kw">public class</span> <span class="ty">Customer</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">PhoneNumber</span> <span class="var">phoneNumber</span><span class="punct">;</span>  <span class="com">// 类型即文档</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>实战经验：</strong>值对象在 JPA/MyBatis 中持久化时，可用 <code>@Converter</code>（JPA）或 TypeHandler（MyBatis）在框架层做透明转换，业务代码无感知。
+  </div>
+
+  <!-- 3. 手法二：以枚举替代魔法值 -->
+  <h2>手法二：以枚举替代魔法值</h2>
+  <p>订单状态用 <code>0/1/2/3</code>，支付方式用 <code>"alipay"/"wechat"/"card"</code>……这类魔法值是代码腐化的温床：没有编译器约束、重构时无法安全重命名、新人读代码必须翻文档。</p>
+
+  <h3>反例 — 魔法数字状态机</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 反例</span></div>
+    <pre><span class="com">// 看到 2 你知道这是什么状态吗？</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getStatus</span><span class="punct">() ==</span> <span class="num">2</span><span class="punct">) {</span>
+    <span class="fn">sendShippingNotice</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 更糟糕的：数据库里存 "PAID"，代码里写 "paid"，</span>
+<span class="com">// 某个工程师大小写不一致，线上排查两小时</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="str">"paid"</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getStatusCode</span><span class="punct">()))</span> <span class="punct">{</span> <span class="punct">...</span> <span class="punct">}</span></pre>
+  </div>
+
+  <h3>正例 — 富枚举承载状态与行为</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 正例</span></div>
+    <pre><span class="kw">public enum</span> <span class="ty">OrderStatus</span> <span class="punct">{</span>
+    <span class="var">PENDING</span>  <span class="punct">(</span><span class="num">0</span><span class="punct">,</span> <span class="str">"待支付"</span><span class="punct">),</span>
+    <span class="var">PAID</span>     <span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="str">"已支付"</span><span class="punct">),</span>
+    <span class="var">SHIPPED</span>  <span class="punct">(</span><span class="num">2</span><span class="punct">,</span> <span class="str">"已发货"</span><span class="punct">),</span>
+    <span class="var">DONE</span>     <span class="punct">(</span><span class="num">3</span><span class="punct">,</span> <span class="str">"已完成"</span><span class="punct">),</span>
+    <span class="var">CANCELLED</span><span class="punct">(</span><span class="num">4</span><span class="punct">,</span> <span class="str">"已取消"</span><span class="punct">);</span>
+
+    <span class="kw">private final int</span>    <span class="var">code</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">label</span><span class="punct">;</span>
+
+    <span class="fn">OrderStatus</span><span class="punct">(</span><span class="kw">int</span> <span class="var">code</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">label</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">code</span>  <span class="punct">=</span> <span class="var">code</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">label</span> <span class="punct">=</span> <span class="var">label</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 从数据库 code 反查枚举，避免 ordinal() 陷阱</span>
+    <span class="kw">public static</span> <span class="ty">OrderStatus</span> <span class="fn">fromCode</span><span class="punct">(</span><span class="kw">int</span> <span class="var">code</span><span class="punct">) {</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="ty">OrderStatus</span> <span class="var">s</span> <span class="punct">:</span> <span class="fn">values</span><span class="punct">())</span>
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">s</span><span class="punct">.</span><span class="var">code</span> <span class="punct">==</span> <span class="var">code</span><span class="punct">)</span> <span class="kw">return</span> <span class="var">s</span><span class="punct">;</span>
+        <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"未知状态码: "</span> <span class="punct">+</span> <span class="var">code</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 状态流转规则内聚在枚举里，不再散落到 if/else 链</span>
+    <span class="kw">public boolean</span> <span class="fn">canTransitTo</span><span class="punct">(</span><span class="ty">OrderStatus</span> <span class="var">next</span><span class="punct">) {</span>
+        <span class="kw">return switch</span> <span class="punct">(</span><span class="kw">this</span><span class="punct">) {</span>
+            <span class="kw">case</span> <span class="var">PENDING</span>  <span class="punct">-></span> <span class="var">next</span> <span class="punct">==</span> <span class="var">PAID</span> <span class="punct">||</span> <span class="var">next</span> <span class="punct">==</span> <span class="var">CANCELLED</span><span class="punct">;</span>
+            <span class="kw">case</span> <span class="var">PAID</span>     <span class="punct">-></span> <span class="var">next</span> <span class="punct">==</span> <span class="var">SHIPPED</span> <span class="punct">||</span> <span class="var">next</span> <span class="punct">==</span> <span class="var">CANCELLED</span><span class="punct">;</span>
+            <span class="kw">case</span> <span class="var">SHIPPED</span>  <span class="punct">-></span> <span class="var">next</span> <span class="punct">==</span> <span class="var">DONE</span><span class="punct">;</span>
+            <span class="kw">default</span>       <span class="punct">-></span> <span class="kw">false</span><span class="punct">;</span>
+        <span class="punct">};</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用侧：可读、类型安全、IDE 自动补全</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getStatus</span><span class="punct">() ==</span> <span class="ty">OrderStatus</span><span class="punct">.</span><span class="var">SHIPPED</span><span class="punct">) {</span>
+    <span class="fn">sendShippingNotice</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>生产坑：永远不要用 <code>ordinal()</code> 存数据库。</strong>枚举 ordinal 随声明顺序变化，中间插入一个枚举值就会导致历史数据全部错位。务必用显式 <code>code</code> 字段映射。
+  </div>
+
+  <!-- 4. 手法三：封装集合 -->
+  <h2>手法三：封装集合</h2>
+  <p>把 <code>List&lt;Item&gt;</code> 直接作为字段对外暴露，调用方就可以绕过业务规则直接往里塞数据——这是最常见的"数据封装形同虚设"的场景。</p>
+
+  <h3>反例 — 直接暴露可变集合</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 反例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ShoppingCart</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">CartItem</span><span class="punct">&gt;</span> <span class="var">items</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="com">// 返回内部引用！外部可以随意 add/remove，绕过所有业务校验</span>
+    <span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">CartItem</span><span class="punct">&gt;</span> <span class="fn">getItems</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">items</span><span class="punct">; }</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方直接写，完全不经过业务逻辑</span>
+<span class="var">cart</span><span class="punct">.</span><span class="fn">getItems</span><span class="punct">().</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">CartItem</span><span class="punct">(</span><span class="str">"商品A"</span><span class="punct">,</span> <span class="num">-1</span><span class="punct">));</span>  <span class="com">// 数量 -1！</span></pre>
+  </div>
+
+  <h3>正例 — 封装修改入口，只读对外暴露</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 正例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ShoppingCart</span> <span class="punct">{</span>
+    <span class="kw">private static final int</span> <span class="var">MAX_ITEMS</span> <span class="punct">=</span> <span class="num">99</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">CartItem</span><span class="punct">&gt;</span> <span class="var">items</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="com">// 唯一的写入入口，校验在这里统一做</span>
+    <span class="kw">public void</span> <span class="fn">addItem</span><span class="punct">(</span><span class="ty">CartItem</span> <span class="var">item</span><span class="punct">) {</span>
+        <span class="ty">Objects</span><span class="punct">.</span><span class="fn">requireNonNull</span><span class="punct">(</span><span class="var">item</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">item</span><span class="punct">.</span><span class="fn">getQuantity</span><span class="punct">() &lt;=</span> <span class="num">0</span><span class="punct">)</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"数量必须 &gt; 0"</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">items</span><span class="punct">.</span><span class="fn">size</span><span class="punct">() &gt;=</span> <span class="var">MAX_ITEMS</span><span class="punct">)</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalStateException</span><span class="punct">(</span><span class="str">"购物车已满"</span><span class="punct">);</span>
+        <span class="var">items</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">item</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 外部只读视图，无法通过返回值修改内部状态</span>
+    <span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">CartItem</span><span class="punct">&gt;</span> <span class="fn">getItems</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="ty">Collections</span><span class="punct">.</span><span class="fn">unmodifiableList</span><span class="punct">(</span><span class="var">items</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">Money</span> <span class="fn">totalPrice</span><span class="punct">() {</span>
+        <span class="com">// 聚合计算内聚在对象里</span>
+        <span class="kw">return</span> <span class="var">items</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="ty">CartItem</span><span class="punct">::</span><span class="fn">subtotal</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">reduce</span><span class="punct">(</span><span class="ty">Money</span><span class="punct">.</span><span class="var">ZERO</span><span class="punct">,</span> <span class="ty">Money</span><span class="punct">::</span><span class="fn">add</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 5. 手法四：拆分变量 -->
+  <h2>手法四：拆分变量</h2>
+  <p>一个变量被赋值两次以上，却承担了两个完全不同的职责——这是极其常见的可读性杀手。</p>
+
+  <h3>反例 — 一个变量身兼两职</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 反例</span></div>
+    <pre><span class="kw">double</span> <span class="var">temp</span> <span class="punct">=</span> <span class="num">2</span> <span class="punct">* (</span><span class="var">height</span> <span class="punct">+</span> <span class="var">width</span><span class="punct">);</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"周长: "</span> <span class="punct">+</span> <span class="var">temp</span><span class="punct">);</span>
+
+<span class="com">// temp 被复用，含义完全变了，读者必须重新在大脑里追踪它</span>
+<span class="var">temp</span> <span class="punct">=</span> <span class="var">height</span> <span class="punct">*</span> <span class="var">width</span><span class="punct">;</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"面积: "</span> <span class="punct">+</span> <span class="var">temp</span><span class="punct">);</span></pre>
+  </div>
+
+  <h3>正例 — 每个概念一个变量</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 正例</span></div>
+    <pre><span class="kw">final double</span> <span class="var">perimeter</span> <span class="punct">=</span> <span class="num">2</span> <span class="punct">* (</span><span class="var">height</span> <span class="punct">+</span> <span class="var">width</span><span class="punct">);</span>  <span class="com">// final 表达不可变意图</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"周长: "</span> <span class="punct">+</span> <span class="var">perimeter</span><span class="punct">);</span>
+
+<span class="kw">final double</span> <span class="var">area</span> <span class="punct">=</span> <span class="var">height</span> <span class="punct">*</span> <span class="var">width</span><span class="punct">;</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"面积: "</span> <span class="punct">+</span> <span class="var">area</span><span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>延伸：</strong>在循环变量、累加器等场合，<code>i</code>/<code>sum</code> 天然就是"可重复赋值"的，不需要拆分。拆分变量针对的是<strong>语义发生了根本变化</strong>的情况。
+  </div>
+
+  <!-- 6. 手法五：将引用对象改为值对象 -->
+  <h2>手法五：将引用对象改为值对象</h2>
+  <p>当一个对象只是一组数据的容器，没有独立的生命周期，不需要被共享修改，就应该用<strong>不可变值对象</strong>而非可变引用对象来表达。典型例子：金额、坐标、地址、日期范围。</p>
+
+  <h3>反例 — 可变 Money 对象引发的数据错位</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 反例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Money</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">String</span>     <span class="var">currency</span><span class="punct">;</span>
+
+    <span class="com">// setter 存在 → 任何拿到引用的代码都能悄悄改金额</span>
+    <span class="kw">public void</span> <span class="fn">setAmount</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">a</span><span class="punct">) {</span> <span class="kw">this</span><span class="punct">.</span><span class="var">amount</span> <span class="punct">=</span> <span class="var">a</span><span class="punct">; }</span>
+<span class="punct">}</span>
+
+<span class="com">// 订单和发票共享同一个 Money 对象，修改一处影响另一处</span>
+<span class="ty">Money</span> <span class="var">price</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Money</span><span class="punct">(</span><span class="str">"CNY"</span><span class="punct">,</span> <span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"100"</span><span class="punct">));</span>
+<span class="var">order</span><span class="punct">.</span><span class="fn">setPrice</span><span class="punct">(</span><span class="var">price</span><span class="punct">);</span>
+<span class="var">invoice</span><span class="punct">.</span><span class="fn">setAmount</span><span class="punct">(</span><span class="var">price</span><span class="punct">);</span>                           <span class="com">// 同一引用！</span>
+<span class="var">price</span><span class="punct">.</span><span class="fn">setAmount</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"50"</span><span class="punct">));</span>  <span class="com">// 灾难：发票金额也变了</span></pre>
+  </div>
+
+  <h3>正例 — 不可变值对象</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 正例</span></div>
+    <pre><span class="kw">public final class</span> <span class="ty">Money</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">;</span>
+    <span class="kw">private final</span> <span class="ty">String</span>     <span class="var">currency</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">Money</span><span class="punct">(</span><span class="ty">String</span> <span class="var">currency</span><span class="punct">,</span> <span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">currency</span> <span class="punct">=</span> <span class="ty">Objects</span><span class="punct">.</span><span class="fn">requireNonNull</span><span class="punct">(</span><span class="var">currency</span><span class="punct">);</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">amount</span>   <span class="punct">=</span> <span class="ty">Objects</span><span class="punct">.</span><span class="fn">requireNonNull</span><span class="punct">(</span><span class="var">amount</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 返回新对象，原对象不受影响，天然线程安全</span>
+    <span class="kw">public</span> <span class="ty">Money</span> <span class="fn">add</span><span class="punct">(</span><span class="ty">Money</span> <span class="var">other</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">currency</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="var">other</span><span class="punct">.</span><span class="var">currency</span><span class="punct">))</span>
+            <span class="kw">throw new</span> <span class="ty">IllegalArgumentException</span><span class="punct">(</span><span class="str">"货币类型不一致"</span><span class="punct">);</span>
+        <span class="kw">return new</span> <span class="ty">Money</span><span class="punct">(</span><span class="var">currency</span><span class="punct">,</span> <span class="var">amount</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="var">other</span><span class="punct">.</span><span class="var">amount</span><span class="punct">));</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">getAmount</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">amount</span><span class="punct">; }</span>
+    <span class="com">// equals/hashCode 按 amount + currency 比较</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 7. 手法六：以查询替代派生字段 -->
+  <h2>手法六：以查询替代派生字段</h2>
+  <p>当一个字段的值可以完全由其他字段计算得出，存储它就会引入"数据不一致"的风险——两处修改必须保持同步，但代码里往往只更新了一处。</p>
+
+  <h3>反例 — 冗余的 totalPrice 字段</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 反例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderLine</span> <span class="punct">{</span>
+    <span class="kw">private int</span>        <span class="var">quantity</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">BigDecimal</span> <span class="var">unitPrice</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">BigDecimal</span> <span class="var">totalPrice</span><span class="punct">;</span>  <span class="com">// 派生字段，随时可能与前两者不一致</span>
+
+    <span class="kw">public void</span> <span class="fn">setQuantity</span><span class="punct">(</span><span class="kw">int</span> <span class="var">q</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">quantity</span> <span class="punct">=</span> <span class="var">q</span><span class="punct">;</span>
+        <span class="com">// 开发者忘记同步 totalPrice → 数据错位</span>
+        <span class="com">// this.totalPrice = unitPrice.multiply(BigDecimal.valueOf(q));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>正例 — 用方法即时计算</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 正例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderLine</span> <span class="punct">{</span>
+    <span class="kw">private int</span>        <span class="var">quantity</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">BigDecimal</span> <span class="var">unitPrice</span><span class="punct">;</span>
+
+    <span class="com">// 永远准确，不存在"忘记同步"的问题</span>
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">totalPrice</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">unitPrice</span><span class="punct">.</span><span class="fn">multiply</span><span class="punct">(</span><span class="ty">BigDecimal</span><span class="punct">.</span><span class="fn">valueOf</span><span class="punct">(</span><span class="var">quantity</span><span class="punct">));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>性能考量：</strong>如果该字段在热路径上被频繁读取（如缓存 key、数据库排序列），可以保留存储但采用"写入时更新"模式，并用单元测试保证一致性。不要把"可能有性能问题"作为不重构的默认借口——先测量，再优化。
+  </div>
+
+  <!-- 8. 常用手法速查 -->
+  <h2>常用手法速查</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>手法</th>
+        <th>触发信号</th>
+        <th>核心收益</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>以对象替代基本类型</td>
+        <td>原始类型开始有校验、格式化、派生逻辑</td>
+        <td>校验内聚、类型文档化</td>
+      </tr>
+      <tr>
+        <td>以枚举替代魔法值</td>
+        <td>多处出现 <code>== 0</code>、<code>.equals("paid")</code></td>
+        <td>编译器保护、消灭散落校验</td>
+      </tr>
+      <tr>
+        <td>封装集合</td>
+        <td><code>getList().add()</code> 绕过业务规则</td>
+        <td>不变式有保障</td>
+      </tr>
+      <tr>
+        <td>拆分变量</td>
+        <td>变量被二次赋值且含义不同</td>
+        <td>可读性、可 final 化</td>
+      </tr>
+      <tr>
+        <td>改为值对象</td>
+        <td>共享引用 + 可变 → 神秘数据变化</td>
+        <td>线程安全、无共享副作用</td>
+      </tr>
+      <tr>
+        <td>以查询替代派生字段</td>
+        <td>字段值 = 其他字段的计算结果</td>
+        <td>消灭数据不一致根源</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 9. 生产坑汇总 -->
+  <h2>生产环境中的高频坑</h2>
+  <ul>
+    <li>枚举用 <code>ordinal()</code> 存数据库，插入新枚举项后历史数据全部错位——<strong>必须用显式 code 字段</strong></li>
+    <li>值对象忘记重写 <code>equals/hashCode</code>，放进 <code>Set</code>/<code>Map</code> 后行为异常</li>
+    <li>返回内部集合的引用，调用方通过返回值删除元素，触发 <code>ConcurrentModificationException</code></li>
+    <li><code>BigDecimal</code> 做金额时用 <code>==</code> 比较（引用比较），应使用 <code>compareTo</code> 或 <code>equals</code></li>
+    <li>值对象序列化时缺少无参构造器，Jackson/MyBatis 反序列化失败</li>
+    <li>派生字段存入数据库后，应用层和 SQL 层各自计算出不同结果，形成"两个真相"</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>重构节奏建议：</strong>不要一次性将所有裸字段提升为值对象。优先处理<strong>被多处读取且有业务含义的字段</strong>（如状态、金额、手机号），每次只动一个概念，保持测试绿灯。
+  </div>
+
+  <hr />
+
+  <nav class="nav-footer">
+    <a href="./04-搬移特性.html" class="nav-btn">← 搬移特性（在对象间移动）</a>
+    <a href="../engineering-roadmap.html" class="nav-btn next">路线图 →</a>
+  </nav>
+
+</div>
+</body>
+</html>

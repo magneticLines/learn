@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>解耦设计（面向接口 / 依赖倒置）</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+.page { max-width: 720px; margin: 0 auto; }
+.breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+.breadcrumb a { color: #475569; text-decoration: none; }
+.hero { margin-bottom: 40px; }
+.hero .tag { font-size: 0.72rem; border: 1px solid #1e3a5f; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; color: #38bdf8; }
+.hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+.hero p { color: #64748b; font-size: 0.9rem; }
+h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #38bdf8; color: #38bdf8; }
+h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+.code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+.code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+.code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+.kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24} .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+.callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+.callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+.callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+.callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+tr:nth-child(even) td { background: #13151f; }
+p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: #38bdf8; }
+hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+.nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+.nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; }
+.nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../engineering-roadmap.html">路线图</a> / 框架机制
+  </div>
+
+  <div class="hero">
+    <div class="tag">框架机制 · 03</div>
+    <h1>解耦设计（面向接口 / 依赖倒置）</h1>
+    <p>好的系统可以独立替换每个零件——这需要刻意的解耦设计，而不是偶然。</p>
+  </div>
+
+  <h2>耦合的危害：牵一发动全身</h2>
+  <p>耦合度高的代码，改动一处会触发连锁反应。以下是一个典型场景：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 高耦合反例</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="com">// 直接依赖具体实现类</span>
+    <span class="kw">private</span> <span class="ty">MysqlOrderRepository</span> <span class="var">repo</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">MysqlOrderRepository</span><span class="punct">();</span>
+    <span class="kw">private</span> <span class="ty">AlipayGateway</span>         <span class="var">pay</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="fn">AlipayGateway</span><span class="punct">();</span>
+    <span class="kw">private</span> <span class="ty">EmailNotifier</span>          <span class="var">mail</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">EmailNotifier</span><span class="punct">();</span>
+<span class="punct">}</span>
+
+<span class="com">// 问题：</span>
+<span class="com">// 1. 想把 MySQL 换成 PostgreSQL？ → 改 OrderService 源码</span>
+<span class="com">// 2. 想测试 OrderService？ → 必须启动数据库 + 支付网关 + 邮件服务</span>
+<span class="com">// 3. 想换支付商？ → 搜索所有 new AlipayGateway() 逐一替换</span></pre>
+  </div>
+  <p>高耦合有三种衡量维度：<strong>修改的代价</strong>（改 A 需要改多少地方）、<strong>测试的难度</strong>（测 A 需要准备多少环境）、<strong>复用的可能</strong>（A 能不能在另一个项目里直接用）。</p>
+
+  <h2>面向接口编程 vs 面向实现编程</h2>
+  <p>解耦最基础的手段：<strong>依赖抽象（接口），而不是依赖具体实现</strong>。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 面向接口改造</span></div>
+    <pre><span class="com">// 定义抽象：接口描述"能做什么"，不关心"怎么做"</span>
+<span class="kw">public interface</span> <span class="ty">PaymentGateway</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">pay</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">orderId</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 多种实现：对接口负责，互相独立</span>
+<span class="kw">public class</span> <span class="ty">AlipayGateway</span>  <span class="kw">implements</span> <span class="ty">PaymentGateway</span> <span class="punct">{ ... }</span>
+<span class="kw">public class</span> <span class="ty">WechatGateway</span>  <span class="kw">implements</span> <span class="ty">PaymentGateway</span> <span class="punct">{ ... }</span>
+<span class="kw">public class</span> <span class="ty">MockGateway</span>    <span class="kw">implements</span> <span class="ty">PaymentGateway</span> <span class="punct">{ ... }</span> <span class="com">// 测试用</span>
+
+<span class="com">// 调用方只认接口：切换实现只需换注入的 Bean，不改业务代码</span>
+<span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">PaymentGateway</span> <span class="var">payment</span><span class="punct">;</span>
+    <span class="kw">public</span> <span class="fn">OrderService</span><span class="punct">(</span><span class="ty">PaymentGateway</span> <span class="var">payment</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">payment</span> <span class="punct">=</span> <span class="var">payment</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>依赖倒置原则（DIP）在 Spring 中的体现</h2>
+  <p>SOLID 中的 D——<strong>依赖倒置原则（Dependency Inversion Principle）</strong>说的是：</p>
+  <ul>
+    <li>高层模块不应该依赖低层模块，二者都应该依赖抽象。</li>
+    <li>抽象不应该依赖细节，细节应该依赖抽象。</li>
+  </ul>
+  <p>传统方式的依赖方向：<code>OrderService → AlipayGateway</code>（高层依赖低层具体实现）。</p>
+  <p>DIP 之后：<code>OrderService → PaymentGateway（接口）← AlipayGateway</code>。依赖关系"倒置"了——低层实现去依赖（实现）高层定义的接口。</p>
+  <div class="callout info">
+    Spring 的整套 IoC/DI 机制本质上就是在工程层面强制落地 DIP。你注入的永远是接口类型，Spring 容器在运行时决定注入哪个实现——这个决策权从调用方移交给了配置（或注解）。
+  </div>
+
+  <h2>策略模式：运行时解耦</h2>
+  <p>策略模式是 DIP 的一个经典落地：把"算法"封装成可替换的策略接口，运行时按需切换，调用方对切换过程无感知。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 策略模式实现促销计算</span></div>
+    <pre><span class="com">// 策略接口</span>
+<span class="kw">public interface</span> <span class="ty">DiscountStrategy</span> <span class="punct">{</span>
+    <span class="ty">BigDecimal</span> <span class="fn">calculate</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">original</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 具体策略（各自独立，互不影响）</span>
+<span class="ann">@Component</span><span class="punct">(</span><span class="str">"noDiscount"</span><span class="punct">)</span>
+<span class="kw">class</span> <span class="ty">NoDiscountStrategy</span>     <span class="kw">implements</span> <span class="ty">DiscountStrategy</span> <span class="punct">{</span>
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">calculate</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">p</span><span class="punct">) {</span> <span class="kw">return</span> <span class="var">p</span><span class="punct">; }</span>
+<span class="punct">}</span>
+<span class="ann">@Component</span><span class="punct">(</span><span class="str">"vip"</span><span class="punct">)</span>
+<span class="kw">class</span> <span class="ty">VipDiscountStrategy</span>     <span class="kw">implements</span> <span class="ty">DiscountStrategy</span> <span class="punct">{</span>
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">calculate</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">p</span><span class="punct">) {</span> <span class="kw">return</span> <span class="var">p</span><span class="punct">.</span><span class="fn">multiply</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.9"</span><span class="punct">)); }</span>
+<span class="punct">}</span>
+
+<span class="com">// 调用方：注入所有策略，运行时按 key 选择</span>
+<span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">OrderPriceService</span> <span class="punct">{</span>
+    <span class="com">// Spring 会把所有 DiscountStrategy 的 Bean 注入到 Map 中</span>
+    <span class="com">// key = Bean 名称，value = Bean 实例</span>
+    <span class="kw">private final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">DiscountStrategy</span><span class="punct">&gt;</span> <span class="var">strategies</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">OrderPriceService</span><span class="punct">(</span><span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">DiscountStrategy</span><span class="punct">&gt;</span> <span class="var">strategies</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">strategies</span> <span class="punct">=</span> <span class="var">strategies</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">price</span><span class="punct">(</span><span class="ty">String</span> <span class="var">type</span><span class="punct">,</span> <span class="ty">BigDecimal</span> <span class="var">original</span><span class="punct">) {</span>
+        <span class="com">// 新增促销类型只需新增 Strategy Bean，这里不改</span>
+        <span class="kw">return</span> <span class="var">strategies</span><span class="punct">.</span><span class="fn">getOrDefault</span><span class="punct">(</span><span class="var">type</span><span class="punct">,</span> <span class="var">strategies</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="str">"noDiscount"</span><span class="punct">))</span>
+                          <span class="punct">.</span><span class="fn">calculate</span><span class="punct">(</span><span class="var">original</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <div class="callout tip">
+    这个技巧（注入 <code>Map&lt;String, Interface&gt;</code>）是 Spring 中实现策略模式最优雅的写法，避免了大量 if-else，也满足开闭原则：新增策略只加类，不改现有代码。
+  </div>
+
+  <h2>SPI 机制：框架级的插件化解耦</h2>
+  <p>SPI（Service Provider Interface）是 Java 提供的一种<strong>框架与实现分离</strong>的机制。框架只定义接口，实现由外部 JAR 提供，运行时动态发现。</p>
+
+  <h3>Java 原生 SPI</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>文件结构 — META-INF/services/</span></div>
+    <pre><span class="com"># 文件路径：META-INF/services/com.example.PaymentGateway</span>
+<span class="com"># 内容：每行一个实现类的全限定名</span>
+<span class="var">com.alipay.AlipayGateway</span>
+<span class="var">com.wechat.WechatGateway</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — ServiceLoader 加载实现</span></div>
+    <pre><span class="com">// JDK 的 ServiceLoader 扫描 classpath 下所有 META-INF/services 文件</span>
+<span class="ty">ServiceLoader</span><span class="punct">&lt;</span><span class="ty">PaymentGateway</span><span class="punct">&gt;</span> <span class="var">loader</span> <span class="punct">=</span>
+    <span class="ty">ServiceLoader</span><span class="punct">.</span><span class="fn">load</span><span class="punct">(</span><span class="ty">PaymentGateway</span><span class="punct">.</span><span class="kw">class</span><span class="punct">);</span>
+<span class="var">loader</span><span class="punct">.</span><span class="fn">forEach</span><span class="punct">(</span><span class="var">gw</span> <span class="punct">-></span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">gw</span><span class="punct">.</span><span class="fn">getClass</span><span class="punct">()));</span></pre>
+  </div>
+
+  <h3>Spring SPI（spring.factories）</h3>
+  <p>Spring Boot 的自动配置（AutoConfiguration）就是 SPI 的深度应用。每个 Starter JAR 在 <code>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</code> 中声明自己的配置类，Spring Boot 启动时统一加载。这就是为什么你只加一个 <code>spring-boot-starter-redis</code> 依赖，Redis 就自动配好了——它通过 SPI 告诉框架"我在这里，请加载我"。</p>
+
+  <h2>事件驱动：发布者不认识订阅者</h2>
+  <p>策略模式和 SPI 都要求调用方至少知道接口。<strong>事件驱动</strong>连接口都不需要知道——发布方只管发事件，订阅方只管监听，二者完全解耦。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — Spring 事件机制</span></div>
+    <pre><span class="com">// 1. 定义事件（值对象，携带数据）</span>
+<span class="kw">public class</span> <span class="ty">OrderCreatedEvent</span> <span class="kw">extends</span> <span class="ty">ApplicationEvent</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">String</span> <span class="var">orderId</span><span class="punct">;</span>
+    <span class="kw">public</span> <span class="fn">OrderCreatedEvent</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">source</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">orderId</span><span class="punct">) {</span>
+        <span class="kw">super</span><span class="punct">(</span><span class="var">source</span><span class="punct">);</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">orderId</span> <span class="punct">=</span> <span class="var">orderId</span><span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">getOrderId</span><span class="punct">() {</span> <span class="kw">return</span> <span class="var">orderId</span><span class="punct">; }</span>
+<span class="punct">}</span>
+
+<span class="com">// 2. 发布方：只需要注入 ApplicationEventPublisher，不知道谁在监听</span>
+<span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="ty">ApplicationEventPublisher</span> <span class="var">eventPublisher</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">createOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// 保存订单...</span>
+        <span class="var">eventPublisher</span><span class="punct">.</span><span class="fn">publishEvent</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">OrderCreatedEvent</span><span class="punct">(</span><span class="kw">this</span><span class="punct">,</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getId</span><span class="punct">()));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 3. 订阅方（可以有多个，互不影响，随时新增）</span>
+<span class="ann">@Component</span>
+<span class="kw">public class</span> <span class="ty">EmailNotificationListener</span> <span class="punct">{</span>
+    <span class="ann">@EventListener</span>
+    <span class="kw">public void</span> <span class="fn">onOrderCreated</span><span class="punct">(</span><span class="ty">OrderCreatedEvent</span> <span class="var">event</span><span class="punct">) {</span>
+        <span class="com">// 发邮件通知——OrderService 完全不知道这里的存在</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="ann">@Component</span>
+<span class="kw">public class</span> <span class="ty">InventoryListener</span> <span class="punct">{</span>
+    <span class="ann">@EventListener</span>
+    <span class="ann">@Async</span> <span class="com">// 异步处理，不阻塞主流程</span>
+    <span class="kw">public void</span> <span class="fn">onOrderCreated</span><span class="punct">(</span><span class="ty">OrderCreatedEvent</span> <span class="var">event</span><span class="punct">) {</span>
+        <span class="com">// 扣减库存</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <div class="callout warn">
+    <strong>注意：</strong>Spring 事件默认是<strong>同步</strong>的（同一个线程顺序执行所有监听器）。加 <code>@Async</code> 可以变成异步，但要注意事务边界——异步监听器在新线程里，不共享调用方的事务上下文。
+  </div>
+
+  <div class="nav-footer">
+    <a href="./02-AOP.html" class="nav-btn">← AOP 面向切面</a>
+    <a href="./04-设计套路落地.html" class="nav-btn next">常见设计套路落地 →</a>
+  </div>
+</div>
+</body>
+</html>

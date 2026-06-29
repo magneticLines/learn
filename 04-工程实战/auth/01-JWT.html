@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JWT（无状态令牌）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid #831843; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; color: #f472b6; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #f472b6; color: #f472b6; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: #f472b6; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #f472b6; border-color: #831843; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../engineering-roadmap.html">路线图</a> / <a href="../engineering-roadmap.html">认证与授权</a> / 登录方案
+  </div>
+
+  <div class="hero">
+    <div class="tag">工程实战 · Auth</div>
+    <h1>JWT（无状态令牌）</h1>
+    <p>理解 JWT 的结构与工作机制，掌握它在分布式系统中取代 Session 的原因，以及生产环境中不得不防的那些坑。</p>
+  </div>
+
+  <!-- ─── 1. 为什么需要 JWT ─── -->
+  <h2>1. 问题从 Session 说起</h2>
+
+  <p>传统 Session 认证的流程是：浏览器登录 → 服务器在内存中创建 Session，生成 <code>sessionId</code> 写入 Cookie → 每次请求携带 Cookie，服务器查 Session 表验证身份。</p>
+
+  <p>单体应用里这毫无问题。<strong>麻烦出在水平扩展时</strong>：用户第一次请求打到 A 节点，Session 在 A 的内存里；下次负载均衡打到 B，B 不认识这个 Session，用户被踢出。</p>
+
+  <p>传统解法是"Session 共享"——把 Session 集中存到 Redis。这能用，但带来了强依赖：Redis 挂了，整个认证瘫痪；微服务之间跨服务调用也要携带 Cookie 或手动传 sessionId，很别扭。</p>
+
+  <div class="callout info">
+    <strong>结论：</strong>单体 + 少量流量，Session 完全够用，不要为了用 JWT 而用 JWT。分布式 / 微服务 / 需要跨域 / 移动端 API 调用，JWT 才是更自然的选择。
+  </div>
+
+  <!-- ─── 2. JWT 是什么 ─── -->
+  <h2>2. JWT 结构：三段 Base64 拼出来的字符串</h2>
+
+  <p>JWT（JSON Web Token）本质上是一个<strong>自包含</strong>的令牌——它把用户信息直接编码进 token，服务器无需查库就能验证身份。格式是：</p>
+
+  <div class="tree">
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9    ← Header（算法 + 类型）
+.
+eyJ1c2VySWQiOiIxMjMiLCJyb2xlIjoiQURNSU4iLCJleHAiOjE3MDAwMDAwMDB9  ← Payload（声明）
+.
+SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c    ← Signature（防篡改）</div>
+
+  <h3>Header</h3>
+  <p>JSON 结构，指定签名算法（如 <code>HS256</code>、<code>RS256</code>）和 token 类型，Base64Url 编码后作为第一段。</p>
+
+  <h3>Payload（声明 Claims）</h3>
+  <p>存放你想携带的业务数据。分三类：</p>
+  <ul>
+    <li><strong>Registered Claims（注册声明）</strong>：JWT 规范预定义，如 <code>iss</code>（签发方）、<code>sub</code>（主题）、<code>exp</code>（过期时间）、<code>iat</code>（签发时间）</li>
+    <li><strong>Public Claims</strong>：自定义但需要在 IANA 注册，避免冲突</li>
+    <li><strong>Private Claims</strong>：双方约定的私有字段，如 <code>userId</code>、<code>role</code></li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>Payload 没有加密！</strong>Base64Url 只是编码，任何人都能解码看到内容。<strong>不要把密码、银行卡号等敏感数据放进去。</strong>如需加密，使用 JWE（JSON Web Encryption）。
+  </div>
+
+  <h3>Signature（签名）</h3>
+  <p>签名保证 token 不被篡改。生成方式：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>伪代码</span></div>
+    <pre><span class="fn">HMACSHA256</span><span class="punct">(</span>
+  <span class="fn">base64UrlEncode</span><span class="punct">(</span><span class="var">header</span><span class="punct">)</span> <span class="punct">+</span> <span class="str">"."</span> <span class="punct">+</span> <span class="fn">base64UrlEncode</span><span class="punct">(</span><span class="var">payload</span><span class="punct">),</span>
+  <span class="var">secretKey</span>   <span class="com">// 服务器保管，绝不对外暴露</span>
+<span class="punct">)</span></pre>
+  </div>
+
+  <p>服务器收到 token 后，用同一密钥重新计算签名并比对。攻击者改了 Payload，签名就对不上，验证失败。</p>
+
+  <!-- ─── 3. 算法选择 ─── -->
+  <h2>3. 对称 vs 非对称签名算法</h2>
+
+  <table>
+    <tr><th>算法</th><th>类型</th><th>适用场景</th><th>注意</th></tr>
+    <tr><td>HS256 / HS512</td><td>对称（共享密钥）</td><td>单一服务，只有自己签发和验证</td><td>密钥泄漏则全线崩溃</td></tr>
+    <tr><td>RS256 / RS512</td><td>非对称（RSA）</td><td>多服务：认证服务私钥签发，各微服务公钥验证</td><td>公钥可以安全分发</td></tr>
+    <tr><td>ES256</td><td>非对称（ECDSA）</td><td>同 RS256，但密钥更短、性能更好</td><td>密钥生成稍复杂</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>微服务推荐 RS256：</strong>认证中心持有私钥，其他服务只需公钥即可验签，公钥可以放到配置中心或通过 JWKS 端点动态获取，私钥不扩散。
+  </div>
+
+  <!-- ─── 4. JJWT 代码 ─── -->
+  <h2>4. 用 JJWT 生成与验证（代码实战）</h2>
+
+  <p>JJWT 是 Java 生态最主流的 JWT 库。引入依赖：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>pom.xml</span></div>
+    <pre><span class="punct">&lt;</span><span class="ty">dependency</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">groupId</span><span class="punct">&gt;</span><span class="var">io.jsonwebtoken</span><span class="punct">&lt;/</span><span class="ty">groupId</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">artifactId</span><span class="punct">&gt;</span><span class="var">jjwt-api</span><span class="punct">&lt;/</span><span class="ty">artifactId</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">version</span><span class="punct">&gt;</span><span class="num">0.12.6</span><span class="punct">&lt;/</span><span class="ty">version</span><span class="punct">&gt;</span>
+<span class="punct">&lt;/</span><span class="ty">dependency</span><span class="punct">&gt;</span>
+<span class="com">&lt;!-- 运行时还需要 jjwt-impl 和 jjwt-jackson --&gt;</span>
+<span class="punct">&lt;</span><span class="ty">dependency</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">groupId</span><span class="punct">&gt;</span><span class="var">io.jsonwebtoken</span><span class="punct">&lt;/</span><span class="ty">groupId</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">artifactId</span><span class="punct">&gt;</span><span class="var">jjwt-impl</span><span class="punct">&lt;/</span><span class="ty">artifactId</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">version</span><span class="punct">&gt;</span><span class="num">0.12.6</span><span class="punct">&lt;/</span><span class="ty">version</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">scope</span><span class="punct">&gt;</span><span class="var">runtime</span><span class="punct">&lt;/</span><span class="ty">scope</span><span class="punct">&gt;</span>
+<span class="punct">&lt;/</span><span class="ty">dependency</span><span class="punct">&gt;</span></pre>
+  </div>
+
+  <h3>生成 Token</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JwtUtil.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">JwtUtil</span> <span class="punct">{</span>
+
+    <span class="com">// 密钥要足够长（≥ 256 bit）且从配置中读取，绝不硬编码在代码里</span>
+    <span class="kw">private static final</span> <span class="ty">SecretKey</span> <span class="var">SECRET</span> <span class="punct">=</span> <span class="ty">Keys</span><span class="punct">.</span><span class="fn">hmacShaKeyFor</span><span class="punct">(</span>
+        <span class="ty">Decoders</span><span class="punct">.</span><span class="var">BASE64</span><span class="punct">.</span><span class="fn">decode</span><span class="punct">(</span><span class="ty">System</span><span class="punct">.</span><span class="fn">getenv</span><span class="punct">(</span><span class="str">"JWT_SECRET"</span><span class="punct">))</span>
+    <span class="punct">);</span>
+
+    <span class="kw">public static</span> <span class="ty">String</span> <span class="fn">generateToken</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">role</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="ty">Jwts</span><span class="punct">.</span><span class="fn">builder</span><span class="punct">()</span>
+            <span class="com">// subject 一般放用户唯一标识，不放用户名（怕泄露）</span>
+            <span class="punct">.</span><span class="fn">subject</span><span class="punct">(</span><span class="ty">String</span><span class="punct">.</span><span class="fn">valueOf</span><span class="punct">(</span><span class="var">userId</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">claim</span><span class="punct">(</span><span class="str">"role"</span><span class="punct">,</span> <span class="var">role</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">issuedAt</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">Date</span><span class="punct">())</span>
+            <span class="com">// access token 通常 15~30 分钟；refresh token 7~30 天</span>
+            <span class="punct">.</span><span class="fn">expiration</span><span class="punct">(</span><span class="ty">Date</span><span class="punct">.</span><span class="fn">from</span><span class="punct">(</span><span class="ty">Instant</span><span class="punct">.</span><span class="fn">now</span><span class="punct">().</span><span class="fn">plusSeconds</span><span class="punct">(</span><span class="num">1800</span><span class="punct">)))</span>
+            <span class="punct">.</span><span class="fn">signWith</span><span class="punct">(</span><span class="var">SECRET</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">compact</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>验证并解析 Token</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JwtUtil.java（续）</span></div>
+    <pre><span class="kw">public static</span> <span class="ty">Claims</span> <span class="fn">parseToken</span><span class="punct">(</span><span class="ty">String</span> <span class="var">token</span><span class="punct">) {</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="kw">return</span> <span class="ty">Jwts</span><span class="punct">.</span><span class="fn">parser</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">verifyWith</span><span class="punct">(</span><span class="var">SECRET</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">build</span><span class="punct">()</span>
+            <span class="com">// 一步到位：验签 + 检查 exp + 返回 Claims</span>
+            <span class="punct">.</span><span class="fn">parseSignedClaims</span><span class="punct">(</span><span class="var">token</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">getPayload</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">ExpiredJwtException</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="com">// token 已过期，前端应用 refresh token 换新</span>
+        <span class="kw">throw new</span> <span class="ty">TokenExpiredException</span><span class="punct">();</span>
+    <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">JwtException</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="com">// 签名不匹配 or 格式错误 → 可能是伪造</span>
+        <span class="kw">throw new</span> <span class="ty">InvalidTokenException</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>在 Spring Filter 中拦截请求</h3>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JwtAuthFilter.java（关键逻辑）</span></div>
+    <pre><span class="ann">@Override</span>
+<span class="kw">protected void</span> <span class="fn">doFilterInternal</span><span class="punct">(</span><span class="ty">HttpServletRequest</span> <span class="var">req</span><span class="punct">, ...) {</span>
+    <span class="ty">String</span> <span class="var">header</span> <span class="punct">=</span> <span class="var">req</span><span class="punct">.</span><span class="fn">getHeader</span><span class="punct">(</span><span class="str">"Authorization"</span><span class="punct">);</span>
+    <span class="com">// 标准做法：Authorization: Bearer &lt;token&gt;</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">header</span> <span class="punct">== null ||</span> <span class="punct">!</span><span class="var">header</span><span class="punct">.</span><span class="fn">startsWith</span><span class="punct">(</span><span class="str">"Bearer "</span><span class="punct">)) {</span>
+        <span class="fn">filterChain</span><span class="punct">.</span><span class="fn">doFilter</span><span class="punct">(</span><span class="var">req</span><span class="punct">,</span> <span class="var">resp</span><span class="punct">);</span>
+        <span class="kw">return</span><span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="ty">String</span> <span class="var">token</span> <span class="punct">=</span> <span class="var">header</span><span class="punct">.</span><span class="fn">substring</span><span class="punct">(</span><span class="num">7</span><span class="punct">);</span>
+    <span class="ty">Claims</span> <span class="var">claims</span> <span class="punct">=</span> <span class="ty">JwtUtil</span><span class="punct">.</span><span class="fn">parseToken</span><span class="punct">(</span><span class="var">token</span><span class="punct">);</span>
+    <span class="com">// 把解析出的用户信息注入 SecurityContext，后续 Controller 可直接用</span>
+    <span class="ty">UsernamePasswordAuthenticationToken</span> <span class="var">auth</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">UsernamePasswordAuthenticationToken</span><span class="punct">(</span>
+        <span class="var">claims</span><span class="punct">.</span><span class="fn">getSubject</span><span class="punct">(),</span> <span class="kw">null</span><span class="punct">,</span> <span class="fn">buildAuthorities</span><span class="punct">(</span><span class="var">claims</span><span class="punct">)</span>
+    <span class="punct">);</span>
+    <span class="ty">SecurityContextHolder</span><span class="punct">.</span><span class="fn">getContext</span><span class="punct">().</span><span class="fn">setAuthentication</span><span class="punct">(</span><span class="var">auth</span><span class="punct">);</span>
+    <span class="fn">filterChain</span><span class="punct">.</span><span class="fn">doFilter</span><span class="punct">(</span><span class="var">req</span><span class="punct">,</span> <span class="var">resp</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- ─── 5. Access + Refresh Token ─── -->
+  <h2>5. 双 Token 机制：Access Token + Refresh Token</h2>
+
+  <p>JWT 的核心矛盾是：<strong>过期时间越长越方便，但泄漏的危害窗口也越大</strong>。行业解法是双 Token：</p>
+
+  <table>
+    <tr><th></th><th>Access Token</th><th>Refresh Token</th></tr>
+    <tr><td>作用</td><td>携带在每个请求里，证明身份</td><td>用来换新的 Access Token</td></tr>
+    <tr><td>有效期</td><td>短：15~30 分钟</td><td>长：7~30 天</td></tr>
+    <tr><td>存储位置</td><td>内存（前端变量）</td><td>HttpOnly Cookie（防 XSS 读取）</td></tr>
+    <tr><td>发送方式</td><td>Authorization: Bearer 头</td><td>通过专用 /auth/refresh 接口</td></tr>
+    <tr><td>服务端存储</td><td>无需存储（无状态）</td><td>建议存 Redis，便于主动吊销</td></tr>
+  </table>
+
+  <p>刷新流程：</p>
+  <div class="tree">前端发现 401（Access Token 过期）
+  → 静默发起 POST /auth/refresh（携带 Refresh Token Cookie）
+  → 服务端验证 Refresh Token（查 Redis 确认未被吊销）
+  → 返回新 Access Token（+可选滚动刷新 Refresh Token）
+  → 前端更新内存中的 Access Token，重放原请求</div>
+
+  <!-- ─── 6. 无法吊销问题 ─── -->
+  <h2>6. JWT 的核心缺陷：无法即时吊销</h2>
+
+  <p>这是最多人踩的坑。JWT 是无状态的，服务器不记录已发出的 token。一旦发出，在 <code>exp</code> 到期前永远有效——即使：</p>
+  <ul>
+    <li>用户已经退出登录</li>
+    <li>用户被管理员封号</li>
+    <li>token 已经泄漏，你想立即让它失效</li>
+  </ul>
+
+  <p>常见的应对方案（按代价排序）：</p>
+
+  <table>
+    <tr><th>方案</th><th>原理</th><th>代价</th></tr>
+    <tr><td>缩短过期时间</td><td>Access Token 15 分钟，泄漏窗口小</td><td>用户体验差（频繁刷新）</td></tr>
+    <tr><td>Token 黑名单</td><td>注销时把 token 的 jti（唯一 ID）存入 Redis，验证时查一下</td><td>每次请求多一次 Redis 查询，引入了"有状态"</td></tr>
+    <tr><td>版本号机制</td><td>用户表加 tokenVersion 字段，每次登出 +1；token 里带版本号，验证时对比</td><td>需要查库，但只存一行数据，开销可控</td></tr>
+    <tr><td>Refresh Token 吊销</td><td>Access Token 短期，Refresh Token 存 Redis 可主动删除</td><td>Access Token 窗口期内仍有效</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>没有银弹。</strong>真正做到"立即吊销"就必须引入服务端状态（Redis 查询），JWT 的无状态优势就部分打折。根据业务安全等级选合适方案，而不是追求纯粹的无状态。
+  </div>
+
+  <!-- ─── 7. 工程实战中的坑 ─── -->
+  <h2>7. 生产环境常见坑清单</h2>
+
+  <ul>
+    <li><strong>密钥硬编码：</strong>不要把 <code>secretKey = "my-secret"</code> 写死在代码里，应通过环境变量或 Vault 注入</li>
+    <li><strong>密钥长度不够：</strong>HS256 要求密钥 ≥ 256 bit（32字节），太短 JJWT 会抛异常</li>
+    <li><strong>时钟不同步：</strong>多节点部署时各机器时钟偏差可能导致 <code>exp</code> 校验异常，建议用 NTP 同步 + 允许 60 秒容差（<code>clockSkewSeconds</code>）</li>
+    <li><strong>token 放 localStorage：</strong>容易被 XSS 脚本读取。Access Token 放内存，Refresh Token 放 HttpOnly Cookie 是更安全的做法</li>
+    <li><strong>敏感信息放 Payload：</strong>Payload 只是 Base64 编码，不是加密，任何人解码可见</li>
+    <li><strong>alg: none 攻击：</strong>验证时不要信任 token 自己声明的算法，应在服务端强制指定算法</li>
+    <li><strong>Refresh Token 不轮换：</strong>如果 Refresh Token 被盗，攻击者可以一直刷新。建议每次刷新都下发新的 Refresh Token 并让旧的失效（Refresh Token Rotation）</li>
+  </ul>
+
+  <!-- ─── 8. Session vs JWT 总结 ─── -->
+  <h2>8. Session vs JWT：怎么选</h2>
+
+  <table>
+    <tr><th>维度</th><th>Session</th><th>JWT</th></tr>
+    <tr><td>服务端状态</td><td>有状态（需要存储）</td><td>无状态（token 自包含）</td></tr>
+    <tr><td>水平扩展</td><td>需要 Session 共享（Redis）</td><td>天然支持，节点无感</td></tr>
+    <tr><td>即时吊销</td><td>直接删 Session，立即生效</td><td>需要额外机制（黑名单等）</td></tr>
+    <tr><td>跨域 / 跨端</td><td>依赖 Cookie，跨域麻烦</td><td>Authorization 头，无跨域限制</td></tr>
+    <tr><td>服务间调用</td><td>需要透传 sessionId</td><td>直接透传 token，天然适合</td></tr>
+    <tr><td>适用场景</td><td>单体 Web 应用</td><td>分布式、微服务、移动端 API</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频考点：</strong>JWT 如何实现登出？→ 这正是考察你是否理解 JWT 无状态的本质。回答：Access Token 短期（15min）自然失效，Refresh Token 存 Redis 可以主动删除，配合 Token 黑名单或版本号机制可实现即时吊销。
+  </div>
+
+  <hr>
+
+  <div class="nav-footer">
+    <a href="../engineering-roadmap.html" class="nav-btn">← 路线图</a>
+    <a href="./02-OAuth2.html" class="nav-btn next">OAuth2 概览 →</a>
+  </div>
+
+</div>
+</body>
+</html>

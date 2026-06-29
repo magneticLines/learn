@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AOP 面向切面（代理 / 织入）</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+.page { max-width: 720px; margin: 0 auto; }
+.breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+.breadcrumb a { color: #475569; text-decoration: none; }
+.hero { margin-bottom: 40px; }
+.hero .tag { font-size: 0.72rem; border: 1px solid #1e3a5f; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; color: #38bdf8; }
+.hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+.hero p { color: #64748b; font-size: 0.9rem; }
+h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #38bdf8; color: #38bdf8; }
+h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+.code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+.code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+.code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+.kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24} .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+.callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+.callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+.callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+.callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+tr:nth-child(even) td { background: #13151f; }
+p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: #38bdf8; }
+hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+.nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+.nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; }
+.nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../engineering-roadmap.html">路线图</a> / 框架机制
+  </div>
+
+  <div class="hero">
+    <div class="tag">框架机制 · 02</div>
+    <h1>AOP 面向切面（代理 / 织入）</h1>
+    <p>把日志、事务、安全这类"横切逻辑"从业务代码中抽走——这就是 AOP 要解决的问题。</p>
+  </div>
+
+  <h2>横切关注点：散落在各处的重复逻辑</h2>
+  <p>设想你有几十个 Service 方法，每个方法都需要：记录日志、开启事务、鉴权。如果把这些代码直接写进每个方法，会发生什么？</p>
+  <ul>
+    <li><strong>代码重复：</strong>同样的日志模板抄了几十份</li>
+    <li><strong>关注点混杂：</strong>业务逻辑被非业务代码淹没，难以阅读</li>
+    <li><strong>修改代价高：</strong>改一处日志格式要改几十个地方</li>
+  </ul>
+  <p>这类"横向穿过多个模块"的逻辑，叫做<strong>横切关注点（Cross-Cutting Concern）</strong>。AOP（Aspect-Oriented Programming）的核心思路是：把横切逻辑从业务代码里<strong>抽离成独立的切面（Aspect）</strong>，再通过某种机制在合适的时机自动织入。</p>
+  <div class="callout info">
+    <strong>类比：</strong>AOP 就像高速公路的收费站。车（方法调用）在各自的车道（业务逻辑）上行驶，不需要每辆车自己带收费功能，而是经过一个统一的收费口（切面）自动扣费，之后继续前行。
+  </div>
+
+  <h2>织入方式：静态 vs 动态</h2>
+  <p>把切面逻辑"嵌入"到目标代码的过程叫做<strong>织入（Weaving）</strong>。根据织入时机分为两类：</p>
+
+  <table>
+    <thead>
+      <tr><th>方式</th><th>时机</th><th>代表框架</th><th>特点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>静态织入（编译期）</td>
+        <td>编译时修改字节码</td>
+        <td>AspectJ（ajc 编译器）</td>
+        <td>性能最好，但需要特殊编译器，侵入构建流程</td>
+      </tr>
+      <tr>
+        <td>静态织入（类加载期）</td>
+        <td>类加载时通过 Java Agent 修改字节码</td>
+        <td>AspectJ LTW</td>
+        <td>不改源码，但配置复杂</td>
+      </tr>
+      <tr>
+        <td>动态代理（运行期）</td>
+        <td>运行时生成代理对象</td>
+        <td>Spring AOP</td>
+        <td>配置简单，但只能代理方法调用，性能有少量开销</td>
+      </tr>
+    </tbody>
+  </table>
+  <p><strong>Spring AOP 走的是动态代理路线</strong>——它不修改任何字节码，而是在运行时生成一个代理对象包裹你的 Bean，所有调用先经过代理，代理再决定前后插入什么逻辑。</p>
+
+  <h2>JDK 动态代理 vs CGLIB</h2>
+  <p>Spring AOP 的动态代理有两种底层实现，选哪种取决于目标 Bean 是否实现了接口：</p>
+
+  <h3>JDK 动态代理</h3>
+  <p>基于 <code>java.lang.reflect.Proxy</code>，要求目标类<strong>必须实现至少一个接口</strong>。代理对象实现相同的接口，通过 <code>InvocationHandler</code> 拦截方法调用。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — JDK 动态代理原理（简化版）</span></div>
+    <pre><span class="com">// 目标接口</span>
+<span class="kw">public interface</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">placeOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 生成代理：Proxy.newProxyInstance 在运行时生成实现了 OrderService 的新类</span>
+<span class="ty">OrderService</span> <span class="var">proxy</span> <span class="punct">= (</span><span class="ty">OrderService</span><span class="punct">)</span> <span class="ty">Proxy</span><span class="punct">.</span><span class="fn">newProxyInstance</span><span class="punct">(</span>
+    <span class="var">target</span><span class="punct">.</span><span class="fn">getClass</span><span class="punct">().</span><span class="fn">getClassLoader</span><span class="punct">(),</span>
+    <span class="kw">new</span> <span class="ty">Class</span><span class="punct">[]{ </span><span class="ty">OrderService</span><span class="punct">.</span><span class="kw">class</span> <span class="punct">},</span>
+    <span class="punct">(</span><span class="var">proxy2</span><span class="punct">,</span> <span class="var">method</span><span class="punct">,</span> <span class="var">args</span><span class="punct">) -> {</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"[LOG] before: "</span> <span class="punct">+</span> <span class="var">method</span><span class="punct">.</span><span class="fn">getName</span><span class="punct">());</span>
+        <span class="ty">Object</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">method</span><span class="punct">.</span><span class="fn">invoke</span><span class="punct">(</span><span class="var">target</span><span class="punct">,</span> <span class="var">args</span><span class="punct">);</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"[LOG] after: "</span> <span class="punct">+</span> <span class="var">method</span><span class="punct">.</span><span class="fn">getName</span><span class="punct">());</span>
+        <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">);</span></pre>
+  </div>
+
+  <h3>CGLIB 代理</h3>
+  <p>当目标类没有实现接口时，Spring 退而使用 CGLIB。CGLIB 通过继承目标类（ASM 字节码库在运行时生成子类）来拦截方法调用，<strong>因此 final 类和 final 方法无法被 CGLIB 代理</strong>。</p>
+  <div class="callout info">
+    Spring Boot 2.x 起默认对所有 Bean 使用 CGLIB（即使有接口），因为 CGLIB 性能更好且避免了接口代理的一些坑。通过 <code>spring.aop.proxy-target-class=false</code> 可切换回 JDK 代理。
+  </div>
+
+  <h2>Spring AOP 核心概念</h2>
+  <p>理解 AOP 必须掌握这五个概念，它们的关系是：<strong>切面（Aspect）= 切入点（Pointcut）+ 通知（Advice）</strong>。</p>
+
+  <table>
+    <thead>
+      <tr><th>概念</th><th>含义</th><th>类比</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Aspect（切面）</td>
+        <td>横切逻辑的封装单元，包含 Pointcut 和 Advice</td>
+        <td>收费站整体</td>
+      </tr>
+      <tr>
+        <td>Pointcut（切入点）</td>
+        <td>用表达式描述"拦截哪些方法"</td>
+        <td>哪些车道需要收费</td>
+      </tr>
+      <tr>
+        <td>Advice（通知）</td>
+        <td>在切入点前/后/环绕执行的逻辑</td>
+        <td>收费动作本身</td>
+      </tr>
+      <tr>
+        <td>JoinPoint（连接点）</td>
+        <td>程序执行的某个具体点（方法调用、异常抛出等）</td>
+        <td>某辆具体的车经过</td>
+      </tr>
+      <tr>
+        <td>Weaving（织入）</td>
+        <td>把切面应用到目标对象的过程</td>
+        <td>建好收费站并投入使用</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 完整切面示例</span></div>
+    <pre><span class="ann">@Aspect</span>
+<span class="ann">@Component</span>
+<span class="kw">public class</span> <span class="ty">LogAspect</span> <span class="punct">{</span>
+
+    <span class="com">// Pointcut：匹配 service 包下所有 public 方法</span>
+    <span class="ann">@Pointcut</span><span class="punct">(</span><span class="str">"execution(public * com.example.service.*.*(..))"</span><span class="punct">)</span>
+    <span class="kw">public void</span> <span class="fn">serviceLayer</span><span class="punct">() {}</span>
+
+    <span class="com">// Around Advice：环绕通知，最强大，可控制是否执行原方法</span>
+    <span class="ann">@Around</span><span class="punct">(</span><span class="str">"serviceLayer()"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Object</span> <span class="fn">logAround</span><span class="punct">(</span><span class="ty">ProceedingJoinPoint</span> <span class="var">pjp</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Throwable</span> <span class="punct">{</span>
+        <span class="ty">String</span> <span class="var">method</span> <span class="punct">=</span> <span class="var">pjp</span><span class="punct">.</span><span class="fn">getSignature</span><span class="punct">().</span><span class="fn">getName</span><span class="punct">();</span>
+        <span class="ty">long</span> <span class="var">start</span> <span class="punct">=</span> <span class="ty">System</span><span class="punct">.</span><span class="fn">currentTimeMillis</span><span class="punct">();</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="ty">Object</span> <span class="var">result</span> <span class="punct">=</span> <span class="var">pjp</span><span class="punct">.</span><span class="fn">proceed</span><span class="punct">();</span> <span class="com">// 执行原方法</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">printf</span><span class="punct">(</span><span class="str">"[OK] %s 耗时 %dms%n"</span><span class="punct">,</span> <span class="var">method</span><span class="punct">,</span>
+                <span class="ty">System</span><span class="punct">.</span><span class="fn">currentTimeMillis</span><span class="punct">() -</span> <span class="var">start</span><span class="punct">);</span>
+            <span class="kw">return</span> <span class="var">result</span><span class="punct">;</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">printf</span><span class="punct">(</span><span class="str">"[ERR] %s 异常: %s%n"</span><span class="punct">,</span> <span class="var">method</span><span class="punct">,</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+            <span class="kw">throw</span> <span class="var">e</span><span class="punct">;</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>@Transactional 失效的三种场景</h2>
+  <p><code>@Transactional</code> 本质上就是一个 AOP 切面。理解它失效的原因，就是理解动态代理的本质。</p>
+
+  <h3>场景 1：同类内部自调用（最常见的坑）</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 自调用导致事务失效（反例）</span></div>
+    <pre><span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+
+    <span class="com">// 外部调用 createOrder 时，调用的是代理对象，事务正常</span>
+    <span class="ann">@Transactional</span>
+    <span class="kw">public void</span> <span class="fn">createOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="fn">saveOrder</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span> <span class="com">// ❌ 直接调用 this.saveOrder，绕过了代理！</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Transactional</span><span class="punct">(</span><span class="var">propagation</span> <span class="punct">=</span> <span class="ty">Propagation</span><span class="punct">.</span><span class="var">REQUIRES_NEW</span><span class="punct">)</span>
+    <span class="kw">public void</span> <span class="fn">saveOrder</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) { </span><span class="com">/* ... */</span> <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 解决方案：注入自身代理，或拆分到另一个 Service</span>
+<span class="ann">@Autowired</span>
+<span class="kw">private</span> <span class="ty">OrderService</span> <span class="var">self</span><span class="punct">;</span> <span class="com">// 注入的是代理对象</span>
+<span class="var">self</span><span class="punct">.</span><span class="fn">saveOrder</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span> <span class="com">// ✅ 经过代理，事务生效</span></pre>
+  </div>
+
+  <h3>场景 2：方法非 public</h3>
+  <p>Spring AOP 基于动态代理，代理只能拦截 <code>public</code> 方法。<code>@Transactional</code> 加在 <code>private</code>/<code>protected</code>/<code>package-private</code> 方法上，注解会被忽略，不会开启事务。</p>
+
+  <h3>场景 3：异常被吞掉或类型不对</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>Java — 异常类型导致回滚失效</span></div>
+    <pre><span class="com">// @Transactional 默认只对 RuntimeException 和 Error 回滚</span>
+<span class="com">// 受检异常（IOException 等）不会触发回滚</span>
+<span class="ann">@Transactional</span>
+<span class="kw">public void</span> <span class="fn">transferMoney</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+    <span class="var">dao</span><span class="punct">.</span><span class="fn">deduct</span><span class="punct">();</span>
+    <span class="kw">throw new</span> <span class="ty">IOException</span><span class="punct">(</span><span class="str">"网络错误"</span><span class="punct">);</span> <span class="com">// ❌ 不会回滚！</span>
+<span class="punct">}</span>
+
+<span class="com">// 修复：指定 rollbackFor</span>
+<span class="ann">@Transactional</span><span class="punct">(</span><span class="var">rollbackFor</span> <span class="punct">=</span> <span class="ty">Exception</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>
+<span class="kw">public void</span> <span class="fn">transferMoney</span><span class="punct">()</span> <span class="kw">throws</span> <span class="ty">IOException</span> <span class="punct">{</span>
+    <span class="var">dao</span><span class="punct">.</span><span class="fn">deduct</span><span class="punct">();</span>
+    <span class="kw">throw new</span> <span class="ty">IOException</span><span class="punct">(</span><span class="str">"网络错误"</span><span class="punct">);</span> <span class="com">// ✅ 指定后会回滚</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>面试必备：</strong>除了上面三种，还有一种场景：Bean 没有被 Spring 管理（比如 new 出来的对象），AOP 根本没机会介入。另外，如果数据库引擎是 MyISAM，本身不支持事务，加不加 <code>@Transactional</code> 都没用。
+  </div>
+
+  <div class="nav-footer">
+    <a href="./01-IoC-DI.html" class="nav-btn">← IoC / DI 思想</a>
+    <a href="./03-解耦设计.html" class="nav-btn next">解耦设计 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>何时重构 · 重构与测试的关系</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #fbbf24; }
+    p code, li code { color: #fbbf24; }
+    h2 { color: #fbbf24; border-left-color: #fbbf24; }
+    .hero .tag { color: #fbbf24; border-color: #78350f; }
+    .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../engineering-roadmap.html">路线图</a> / 重构 / 认知:何时重构
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">重构 · 认知:何时重构</div>
+    <h1>何时重构 · 重构与测试的关系</h1>
+    <p>重构不是某个项目阶段的"大扫除"，而是开发节奏中随时触发的小动作。本文讲清楚：什么信号意味着该重构了，以及为什么没有测试的重构只是在赌运气。</p>
+  </div>
+
+  <!-- 一、认知校准 -->
+  <h2>一、先对齐一个认知：重构不等于重写</h2>
+  <p>很多团队说"我们要重构这个模块"，实际上在做的是<strong>重写（Rewrite）</strong>——把整个模块删掉从头来过。这是两件截然不同的事。</p>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th>重构（Refactoring）</th><th>重写（Rewrite）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>外部行为</td><td>保持不变</td><td>可能改变</td></tr>
+      <tr><td>节奏</td><td>小步频繁，随时可停</td><td>大块时间，中途难停</td></tr>
+      <tr><td>风险</td><td>低，每步可验证</td><td>高，集成时才暴露问题</td></tr>
+      <tr><td>测试依赖</td><td>强依赖（必须有测试护网）</td><td>需要，但重写后补测试也行</td></tr>
+    </tbody>
+  </table>
+
+  <p>Martin Fowler 的定义极为精准：<strong>重构是在不改变软件可观察行为的前提下，改善其内部结构的过程</strong>。每一个小步骤都必须让测试继续绿灯。</p>
+
+  <!-- 二、何时重构 -->
+  <h2>二、何时重构：三次法则与四个触发点</h2>
+
+  <h3>三次法则（Rule of Three）</h3>
+  <p>Don Roberts 提出的经验法则，Fowler 在《重构》中引用并推广：</p>
+  <ul>
+    <li><strong>第一次</strong>：直接做，无需担心重复</li>
+    <li><strong>第二次</strong>：做类似的事，留意重复，但先做完</li>
+    <li><strong>第三次</strong>：再遇到类似的事，立刻重构</li>
+  </ul>
+  <p>这个法则避免了过早抽象（YAGNI）和放任腐烂两个极端。两次才意味着"凑巧"，三次才说明这是稳定的模式。</p>
+
+  <h3>触发点一：添加功能时（预备性重构）</h3>
+  <p>你要往一个方法里加新逻辑，但它现在写得很乱——先花 10 分钟整理结构，再加新代码。这叫<strong>预备性重构（Preparatory Refactoring）</strong>。类比：在刷墙之前先打磨墙面，不然漆根本刷不均匀。</p>
+
+  <div class="callout tip">
+    <strong>工程直觉</strong>：如果不先重构就直接加功能，新代码也会和旧代码一样乱，而且你刚才的"直觉"告诉你应该重构，说明当前结构已经在阻碍你了。
+  </div>
+
+  <h3>触发点二：修 Bug 时（理解性重构）</h3>
+  <p>读懂一段代码之后，把你理解到的东西通过重命名、提炼函数等方式表达出来，让下一个读代码的人（很可能是三个月后的你）更快看懂。这叫<strong>理解性重构（Comprehension Refactoring）</strong>。</p>
+
+  <h3>触发点三：Code Review 时</h3>
+  <p>Review 是发现坏味道最自然的时机。看别人的代码，换个视角，更容易看出结构问题。一旦发现，现场讨论并立即处理，而不是开 ticket 留着"以后再说"——以后往往等于永远不做。</p>
+
+  <h3>触发点四：专项重构冲刺（计划性重构）</h3>
+  <p>前三种是机会主义式的，嵌入日常开发节奏。但当技术债已经大到阻碍迭代速度时，需要和业务方协商专门的重构时间窗口。这种情况下，<strong>重构必须有量化的收益指标</strong>（如单测覆盖率从 20% 提升到 60%，构建速度从 8 分钟降到 3 分钟），否则无法获得业务侧的支持。</p>
+
+  <!-- 三、不该重构的时机 -->
+  <h2>三、不该重构的时机</h2>
+
+  <ul>
+    <li><strong>代码本身不需要修改时</strong>：如果这段代码永远不需要动，它再丑也无所谓，重构它只是在浪费时间</li>
+    <li><strong>临近发版窗口时</strong>：距离发版还有 2 小时，不要手痒去动"顺手能改的地方"，这是生产事故的高发场景</li>
+    <li><strong>完全没有测试覆盖且改动范围很大时</strong>：先补测试，再重构，否则你不知道自己是在"改善结构"还是在"引入 Bug"</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>生产坑警告</strong>：最危险的重构是"我只是改了个变量名"。IDE 的全局重命名看起来很安全，但如果项目里有反射（<code>Class.forName</code>、Spring 的 <code>@Value("${field.name}")</code>、MyBatis 的 XML 列映射），字符串引用不会被 IDE 同步修改，上线后才会发现运行时异常。
+  </div>
+
+  <!-- 四、重构与测试 -->
+  <h2>四、重构与测试的关系：安全网不是可选项</h2>
+
+  <p>Fowler 把测试称为重构的<strong>安全网（Safety Net）</strong>。这个比喻很准确：高空走钢丝，有没有安全网是两种完全不同的心理状态和风险等级。</p>
+
+  <h3>为什么没有测试的重构危险？</h3>
+  <p>重构的核心承诺是"外部行为不变"，而<strong>测试是验证这个承诺的唯一客观手段</strong>。没有测试，你只能靠肉眼 review 和手工测试，这两者都无法覆盖所有边界场景，尤其是并发、异常路径和边界条件。</p>
+
+  <!-- 反例 → 问题 → 正例 -->
+  <h2>五、反例 → 问题 → 正例</h2>
+
+  <h3>场景：订单金额计算逻辑，需要把 if-else 链重构为策略模式</h3>
+
+  <h3>反例：没有测试直接动手</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java（重构前）</span><span>反例</span></div>
+    <pre><span class="com">// 重构前：一坨 if-else，需要拆成策略</span>
+<span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">calcDiscount</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getMemberLevel</span><span class="punct">() ==</span> <span class="ty">MemberLevel</span><span class="punct">.</span><span class="var">VIP</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">().</span><span class="fn">multiply</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.9"</span><span class="punct">));</span>
+    <span class="punct">}</span> <span class="kw">else if</span> <span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getMemberLevel</span><span class="punct">() ==</span> <span class="ty">MemberLevel</span><span class="punct">.</span><span class="var">SVIP</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">().</span><span class="fn">multiply</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.8"</span><span class="punct">));</span>
+    <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+        <span class="kw">return</span> <span class="var">order</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 开发者直接开始重构，没有任何单测</span>
+<span class="com">// 重构成策略模式后，手工点了几次前端页面，"看起来没问题"</span>
+<span class="com">// 上线后发现：SVIP 叠加满减券时，折扣被计算了两次</span>
+<span class="com">// 原因：策略类的 apply() 方法语义和旧逻辑有细微差别，肉眼没看出来</span></pre>
+  </div>
+
+  <p><strong>问题所在</strong>：没有测试，重构前后的行为差异无法被自动检测。手工测试只覆盖了主流程，漏掉了"叠加优惠券"这个边界场景。这类 Bug 在生产上往往涉及资金，后果严重。</p>
+
+  <h3>正例：先写测试，再重构，每步验绿</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderDiscountTest.java（先补测试）</span><span>Step 1 — 补测试，锁定现有行为</span></div>
+    <pre><span class="ann">@ExtendWith(MockitoExtension.class)</span>
+<span class="kw">class</span> <span class="ty">OrderDiscountTest</span> <span class="punct">{</span>
+
+    <span class="kw">private</span> <span class="ty">OrderService</span> <span class="var">service</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">OrderService</span><span class="punct">();</span>
+
+    <span class="ann">@Test</span>
+    <span class="kw">void</span> <span class="fn">normalMember_noDiscount</span><span class="punct">() {</span>
+        <span class="ty">Order</span> <span class="var">o</span> <span class="punct">=</span> <span class="fn">orderOf</span><span class="punct">(</span><span class="ty">MemberLevel</span><span class="punct">.</span><span class="var">NORMAL</span><span class="punct">,</span> <span class="str">"100.00"</span><span class="punct">);</span>
+        <span class="fn">assertThat</span><span class="punct">(</span><span class="var">service</span><span class="punct">.</span><span class="fn">calcDiscount</span><span class="punct">(</span><span class="var">o</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">isEqualByComparingTo</span><span class="punct">(</span><span class="str">"100.00"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Test</span>
+    <span class="kw">void</span> <span class="fn">vipMember_tenPercentOff</span><span class="punct">() {</span>
+        <span class="ty">Order</span> <span class="var">o</span> <span class="punct">=</span> <span class="fn">orderOf</span><span class="punct">(</span><span class="ty">MemberLevel</span><span class="punct">.</span><span class="var">VIP</span><span class="punct">,</span> <span class="str">"100.00"</span><span class="punct">);</span>
+        <span class="fn">assertThat</span><span class="punct">(</span><span class="var">service</span><span class="punct">.</span><span class="fn">calcDiscount</span><span class="punct">(</span><span class="var">o</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">isEqualByComparingTo</span><span class="punct">(</span><span class="str">"90.00"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Test</span>
+    <span class="kw">void</span> <span class="fn">svipMember_twentyPercentOff</span><span class="punct">() {</span>
+        <span class="ty">Order</span> <span class="var">o</span> <span class="punct">=</span> <span class="fn">orderOf</span><span class="punct">(</span><span class="ty">MemberLevel</span><span class="punct">.</span><span class="var">SVIP</span><span class="punct">,</span> <span class="str">"100.00"</span><span class="punct">);</span>
+        <span class="fn">assertThat</span><span class="punct">(</span><span class="var">service</span><span class="punct">.</span><span class="fn">calcDiscount</span><span class="punct">(</span><span class="var">o</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">isEqualByComparingTo</span><span class="punct">(</span><span class="str">"80.00"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@Test</span>
+    <span class="kw">void</span> <span class="fn">svipMember_withCoupon_discountNotDoubled</span><span class="punct">() {</span>
+        <span class="com">// 关键边界：叠加优惠券时，会员折扣只作用于原价，不叠加</span>
+        <span class="ty">Order</span> <span class="var">o</span> <span class="punct">=</span> <span class="fn">orderOf</span><span class="punct">(</span><span class="ty">MemberLevel</span><span class="punct">.</span><span class="var">SVIP</span><span class="punct">,</span> <span class="str">"100.00"</span><span class="punct">);</span>
+        <span class="var">o</span><span class="punct">.</span><span class="fn">setCouponDiscount</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"10.00"</span><span class="punct">));</span>
+        <span class="com">// 期望：先算会员折扣 100*0.8=80，再减券 80-10=70</span>
+        <span class="fn">assertThat</span><span class="punct">(</span><span class="var">service</span><span class="punct">.</span><span class="fn">calcFinalPrice</span><span class="punct">(</span><span class="var">o</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">isEqualByComparingTo</span><span class="punct">(</span><span class="str">"70.00"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java（重构后）</span><span>Step 2 — 重构，每步跑测试</span></div>
+    <pre><span class="com">// 策略接口：语义明确，只算"折后金额"，不叠加其他逻辑</span>
+<span class="kw">public interface</span> <span class="ty">DiscountStrategy</span> <span class="punct">{</span>
+    <span class="ty">BigDecimal</span> <span class="fn">apply</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">originalAmount</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 具体策略：每次改完一个，立刻跑测试，绿了再改下一个</span>
+<span class="kw">public enum</span> <span class="ty">MemberDiscountStrategy</span> <span class="kw">implements</span> <span class="ty">DiscountStrategy</span> <span class="punct">{</span>
+    <span class="var">NORMAL</span> <span class="punct">{</span>
+        <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">apply</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">) {</span> <span class="kw">return</span> <span class="var">amount</span><span class="punct">; }</span>
+    <span class="punct">},</span>
+    <span class="var">VIP</span> <span class="punct">{</span>
+        <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">apply</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">) {</span>
+            <span class="kw">return</span> <span class="var">amount</span><span class="punct">.</span><span class="fn">multiply</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.9"</span><span class="punct">));</span>
+        <span class="punct">}</span>
+    <span class="punct">},</span>
+    <span class="var">SVIP</span> <span class="punct">{</span>
+        <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">apply</span><span class="punct">(</span><span class="ty">BigDecimal</span> <span class="var">amount</span><span class="punct">) {</span>
+            <span class="kw">return</span> <span class="var">amount</span><span class="punct">.</span><span class="fn">multiply</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigDecimal</span><span class="punct">(</span><span class="str">"0.8"</span><span class="punct">));</span>
+        <span class="punct">}</span>
+    <span class="punct">};</span>
+<span class="punct">}</span>
+
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">calcDiscount</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// 通过 MemberLevel 直接映射策略，消灭 if-else</span>
+        <span class="ty">DiscountStrategy</span> <span class="var">strategy</span> <span class="punct">=</span> <span class="ty">MemberDiscountStrategy</span>
+            <span class="punct">.</span><span class="fn">valueOf</span><span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getMemberLevel</span><span class="punct">().</span><span class="fn">name</span><span class="punct">());</span>
+        <span class="kw">return</span> <span class="var">strategy</span><span class="punct">.</span><span class="fn">apply</span><span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">());</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public</span> <span class="ty">BigDecimal</span> <span class="fn">calcFinalPrice</span><span class="punct">(</span><span class="ty">Order</span> <span class="var">order</span><span class="punct">) {</span>
+        <span class="com">// 流程清晰：先折扣，再减券。两步独立，不会交叉叠加</span>
+        <span class="ty">BigDecimal</span> <span class="var">afterDiscount</span> <span class="punct">=</span> <span class="fn">calcDiscount</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">afterDiscount</span><span class="punct">.</span><span class="fn">subtract</span><span class="punct">(</span><span class="var">order</span><span class="punct">.</span><span class="fn">getCouponDiscount</span><span class="punct">());</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// Step 3：所有测试重新跑，全绿，重构完成</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>关键节奏</strong>：每完成一个最小步骤（如提炼一个方法、重命名一个变量）就跑一次测试。这样一旦测试变红，立刻知道是刚才那一步引入了问题，回退成本极低。而不是攒了 200 行改动再跑，那时候定位问题要花几倍的时间。
+  </div>
+
+  <!-- 六、重构节奏与 CI -->
+  <h2>六、重构节奏与 CI 流水线</h2>
+
+  <p>重构要真正落地，离不开 CI 的配合。一个好的 CI 配置应该让每次 push 都自动跑单测，把"测试绿灯"变成一个客观可见的信号，而不是靠人工记住"我改完要跑测试"。</p>
+
+  <div class="tree">
+    <span>重构工作流</span><br>
+    <span>├── </span><span class="hi">发现触发点</span><span>（坏味道 / 添加功能 / 修 Bug）</span><br>
+    <span>├── </span><span class="hi">确认测试覆盖</span><span>（没有 → 先补测试）</span><br>
+    <span>├── </span><span class="hi">最小步骤重构</span><span>（每步跑测试，保持绿灯）</span><br>
+    <span>├── </span><span class="hi">push → CI 流水线</span><span>（自动运行全量测试）</span><br>
+    <span>└── </span><span class="hi">合并主干</span><span>（CI 绿灯是硬门槛）</span>
+  </div>
+
+  <h3>测试覆盖率的正确姿势</h3>
+  <p>覆盖率是工具，不是目标。<strong>不要为了提高覆盖率数字而写没有断言的测试</strong>——那种测试只会执行代码，不会验证行为，在重构时毫无保护价值。真正有价值的是<strong>对业务语义的断言</strong>，即"这段代码在这种输入下应该产生这种输出/副作用"。</p>
+
+  <table>
+    <thead>
+      <tr><th>测试类型</th><th>重构时的作用</th><th>适合保护的场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>单元测试</td><td>最快反馈，毫秒级</td><td>纯计算逻辑、策略类、工具方法</td></tr>
+      <tr><td>集成测试</td><td>验证模块间协作</td><td>Service + Repository 的交互</td></tr>
+      <tr><td>契约测试</td><td>防止 API 签名悄悄变化</td><td>微服务接口、SDK 对外接口</td></tr>
+      <tr><td>端到端测试</td><td>最慢，覆盖核心流程</td><td>关键业务链路（下单、支付）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 七、常见坑 -->
+  <h2>七、生产环境中的常见坑</h2>
+
+  <ol>
+    <li>
+      <strong>重构与功能开发混在同一个 PR</strong><br>
+      <span style="color:#94a3b8;font-size:0.85rem;">Review 时无法分辨哪些改动是"保持行为"的重构、哪些是"改变行为"的功能。一旦出问题，回滚代价极高。养成习惯：重构单独提 PR，功能开发单独提 PR。</span>
+    </li>
+    <li>
+      <strong>在没有测试的遗留代码上直接大范围重构</strong><br>
+      <span style="color:#94a3b8;font-size:0.85rem;">正确做法是先用"特性测试（Characterization Test）"锁定现有行为——不管代码逻辑对不对，先把它现在的输出记录成测试用例，再开始改。</span>
+    </li>
+    <li>
+      <strong>用 IDE 自动重构功能时忽略非 Java 资源</strong><br>
+      <span style="color:#94a3b8;font-size:0.85rem;">MyBatis XML 的 <code>resultMap</code>、Spring XML 配置中的 Bean 名、<code>application.yml</code> 里的属性名，IDE 重命名都无法同步。改完要全文搜索字符串引用。</span>
+    </li>
+    <li>
+      <strong>重构产生了大量无意义的 git diff，污染历史</strong><br>
+      <span style="color:#94a3b8;font-size:0.85rem;">格式化整个文件（如用 IDE 的"Reformat Code"一次性格式化 500 行）会让真正的逻辑改动淹没在格式噪音里，git blame 也会失效。只格式化你实际改动的部分。</span>
+    </li>
+    <li>
+      <strong>把"性能优化"和"结构重构"混为一谈</strong><br>
+      <span style="color:#94a3b8;font-size:0.85rem;">性能优化可能需要改变数据结构或算法，这往往确实改变了"内部结构"，但其驱动力和验证方式（性能基准测试）完全不同。不要把它和重构放在同一个提交里。</span>
+    </li>
+  </ol>
+
+  <!-- 八、总结 -->
+  <h2>八、一句话总结</h2>
+
+  <div class="callout info">
+    <strong>重构的时机</strong>：添加功能前、修 Bug 时、Code Review 时，都可以顺手做小步重构；大范围技术债需要单独排期并量化收益。<br><br>
+    <strong>重构与测试的关系</strong>：测试是重构的安全网，没有测试的重构是赌博。先补测试，再重构，每步验绿，是唯一可靠的姿势。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-代码坏味道.html" class="nav-btn">← 代码的坏味道（Code Smells）</a>
+    <a href="./03-提炼函数.html" class="nav-btn next">提炼函数 / 内联函数 →</a>
+  </div>
+
+</div>
+</body>
+</html>
