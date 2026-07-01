@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据结构 · 桶排序与基数排序</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #2e1065; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../ds-roadmap.html">数据结构路线图</a> / 排序与图 / 桶排序与基数排序</div>
+  <div class="hero">
+    <div class="tag">数据结构 · 排序</div>
+    <h1>桶排序 / 基数排序</h1>
+    <p>上一篇证明了比较排序逃不出 Ω(n log n),而这两种排序算法完全不做比较,靠"分配"信息,换来了真正的 O(n)。</p>
+    <p class="src">📖 来源:<b>《数据结构与算法分析:Java语言描述》</b> 第 7 章「排序」</p>
+  </div>
+
+  <h2>一、绕开下界的关键:不比较,靠分配</h2>
+  <p>上一篇的结论是:只要排序算法通过"两两比较谁大谁小"来获取信息,就逃不出 Ω(n log n) 的下界。桶排序和基数排序换了一种完全不同的信息获取方式——<strong>它们不问"谁比谁大",而是直接利用元素的值本身,把元素"分配"到确定的位置或分组中</strong>。既然没有比较这一步,自然不受该下界约束,能做到线性时间 O(n)。</p>
+  <p>但天下没有免费的午餐:能做到 O(n) 是有代价的——<strong>必须提前知道数据的某种结构信息</strong>(比如取值范围、位数上限),这是它们相对比较排序算法最大的限制。</p>
+
+  <h2>二、桶排序:已知范围,分桶再排序</h2>
+  <p><strong>思路</strong>:如果已知 n 个元素的值都落在一个不大的范围内(比如 0~99),可以直接开 100 个"桶",遍历一遍数组把每个元素放进对应编号的桶里,再按桶的编号顺序把元素取出来拼接,就得到了有序结果——整个过程只有"分配"和"收集"两次线性扫描,是 O(n)。</p>
+  <div class="callout info">
+  <strong>具体例子</strong>:数组 <code>[3, 1, 4, 1, 5, 9, 2, 6]</code>,已知取值范围是 0~9,建 10 个桶(计数数组):<br>
+  遍历一遍统计每个值出现的次数:<code>count = [0,2,1,1,1,1,0,0,0,1]</code>(count[1]=2 表示 1 出现两次,count[9]=1 表示 9 出现一次)<br>
+  按桶编号 0→9 依次把每个值重复 count[值] 次输出:<code>[1,1,2,3,4,5,6,9]</code>
+  </div>
+  <p>这个例子里的桶排序退化为"计数排序"(每个桶只存计数,不存具体元素)。更一般的桶排序里,每个桶可以是一个链表/小数组,元素按值映射到桶后,桶内部再用插入排序处理(因为桶足够小,插入排序的 O(n²) 在小规模下反而更快——呼应第一篇讲的插入排序对小数据的优势)。</p>
+
+  <h2>三、基数排序:按位分配,多轮收集</h2>
+  <p><strong>思路</strong>:如果数据是多位数字(或多字符字符串),可以不直接比较整个数字大小,而是<strong>按位(个位、十位、百位...)从低位到高位,依次用桶排序(计数排序)对该位分配和收集</strong>。因为每一轮都是稳定的桶排序,低位排好的相对顺序在高位排序时会被保留,多轮之后整体就有序了。</p>
+  <div class="callout info">
+  <strong>具体例子</strong>:数组 <code>[170, 45, 75, 90, 802, 24, 2, 66]</code>,最大位数是3位(802),从个位开始:<br>
+  <strong>按个位分配收集</strong>:170,90,802,2,24,45,75,66 → <code>[170, 90, 802, 2, 24, 45, 75, 66]</code><br>
+  <strong>按十位分配收集</strong>:802,2,24,45,66,170,75,90 → <code>[802, 2, 24, 45, 66, 170, 75, 90]</code><br>
+  <strong>按百位分配收集</strong>:2,24,45,66,75,90,170,802 → <code>[2, 24, 45, 66, 75, 90, 170, 802]</code>(有序)
+  </div>
+  <p>每一轮的分配收集(即对某一位做计数排序)是 O(n+k)(k 是这一位的取值范围,通常是10),总共做 d 轮(d 是最大位数),总复杂度是 <strong>O(d·(n+k))</strong>——当 d 和 k 都是常数或远小于 n 时,整体近似 O(n)。</p>
+
+  <h2>四、代码实现:LSD 基数排序骨架</h2>
+  <div class="code-block"><div class="cb-header"><span>Java · 基数排序(按十进制位,从低位到高位)</span></div><pre><span class="kw">public static void</span> <span class="fn">radixSort</span><span class="punct">(</span><span class="kw">int</span><span class="punct">[]</span> a<span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">int</span> max <span class="punct">=</span> <span class="kw">java.util.Arrays</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">(</span>a<span class="punct">).</span><span class="fn">max</span><span class="punct">().</span><span class="fn">getAsInt</span><span class="punct">();</span>
+    <span class="cm">// exp 依次取 1, 10, 100...,决定当前按哪一位分配</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> exp <span class="punct">=</span> <span class="nu">1</span><span class="punct">;</span> max <span class="punct">/</span> exp <span class="punct">&gt;</span> <span class="nu">0</span><span class="punct">;</span> exp <span class="punct">*=</span> <span class="nu">10</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="fn">countingSortByDigit</span><span class="punct">(</span>a<span class="punct">,</span> exp<span class="punct">);</span> <span class="cm">// 必须是稳定的计数排序,否则前面轮次排好的顺序会被打乱</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+  <div class="callout warn"><strong>关键约束:每一轮的子过程(计数排序)必须是稳定的。</strong> 基数排序的正确性完全建立在"低位排好的相对顺序,在高位排序时不能被打乱"这一前提上——如果某一轮用了不稳定的排序方式,前面几轮的成果会被破坏,最终结果就是错的。这是实现基数排序最容易忽略、也是面试常问的细节。</div>
+
+  <h2>五、代价:对数据分布有限制</h2>
+  <table>
+    <tr><th>算法</th><th>前提条件</th><th>时间复杂度</th><th>空间</th><th>稳定性</th></tr>
+    <tr><td>桶排序/计数排序</td><td>已知数据取值范围且范围不大</td><td>O(n+k)</td><td>O(n+k)</td><td>稳定</td></tr>
+    <tr><td>基数排序</td><td>已知最大位数,按位/字符分配</td><td>O(d·(n+k))</td><td>O(n+k)</td><td>稳定</td></tr>
+    <tr><td>比较排序(归并/快排/堆)</td><td>只需要能比较大小,无需知道分布</td><td>Ω(n log n)</td><td>视算法而定</td><td>视算法而定</td></tr>
+  </table>
+  <p>如果数据取值范围极大(比如 32 位整数全范围)、或位数极多,桶排序/基数排序反而会因为 k 或 d 过大而变得不划算,这时比较排序更通用。</p>
+
+  <h2>六、实际应用场景</h2>
+  <ul>
+    <li><strong>字符串排序</strong>:字典序排序天然适合基数排序,按字符位置从左到右(MSD)或右到左(LSD)分配,常用于外部排序海量字符串数据。</li>
+    <li><strong>有限范围整数排序</strong>:比如按年龄(0~150)、按分数(0~100)排序一大批记录,桶排序/计数排序比通用排序快得多。</li>
+    <li><strong>数据库/大数据场景</strong>:很多列存储引擎对固定长度整数列排序会优先考虑基数排序,配合下一篇讲的外部排序处理超大数据集。</li>
+  </ul>
+
+  <h2>小结</h2>
+  <ul>
+    <li>桶排序/基数排序不基于比较,所以能突破 Ω(n log n) 下界,做到 O(n) 或 O(d·n)。</li>
+    <li>桶排序:已知取值范围,直接分桶计数;基数排序:按位/字符多轮分配收集。</li>
+    <li>代价:对数据分布有限制(需要知道范围或最大位数),范围/位数过大时不划算。</li>
+    <li>基数排序每一轮必须用稳定的子排序,否则前面轮次的成果会被破坏。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./06-排序的下界.html" class="nav-btn">← 排序的下界</a>
+    <a href="./08-外部排序.html" class="nav-btn next">外部排序 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据结构 · 再散列与装填因子</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #92400e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fbbf24; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #92400e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../ds-roadmap.html">数据结构路线图</a> / 树与散列 / 再散列与装填因子</div>
+  <div class="hero">
+    <div class="tag">数据结构 · 散列表</div>
+    <h1>再散列 Rehashing 与装填因子</h1>
+    <p>装填因子是哈希表性能的"仪表盘",再散列是它超标后的"扩容大手术"——两者共同决定了哈希表能不能一直保持接近 O(1)。</p>
+    <p class="src">📖 来源:<b>Weiss《数据结构与算法分析》</b> 第 5 章「散列」</p>
+  </div>
+
+  <h2>一、装填因子:为什么要死死盯住它</h2>
+  <p><strong>装填因子(load factor)λ = 元素个数 / 桶数组容量</strong>,是哈希表里最重要的一个数字,直接决定平均探测/比较次数:</p>
+  <ul>
+    <li><strong>λ 太高</strong>:分离链接法下链表变长,平均查找退化为 O(λ);开放定址法下探测序列变长,λ 越接近 1,探测次数增长越剧烈(理论上 λ→1 时期望探测次数趋于无穷)。</li>
+    <li><strong>λ 太低</strong>:桶数组绝大部分是空的,内存被大量浪费,而且遍历空桶本身也有 cache miss 的隐性成本。</li>
+  </ul>
+  <p>所以装填因子的作用是给"时间"和"空间"这两个互相矛盾的目标找一个平衡点——这也是后面理解 <code>HashMap</code> 为什么选 0.75 的关键。</p>
+
+  <h2>二、再散列:扩容不是简单的数组拷贝</h2>
+  <p>普通数组扩容(比如 <code>ArrayList</code>)只需要把旧元素<strong>按原顺序</strong>拷到新数组,下标不变。但哈希表扩容完全不同:<strong>下标是由哈希值对容量取模算出来的,容量一变,几乎所有元素的目标下标都会变</strong>。所以哈希表扩容必须做<strong>再散列(rehashing)</strong>——新建一个更大的桶数组,把旧表里的每一个元素重新计算哈希、重新定位、重新插入新表,旧表整个丢弃。</p>
+  <div class="code-block"><div class="cb-header"><span>Java · 再散列的核心步骤</span></div><pre><span class="kw">void</span> <span class="fn">rehash</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span><span class="ty">V</span><span class="punct">&gt;[]</span> old <span class="punct">=</span> table<span class="punct">;</span>
+    table <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Node</span><span class="punct">[</span>old<span class="punct">.</span>length <span class="punct">*</span> <span class="nu">2</span><span class="punct">];</span>  <span class="cm">// 容量翻倍(常见策略)</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span><span class="ty">V</span><span class="punct">&gt;</span> head <span class="punct">:</span> old<span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="ty">Node</span><span class="punct">&lt;</span><span class="ty">K</span><span class="punct">,</span><span class="ty">V</span><span class="punct">&gt;</span> cur <span class="punct">=</span> head<span class="punct">;</span> cur <span class="punct">!=</span> <span class="kw">null</span><span class="punct">;</span> cur <span class="punct">=</span> cur<span class="punct">.</span>next<span class="punct">)</span>
+            <span class="fn">insert</span><span class="punct">(</span>table<span class="punct">,</span> cur<span class="punct">.</span>key<span class="punct">,</span> cur<span class="punct">.</span>value<span class="punct">);</span> <span class="cm">// 按新容量重新算下标插入</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+
+  <h3>触发时机与均摊复杂度</h3>
+  <p>触发条件通常是"插入后 λ 超过阈值"(如 <code>size / capacity &gt; 0.75</code>)。单次再散列是 O(n) 的重操作(n 个元素都要重新插入一次),看起来很贵,但因为<strong>容量按倍数增长(不是加固定值)</strong>,两次再散列之间能插入的新元素数量也按倍数增长,用<strong>均摊分析(amortized analysis)</strong>——这正是前面讲 <code>ArrayList</code> 扩容时用过的同一套思想——可以证明:<strong>从空表插入 n 个元素,总再散列开销是 O(n),均摊到每次插入只是 O(1)</strong>。</p>
+  <div class="callout tip"><strong>直觉验证:</strong> 容量翻倍扩容,前后两次再散列处理的元素数呈几何级数增长(…,n/8, n/4, n/2, n),等比数列求和收敛到 O(n),而不是简单地把每次 O(n) 乘以扩容次数 O(log n) 变成 O(n log n)——这是均摊分析里最常见的误算点。</div>
+
+  <h2>三、联系 Java HashMap:0.75 这个数字怎么来的</h2>
+  <p><code>HashMap</code> 默认负载因子是 <strong>0.75</strong>,不是随便定的,而是时间与空间的权衡结果:</p>
+  <table>
+    <tr><th>负载因子取值</th><th>效果</th></tr>
+    <tr><td>过低(如 0.5)</td><td>桶利用率低,一半空间浪费,但冲突少、查找更快</td></tr>
+    <tr><td>过高(如 0.9+)</td><td>空间利用率高,但链表(或探测序列)变长,查找变慢</td></tr>
+    <tr><td>0.75(HashMap 默认)</td><td>泊松分布下链表长度期望很小(绝大多数桶 0~2 个节点),在空间利用率和查找效率间取得工程上验证过的平衡点</td></tr>
+  </table>
+  <p><code>HashMap</code> 的扩容(<code>resize()</code>)同样是容量翻倍(<code>newCap = oldCap &lt;&lt; 1</code>),触发条件是 <code>size &gt; threshold</code>(<code>threshold = capacity * loadFactor</code>)。翻倍策略保证了扩容的均摊复杂度是 O(1),这与本篇讲的再散列均摊分析完全对应——甚至 <code>HashMap</code> 还做了一个巧妙优化:因为容量永远是 2 的幂,扩容后一个旧桶里的元素只会拆分到新表的两个桶(原下标 / 原下标+oldCap),不需要重新计算完整哈希值,只需看哈希值多出来的那一个 bit,进一步降低了再散列的常数开销。</p>
+
+  <h2>四、常见陷阱</h2>
+  <div class="callout warn"><strong>陷阱 1 · 以为扩容按固定步长增长。</strong> 如果扩容是"容量 +1"这种线性增长策略,均摊分析会失效,总开销退化为 O(n²)——这是为什么几乎所有实现都选择"倍增"而不是"递增"。</div>
+  <div class="callout warn"><strong>陷阱 2 · 构造时不预估容量。</strong> 如果提前知道要存大量数据,却用默认小容量的 <code>HashMap</code>,会触发多次再散列,产生不必要的开销;应该在构造时用 <code>new HashMap&lt;&gt;(expectedSize)</code> 预留足够容量,一次到位。</div>
+  <div class="callout warn"><strong>陷阱 3 · 忽视迭代顺序被打乱。</strong> 再散列后元素在桶数组中的物理位置完全变了,遍历顺序也会随之改变——这是为什么 <code>HashMap</code> 从不保证遍历顺序,需要顺序保证时应该用 <code>LinkedHashMap</code>。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>装填因子 λ = 元素数/容量,是哈希表时间与空间的核心权衡指标。</li>
+    <li>再散列:容量变化后所有元素的桶下标都要重新计算,必须整体重建;倍增扩容配合均摊分析,把 O(n) 的重建开销摊到 O(1)/次。</li>
+    <li>Java <code>HashMap</code> 默认负载因子 0.75 + 容量倍增,是同一套均摊分析思想在真实源码里的落地,与 <code>ArrayList</code> 扩容的设计哲学一脉相承。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./10-开放定址法.html" class="nav-btn">← 开放定址法</a>
+    <a href="./12-二叉堆与堆性质.html" class="nav-btn next">二叉堆与堆性质 →</a>
+  </div>
+</div>
+</body>
+</html>
+</content>

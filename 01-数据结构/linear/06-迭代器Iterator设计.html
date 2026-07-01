@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据结构 · 迭代器 Iterator 设计</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #166534; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #4ade80; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../ds-roadmap.html">数据结构路线图</a> / 线性结构 / 迭代器 Iterator 设计</div>
+  <div class="hero">
+    <div class="tag">数据结构 · 线性结构</div>
+    <h1>迭代器 Iterator 设计</h1>
+    <p>如何在不暴露底层是数组还是链表的前提下,给所有容器一套统一的遍历方式。</p>
+    <p class="src">📖 来源:<b>《数据结构与算法分析:Java语言描述》</b> 第 3 章「表、栈和队列」</p>
+  </div>
+
+  <h2>一、它到底在解决什么问题</h2>
+  <p>上一篇讲到 <code>ArrayList</code> 底层是连续数组、<code>LinkedList</code> 底层是双向链表——两者遍历一遍元素的<strong>物理方式完全不同</strong>:数组是下标 <code>i++</code> 直接跳,链表必须沿着 <code>next</code> 指针一步步走,否则退化成 O(n²)。</p>
+  <p>如果没有统一抽象,调用方就得为每种容器写一套遍历代码,还得知道内部结构才能写「快」的那种。<strong>迭代器模式</strong>解决的正是这个矛盾:把「怎么遍历」的知识封装进容器自己提供的一个游标对象里,调用方只认<code>hasNext()/next()</code> 两个方法,<strong>不关心、也看不到底层是数组还是链表</strong>。这是「针对接口编程,不针对实现编程」在容器场景下的直接体现。</p>
+
+  <h2>二、Java 怎么把它做成语言层面的东西</h2>
+  <p><code>Iterator</code> 是接口,只有三个方法:</p>
+  <div class="code-block"><div class="cb-header"><span>Java · java.util.Iterator</span></div><pre><span class="kw">public interface</span> <span class="ty">Iterator</span><span class="punct">&lt;</span><span class="ty">E</span><span class="punct">&gt;</span> <span class="punct">{</span>
+    <span class="kw">boolean</span> <span class="fn">hasNext</span><span class="punct">();</span>
+    <span class="ty">E</span> <span class="fn">next</span><span class="punct">();</span>
+    <span class="kw">default void</span> <span class="fn">remove</span><span class="punct">()</span> <span class="punct">{</span> <span class="cm">// 唯一安全的"遍历中删除"入口</span>
+        <span class="kw">throw new</span> <span class="ty">UnsupportedOperationException</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre></div>
+  <p>而容器本身实现的是 <code>Iterable</code> 接口,只有一个方法 <code>iterator()</code>,负责「生产」一个迭代器实例。<strong>for-each 语法糖</strong>就是编译器在背后把代码改写成迭代器调用:</p>
+  <div class="code-block"><div class="cb-header"><span>Java · for-each 的真身</span></div><pre><span class="kw">for</span> <span class="punct">(</span><span class="ty">String</span> s <span class="punct">:</span> list<span class="punct">)</span> <span class="punct">{</span> <span class="fn">use</span><span class="punct">(</span>s<span class="punct">);</span> <span class="punct">}</span>
+
+<span class="cm">// 编译器实际生成的代码大致等价于:</span>
+<span class="ty">Iterator</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> it <span class="punct">=</span> list<span class="punct">.</span><span class="fn">iterator</span><span class="punct">();</span>
+<span class="kw">while</span> <span class="punct">(</span>it<span class="punct">.</span><span class="fn">hasNext</span><span class="punct">())</span> <span class="punct">{</span>
+    <span class="ty">String</span> s <span class="punct">=</span> it<span class="punct">.</span><span class="fn">next</span><span class="punct">();</span>
+    <span class="fn">use</span><span class="punct">(</span>s<span class="punct">);</span>
+<span class="punct">}</span></pre></div>
+  <p>这也解释了一个常见疑问:<strong>为什么数组能用 for-each,却不需要实现 Iterable?</strong>——因为数组是语言内置类型,编译器对它做了特殊处理,直接生成下标循环,并不走迭代器协议。</p>
+
+  <h2>三、和 ArrayList / LinkedList 源码的联系</h2>
+  <p>两种容器的迭代器内部状态完全不同,但对外接口一致——这正是模式的价值所在:</p>
+  <table>
+    <tr><th>容器</th><th>迭代器内部持有什么</th><th>next() 做的事</th></tr>
+    <tr><td><code>ArrayList</code></td><td>一个下标 <code>cursor</code></td><td><code>elementData[cursor++]</code>,O(1)</td></tr>
+    <tr><td><code>LinkedList</code></td><td>一个 <code>Node</code> 引用</td><td><code>node = node.next</code>,O(1)</td></tr>
+  </table>
+  <p>注意两者的 <code>next()</code> 单步都是 O(1)——但如果你不用迭代器,而是对 <code>LinkedList</code> 用 <code>get(i)</code> 下标循环,每次 <code>get</code> 都要从头(或从近的一端)重新走链表,整体退化成 O(n²)。这是<strong>迭代器不只是「好看」,更是性能正确用法</strong>的直接证据。</p>
+
+  <h2>四、ConcurrentModificationException 的原理</h2>
+  <p>容器内部维护一个 <code>modCount</code>(结构性修改次数计数器),迭代器创建时把它记一份快照 <code>expectedModCount</code>。每次 <code>next()</code> 调用前都会检查两者是否相等:</p>
+  <div class="code-block"><div class="cb-header"><span>Java · ArrayList$Itr 简化版</span></div><pre><span class="kw">final void</span> <span class="fn">checkForComodification</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span>modCount <span class="punct">!=</span> expectedModCount<span class="punct">)</span>
+        <span class="kw">throw new</span> <span class="ty">ConcurrentModificationException</span><span class="punct">();</span>
+<span class="punct">}</span></pre></div>
+  <p>这是一种<strong>fail-fast</strong>(快速失败)策略:不保证检测到所有并发修改,只是「尽力而为」地尽早暴露问题,防止程序在数据被污染的情况下继续跑出更诡异的错误。</p>
+
+  <div class="callout warn"><strong>高频踩坑:</strong>遍历时直接调用<strong>集合的</strong> <code>remove()</code>(而不是<strong>迭代器的</strong> <code>iterator.remove()</code>)。
+  <div class="code-block"><div class="cb-header"><span>Java · 反例</span></div><pre><span class="kw">for</span> <span class="punct">(</span><span class="ty">String</span> s <span class="punct">:</span> list<span class="punct">)</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span>s<span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="st">"x"</span><span class="punct">))</span> list<span class="punct">.</span><span class="fn">remove</span><span class="punct">(</span>s<span class="punct">);</span> <span class="cm">// list.modCount++,但 expectedModCount 没跟着变</span>
+<span class="punct">}</span> <span class="cm">// 下一次 next() 检查时两者不等 → 抛 CME</span></pre></div>
+  <div class="code-block"><div class="cb-header"><span>Java · 正例</span></div><pre><span class="ty">Iterator</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> it <span class="punct">=</span> list<span class="punct">.</span><span class="fn">iterator</span><span class="punct">();</span>
+<span class="kw">while</span> <span class="punct">(</span>it<span class="punct">.</span><span class="fn">hasNext</span><span class="punct">())</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span>it<span class="punct">.</span><span class="fn">next</span><span class="punct">().</span><span class="fn">equals</span><span class="punct">(</span><span class="st">"x"</span><span class="punct">))</span>
+        it<span class="punct">.</span><span class="fn">remove</span><span class="punct">();</span> <span class="cm">// 迭代器内部同步更新 expectedModCount,不会触发 CME</span>
+<span class="punct">}</span></pre></div>
+  </div>
+  <p>还有一个变体坑更隐蔽:巧合地删到<strong>倒数第二个</strong>元素时,由于 <code>hasNext()</code> 的判断条件恰好躲过了检查,程序<strong>不抛异常但结果错误</strong>(少处理了一个元素)——这比直接抛异常更危险,因为它不报错,却悄悄产生了错误结果。所以「用 for-each 遍历时不要调用集合的 remove」不能靠「有没有抛异常」来验证,必须靠规则本身来避免。</p>
+
+  <div class="callout info"><strong>联系:</strong>CME 只在单线程「遍历中结构性修改」场景下抛出,它<strong>不是</strong>线程安全机制。多线程场景下即便检测到也可能来不及(检测本身有竞态),真正需要并发安全遍历要用 <code>CopyOnWriteArrayList</code> 或并发容器,那是另一套设计。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>迭代器模式:把「怎么遍历」封装进容器自己的游标对象,调用方只认统一接口,不关心底层实现。</li>
+    <li><code>Iterable.iterator()</code> 生产 <code>Iterator</code>;for-each 是编译器对这套协议的语法糖。</li>
+    <li><code>ArrayList</code> 迭代器靠下标、<code>LinkedList</code> 迭代器靠 <code>Node</code> 引用,单步都是 O(1)——但绕开迭代器直接对链表用 <code>get(i)</code> 会退化成 O(n²)。</li>
+    <li><code>modCount</code> 快照比对实现 fail-fast 检测,遍历中删除必须用 <code>iterator.remove()</code>。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./05-ArrayList与LinkedList取舍.html" class="nav-btn">← 上一篇:ArrayList vs LinkedList 取舍</a>
+    <a href="./07-栈Stack与应用.html" class="nav-btn next">下一篇:栈 Stack 与应用 →</a>
+  </div>
+</div>
+</body>
+</html>

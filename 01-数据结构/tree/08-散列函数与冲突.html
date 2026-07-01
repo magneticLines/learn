@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据结构 · 散列函数与冲突</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #92400e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero h1 .ch { font-size: 0.7rem; color: #fbbf24; border: 1px solid #92400e; border-radius: 4px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fbbf24; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #92400e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../ds-roadmap.html">数据结构路线图</a> / 树与散列 / 散列函数与冲突</div>
+  <div class="hero">
+    <div class="tag">第5章 · 散列</div>
+    <h1>散列函数与冲突<span class="ch">第5章</span></h1>
+    <p>树把查找压到 O(log n) 已经很快,散列表更进一步——放弃"比较"这个动作本身,直接用计算定位到数据,换来接近 O(1) 的查找。</p>
+    <p class="src">📖 来源:<b>Weiss《数据结构与算法分析:Java语言描述》</b> 第 5 章「散列」</p>
+  </div>
+
+  <h2>一、核心思想:用计算代替比较</h2>
+  <p>无论是 BST、AVL 还是红黑树,查找的本质都是<strong>不断比较,逐步缩小范围</strong>,代价是 O(log n)。<strong>散列表(Hash Table)</strong>换了一种完全不同的思路:<strong>不比较,直接算出数据该在哪</strong>。具体做法是用一个<strong>散列函数(hash function)</strong>把任意 key 映射成一个整数,再对数组长度取模,得到数组下标——存取数据时直接跳到这个下标,理想情况下不需要经过任何比较,平均时间复杂度是 <strong>O(1)</strong>。</p>
+  <div class="callout info"><strong>类比:</strong>树查找像是"图书馆按字母顺序摆书,你一节节比对目录逐步靠近";散列表更像"每本书直接按照书名算出的编号摆在固定格子里,你知道书名就能算出格子号,一步到位"——前提是这个"编号算法"设计得足够好。</div>
+
+  <h2>二、一个好的散列函数应该具备什么性质</h2>
+  <ul>
+    <li><strong>分布均匀</strong>:对于实际会用到的 key 集合,算出来的下标应该尽可能均匀撒在整个数组范围里,不能出现大量 key 挤在少数几个下标上。分布不均会让某些位置堆积大量数据,拖慢那部分的查找速度,整个哈希表的"平均 O(1)"承诺就名不副实。</li>
+    <li><strong>计算要快</strong>:散列函数本身是每次存取都要执行的开销,如果计算它比直接遍历比较还慢,就失去了意义。好的散列函数通常只涉及简单的位运算、乘法、取模,避免复杂逻辑。</li>
+  </ul>
+
+  <h2>三、冲突为什么不可避免:鸽笼原理</h2>
+  <p>无论散列函数设计得多好,只要<strong>可能的 key 数量超过数组的槽位数量</strong>,就一定会有两个不同的 key 被算到同一个下标——这就是<strong>冲突(collision)</strong>。这不是"设计得不够好"导致的偶然现象,而是数学上的必然:<strong>鸽笼原理(Pigeonhole Principle)</strong> 说,如果有 n 个鸽子要塞进 m 个笼子,当 n > m 时,必然有至少一个笼子塞进了 2 只以上的鸽子。哈希表的槽位数量是有限的,而理论上可能的 key(比如所有字符串)是无限的,冲突在数学上必然发生,散列表的设计目标从来不是"消除冲突",而是"高效地处理冲突"——这正是后面两篇要讲的<strong>链地址法</strong>和<strong>开放寻址法</strong>要解决的问题。</p>
+
+  <h2>四、联系 Java:hashCode() 与 equals() 的契约</h2>
+  <p>散列表要正确工作,依赖一个基本前提:<strong>相等的对象必须产生相同的散列值</strong>,否则同一个逻辑上"相等"的 key 会被分散到不同的桶里,导致查找失败。Java 把这个前提固化成了 <code>Object</code> 的一条<strong>契约(contract)</strong>:</p>
+  <div class="callout warn"><strong>极高频面试题:</strong>
+  <ul style="margin-top:8px;">
+    <li><strong>如果两个对象 <code>equals()</code> 返回 true,它们的 <code>hashCode()</code> 必须相等。</strong>(这是硬性要求,否则 <code>HashMap</code>/<code>HashSet</code> 会出现"存进去却再也找不到"的诡异 bug——因为查找时先用 hashCode 定位桶,再用 equals 逐一比对,如果 hashCode 都不一致,根本走不到 equals 那一步。)</li>
+    <li><strong>反过来不成立:<code>hashCode()</code> 相等,<code>equals()</code> 不一定相等。</strong>这正是"冲突"在 Java 里的具体体现——不同的对象完全可以拥有相同的 hashCode,散列表本来就要处理这种情况。</li>
+  </ul>
+  </div>
+  <p>这也是为什么很多教材强调"重写 <code>equals()</code> 就必须同时重写 <code>hashCode()</code>"——如果只重写 <code>equals()</code>,两个字段完全相同的对象可能因为默认 <code>hashCode()</code>(通常基于内存地址)不同,被分到不同的桶,永远不会被判定为"相等",<code>HashMap</code> 里会出现重复 key、<code>HashSet</code> 里会出现重复元素,这是初学者最容易踩的坑之一。</p>
+
+  <div class="code-block"><div class="cb-header"><span>Java · 违反契约的典型错误</span></div><pre><span class="kw">class</span> <span class="ty">Point</span> <span class="punct">{</span>
+    <span class="kw">int</span> x<span class="punct">,</span> y<span class="punct">;</span>
+    <span class="kw">public boolean</span> <span class="fn">equals</span><span class="punct">(</span><span class="ty">Object</span> o<span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">if</span> <span class="punct">(!(</span>o <span class="kw">instanceof</span> <span class="ty">Point</span><span class="punct">))</span> <span class="kw">return</span> <span class="kw">false</span><span class="punct">;</span>
+        <span class="ty">Point</span> p <span class="punct">=</span> <span class="punct">(</span><span class="ty">Point</span><span class="punct">)</span> o<span class="punct">;</span>
+        <span class="kw">return</span> x <span class="punct">==</span> p<span class="punct">.</span>x <span class="punct">&&</span> y <span class="punct">==</span> p<span class="punct">.</span>y<span class="punct">;</span>
+    <span class="punct">}</span>
+    <span class="cm">// 忘记重写 hashCode():默认实现基于内存地址,两个"逻辑相等"的 Point
+    // 会算出不同的哈希值,被分到不同的桶 —— HashSet 里会出现"重复"的 Point</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>散列表用散列函数把 key 映射到数组下标,靠"计算"代替"比较",平均查找/插入/删除是 O(1)。</li>
+    <li>好的散列函数要分布均匀(减少堆积)、计算要快(否则失去意义)。</li>
+    <li>鸽笼原理决定了冲突在数学上不可避免,散列表设计的重点是"高效处理冲突"而非"消除冲突"。</li>
+    <li>Java 的 hashCode/equals 契约:equals 相等则 hashCode 必须相等;反之不然——这是散列表正确工作的前提,也是最高频的面试考点之一。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="07-B树与B+树.html" class="nav-btn">← B 树 / B+ 树</a>
+    <a href="09-分离链接法.html" class="nav-btn next">分离链接法 →</a>
+  </div>
+</div>
+</body>
+</html>

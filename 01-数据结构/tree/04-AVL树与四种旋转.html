@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据结构 · AVL 树与四种旋转</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fbbf24; border: 1px solid #92400e; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fbbf24; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fbbf24; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fbbf24; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fbbf24; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fbbf24; border-color: #92400e; } .nav-btn.next:hover { background: #422006; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../ds-roadmap.html">数据结构路线图</a> / 树与散列 / AVL 树与四种旋转</div>
+  <div class="hero">
+    <div class="tag">第4章 · 树</div>
+    <h1>AVL 树与四种旋转</h1>
+    <p>普通 BST 把树形的好坏完全交给运气(插入顺序),AVL 树则在每一步插入后主动检查、主动纠正——用局部的小调整,换来全局的高度可控。</p>
+    <p class="src">📖 来源:<b>Weiss《数据结构与算法分析:Java语言描述》</b> 第 4 章「树」</p>
+  </div>
+
+  <h2>一、AVL 树解决的问题:强制平衡</h2>
+  <p>上一篇讲到 BST 的致命弱点——有序数据插入会让树退化成链表,查找从 O(log n) 劣化为 O(n)。<strong>AVL 树(Adelson-Velsky 和 Landis 提出)</strong>是第一种被广泛使用的<strong>自平衡二叉搜索树</strong>,它的核心思想只有一句话:</p>
+  <div class="callout info"><strong>AVL 铁律:</strong>任意节点的左右子树高度差(平衡因子)的绝对值不超过 1。一旦某次插入/删除导致某个节点违反这条规则,立即通过"旋转"进行局部调整,把树重新掰回平衡状态。</div>
+  <p>这条铁律保证了树的高度始终是 O(log n) 级别(可以证明高度上界约为 1.44 log n),从而<strong>无论插入顺序如何</strong>,查找、插入、删除都稳定在 O(log n)——这就是 AVL 树对 BST 最根本的改进:把"看运气"变成了"有保证"。</p>
+
+  <h2>二、平衡因子:失衡的度量标准</h2>
+  <p><strong>平衡因子(Balance Factor)</strong> = 左子树高度 − 右子树高度。每个节点额外维护一个 <code>height</code> 字段(而不是直接存平衡因子),因为高度更方便通过子节点递归计算得到。平衡因子的取值只有三种合法状态:<code>-1、0、1</code>;一旦插入/删除后变成 <code>2</code> 或 <code>-2</code>,就说明该节点"失衡"了,必须旋转修复。</p>
+
+  <h2>三、四种旋转:对症下药</h2>
+  <p>失衡有四种典型形态,分别对应四种修复手法。记忆的关键不是死记硬背,而是理解<strong>失衡发生在"插入路径"的哪个方向组合上</strong>:</p>
+  <table>
+    <tr><th>失衡类型</th><th>触发场景</th><th>修复手法</th></tr>
+    <tr><td>LL(左左)</td><td>在左孩子的<strong>左</strong>子树插入导致失衡</td><td>对失衡节点做一次<strong>右旋</strong></td></tr>
+    <tr><td>RR(右右)</td><td>在右孩子的<strong>右</strong>子树插入导致失衡</td><td>对失衡节点做一次<strong>左旋</strong></td></tr>
+    <tr><td>LR(左右)</td><td>在左孩子的<strong>右</strong>子树插入导致失衡</td><td>先对左孩子<strong>左旋</strong>,再对失衡节点<strong>右旋</strong></td></tr>
+    <tr><td>RL(右左)</td><td>在右孩子的<strong>左</strong>子树插入导致失衡</td><td>先对右孩子<strong>右旋</strong>,再对失衡节点<strong>左旋</strong></td></tr>
+  </table>
+  <p>直觉记法:<strong>LL/RR 是"一条直线"的失衡,一次旋转就能拉直;LR/RL 是"拐了个弯"的失衡,先把弯拉直变成直线情况,再套用上面的单次旋转</strong>。</p>
+
+  <div class="code-block"><div class="cb-header"><span>Java · 右旋(修复 LL 失衡)</span></div><pre><span class="cm">//      y                x
+//     / \              /   \
+//    x   T3   -->     x1    y
+//   / \                    /  \
+//  x1  x2                 x2   T3
+// 抓住失衡节点 y,把它的左孩子 x 顶上来当新的子树根</span>
+<span class="ty">Node</span> <span class="fn">rightRotate</span><span class="punct">(</span><span class="ty">Node</span> y<span class="punct">)</span> <span class="punct">{</span>
+    <span class="ty">Node</span> x <span class="punct">=</span> y<span class="punct">.</span>left<span class="punct">;</span>
+    y<span class="punct">.</span>left <span class="punct">=</span> x<span class="punct">.</span>right<span class="punct">;</span>   <span class="cm">// x 的右子树"过继"给 y 当左子树,不会破坏 BST 有序性</span>
+    x<span class="punct">.</span>right <span class="punct">=</span> y<span class="punct">;</span>
+    <span class="fn">updateHeight</span><span class="punct">(</span>y<span class="punct">);</span> <span class="fn">updateHeight</span><span class="punct">(</span>x<span class="punct">);</span> <span class="cm">// 顺序不能反:必须先算完子节点 y 的新高度,x 才能算对</span>
+    <span class="kw">return</span> x<span class="punct">;</span>              <span class="cm">// x 成为这棵子树的新根,调用者要用它替换旧的引用</span>
+<span class="punct">}</span></pre></div>
+
+  <h2>四、演示:插入序列 3, 2, 1 触发一次右旋(LL)</h2>
+  <p>依次插入 <code>3</code>、<code>2</code>、<code>1</code>:插入 <code>3</code>、<code>2</code> 后树是 <code>3 → 左孩子 2</code>,平衡因子为 1,仍合法。再插入 <code>1</code>,它落在 <code>2</code> 的左子树,使节点 <code>3</code> 的平衡因子变成 <code>2</code>——典型的 LL 失衡(在左孩子的左子树插入)。对 <code>3</code> 做一次右旋,<code>2</code> 顶替成为新根,<code>1</code> 和 <code>3</code> 分别变成它的左右孩子,树恢复平衡且高度从 3 降到 2。</p>
+  <div class="code-block"><div class="cb-header"><span>插入 3, 2, 1 的过程</span></div><pre><span class="text">插入3   插入2      插入1(失衡)      右旋后
+ 3       3            3                 2
+        /            /                 / \
+       2            2                 1   3
+                    /
+                   1   ← 平衡因子(3) = 2,触发 LL 右旋</span></pre></div>
+  <p>如果继续插入 <code>1.5</code>(落在 <code>1</code> 的右子树),则会先形成 LR 形态,需要"先左旋后右旋"两步才能修复——这也是为什么 LR/RL 被称为"双旋转"。</p>
+
+  <h2>五、代价:写入变贵了</h2>
+  <div class="callout warn"><strong>陷阱提醒:</strong>AVL 树用"更贵的插入/删除"换来了"更稳的查找"。每次插入/删除后,失衡可能沿着从叶子到根的路径逐层传播,理论上最多需要检查/旋转 O(log n) 层。在读多写少的场景这个代价完全值得,但在插入删除极其频繁的场景(比如通用容器库),这个代价就成了负担——这正是下一篇要讲的<strong>红黑树</strong>要解决的问题:放宽一点平衡要求,换取更少的旋转次数。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>AVL 树用"平衡因子 ∈ {-1,0,1}"的铁律,强制树高稳定在 O(log n),不再依赖插入顺序的运气。</li>
+    <li>四种旋转按失衡形态对症下药:LL→右旋,RR→左旋,LR→左旋再右旋,RL→右旋再左旋。</li>
+    <li>"一条直线"的失衡一次旋转解决,"拐弯"的失衡需要先拉直再旋转(双旋转)。</li>
+    <li>代价是写操作变贵——插入/删除可能引发沿路径向上传播的多次旋转,这是红黑树要优化的方向。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="03-二叉搜索树BST.html" class="nav-btn">← 二叉搜索树 BST</a>
+    <a href="05-红黑树.html" class="nav-btn next">红黑树 →</a>
+  </div>
+</div>
+</body>
+</html>
