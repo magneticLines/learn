@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · Git 对象模型(blob / tree / commit)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #2e1065; border-color: #8b5cf6; color: #d8b4fe; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #2e1065; border-color: #c084fc; color: #d8b4fe; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #4c1d95; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 进阶与底层 / Git 对象模型</div>
+  <div class="hero">
+    <div class="tag">Git · 进阶与底层</div>
+    <h1>Git 对象模型:blob / tree / commit 三块地基</h1>
+    <p>这是理解 Git 的地基。搞懂三种对象和内容寻址,前面所有命令的行为——分支、reset、merge、stash——都会从"死记硬背"变成"一眼看穿"。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 10 章「Git 内部原理」(10.2 Git 对象)</p>
+  </div>
+
+  <h2>一、Git 本质是一个"内容寻址文件系统"</h2>
+  <p>抛开分支、提交这些高层概念,Git 最核心的其实是一个简单的<strong>键值数据库</strong>:你给它一段内容,它算出一个<strong>SHA-1 哈希(40 位十六进制)</strong>作为 key,把内容存进 <code>.git/objects</code>;之后凭这个哈希就能取回内容。这叫<strong>内容寻址(content-addressable)</strong>——<strong>地址由内容本身决定</strong>,而不是由文件名或位置决定。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 用底层命令直接存/取内容</span></div><pre><span class="cm"># hash-object:把内容存进对象库,返回它的 SHA-1(-w 表示真的写入)</span>
+<span class="fn">echo</span> <span class="st">"hello git"</span> <span class="punct">|</span> <span class="fn">git</span> hash-object <span class="punct">-w</span> <span class="punct">--stdin</span>
+<span class="cm"># → 8d0e41234f24b6da002d962a26c2495ea16a425f</span>
+
+<span class="cm"># cat-file:凭哈希取回内容 / 查看类型</span>
+<span class="fn">git</span> cat-file <span class="punct">-p</span> 8d0e41234f   <span class="cm"># -p:按类型美化打印内容 → hello git</span>
+<span class="fn">git</span> cat-file <span class="punct">-t</span> 8d0e41234f   <span class="cm"># -t:看类型 → blob</span></pre></div>
+  <div class="callout info"><strong>为什么用 SHA-1 而不是自增 ID:</strong>内容寻址带来两个巨大好处——① <strong>天然去重</strong>:两个完全相同的文件内容算出同一个哈希,只存一份;② <strong>天然防篡改</strong>:哈希由内容决定,任何一个字节被改,哈希就变,整条引用链随之失效。这正是 Git 数据完整性的根基。</div>
+
+  <h2>二、三种核心对象</h2>
+  <p>Git 用这套键值库存储三种(严格说四种,含 tag)对象类型,层层组合成完整的项目快照:</p>
+  <table>
+    <tr><th>对象</th><th>存什么</th><th>类比</th></tr>
+    <tr><td><strong>blob</strong></td><td>纯文件<strong>内容</strong>(不含文件名、不含权限)</td><td>文件的"肉"</td></tr>
+    <tr><td><strong>tree</strong></td><td>一个目录:列出该目录下每个条目的<strong>名字 + 权限 + 指向的 blob/tree 哈希</strong></td><td>目录(文件夹)</td></tr>
+    <tr><td><strong>commit</strong></td><td>指向<strong>一个顶层 tree</strong> + 父提交 + 作者/提交者 + 提交信息</td><td>一次快照 + 元数据</td></tr>
+  </table>
+
+  <h3>blob:只有内容,没有身份</h3>
+  <p>关键认知:<strong>blob 里不存文件名</strong>。它只存内容本身。所以两个内容相同、名字不同的文件,共用同一个 blob。"这个 blob 叫什么名字"这个信息,是记在<strong>上一层的 tree</strong> 里的。</p>
+
+  <h3>tree:把名字和内容缝合起来</h3>
+  <div class="code-block"><div class="cb-header"><span>bash · 查看一个 tree 对象</span></div><pre><span class="fn">git</span> cat-file <span class="punct">-p</span> HEAD^{tree}
+<span class="cm"># 输出形如(每行 = 权限 类型 哈希 名字):</span>
+<span class="cm"># 100644 blob a1b2c3...   README.md    ← 指向一个 blob,起名 README.md</span>
+<span class="cm"># 100644 blob d4e5f6...   pom.xml</span>
+<span class="cm"># 040000 tree 778899...   src          ← 指向另一个 tree(子目录),形成递归</span></pre></div>
+  <p>tree 通过引用子 tree 实现<strong>目录嵌套</strong>——整个项目的目录结构就是一棵 tree 组成的树。tree 记录名字与权限,blob 记录内容,两者分工,共同表达"某个目录此刻长什么样"。</p>
+
+  <h3>commit:给快照盖上时间戳和签名</h3>
+  <div class="code-block"><div class="cb-header"><span>bash · 查看一个 commit 对象</span></div><pre><span class="fn">git</span> cat-file <span class="punct">-p</span> HEAD
+<span class="cm"># tree   9fceb0...              ← 指向本次快照的顶层目录 tree</span>
+<span class="cm"># parent 056bd2b...            ← 指向上一个 commit(首个提交无此行)</span>
+<span class="cm"># author  shea &lt;...&gt; 1719...   ← 作者 + 时间戳</span>
+<span class="cm"># committer shea &lt;...&gt; 1719... ← 提交者</span>
+<span class="cm">#</span>
+<span class="cm"># 添加文档                       ← 提交信息</span></pre></div>
+
+  <h2>三、它们如何组成一次快照</h2>
+  <p>把三者串起来:一次 <code>git commit</code> 会——① 把每个变化的文件存成 <strong>blob</strong>;② 为每层目录生成 <strong>tree</strong>,tree 里记录文件名指向 blob、子目录指向子 tree;③ 生成一个 <strong>commit</strong>,指向顶层 tree、指向父提交。于是"提交"= 一个指向完整目录树的指针。</p>
+  <div class="code-block"><div class="cb-header"><span>对象引用关系(自上而下)</span></div><pre><span class="ty">commit</span> <span class="punct">──parent──&gt;</span> <span class="ty">上一个 commit</span>
+   <span class="punct">│</span>
+   <span class="punct">└─tree─&gt;</span> <span class="ty">顶层 tree</span> <span class="punct">──&gt;</span> <span class="ty">blob</span>(README.md 内容)
+                 <span class="punct">├──&gt;</span> <span class="ty">blob</span>(pom.xml 内容)
+                 <span class="punct">└──&gt;</span> <span class="ty">tree</span>(src/) <span class="punct">──&gt;</span> <span class="ty">blob</span>(App.java 内容)</pre></div>
+  <div class="callout tip"><strong>为什么说 Git 存的是"快照"而非"差异":</strong>每次提交,Git 记录的是<strong>那一刻整个项目的完整树</strong>(一组 tree + blob),而不是"相对上次改了哪几行"。这与 SVN 等"存差异"的系统本质不同——正因如此,checkout 任意提交都是 O(1) 直接取树,不必层层叠加差异。(存储层面的 delta 压缩是另一回事,见「打包文件」篇,它不改变这个快照语义。)</div>
+  <div class="callout info"><strong>去重的威力:</strong>连续两次提交,只改了一个文件——那么<strong>没变的文件仍复用原来的 blob,没变的子目录仍复用原来的 tree</strong>(哈希没变)。Git 只需为变化的文件/目录创建新对象。所以"每次存完整快照"并不会浪费海量空间。</div>
+
+  <h2>四、这套模型如何解释高层命令</h2>
+  <ul>
+    <li><strong>分支只是一个指针:</strong>一个分支就是一个 41 字节的文件,里面是它最新 commit 的哈希。创建分支 = 写个文件,所以 Git 建分支才那么快(下一篇细讲)。</li>
+    <li><strong>reset 就是改指针指向哪个 commit</strong>——因为 commit 就是快照入口。</li>
+    <li><strong>SHA-1 让完整性可验证:</strong>commit 哈希由其内容(含 tree 哈希、parent 哈希)决定,tree 哈希由其内容(含 blob 哈希)决定……环环相扣。<strong>改动历史中任何一个字节,从那里往后所有哈希全变</strong>——这就是 Git 无法悄悄篡改历史的原因。</li>
+  </ul>
+  <div class="callout warn"><strong>常见误区:</strong>初学者以为"提交存的是 diff"。不是。提交存的是<strong>完整快照(整棵 tree)</strong>,diff 是 Git 在你 <code>git diff</code> / <code>git log -p</code> 时<strong>临时对比两个快照算出来的</strong>,并非存储形式。这个误区一破,merge/rebase/cherry-pick 的很多行为就顺理成章了。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>Git 本质是内容寻址键值库:内容 → SHA-1 → 存 <code>.git/objects</code>。地址由内容决定,天然去重、天然防篡改。</li>
+    <li>三种对象:<strong>blob</strong>(纯内容,无文件名)、<strong>tree</strong>(目录:名字+权限+指向子对象)、<strong>commit</strong>(指向顶层 tree + 父提交 + 元数据)。</li>
+    <li>一次提交 = 一整棵 tree/blob 快照 + 一个 commit 入口;没变的对象跨提交复用,所以快照不浪费空间。</li>
+    <li>Git 存快照不存差异(diff 是临时算的);哈希环环相扣使历史不可悄悄篡改。分支/reset 等高层命令本质都是"操作指向 commit 的指针"。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./06-子模块submodule.html" class="nav-btn">← 上一篇:子模块 submodule</a>
+    <a href="./08-引用refs与HEAD.html" class="nav-btn next">下一篇:引用 refs 与 HEAD →</a>
+  </div>
+</div>
+</body>
+</html>

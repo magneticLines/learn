@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 快照而非差异</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fb923c; border: 1px solid #9a3412; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fb923c; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fb923c; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fb923c; border-color: #9a3412; } .nav-btn.next:hover { background: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 基础 / Git 与其他 VCS 的区别</div>
+  <div class="hero">
+    <div class="tag">Git · 基础</div>
+    <h1>Git 与其他 VCS 的区别:快照,而非差异</h1>
+    <p>几乎所有 Git 的"奇怪行为"和"惊人速度",都能从这一句话推导出来:Git 存的是快照,不是差异。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 1.3 节「Git 是什么」</p>
+  </div>
+
+  <h2>一、传统 VCS 怎么存:基于差异(delta)</h2>
+  <p>CVS、SVN、Perforce 这类系统,把数据看成<strong>一组文件</strong>以及每个文件<strong>随时间累积的差异</strong>。它们记录的是"文件 A 在版本 1 到版本 2 之间,第 3 行从 X 改成了 Y"这样的<strong>变更(delta)</strong>。想得到某个版本的完整文件,需要拿基础版本 + 一路叠加所有 delta 算出来。</p>
+  <p>这叫<strong>基于差异的版本控制(delta-based)</strong>。它省空间,但代价是:每次要还原一个历史版本,都可能需要重放一长串 patch,版本越久、计算越慢。</p>
+
+  <h2>二、Git 怎么存:每次提交都是一张完整快照</h2>
+  <p>Git 把数据看成<strong>一系列文件系统的快照(snapshot)</strong>。每次你 <code>commit</code>,Git 会给<strong>当前项目里所有文件的状态拍一张全景照片</strong>,然后保存这个快照的一个引用。</p>
+  <div class="callout tip"><strong>关键的省空间技巧:</strong>如果某个文件这次没变,Git <strong>不会重复存它</strong>,而只存一个<strong>指向上一次那个完全相同文件的指针</strong>。所以"快照"不等于"每次都全量复制一遍",没变的文件靠指针复用——既有快照的速度,又不浪费空间。</div>
+  <p>用一句话概括这个差异:<strong>SVN 想的是"这个文件改了什么",Git 想的是"这次提交时整个项目长什么样"。</strong></p>
+  <table>
+    <tr><th></th><th>基于差异(SVN)</th><th>基于快照(Git)</th></tr>
+    <tr><td>存储单位</td><td>每个文件的一串变更</td><td>每次提交时整棵文件树的快照</td></tr>
+    <tr><td>未改动的文件</td><td>不涉及(该文件无 delta)</td><td>用指针指向上一版的相同文件,不重存</td></tr>
+    <tr><td>还原某版本</td><td>叠加一长串 patch 计算得出</td><td>直接取那张快照</td></tr>
+  </table>
+
+  <h2>三、为什么这个设计带来"几乎所有操作都是本地的、快到离谱"</h2>
+  <p>因为整个仓库(所有快照、所有历史)都<strong>完整躺在你本地磁盘上</strong>,而且历史版本就是现成的快照——查看历史、对比版本、切换分支,<strong>几乎不需要任何网络,也不需要重放 delta 计算</strong>,大多是查表和移动指针的操作。这就是为什么用惯 SVN 的人第一次用 Git 会觉得"怎么这么快"。</p>
+  <div class="callout info"><strong>联系底层:</strong>Git 内部把每个文件内容、每棵目录树、每次提交都作为一个<strong>对象</strong>存进对象数据库,用内容的 <strong>SHA-1 哈希</strong>作为地址(后面「Git 内部原理」会展开)。"没变的文件复用指针"本质就是:内容没变 → 哈希相同 → 指向同一个对象。这也是 Git 能做到<strong>完整性校验</strong>的原因——任何内容被悄悄篡改,哈希都会对不上。</div>
+
+  <h2>四、一切皆有校验和:Git 的完整性保证</h2>
+  <p>Git 在存储任何东西之前,都会先对其内容算一个 SHA-1 校验和(40 位十六进制,如 <code>24b9da6552252987aa493b52f8696cd6d3b00373</code>),并用这个校验和来引用它。这意味着:<strong>你不可能在 Git 不知情的情况下改动任何文件内容或损坏任何数据</strong>——因为内容一变,哈希就变了,Git 立刻能察觉。</p>
+
+  <h2>五、Git 一般只添加数据</h2>
+  <p>你在 Git 里做的几乎所有操作,本质都是<strong>往数据库里添加新数据</strong>,而很难真正"删掉"什么。一旦你提交了快照(尤其是 push 过之后),它就很难丢失。哪怕你 <code>reset</code> 把分支指针挪走了,那个提交对象通常还静静躺在数据库里,可以靠 <code>git reflog</code> 找回来。</p>
+  <div class="callout tip"><strong>心态转变:</strong>这条特性让 Git "用起来很安全"——可以大胆试验分支、大胆改。真正会导致数据丢失的,主要是那些<strong>还没提交</strong>的改动(工作区里没 add 也没 commit 的东西)。所以口诀是:<strong>常 commit,想丢东西没那么容易。</strong></div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>传统 VCS 存"每个文件随时间的差异";Git 存"每次提交时整棵文件树的快照"。</li>
+    <li>没变的文件不重复存,只存一个指向旧对象的指针——快照既快又不浪费空间。</li>
+    <li>整仓库带完整历史在本地 + 历史是现成快照 ⇒ 操作几乎全在本地、极快、可离线。</li>
+    <li>一切内容用 SHA-1 校验和寻址 ⇒ 天然完整性校验,内容一改哈希就变。</li>
+    <li>Git 大多只"添加"数据,已提交的东西很难真丢——所以要养成勤提交的习惯。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./01-版本控制是什么.html" class="nav-btn">← 上一篇:版本控制是什么</a>
+    <a href="./03-三种状态.html" class="nav-btn next">下一篇:三种状态 →</a>
+  </div>
+</div>
+</body>
+</html>

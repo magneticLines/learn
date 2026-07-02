@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 快进合并 vs 三方合并</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #166534; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #4ade80; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 分支 / 快进合并 vs 三方合并</div>
+  <div class="hero">
+    <div class="tag">Git · 分支</div>
+    <h1>快进合并 vs 三方合并,以及 --no-ff</h1>
+    <p>同样一句 <code>git merge</code>,有时悄无声息地挪个指针就完事(快进),有时却生成一个合并提交(三方合并)。差别的根源是"历史有没有分叉"。搞懂它,你才能有意识地选择 <code>--no-ff</code>。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 3 章「Git 分支」</p>
+  </div>
+
+  <h2>一、判定规则:合并走哪条路,取决于共同祖先在哪</h2>
+  <p>merge 时 Git 先找两分支的<strong>共同祖先(merge base)</strong>,然后看一个关键问题:<strong>共同祖先是不是恰好就是当前分支的位置?</strong></p>
+  <ul>
+    <li><strong>是</strong> → 说明当前分支从分岔点起没有任何自己的新提交,只是"落后"→ <strong>快进(fast-forward)</strong>。</li>
+    <li><strong>否</strong> → 两边都各自前进过,历史真的分叉了 → <strong>三方合并(three-way merge)</strong>,产生合并提交。</li>
+  </ul>
+
+  <h2>二、快进合并:只是把指针往前挪</h2>
+  <p>当前分支的所有历史都被目标分支完整包含,合并根本不需要"融合"任何东西,Git 只是把当前分支指针直接<strong>快进</strong>到目标末端。</p>
+  <div class="code-block"><div class="cb-header"><span>图示 · fast-forward</span></div><pre><span class="cm"># 合并前:main 停在 C2,hotfix 从 C2 出发走到 C4</span>
+    C2 &lt;── C3 &lt;── C4 &lt;── <span class="ty">hotfix</span>
+     ↑
+    <span class="kw">main</span>        (C2 是共同祖先,恰好=main 的位置)
+
+<span class="cm"># git switch main; git merge hotfix —— 直接把 main 快进到 C4</span>
+    C2 &lt;── C3 &lt;── C4 &lt;── <span class="ty">hotfix</span> &lt;── <span class="kw">main</span>
+<span class="cm"># 没有新提交、没有合并提交,历史是一条直线</span></pre></div>
+  <div class="callout info"><strong>为什么叫"快进"?</strong>类比看视频:进度条直接拖到后面,没有插入新内容。指针 <code>main</code> 只是沿着已有的 commit 链往前"进"了几格而已。</div>
+
+  <h2>三、三方合并:分叉后必须生成合并提交</h2>
+  <p>如果 main 在分岔后自己也提交过(比如别人往 main 推了东西),共同祖先就<strong>不再等于 main 当前位置</strong>,无法快进。Git 会做三方合并、生成一个有两个父的合并提交(见第 4 篇)。</p>
+  <div class="code-block"><div class="cb-header"><span>图示 · three-way merge</span></div><pre>          C4 ──────┐        <span class="cm"># main 自己走了 C4</span>
+         /          \
+    C2 &lt;┤            C6 &lt;── <span class="kw">main</span>   <span class="cm"># C6 = 合并提交,两个父</span>
+         \          /
+          C5 ──────┘        <span class="cm"># feature 走了 C5</span>
+<span class="cm"># 历史呈现"分叉→汇合"的形状</span></pre></div>
+
+  <h2>四、--no-ff:即使能快进,也强制留一个合并提交</h2>
+  <p>快进很干净,但有个"缺点":<strong>合并后历史是直线,完全看不出这些提交曾经属于一个独立的特性分支</strong>。对于想保留"功能边界"的团队,这不利于回溯和回滚。<code>--no-ff</code>(no fast-forward)就是为此而生:</p>
+  <div class="code-block"><div class="cb-header"><span>bash + 图示 · --no-ff 强制合并提交</span></div><pre>$ git merge --no-ff feature
+
+<span class="cm"># 本来能快进(直线),--no-ff 偏要造一个合并提交 C5:</span>
+    C2 &lt;── C3 &lt;── C4 ──┐
+     \                 \
+      \_______________ C5 &lt;── <span class="kw">main</span>   <span class="cm"># C5 两个父:C2 和 C4</span>
+                       feature ──&gt; C4
+
+<span class="cm"># 好处:一眼看出 C3~C4 是同一个特性分支的工作,回滚可整体 revert C5</span></pre></div>
+  <table>
+    <tr><th>维度</th><th>快进(默认,可快进时)</th><th>--no-ff</th></tr>
+    <tr><td>是否产生合并提交</td><td>否</td><td>是(强制)</td></tr>
+    <tr><td>历史形状</td><td>直线,干净</td><td>有"鼓包",保留分支痕迹</td></tr>
+    <tr><td>能否看出功能边界</td><td>看不出</td><td>能,合并提交即边界</td></tr>
+    <tr><td>整体回滚</td><td>难(要逐个 revert)</td><td>易(<code>revert -m</code> 一个合并提交)</td></tr>
+    <tr><td>适合</td><td>个人小改、线性历史偏好</td><td>团队协作、功能可追溯</td></tr>
+  </table>
+  <div class="callout tip"><strong>实践取舍:</strong>很多团队在合并特性分支到 <code>develop</code>/<code>main</code> 时约定统一用 <code>--no-ff</code>(GitLab/GitHub 的 "Create a merge commit" 就是这个),让主干历史清晰地记录"每个功能一次合入"。而 <code>git pull</code> 拉取远端更新这种场景,快进反而更自然、不想平白多出合并提交。</div>
+
+  <h2>五、常见误区</h2>
+  <ul>
+    <li><strong>"我 merge 了怎么没有合并提交?"</strong>——因为触发了快进,历史本就没分叉。这不是 bug。</li>
+    <li><strong>把 <code>--no-ff</code> 当成"解决冲突的开关"</strong>——它只影响是否生成合并提交,和冲突有没有毫无关系。</li>
+    <li><strong>误以为快进"更危险"</strong>——快进不会丢任何提交,它只是不记录分支边界。信息量少,不代表不安全。</li>
+    <li><strong>禁用快进的另一种方式</strong>:在配置里 <code>git config merge.ff false</code> 可让默认就走 <code>--no-ff</code>;需要个别快进时用 <code>--ff-only</code> 反向强制(不能快进就直接失败,避免意外的合并提交)。</li>
+  </ul>
+
+  <h2>小结</h2>
+  <ul>
+    <li>合并走快进还是三方合并,取决于<strong>共同祖先是否等于当前分支位置</strong>(即当前分支有没有自己的新提交)。</li>
+    <li>快进:仅把指针前移,无合并提交,历史是直线。</li>
+    <li>三方合并:历史分叉,生成有两个父的合并提交。</li>
+    <li><code>--no-ff</code> 强制生成合并提交,保留特性分支边界、便于整体回滚,团队协作常用。</li>
+    <li><code>--ff-only</code> 反向强制只允许快进;<code>merge.ff false</code> 可全局改默认行为。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./05-解决合并冲突.html" class="nav-btn">← 上一篇:解决合并冲突</a>
+    <a href="./07-分支管理与工作流.html" class="nav-btn next">下一篇:分支管理与工作流 →</a>
+  </div>
+</div>
+</body>
+</html>

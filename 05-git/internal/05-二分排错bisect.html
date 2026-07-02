@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 二分排错 bisect(二分查找定位 bug 提交)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #2e1065; border-color: #8b5cf6; color: #d8b4fe; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #2e1065; border-color: #c084fc; color: #d8b4fe; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #4c1d95; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 进阶与底层 / 二分排错 bisect</div>
+  <div class="hero">
+    <div class="tag">Git · 进阶与底层</div>
+    <h1>二分排错 bisect:把二分查找搬进提交历史</h1>
+    <p>"上周还好好的,今天就崩了,中间几百个提交,是哪个引入的?"——bisect 用 O(log n) 次测试帮你揪出真凶。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 7.10 章「使用 Git 调试」</p>
+  </div>
+
+  <h2>一、原理:这就是二分查找算法</h2>
+  <p>假设你有一段连续的提交历史,某个"好"的旧提交功能正常,某个"坏"的新提交出了 bug。bug 一定是这中间某一个提交引入的。如果线性一个个试,最坏要测 n 次。但历史是有序的(旧→新),而且"bug 一旦引入就一直存在"具有<strong>单调性</strong>——这正是<strong>二分查找的前提条件</strong>。</p>
+  <p>于是 <code>git bisect</code> 每次取区间<strong>中点</strong>的提交让你测试:如果中点是坏的,真凶在前半段;如果中点是好的,真凶在后半段。每测一次区间砍半,<strong>n 个提交只需约 log₂(n) 次测试</strong>——1000 个提交只要测约 10 次。</p>
+  <div class="callout info"><strong>建立联系:</strong>这和数组里的二分查找是<strong>同一个算法</strong>,只不过"数组下标"换成了"提交历史的位置","查找目标值"换成了"从好变坏的那个分界点"。前提也一样:必须单调有序。</div>
+
+  <h2>二、手动 bisect 流程</h2>
+  <div class="code-block"><div class="cb-header"><span>bash · start / bad / good / reset</span></div><pre><span class="fn">git</span> bisect start          <span class="cm"># 开始二分会话</span>
+<span class="fn">git</span> bisect bad             <span class="cm"># 标记当前(最新)提交是坏的</span>
+<span class="fn">git</span> bisect good v1.0       <span class="cm"># 标记一个已知正常的旧提交/标签是好的</span>
+
+<span class="cm"># Git 自动 checkout 到区间中点的提交,你去编译/运行/测试……</span>
+<span class="fn">git</span> bisect good            <span class="cm"># 测出来这个中点是好的 → 真凶在更新的一半</span>
+<span class="cm"># 或者</span>
+<span class="fn">git</span> bisect bad             <span class="cm"># 这个中点是坏的 → 真凶在更旧的一半</span>
+
+<span class="cm"># 反复几次后,Git 报告:"xxxxxx is the first bad commit"</span>
+<span class="fn">git</span> bisect reset           <span class="cm"># 结束,回到 bisect 开始前的分支/提交(务必执行,否则停留在游离 HEAD)</span></pre></div>
+  <div class="callout warn"><strong>陷阱:</strong>bisect 过程中你处于<strong>游离 HEAD(detached HEAD)</strong>状态,Git 会不断把你 checkout 到各个历史提交上。测完一定要 <code>git bisect reset</code> 回到原来的分支,否则你以为自己在 main,其实停在某个中间提交上,后续提交会"无家可归"。</div>
+
+  <h2>三、自动化:bisect run</h2>
+  <p>如果你能写一个脚本自动判断"好/坏"(退出码 0=好,1~127 且非 125=坏),就能让 Git <strong>全自动</strong>跑完整个二分过程,你去喝杯咖啡即可。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 全自动二分</span></div><pre><span class="fn">git</span> bisect start HEAD v1.0    <span class="cm"># 一行同时给出 bad(HEAD)和 good(v1.0)</span>
+<span class="fn">git</span> bisect run <span class="fn">./test.sh</span>     <span class="cm"># 每个中点自动跑脚本判定好坏,直到定位</span>
+
+<span class="cm"># 也可以直接跑测试命令,比如:</span>
+<span class="fn">git</span> bisect run mvn <span class="punct">-q</span> test <span class="punct">-Dtest=</span>BugRepoTest</pre></div>
+  <div class="callout tip"><strong>约定 125 退出码:</strong>如果某个中点提交<strong>根本无法判定</strong>(比如编译不过、无法测试),让脚本返回退出码 <code>125</code>,Git 会跳过这个提交换一个附近的来测,而不会误判为好或坏。这是写 bisect run 脚本时的关键约定。</div>
+
+  <h2>四、什么样的 bug 适合 bisect</h2>
+  <ul>
+    <li><strong>可稳定复现</strong>的 bug——每次测试结果确定,才能保证二分的单调前提。偶发/竞态 bug 不适合。</li>
+    <li>有一个<strong>明确"好"的历史锚点</strong>——比如上个 release 标签,能界定二分区间的下界。</li>
+    <li>提交历史大致<strong>可编译可运行</strong>——否则要靠 125 跳过大量无法测试的中间提交。</li>
+  </ul>
+
+  <h2>小结</h2>
+  <ul>
+    <li>bisect 就是把二分查找应用到提交历史,利用"bug 引入后持续存在"的单调性,log₂(n) 次测试定位首个坏提交。</li>
+    <li>手动流程:<code>start</code> → <code>bad</code> 标坏 → <code>good</code> 标好 → 反复测中点标 good/bad → <code>reset</code> 收尾。</li>
+    <li><code>git bisect run 脚本</code> 全自动化;退出码 0=好、1~127=坏、<strong>125=跳过无法判定的提交</strong>。</li>
+    <li>结束务必 <code>reset</code> 脱离游离 HEAD;bug 需可稳定复现、有明确好锚点。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./04-拣选cherry-pick.html" class="nav-btn">← 上一篇:拣选 cherry-pick</a>
+    <a href="./06-子模块submodule.html" class="nav-btn next">下一篇:子模块 submodule →</a>
+  </div>
+</div>
+</body>
+</html>

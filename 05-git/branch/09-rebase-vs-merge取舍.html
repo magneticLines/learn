@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · rebase vs merge 取舍</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #166534; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #4ade80; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 分支 / rebase vs merge 取舍</div>
+  <div class="hero">
+    <div class="tag">Git · 分支</div>
+    <h1>rebase vs merge：该怎么选</h1>
+    <p>两者代码结果一致，差别在历史。到底追求"整洁的线性历史"还是"如实记录的真实历史"？这是一场没有唯一正确答案的取舍——但有一条绝不能违背的黄金法则。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 3 章「Git 分支」</p>
+  </div>
+
+  <h2>一、核心分歧：历史应该"如实"还是"整洁"</h2>
+  <p>这背后其实是两种哲学：</p>
+  <ul>
+    <li><strong>merge 派（记录派）：</strong>历史是一份事实档案，应<strong>如实反映"事情本来怎么发生"</strong>——你确实是从旧基底分叉、并行开发、最后汇合的，那就该留下分叉与合并提交。</li>
+    <li><strong>rebase 派（整洁派）：</strong>历史是给人读的故事，应<strong>编辑成清晰易懂的线性叙事</strong>——那些"何时分叉、何时同步"的过程细节是噪音，拉直更好读、<code>git bisect</code> 也更好用。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>图示 · 同一份工作，两种历史</span></div><pre><span class="cm"># merge：保留分叉与汇合，能看出并行过程</span>
+    C2 ── C4 ──── M &lt;── main
+      \        /
+       C3 ── C5
+
+<span class="cm"># rebase：拉成直线，仿佛按顺序一气呵成</span>
+    C2 ── C4 ── C3' ── C5' &lt;── main</pre></div>
+
+  <h2>二、对照表：优缺点一览</h2>
+  <table>
+    <tr><th>维度</th><th>merge</th><th>rebase</th></tr>
+    <tr><td>历史</td><td>真实、含分叉合并（网状）</td><td>整洁、线性</td></tr>
+    <tr><td>是否改哈希</td><td>否，原提交保留</td><td>是，重写为新提交</td></tr>
+    <tr><td>可追溯性</td><td>合并提交标记功能边界，好回溯</td><td>丢失"何时同步主线"的信息</td></tr>
+    <tr><td>历史可读性</td><td>多分支时图形复杂</td><td>清爽，好读</td></tr>
+    <tr><td>冲突处理</td><td>一次性集中解决</td><td>可能逐个提交多次解决</td></tr>
+    <tr><td>安全性</td><td>安全</td><td>对已共享的提交有风险（见下）</td></tr>
+  </table>
+
+  <h2>三、黄金法则：绝不 rebase 已经推送到公共分支的提交</h2>
+  <p>这是 rebase 唯一的、也是最重要的红线。<strong>不要对已经推送出去、别人可能已经基于它工作的提交做 rebase。</strong></p>
+  <p>原因回到上一篇：rebase 会把提交<strong>替换成新哈希的提交</strong>。如果这些旧提交已经被别人拉走，你一 rebase 再强推，公共历史里就出现了"两份同样内容但哈希不同"的提交。队友再来同步时，Git 会把你重写的和他手里的旧版本都算进去，制造出<strong>重复提交、诡异冲突，历史一团乱麻</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>图示 · 违反黄金法则的灾难</span></div><pre><span class="cm"># 你推送了 C3、C4，队友已基于它们开发</span>
+    ...── C2 ── C3 ── C4 &lt;── origin/main（大家共享的历史）
+
+<span class="cm"># 你却对已推送的 C3/C4 做 rebase，得到 C3'、C4'，force push</span>
+    ...── C2 ── C3' ── C4'      <span class="cm"># 远端被你强推覆盖</span>
+<span class="cm"># 队友本地还有 C3/C4，再 pull → C3 与 C3' 内容同但哈希异 → 重复+冲突地狱</span></pre></div>
+  <div class="callout warn"><strong>一句话记牢：</strong>rebase 只用来整理<strong>还没分享给别人的本地提交</strong>。一旦提交进入公共分支、可能被他人依赖，就只能用 merge 前进，绝不重写。这是团队协作里最容易踩、后果最严重的坑。</div>
+
+  <h2>四、务实的团队约定</h2>
+  <p>成熟团队往往不是二选一，而是<strong>组合使用</strong>：</p>
+  <ul>
+    <li><strong>本地私有分支：随便 rebase。</strong>推送前用 <code>git rebase -i</code> 把杂乱提交整理干净，是好习惯。</li>
+    <li><strong>同步主线更新：用 rebase 拉直。</strong>特性分支落后了，<code>git pull --rebase</code> 或 <code>git rebase main</code> 把自己的提交重放到最新主线之上，避免一堆无意义的合并提交。前提是你的提交还没被别人依赖。</li>
+    <li><strong>合入主干：用 merge（常带 --no-ff）。</strong>特性分支合进 <code>main</code>/<code>develop</code> 时用合并提交，保留"一次功能合入"的清晰边界，便于整体回滚。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>bash · 常见组合工作流</span></div><pre><span class="cm"># 让 pull 默认用 rebase，保持特性分支线性、少产生合并提交</span>
+$ git config --global pull.rebase true
+
+<span class="cm"># 特性分支上：先整理本地提交，再重放到最新主线</span>
+$ git switch feature
+$ git rebase -i main
+
+<span class="cm"># 合入主干：用合并提交保留功能边界</span>
+$ git switch main
+$ git merge --no-ff feature</pre></div>
+  <div class="callout tip"><strong>没有银弹：</strong>Linux 内核、许多大型开源项目偏爱 rebase 保持线性、便于审阅；也有团队坚持 merge 强调真实性。<strong>关键不是"哪个更好"，而是团队达成一致并遵守黄金法则</strong>——一致性本身比选哪派更重要。</div>
+
+  <h2>五、面试高频问答</h2>
+  <ul>
+    <li><strong>Q：merge 和 rebase 区别？</strong>A：结果代码一致；merge 保留分叉、生成有两个父的合并提交，rebase 把提交重放到新基底、拉成直线并重写哈希。</li>
+    <li><strong>Q：为什么 rebase 后哈希变了？</strong>A：commit 哈希由内容算出、内容含父指针；rebase 改了父，内容变，哈希全变。</li>
+    <li><strong>Q：rebase 的黄金法则？</strong>A：不要 rebase 已推送到公共分支、可能被他人依赖的提交，否则强推会制造重复提交与冲突。</li>
+    <li><strong>Q：<code>git pull --rebase</code> 好在哪？</strong>A：拉取远端更新时把本地未推送的提交重放到远端末端，避免产生无意义的合并提交，历史更线性。</li>
+  </ul>
+
+  <h2>小结</h2>
+  <ul>
+    <li>核心分歧：merge 如实记录（真实但网状）vs rebase 整洁叙事（线性但重写历史）。</li>
+    <li>黄金法则：<strong>绝不 rebase 已推送到公共分支、可能被他人依赖的提交</strong>，否则强推引发重复提交与冲突。</li>
+    <li>务实组合：本地私有分支随便 rebase 整理；同步主线用 rebase 拉直；合入主干用 <code>merge --no-ff</code> 保留边界。</li>
+    <li><code>git config pull.rebase true</code> 让拉取默认线性化。</li>
+    <li>没有唯一正确答案，团队一致 + 遵守黄金法则，比"选哪派"更重要。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./08-变基rebase.html" class="nav-btn">← 上一篇:变基 rebase</a>
+    <a href="../git-roadmap.html" class="nav-btn next">返回 Git 路线图 →</a>
+  </div>
+</div>
+</body>
+</html>

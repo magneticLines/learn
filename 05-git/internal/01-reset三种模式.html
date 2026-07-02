@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · reset 三种模式(soft / mixed / hard)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #2e1065; border-color: #8b5cf6; color: #d8b4fe; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #2e1065; border-color: #c084fc; color: #d8b4fe; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #4c1d95; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 进阶与底层 / reset 三种模式</div>
+  <div class="hero">
+    <div class="tag">Git · 进阶与底层</div>
+    <h1>reset 三种模式:soft / mixed / hard</h1>
+    <p>同一个命令,一个参数之差,轻则挪一下指针,重则抹掉你的工作区改动——搞懂"三棵树"才能真正驾驭 reset。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 7.7 章「重置揭密」、第 2 章</p>
+  </div>
+
+  <h2>一、先立地基:Git 的"三棵树"</h2>
+  <p>要讲清楚 reset,必须先建立一个模型:Git 在你本地管理着<strong>三棵树(three trees)</strong>——不是数据结构里的二叉树,而是"三份文件快照"。理解 reset 的一切,都是理解它对这三棵树各自做了什么。</p>
+  <table>
+    <tr><th>树</th><th>是什么</th><th>你怎么看它</th></tr>
+    <tr><td><strong>HEAD</strong></td><td>你当前所在分支<strong>最后一次提交</strong>的快照——"上次提交长啥样"</td><td><code>git cat-file -p HEAD^{tree}</code></td></tr>
+    <tr><td><strong>Index(暂存区)</strong></td><td>你<strong>下一次</strong>准备提交的快照——"预演的提交"</td><td><code>git ls-files -s</code></td></tr>
+    <tr><td><strong>工作区</strong></td><td>你磁盘上真实的文件——"你正在编辑的东西"</td><td>直接看文件</td></tr>
+  </table>
+  <p>正常工作流其实就是在三棵树之间搬运数据:<code>git add</code> 把工作区的改动搬进暂存区,<code>git commit</code> 把暂存区快照固化成新的 HEAD。而 <code>reset</code> 做的是<strong>反方向</strong>的事,它按三个层次逐级往下"倒":先移 HEAD,再重置暂存区,再覆盖工作区。三种模式就是控制它"倒"到哪一层为止。</p>
+
+  <h2>二、soft:只移动 HEAD 指针</h2>
+  <p><code>--soft</code> 只做一件事:把当前分支指针指向目标提交。<strong>暂存区和工作区一动不动</strong>。这意味着被"撤销"的那些提交里的改动,现在原封不动地躺在暂存区里,随时可以重新提交。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · soft:合并最近 3 个提交为 1 个</span></div><pre><span class="cm"># 把 HEAD 退回 3 个提交前,但这 3 个提交的所有改动都还在暂存区里</span>
+<span class="fn">git</span> reset <span class="punct">--soft</span> HEAD<span class="punct">~</span><span class="nu">3</span>
+<span class="cm"># 此时 git status 显示一堆已暂存的改动,直接重新提交即可</span>
+<span class="fn">git</span> commit <span class="punct">-m</span> <span class="st">"合并成一个干净的提交"</span></pre></div>
+  <p>典型用途:<strong>压缩(squash)提交</strong>——把凌乱的多个 WIP 提交揉成一个。因为工作区和暂存区都没动,所以 soft 是三者中<strong>最安全</strong>的。</p>
+
+  <h2>三、mixed:移 HEAD + 重置暂存区(默认)</h2>
+  <p><code>git reset</code> 不带参数时,默认就是 <code>--mixed</code>。它在 soft 的基础上多走一步:<strong>把暂存区也重置成目标提交的样子</strong>,但<strong>不碰工作区</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · mixed:撤销 add,或撤销提交但保留改动</span></div><pre><span class="cm"># 场景1:取消暂存(取消一次 add),改动退回工作区</span>
+<span class="fn">git</span> reset HEAD file.txt   <span class="cm"># 不指定提交=HEAD,只重置该文件的暂存状态</span>
+
+<span class="cm"># 场景2:撤销上一次提交,但代码改动全部保留在工作区(未暂存)</span>
+<span class="fn">git</span> reset HEAD<span class="punct">~</span><span class="nu">1</span>       <span class="cm"># 等价于 --mixed,提交没了,改动还在,需要重新 add</span></pre></div>
+  <div class="callout info"><strong>为什么默认是 mixed:</strong>它是最"中庸"的——既撤销了提交(移 HEAD),又把改动退回工作区让你重新决定怎么组织,还不会丢失你磁盘上的劳动成果。日常"提交提早了想重来"用它最顺手。</div>
+
+  <h2>四、hard:连工作区一起重置(危险)</h2>
+  <p><code>--hard</code> 三棵树全部对齐目标提交:移 HEAD、重置暂存区、<strong>并且强制覆盖工作区</strong>。你磁盘上还没提交、还没暂存的改动会被<strong>直接丢弃,不进回收站</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · hard:彻底放弃,回到某个提交的干净状态</span></div><pre><span class="cm"># 三棵树全部重置——工作区改动会被无声抹掉!</span>
+<span class="fn">git</span> reset <span class="punct">--hard</span> HEAD<span class="punct">~</span><span class="nu">1</span>
+<span class="cm"># 常见变体:放弃所有本地改动,回到与提交完全一致</span>
+<span class="fn">git</span> reset <span class="punct">--hard</span> HEAD</pre></div>
+  <div class="callout warn"><strong>陷阱:</strong><code>--hard</code> 是新手事故重灾区。它<strong>只对已被 Git 追踪的改动</strong>负责——未提交的改动被覆盖后无法用常规手段找回(还没进对象库的东西根本没被 Git 存过)。已经 commit 过的提交则不同:即使被 hard reset "丢掉",提交对象还在对象库里,可以用 <code>reflog</code> 找回(见下一篇)。</div>
+
+  <h2>五、三种模式对照表</h2>
+  <table>
+    <tr><th>模式</th><th>移 HEAD</th><th>重置暂存区</th><th>覆盖工作区</th><th>危险度</th></tr>
+    <tr><td><code>--soft</code></td><td>✅</td><td>❌</td><td>❌</td><td>低</td></tr>
+    <tr><td><code>--mixed</code>(默认)</td><td>✅</td><td>✅</td><td>❌</td><td>中</td></tr>
+    <tr><td><code>--hard</code></td><td>✅</td><td>✅</td><td>✅</td><td>高</td></tr>
+  </table>
+  <p>记忆口诀:<strong>soft 动一层,mixed 动两层,hard 动三层</strong>——层数越多越危险,因为越往下越接近你真实的、可能还没保存进 Git 的劳动成果。</p>
+
+  <h2>六、对比 revert:改写历史 vs 追加历史</h2>
+  <p>面试常问:"撤销一个提交,用 reset 还是 revert?"关键区别在于是否<strong>改写历史</strong>。</p>
+  <table>
+    <tr><th></th><th><code>git reset</code></th><th><code>git revert</code></th></tr>
+    <tr><td>做法</td><td>移动分支指针,让旧提交"消失"</td><td>新建一个"反向提交"抵消目标改动</td></tr>
+    <tr><td>历史</td><td>改写历史(旧提交从分支线上消失)</td><td>追加历史(旧提交仍在,多一个撤销提交)</td></tr>
+    <tr><td>适用</td><td><strong>本地、未推送</strong>的分支</td><td><strong>已推送、多人共享</strong>的分支</td></tr>
+  </table>
+  <div class="callout tip"><strong>黄金准则:</strong>已经 push 到远程、别人可能已经拉取的提交,<strong>不要用 reset 改写</strong>——否则你 force push 后,同事的本地历史会与远程分叉,一片混乱。共享分支上的撤销一律用 <code>revert</code>,它只追加不改写,对所有人都安全。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>Git 三棵树:HEAD(上次提交)、Index(暂存区/下次提交)、工作区(磁盘真实文件)。reset 就是逐级把它们往目标提交对齐。</li>
+    <li><code>--soft</code> 只移 HEAD(改动留暂存区,用于压缩提交);<code>--mixed</code>(默认)移 HEAD + 重置暂存区(改动退回工作区);<code>--hard</code> 三棵树全重置,<strong>会丢工作区未提交改动</strong>。</li>
+    <li>层数越多越危险;hard 丢掉的<strong>已提交</strong>内容可用 reflog 找回,但<strong>未提交</strong>的改动一般找不回。</li>
+    <li>reset 改写历史,只用于本地未推送分支;共享分支上撤销请用 revert(只追加不改写)。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="../git-roadmap.html" class="nav-btn">← 返回 Git 路线图</a>
+    <a href="./02-reflog引用日志.html" class="nav-btn next">下一篇:reflog 引用日志 →</a>
+  </div>
+</div>
+</body>
+</html>

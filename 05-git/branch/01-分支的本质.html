@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 分支的本质</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #166534; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #4ade80; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 分支 / 分支的本质</div>
+  <div class="hero">
+    <div class="tag">Git · 分支</div>
+    <h1>分支的本质:一个 41 字节的指针文件</h1>
+    <p>为什么 Git 创建分支近乎零成本、瞬间完成?因为分支根本不是"复制代码",它只是一个指向某个 commit 的轻量指针。理解了这一点,整个分支模型就通透了。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 3 章「Git 分支」</p>
+  </div>
+
+  <h2>一、先回顾 commit:分支之所以能这么轻,是被 commit 撑起来的</h2>
+  <p>要讲透分支,必须先记住上一章的对象模型。在 Git 里,一次 <code>commit</code> 不是"记录本次改了哪几行",而是一个<strong>快照(snapshot)</strong>:它保存了当时整个项目文件树的一份完整指向(通过 tree 对象),外加作者、时间、提交信息,以及最关键的——<strong>指向父 commit 的指针</strong>。</p>
+  <p>于是所有 commit 通过"父指针"串成一条链(合并时会有两个父,后面会讲)。这条链就是项目的历史。<strong>而分支,就是给这条链上某个 commit 贴的一个可移动的名字标签。</strong></p>
+  <div class="callout info"><strong>建立联系:</strong>commit 用 SHA-1 哈希(40 个十六进制字符)标识,例如 <code>f30ab...</code>。哈希由内容算出,内容变一点哈希就全变——这保证了历史不可篡改。分支要"指向"一个 commit,存的就是这 40 个字符。</div>
+
+  <h2>二、分支到底是什么:refs/heads 下的一个纯文本文件</h2>
+  <p>打开 <code>.git/refs/heads/</code> 目录,你会看到每个分支对应一个同名文件。用 <code>cat</code> 看它的内容,你会大吃一惊——里面只有一行:那个 commit 的 40 位哈希 + 一个换行符,总共 <strong>41 字节</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 亲手看看分支是什么</span></div><pre><span class="cm"># 分支文件就躺在这里,每个分支一个文件</span>
+$ ls .git/refs/heads/
+main   dev
+
+<span class="cm"># 直接读 main 分支文件——它只存了一个 commit 哈希</span>
+$ cat .git/refs/heads/main
+f30ab2a4e8c6b1d9f5c3a7e2b8d4c6f1a9e3b5d7
+
+<span class="cm"># 数一下字节:40 个哈希字符 + 1 个换行 = 41 字节</span>
+$ wc -c .git/refs/heads/main
+41 .git/refs/heads/main</pre></div>
+  <p>所以"创建一个分支",本质就是<strong>往 refs/heads 里写一个 41 字节的小文件</strong>。无论你的项目有 10 个文件还是 10 万个文件,这个操作都是瞬间完成、几乎不占空间的。</p>
+
+  <h2>三、图示:创建分支只是多贴一个标签</h2>
+  <p>假设已有三次提交,<code>main</code> 指向最新的 C3。现在执行 <code>git branch testing</code>:</p>
+  <div class="code-block"><div class="cb-header"><span>提交历史图示 · git branch testing</span></div><pre><span class="cm"># 创建前:只有 main 指向 C3</span>
+    C1 &lt;── C2 &lt;── C3   &lt;── <span class="kw">main</span>   (HEAD)
+                (每个箭头是"指向父 commit"的指针)
+
+<span class="cm"># 执行 git branch testing 后:凭空多了一个指向同一个 C3 的标签</span>
+    C1 &lt;── C2 &lt;── C3   &lt;── <span class="kw">main</span>   (HEAD)
+                     \___ <span class="ty">testing</span>
+
+<span class="cm"># Git 做的全部事情,就是新建 .git/refs/heads/testing,内容 = C3 的哈希</span></pre></div>
+  <p>注意此时 <strong>没有任何文件被复制,没有切换到新分支</strong>(HEAD 还在 main,下一篇细讲)。仅仅是多了一个名字而已。</p>
+
+  <h2>四、与 SVN 对比:为什么老程序员对"随便建分支"感到不可思议</h2>
+  <p>在 SVN(以及 CVS 等集中式系统)里,"分支"是通过<strong>把整个目录复制一份</strong>来实现的(<code>svn copy trunk branches/feature</code>)。项目越大,复制越慢、越占空间;而且分支之间的合并常常痛苦不堪。结果就是团队<strong>不敢轻易开分支</strong>,一个分支往往要慎重规划、长期存在。</p>
+  <table>
+    <tr><th>维度</th><th>SVN 的分支</th><th>Git 的分支</th></tr>
+    <tr><td>本质</td><td>复制整个目录树</td><td>写一个 41 字节的指针文件</td></tr>
+    <tr><td>耗时</td><td>随项目大小线性增长</td><td>恒定,近乎瞬间</td></tr>
+    <tr><td>占用空间</td><td>可能很大</td><td>41 字节</td></tr>
+    <tr><td>使用心态</td><td>慎重、少建</td><td>随手就建,用完就删</td></tr>
+  </table>
+  <div class="callout tip"><strong>这就是 Git 分支模型的精髓:</strong>正因为分支如此廉价,Git 才鼓励你<strong>为每一个小功能、每一次实验、每一个 bug 修复都开一个分支</strong>。这种"轻量分支 + 频繁合并"的工作流,是 Git 相比集中式系统最大的生产力飞跃。</div>
+
+  <h2>五、常见误区提醒</h2>
+  <ul>
+    <li><strong>误区一:"建分支会把代码复制一份"。</strong>不会。分支只是指针,所有 commit 数据是共享的,直到你在某分支上产生新提交才会有新对象。</li>
+    <li><strong>误区二:"删分支会删掉代码"。</strong>删分支只是删掉那个 41 字节的标签文件。只要 commit 还被其他分支/引用可达,数据就还在(否则会被 GC 回收)。</li>
+    <li><strong>误区三:把分支想成一条"线"。</strong>分支不是那一整条 commit 链,而是<strong>链末端的那个可移动指针</strong>。链是 commit 之间的父子关系构成的,分支只是给某个点命名。</li>
+  </ul>
+
+  <h2>小结</h2>
+  <ul>
+    <li>commit 是"快照 + 父指针";所有 commit 靠父指针串成历史链。</li>
+    <li>分支 = <code>.git/refs/heads/xxx</code> 里一个仅 41 字节(40 位哈希 + 换行)的指针文件,指向某个 commit。</li>
+    <li>创建分支只是写一个小文件,不复制任何代码,所以近乎零成本、瞬间完成。</li>
+    <li>对比 SVN 复制整个目录:Git 的廉价分支催生了"为每个功能开分支、用完即删"的现代工作流。</li>
+    <li>牢记:分支是"链末端的可移动指针",不是那条链本身。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="../git-roadmap.html" class="nav-btn">← 返回 Git 路线图</a>
+    <a href="./02-HEAD指针.html" class="nav-btn next">下一篇:HEAD 指针 →</a>
+  </div>
+</div>
+</body>
+</html>

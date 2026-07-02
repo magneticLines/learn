@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · reflog 引用日志(误操作后悔药)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #2e1065; border-color: #8b5cf6; color: #d8b4fe; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #2e1065; border-color: #c084fc; color: #d8b4fe; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #4c1d95; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 进阶与底层 / reflog 引用日志</div>
+  <div class="hero">
+    <div class="tag">Git · 进阶与底层</div>
+    <h1>reflog 引用日志:误操作后的后悔药</h1>
+    <p>hard reset 把提交弄丢了?分支删错了?rebase 崩了?先别慌——只要 HEAD 曾经指向过它,reflog 就记着账。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 7.7 章、第 10.3 章「维护与数据恢复」</p>
+  </div>
+
+  <h2>一、reflog 是什么:HEAD 的移动流水账</h2>
+  <p><code>reflog</code>(reference log,引用日志)记录的是<strong>你本地引用(HEAD、各分支)的指针每一次移动的历史</strong>。每当你 commit、checkout、reset、merge、rebase——凡是让 HEAD 或某个分支指向了新提交,Git 就在 reflog 里追加一行:"某时某刻,HEAD 从 A 移到了 B,因为你执行了 X 操作"。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 查看 HEAD 的移动历史</span></div><pre><span class="fn">git</span> reflog
+<span class="cm"># 输出形如:</span>
+<span class="cm"># a0b34bb HEAD@{0}: commit: 补齐数据结构文件</span>
+<span class="cm"># 056bd2b HEAD@{1}: reset: moving to HEAD~1   ← 就是这次 reset 弄丢了 a0b34bb</span>
+<span class="cm"># fe210c6 HEAD@{2}: commit: 添加文档</span></pre></div>
+  <p>其中 <code>HEAD@{n}</code> 表示"HEAD 在 n 次移动之前指向的位置"。这是理解 reflog 的关键语法。</p>
+
+  <h2>二、它凭什么能当"后悔药"</h2>
+  <p>要理解 reflog 为何有效,得回到 Git 的对象模型:<strong>一个提交只要被创建,它的提交对象就永久地躺在 <code>.git/objects</code> 里,不会因为"没有分支指向它"就立刻消失</strong>。当你 hard reset 掉一个提交,只是让分支指针不再指向它——提交对象本身还在,只是变成了"悬空(dangling)"、没人引用的孤儿。</p>
+  <div class="callout info"><strong>联系上一篇:</strong>hard reset 丢掉的<strong>已提交</strong>内容能找回,正是因为提交对象还在对象库、且 reflog 里还留着它的哈希。而未提交的工作区改动从没进过对象库,所以 reflog 也救不了它——这条界线很重要。</div>
+
+  <h2>三、实战:hard reset 后找回提交</h2>
+  <div class="code-block"><div class="cb-header"><span>bash · 从误删中恢复</span></div><pre><span class="cm"># 惨案:一时手抖,丢了最近 3 个提交</span>
+<span class="fn">git</span> reset <span class="punct">--hard</span> HEAD<span class="punct">~</span><span class="nu">3</span>
+
+<span class="cm"># 抢救第一步:看 reflog,找到丢失前 HEAD 指向的那个哈希</span>
+<span class="fn">git</span> reflog
+<span class="cm"># 找到:a0b34bb HEAD@{1}: commit: ...(reset 之前的位置)</span>
+
+<span class="cm"># 抢救第二步:让当前分支重新指回那个提交</span>
+<span class="fn">git</span> reset <span class="punct">--hard</span> a0b34bb
+<span class="cm"># 或者更稳妥——先建个分支保住它,确认无误再合并</span>
+<span class="fn">git</span> branch recover a0b34bb</pre></div>
+
+  <h2>四、实战:找回被删除的分支</h2>
+  <p>删分支(<code>git branch -D feature</code>)只是删掉了那个指针文件,分支尖端的提交对象还在。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 恢复被删分支</span></div><pre><span class="cm"># reflog 默认只记 HEAD;分支自己的日志用 git reflog show</span>
+<span class="fn">git</span> reflog <span class="cm"># 在里面找到该分支最后一次 commit/checkout 的哈希</span>
+<span class="cm"># 用那个哈希重新创建分支</span>
+<span class="fn">git</span> branch feature <span class="punct">&lt;</span>哈希<span class="punct">&gt;</span></pre></div>
+  <div class="callout tip"><strong>rebase 救援:</strong>rebase 出错想回到 rebase 之前的状态,不用记哈希——Git 提供了别名 <code>ORIG_HEAD</code>,它保存了危险操作(reset/rebase/merge)前 HEAD 的位置。直接 <code>git reset --hard ORIG_HEAD</code> 即可一键还原。</div>
+
+  <h2>五、reflog 的边界与过期清理</h2>
+  <p>reflog 不是万能的,有三条硬边界:</p>
+  <ul>
+    <li><strong>本地专属:</strong>reflog 存在 <code>.git/logs/</code> 下,<strong>不会随 push/clone 传播</strong>。你的后悔药救不了别人的仓库,别人也看不到你的 reflog。</li>
+    <li><strong>会过期:</strong>reflog 条目默认保留期是——可达提交 <strong>90 天</strong>、不可达(悬空)提交 <strong>30 天</strong>。由 <code>gc.reflogExpire</code> / <code>gc.reflogExpireUnreachable</code> 控制。</li>
+    <li><strong>会被 gc 清理:</strong>reflog 过期后,那些只被 reflog 引用的悬空提交就真正失去引用,会被 <code>git gc</code> 当垃圾回收掉——到那时才是真的找不回了。</li>
+  </ul>
+  <div class="code-block"><div class="cb-header"><span>bash · 主动清理(谨慎)</span></div><pre><span class="fn">git</span> reflog expire <span class="punct">--expire=</span>now <span class="punct">--all</span>   <span class="cm"># 立即过期所有 reflog</span>
+<span class="fn">git</span> gc <span class="punct">--prune=</span>now                     <span class="cm"># 随后 gc 会真正删除悬空对象</span></pre></div>
+  <div class="callout warn"><strong>陷阱:</strong>不要在慌乱时先跑 <code>git gc</code>——如果你刚丢了提交,gc + prune 可能把你还想找回的悬空对象直接清掉。找回顺序永远是:先 <code>reflog</code> 定位、建分支保住,再谈清理。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>reflog 记录本地 HEAD/分支指针的每一次移动,格式 <code>HEAD@{n}</code>=n 次移动前的位置。</li>
+    <li>它能当后悔药,是因为提交对象一旦创建就留在对象库,hard reset/删分支只是移除了引用,对象还在。</li>
+    <li>找回套路:<code>git reflog</code> 定位哈希 → <code>git branch/reset</code> 重新引用;rebase 前状态可用 <code>ORIG_HEAD</code> 一键还原。</li>
+    <li>边界:reflog 本地专属不随 push 传播;条目默认 30/90 天过期;过期后 <code>git gc</code> 会真正回收——慌乱时先找回再清理。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./01-reset三种模式.html" class="nav-btn">← 上一篇:reset 三种模式</a>
+    <a href="./03-储藏stash.html" class="nav-btn next">下一篇:储藏 stash →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 撤销操作</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fb923c; border: 1px solid #9a3412; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fb923c; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fb923c; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fb923c; border-color: #9a3412; } .nav-btn.next:hover { background: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 基础 / 撤销操作</div>
+  <div class="hero">
+    <div class="tag">Git · 基础</div>
+    <h1>撤销操作:amend / restore / reset / revert</h1>
+    <p>"撤销"在 Git 里不是一个动作,而是一组针对不同区域、危险程度天差地别的命令。用错了会真丢代码。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 2.4 节「撤销操作」</p>
+  </div>
+
+  <h2>一、先问自己:要撤销哪一层?</h2>
+  <p>撤销之所以让人头大,是因为改动可能停在三个不同的地方。<strong>先定位改动在哪一层,再选对应命令</strong>,一切就清晰了:</p>
+  <table>
+    <tr><th>我想撤销的是……</th><th>用的命令</th></tr>
+    <tr><td>工作区里"改了还没 add"的改动</td><td><code>git restore &lt;file&gt;</code></td></tr>
+    <tr><td>已经 add 进暂存区、想取消暂存(退回工作区)</td><td><code>git restore --staged &lt;file&gt;</code></td></tr>
+    <tr><td>刚提交完发现信息写错 / 漏加文件</td><td><code>git commit --amend</code></td></tr>
+    <tr><td>想撤销"已经提交(甚至已推送)"的某次提交</td><td><code>git revert</code> / <code>git reset</code></td></tr>
+  </table>
+
+  <h2>二、git commit --amend:修补最后一次提交</h2>
+  <p>刚 commit 完发现提交信息写错、或漏 add 了一个文件,不必再来一个"修正提交"污染历史。先把漏的文件 add 上,再 <code>--amend</code>:</p>
+  <div class="code-block"><div class="cb-header"><span>修补上一次提交</span></div><pre><span class="kw">git add</span> forgotten.java          <span class="cm"># 补上漏掉的文件</span>
+<span class="kw">git commit</span> --amend             <span class="cm"># 用暂存区当前内容"替换"上一次提交,可顺便改信息</span>
+<span class="kw">git commit</span> --amend -m <span class="st">"新的提交信息"</span>   <span class="cm"># 只改信息</span></pre></div>
+  <div class="callout warn"><strong>本质与陷阱:</strong>amend <strong>不是修改</strong>原提交,而是<strong>生成一个全新的提交去替换它</strong>(哈希会变)。所以——<strong>只对还没 push 的提交用 amend</strong>。如果原提交已经 push 且别人拉过,你 amend 后再强推会改写公共历史,导致队友的仓库和你对不上,是团队协作的大忌。</div>
+
+  <h2>三、git restore:新时代的撤销工作区/暂存区</h2>
+  <p>Git 2.23 引入 <code>restore</code> 和 <code>switch</code>,专门把老 <code>checkout</code> 那"既能切分支又能撤文件"的过载职责拆开,语义更清晰。</p>
+  <div class="code-block"><div class="cb-header"><span>restore 两个方向</span></div><pre><span class="cm"># 丢弃工作区里未暂存的改动,让文件恢复成暂存区(或最新提交)的样子</span>
+<span class="kw">git restore</span> App.java
+
+<span class="cm"># 取消暂存:把已 add 的文件退回"未暂存"状态(改动仍在工作区,不丢)</span>
+<span class="kw">git restore</span> --staged App.java</pre></div>
+  <div class="callout warn"><strong>危险区别:</strong><code>git restore --staged</code> 只是把改动<strong>从暂存区退回工作区,内容不丢</strong>,很安全。但不带 <code>--staged</code> 的 <code>git restore App.java</code> 会<strong>直接丢弃工作区里未提交的改动,且无法用 reflog 找回</strong>(因为它从没进过 Git 的对象库)。这是初学者最容易误删代码的地方——执行前务必确认这些改动真的不要了。</div>
+
+  <h3>老写法 git checkout(仍常见)</h3>
+  <p>你会在大量老教程、老项目里看到等价的旧命令:<code>git checkout -- App.java</code>(丢弃工作区改动)、<code>git reset HEAD App.java</code>(取消暂存)。它们和 restore 效果一样,只是 <code>checkout</code> 一词既管切分支又管撤文件,含义太重,才被拆分。新代码建议用 restore/switch,但要能读懂 checkout 写法。</p>
+
+  <h2>四、reset vs restore vs revert:三者到底怎么分</h2>
+  <table>
+    <tr><th>命令</th><th>操作对象</th><th>会否改写历史</th><th>危险度</th></tr>
+    <tr><td><code>git restore</code></td><td>工作区 / 暂存区的<strong>文件</strong></td><td>不动历史</td><td>低(带 --staged)/ 中(丢工作区)</td></tr>
+    <tr><td><code>git reset</code></td><td>移动<strong>分支指针</strong>(可连带暂存区/工作区)</td><td><strong>会</strong>(丢弃它后面的提交)</td><td>高(尤其 --hard)</td></tr>
+    <tr><td><code>git revert</code></td><td>生成一个<strong>反向的新提交</strong></td><td>不改写,历史向前追加</td><td>低(安全)</td></tr>
+  </table>
+  <h3>reset 三种模式(高频面试点)</h3>
+  <ul>
+    <li><code>--soft</code>:只把分支指针往回移,<strong>暂存区和工作区都不动</strong>(被撤的改动还留在暂存区,可重新组织提交)。</li>
+    <li><code>--mixed</code>(默认):指针回移 + 重置暂存区,<strong>工作区保留</strong>(改动退回"未暂存")。</li>
+    <li><code>--hard</code>:指针回移 + 重置暂存区 + <strong>重置工作区</strong>——工作区未提交的改动会被<strong>彻底丢弃</strong>。</li>
+  </ul>
+  <div class="callout warn"><strong>核心区别(必背):</strong><code>reset</code> 是<strong>"把历史指针挪回去,假装那些提交没发生"</strong>,会改写历史,只适合<strong>还没 push 的本地提交</strong>;<code>revert</code> 是<strong>"提交一个把某次改动反做回来的新提交"</strong>,历史照实向前记录,<strong>适合已经 push、共享出去的提交</strong>——因为它不改动已有历史,不会坑到队友。<code>reset --hard</code> 是最容易丢代码的命令,动手前先想清楚。</div>
+
+  <h2>五、后悔药:git reflog</h2>
+  <p>就算不小心 <code>reset</code> 甚至 <code>reset --hard</code> 丢了提交,只要那些提交<strong>曾经被提交过</strong>(进过对象库),通常都能救回来。因为 Git 记录了 HEAD 每一次移动的日志:</p>
+  <div class="code-block"><div class="cb-header"><span>找回丢失的提交</span></div><pre><span class="kw">git reflog</span>                     <span class="cm"># 列出 HEAD 走过的每一步,找到丢失提交的哈希</span>
+<span class="kw">git reset</span> --hard a1b2c3d       <span class="cm"># 回到那个提交,救回来</span></pre></div>
+  <div class="callout tip"><strong>呼应快照模型:</strong>还记得"Git 一般只添加数据、已提交的很难真丢"吗?reflog 就是这一特性的兜底体现——被 reset 甩掉的提交对象并没删,只是没有分支指向它,reflog 帮你找回那个哈希。但<strong>reflog 救不了从没提交过的工作区改动</strong>(比如被 <code>git restore</code> 丢弃的),所以真正要小心的永远是"未提交的东西"。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>撤销前先定位改动在哪层(工作区 / 暂存区 / 已提交),再选命令。</li>
+    <li><code>commit --amend</code> 用新提交替换上一次(哈希变),只对未 push 的提交用。</li>
+    <li><code>restore --staged</code> 取消暂存(安全);<code>restore &lt;file&gt;</code> 丢弃工作区改动(不可 reflog 找回,危险)。</li>
+    <li>三者定位:restore 管文件、reset 挪分支指针会改写历史(--soft/--mixed/--hard 逐级危险)、revert 追加反向提交最安全。</li>
+    <li>本地未推送用 reset,已共享用 revert;<code>git reflog</code> 是找回被 reset 丢弃提交的后悔药,但救不了未提交的改动。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./08-查看历史.html" class="nav-btn">← 上一篇:查看历史</a>
+    <a href="./10-gitignore.html" class="nav-btn next">下一篇:.gitignore →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 解决合并冲突</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #166534; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #4ade80; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 分支 / 解决合并冲突</div>
+  <div class="hero">
+    <div class="tag">Git · 分支</div>
+    <h1>解决合并冲突:冲突标记与处理流程</h1>
+    <p>冲突不是 Git 出错,而是它诚实地告诉你:"这一处两个人改得不一样,我不敢替你做决定。"看懂冲突标记、走对处理流程,冲突就一点都不可怕。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 3 章「Git 分支」</p>
+  </div>
+
+  <h2>一、冲突为何产生:同一处被两边改成了不同样子</h2>
+  <p>回顾上一篇的三方合并:Git 对比共同祖先、当前分支、被合并分支三个快照。<strong>只要一处只有一边改动,Git 就能自动决定</strong>。冲突只在一种情况发生:<strong>两个分支都修改了同一个文件的同一块区域</strong>(或一边改一边删)。此时 Git 无法判断该保留谁,于是停下来把决定权交还给你。</p>
+  <div class="callout info"><strong>建立直觉:</strong>合并不是按文件、而是按"文本块(hunk)"去比对的。所以就算两人改的是同一个文件,只要改的是<strong>不同的行段落</strong>,Git 也能自动合并,不产生冲突。冲突真正的触发条件是"同一区域的分歧"。</div>
+
+  <h2>二、冲突长什么样:三段式的冲突标记</h2>
+  <p>发生冲突时,合并会中断,Git 把冲突文件里有分歧的地方用<strong>冲突标记</strong>包起来,让你直接在文件里看到两边的版本:</p>
+  <div class="code-block"><div class="cb-header"><span>冲突文件 · index.html 中的冲突块</span></div><pre>&lt;div id="footer"&gt;
+<span class="kw">&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</span>                       <span class="cm"># 从这里开始:当前分支(HEAD)的版本</span>
+  contact : email.support@github.com
+<span class="kw">=======</span>                            <span class="cm"># 分隔线:上面是我方,下面是对方</span>
+  please contact us at support@github.com
+<span class="kw">&gt;&gt;&gt;&gt;&gt;&gt;&gt; feature</span>                     <span class="cm"># 到这里结束:被合并分支(feature)的版本</span>
+&lt;/div&gt;</pre></div>
+  <table>
+    <tr><th>标记</th><th>含义</th></tr>
+    <tr><td><code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</code></td><td>冲突块开始;它下面到 <code>=======</code> 之间是<strong>你当前分支</strong>的内容</td></tr>
+    <tr><td><code>=======</code></td><td>分隔线,上半是我方(ours),下半是对方(theirs)</td></tr>
+    <tr><td><code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; feature</code></td><td>冲突块结束;它上面到 <code>=======</code> 之间是<strong>被合并分支</strong>的内容</td></tr>
+  </table>
+
+  <h2>三、解决流程:改文件 → add → commit</h2>
+  <p>解决冲突就是<strong>把冲突标记连同分歧内容,手工编辑成你最终想要的样子</strong>——可以留我方、留对方、都留、或者重写。关键是<strong>三行标记必须全部删掉</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>编辑后 · 手工定稿(标记已全部删除)</span></div><pre>&lt;div id="footer"&gt;
+  please contact us at email.support@github.com   <span class="cm"># 我方地址 + 对方措辞,融合而成</span>
+&lt;/div&gt;</pre></div>
+  <div class="code-block"><div class="cb-header"><span>bash · 冲突处理完整流程</span></div><pre>$ git merge feature
+<span class="cm"># CONFLICT (content): Merge conflict in index.html</span>
+<span class="cm"># Automatic merge failed; fix conflicts and then commit the result.</span>
+
+$ git status          <span class="cm"># 看哪些文件还处于 "Unmerged" 状态,一个都不能漏</span>
+$ vim index.html      <span class="cm"># 逐个编辑,删掉 <<< === >>> 标记,定稿内容</span>
+
+$ git add index.html  <span class="cm"># add = 告诉 Git "这个文件我解决好了"(标记为已解决)</span>
+$ git commit          <span class="cm"># 所有冲突解决后提交,生成那个合并提交(消息已预填)</span></pre></div>
+  <div class="callout tip"><strong>为什么解决完要 <code>git add</code>?</strong>因为对 Git 来说,冲突文件处于特殊的"未合并(unmerged)"状态。<code>git add</code> 是在说"我已经拍板,以工作区当前内容为准",把它标记为已解决。只有所有冲突文件都 add 过,<code>git commit</code> 才允许提交。</div>
+
+  <h2>四、不想合了:git merge --abort</h2>
+  <p>如果冲突太多、或者你发现方向错了,想彻底放弃这次合并,回到 merge 之前的干净状态:</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 中止合并</span></div><pre>$ git merge --abort   <span class="cm"># 一键回退到 merge 前的状态,冲突标记全部撤销</span>
+
+<span class="cm"># 想借助图形工具解决,而非手动删标记</span>
+$ git mergetool       <span class="cm"># 调起配置好的可视化三方合并工具(如 vscode / meld)</span></pre></div>
+  <div class="callout info"><strong>为什么 abort 是安全的?</strong>merge 冲突发生时,合并提交<strong>还没生成</strong>,当前分支指针也没动。<code>--abort</code> 只是把工作区/暂存区还原到 merge 命令执行前——因为那个"before"状态一直被完整保留着。</div>
+
+  <h2>五、常见误区与实用技巧</h2>
+  <ul>
+    <li><strong>忘删冲突标记就提交:</strong>把 <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> 之类的字符一起提交进去,代码直接编译报错。提交前用 <code>git diff --check</code> 检查是否残留冲突标记。</li>
+    <li><strong>以为"选一边就行":</strong>很多冲突正确答案是<strong>两边都要</strong>(比如各自加了一个新函数),盲目"保留我方/对方"会丢功能。要读懂语义再定稿。</li>
+    <li><strong>ours/theirs 记反:</strong>在 <code>merge</code> 里,<code>HEAD</code>/ours 是你当前所在分支,theirs 是被合并进来的分支。(注意:在 <code>rebase</code> 里这俩会反过来,后面变基篇会提醒。)</li>
+    <li><strong>批量取舍:</strong>确定整个文件都要某一方时,<code>git checkout --ours 文件</code> 或 <code>--theirs 文件</code> 可整体选定,再 <code>git add</code>。</li>
+  </ul>
+  <div class="callout warn"><strong>面试高频:</strong>"冲突是谁造成的、Git 能不能自动解决?"标准回答:冲突源于<strong>两分支对同一区域的不同修改</strong>,Git 无法擅自决定,故交由人工;非同一区域的修改 Git 会自动三方合并。"解决完为什么要 add?"——把 unmerged 状态标记为已解决。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>冲突只在"两分支改了同一文件的同一区域"时发生;不同区域 Git 能自动合并。</li>
+    <li>冲突标记三段式:<code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</code>(我方)/ <code>=======</code> / <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; 分支</code>(对方)。</li>
+    <li>流程:编辑定稿并删净标记 → <code>git add</code>(标记已解决)→ <code>git commit</code> 生成合并提交。</li>
+    <li><code>git merge --abort</code> 可安全回到合并前状态;<code>git mergetool</code> 可视化解决。</li>
+    <li>易错:忘删标记、盲目二选一丢功能、ours/theirs 记反;提交前 <code>git diff --check</code>。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./04-合并分支.html" class="nav-btn">← 上一篇:合并分支</a>
+    <a href="./06-快进合并vs三方合并.html" class="nav-btn next">下一篇:快进合并 vs 三方合并 →</a>
+  </div>
+</div>
+</body>
+</html>

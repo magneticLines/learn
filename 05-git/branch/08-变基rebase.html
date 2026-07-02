@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 变基 rebase</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #166534; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #4ade80; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #166534; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 分支 / 变基 rebase</div>
+  <div class="hero">
+    <div class="tag">Git · 分支</div>
+    <h1>变基 rebase:把提交"择出来重放到新基底"</h1>
+    <p>merge 是把两条线"汇合"，rebase 则是把你的提交"搬家"到另一条线的末端。理解 rebase = 挑出提交 → 逐个重放,就能明白为什么变基后 commit 哈希会全变。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 3 章「Git 分支」</p>
+  </div>
+
+  <h2>一、rebase 的本质:摘下补丁，换个基底重新贴上</h2>
+  <p>"rebase" = re-base，重新设定<strong>基底(base)</strong>。你的特性分支是从主线某个 commit 分叉出来的，那个分叉点就是它当前的"基底"。变基做的事，是把你分支上的每个提交<strong>算成一个补丁(diff)，逐个重放到目标分支的最新末端</strong>，相当于"假装你是从最新的主线才开始开发的"。</p>
+  <div class="code-block"><div class="cb-header"><span>图示 · rebase 前(历史分叉)</span></div><pre>          C4 &lt;── <span class="kw">main</span>          <span class="cm"># main 在分叉后前进到 C4</span>
+         /
+    C2 &lt;┤
+         \
+          C3 &lt;── <span class="ty">feature</span>       <span class="cm"># feature 从 C2 分叉，走了 C3</span></pre></div>
+  <div class="code-block"><div class="cb-header"><span>bash + 图示 · git rebase 后（线性）</span></div><pre>$ git switch feature
+$ git rebase main            <span class="cm"># 把 feature 的提交重放到 main(C4)之后</span>
+
+<span class="cm"># C3 被"择出→重放"成 C3'，接在 C4 后面，历史拉直了：</span>
+    C2 &lt;── C4 &lt;── C3'  &lt;── <span class="ty">feature</span>
+            ↑
+           <span class="kw">main</span>                <span class="cm"># main 还指向 C4；下一步通常再快进 main</span>
+
+$ git switch main
+$ git merge feature          <span class="cm"># 此时是快进合并，main 直接到 C3'</span></pre></div>
+
+  <h2>二、为什么变基后 commit 哈希会变？</h2>
+  <p>这是理解 rebase 的关键。回顾对象模型：commit 的 SHA-1 哈希是<strong>由它的全部内容算出来的</strong>，而内容里<strong>包含了父提交的哈希</strong>。变基后，<code>C3</code> 的父从 <code>C2</code> 变成了 <code>C4</code>——父变了，内容就变了，算出的哈希自然全变。所以图里写的是 <code>C3'</code>（C3 prime）而不是 C3。</p>
+  <div class="callout info"><strong>本质结论：</strong>rebase<strong>不是移动了原来的提交，而是照着原提交造了一批全新的提交</strong>（新哈希），原来的 C3 变成了无人引用的"孤儿"，终将被 GC。这就是为什么说"rebase 会重写历史"。</div>
+
+  <h2>三、rebase 和 merge 达成的结果一样，历史却不同</h2>
+  <table>
+    <tr><th></th><th>merge</th><th>rebase</th></tr>
+    <tr><td>做法</td><td>找共同祖先做三方合并</td><td>把提交摘出，重放到新基底</td></tr>
+    <tr><td>产物</td><td>一个有两个父的合并提交</td><td>一串哈希全新的普通提交</td></tr>
+    <tr><td>历史形状</td><td>保留分叉与汇合（网状）</td><td>拉成一条直线</td></tr>
+    <tr><td>原提交</td><td>原样保留</td><td>被替换为新哈希提交</td></tr>
+  </table>
+  <p>两者<strong>最终代码内容完全一样</strong>，差别纯粹在于<strong>历史记录长什么样</strong>。取舍留到下一篇专门讲。</p>
+
+  <h2>四、交互式 rebase：整理提交历史的利器</h2>
+  <p><code>git rebase -i</code>（interactive）让你在重放前，用一个编辑器<strong>逐条编辑将要重放的提交</strong>：改顺序、合并、拆分、改提交信息、丢弃。它是提交前"打扫历史"的标准工具。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 交互式 rebase 编辑清单</span></div><pre>$ git rebase -i HEAD~3        <span class="cm"># 编辑最近 3 个提交</span>
+
+<span class="cm"># 编辑器里出现（自上而下 = 由旧到新）：</span>
+pick   a1b2c3 add login form
+squash d4e5f6 fix typo          <span class="cm"># squash：并入上一条，合成一个提交</span>
+reword 7g8h9i add validation     <span class="cm"># reword：只改这条的提交信息</span>
+
+<span class="cm"># 常用指令：</span>
+<span class="cm">#   pick   = 保留          reword = 改信息</span>
+<span class="cm">#   squash = 合并入上一条   fixup  = 合并且丢弃本条信息</span>
+<span class="cm">#   edit   = 停下让你修改    drop   = 删除该提交</span></pre></div>
+  <div class="callout tip"><strong>典型用途：</strong>把开发过程中"wip""再改一下""修个错别字"这类杂乱提交，在提 PR 前 squash 成几个语义清晰的提交，让评审者和未来的自己看到干净的历史。</div>
+
+  <h2>五、变基中的冲突与放弃</h2>
+  <p>重放某个补丁时若与新基底冲突，rebase 会像 merge 一样停下，让你解决。<strong>注意：rebase 是逐个提交重放，可能连续遇到多次冲突</strong>。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · rebase 冲突处理</span></div><pre><span class="cm"># 解决冲突后，用 --continue 继续重放下一个提交（不是 commit！）</span>
+$ git add &lt;冲突文件&gt;
+$ git rebase --continue
+
+$ git rebase --skip          <span class="cm"># 跳过当前这个提交</span>
+$ git rebase --abort         <span class="cm"># 彻底放弃，回到 rebase 之前的状态</span></pre></div>
+  <div class="callout warn"><strong>易错点：</strong>①rebase 里 ours/theirs 会<strong>反过来</strong>（因为是把你的提交往目标上重放，"当前"变成了目标基底），解冲突时别按 merge 的直觉。②解决完是 <code>rebase --continue</code>，不是 <code>git commit</code>。③连续冲突时容易烦躁乱选，务必逐个看清。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>rebase 本质 = 把分支上的提交当作补丁<strong>逐个摘出、重放到新基底</strong>，把历史拉直。</li>
+    <li>重放后父提交变了，故 commit 内容变、<strong>哈希全变</strong>（C3→C3'）——这就是"重写历史"。</li>
+    <li>rebase 与 merge 最终代码一致，区别只在历史形状：直线 vs 保留分叉汇合。</li>
+    <li><code>rebase -i</code> 可 squash/reword/reorder/drop，是提交前整理历史的利器。</li>
+    <li>冲突逐个重放，解决后用 <code>--continue</code>；<code>--abort</code> 可安全放弃；ours/theirs 相对 merge 是反的。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./07-分支管理与工作流.html" class="nav-btn">← 上一篇:分支管理与工作流</a>
+    <a href="./09-rebase-vs-merge取舍.html" class="nav-btn next">下一篇:rebase vs merge 取舍 →</a>
+  </div>
+</div>
+</body>
+</html>

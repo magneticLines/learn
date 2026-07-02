@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 拣选 cherry-pick(单独摘取某个提交)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #2e1065; border-color: #8b5cf6; color: #d8b4fe; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #2e1065; border-color: #c084fc; color: #d8b4fe; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #4c1d95; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 进阶与底层 / 拣选 cherry-pick</div>
+  <div class="hero">
+    <div class="tag">Git · 进阶与底层</div>
+    <h1>拣选 cherry-pick:只摘那一颗提交</h1>
+    <p>不想合并整条分支,只想把其中某一个 bugfix 提交单独搬过来?cherry-pick 就是这把"精准镊子"。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 5.3 章「维护项目」</p>
+  </div>
+
+  <h2>一、它是什么:复制一个提交的改动到当前分支</h2>
+  <p><code>git cherry-pick &lt;commit&gt;</code> 把<strong>指定提交所引入的改动</strong>,像打补丁一样应用到<strong>你当前所在的分支</strong>,并生成一个<strong>全新的提交</strong>。注意:它复制的是"这个提交做了什么改动(diff)",而不是把原提交对象搬过来——所以新提交有<strong>不同的 SHA-1</strong>,只是内容改动相同。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 基本用法</span></div><pre><span class="fn">git</span> checkout release       <span class="cm"># 先切到要接收补丁的分支</span>
+<span class="fn">git</span> cherry-pick a1b2c3d     <span class="cm"># 把 a1b2c3d 的改动摘到 release,生成新提交</span>
+
+<span class="fn">git</span> cherry-pick a1b2c3d f4e5d6a   <span class="cm"># 一次摘多个</span>
+<span class="fn">git</span> cherry-pick a1b2c3d<span class="punct">..</span>f4e5d6a  <span class="cm"># 摘一个区间(不含左端点)</span>
+<span class="fn">git</span> cherry-pick <span class="punct">-x</span> a1b2c3d  <span class="cm"># -x:在提交信息里追加"cherry picked from ..."便于追溯</span>
+<span class="fn">git</span> cherry-pick <span class="punct">-n</span> a1b2c3d  <span class="cm"># -n:只应用改动不自动提交,方便先改再交</span></pre></div>
+
+  <h2>二、典型场景:把 bugfix 单独挑到 release 分支</h2>
+  <p>最经典的用途:<code>main</code> 分支上修了一个 bug(提交 X),这个修复也需要进已经拉出去的 <code>release/1.0</code> 分支,但你<strong>绝不想把 main 上其他还没准备好的新功能一起带过去</strong>。这时不能 merge 整条 main,只能精准地把提交 X 摘到 release。</p>
+  <div class="callout info"><strong>为什么不 merge:</strong>merge 会把两条分支的<strong>全部差异</strong>合到一起。你只想要一个 bugfix,merge 却会把 main 上尚未测试的十几个新功能提交一并带入 release——这正是 cherry-pick 存在的意义:<strong>粒度精确到单个提交</strong>。</div>
+
+  <h2>三、与 merge / rebase 对比</h2>
+  <table>
+    <tr><th></th><th>merge</th><th>rebase</th><th>cherry-pick</th></tr>
+    <tr><td>搬运粒度</td><td>整条分支的全部差异</td><td>一段连续提交(换基)</td><td><strong>任意挑选的单个/几个提交</strong></td></tr>
+    <tr><td>是否新建提交</td><td>生成合并提交</td><td>为每个提交生成新提交</td><td>为每个被摘提交生成新提交</td></tr>
+    <tr><td>原提交 SHA</td><td>保留</td><td>改变</td><td>改变(内容同、哈希不同)</td></tr>
+    <tr><td>适用</td><td>把整个功能分支并入</td><td>让分支基于最新主线、线性化历史</td><td>只要某几个特定提交</td></tr>
+  </table>
+  <div class="callout warn"><strong>陷阱——重复提交:</strong>如果一个提交被 cherry-pick 到 release,之后 release 又整体 merge 回 main,由于 cherry-pick 产生的新提交哈希不同,Git 可能<strong>认不出这是同一改动</strong>,导致同一处修改出现两个提交,甚至引发合并冲突。所以 cherry-pick 适合"单向补丁下发",要谨慎用在会双向合并的分支之间。</div>
+
+  <h2>四、冲突处理</h2>
+  <p>被摘的改动应用到当前分支时,如果上下文对不上就会冲突,流程和 merge 冲突一样:</p>
+  <div class="code-block"><div class="cb-header"><span>bash · cherry-pick 冲突三部曲</span></div><pre><span class="fn">git</span> cherry-pick a1b2c3d
+<span class="cm"># CONFLICT!编辑冲突文件,解决冲突标记 &lt;&lt;&lt;&lt;&lt;&lt;&lt; ======= &gt;&gt;&gt;&gt;&gt;&gt;&gt;</span>
+<span class="fn">git</span> add <span class="punct">&lt;</span>解决后的文件<span class="punct">&gt;</span>
+<span class="fn">git</span> cherry-pick <span class="punct">--continue</span>   <span class="cm"># 解决完继续,完成这次拣选</span>
+
+<span class="fn">git</span> cherry-pick <span class="punct">--abort</span>      <span class="cm"># 或者放弃,回到 cherry-pick 之前的状态</span>
+<span class="fn">git</span> cherry-pick <span class="punct">--skip</span>       <span class="cm"># 跳过当前这个(多提交批量时用)</span></pre></div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>cherry-pick 把指定提交的<strong>改动</strong>复制到当前分支,生成哈希不同、内容相同的新提交。</li>
+    <li>核心场景:把某个 bugfix 单独挑到 release 分支,而不带入其他未就绪的提交。</li>
+    <li>对比:merge 搬整条分支差异、rebase 换基一段提交、cherry-pick 精确到单个提交。</li>
+    <li>陷阱:哈希改变可能导致后续双向合并时出现重复提交;冲突处理用 <code>--continue / --abort / --skip</code>。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./03-储藏stash.html" class="nav-btn">← 上一篇:储藏 stash</a>
+    <a href="./05-二分排错bisect.html" class="nav-btn next">下一篇:二分排错 bisect →</a>
+  </div>
+</div>
+</body>
+</html>

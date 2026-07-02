@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 引用 refs 与 HEAD</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #2e1065; border-color: #8b5cf6; color: #d8b4fe; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #2e1065; border-color: #c084fc; color: #d8b4fe; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #4c1d95; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 进阶与底层 / 引用 refs 与 HEAD</div>
+  <div class="hero">
+    <div class="tag">Git · 进阶与底层</div>
+    <h1>引用 refs 与 HEAD:分支只是指向哈希的指针文件</h1>
+    <p>上一篇建了对象模型的地基,这一篇揭穿一个"魔法":所谓分支、标签、HEAD,不过是 <code>.git</code> 里几个存着哈希的小文本文件。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 10.3 章「Git 引用」</p>
+  </div>
+
+  <h2>一、40 个字符哈希太难记,于是有了 refs</h2>
+  <p>对象模型告诉我们:每个提交由一个 SHA-1 哈希唯一标识。但没人愿意记 <code>a0b34bb...</code> 这种字符串。<strong>引用(reference,ref)就是给哈希起的一个"人类可读的别名"</strong>——本质是一个<strong>文本文件,里面存着一个提交对象的哈希</strong>。它们都放在 <code>.git/refs/</code> 目录下。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 亲眼看看分支就是个文件</span></div><pre><span class="fn">cat</span> .git/refs/heads/main
+<span class="cm"># a0b34bb1f2...    ← 就这一行,40 位哈希,别无他物</span>
+
+<span class="cm"># 所以"创建分支"= 写一个存着当前提交哈希的文件,几乎零成本</span>
+<span class="fn">git</span> branch feature       <span class="cm"># 等价于 echo &lt;当前哈希&gt; &gt; .git/refs/heads/feature</span></pre></div>
+  <div class="callout info"><strong>为什么 Git 建分支这么快:</strong>SVN 建分支要复制整个目录树,Git 只是写一个 41 字节的文件(40 字符 + 换行)。这就是"Git 鼓励频繁开分支"的底气——分支廉价到几乎免费。</div>
+
+  <h2>二、refs 的三大命名空间</h2>
+  <table>
+    <tr><th>目录</th><th>存什么</th><th>访问名</th></tr>
+    <tr><td><code>refs/heads/</code></td><td><strong>本地分支</strong>,每个文件指向该分支最新提交</td><td><code>main</code>、<code>feature</code></td></tr>
+    <tr><td><code>refs/tags/</code></td><td><strong>标签</strong>,通常指向某个固定提交(发版打点)</td><td><code>v1.0</code></td></tr>
+    <tr><td><code>refs/remotes/</code></td><td><strong>远程跟踪分支</strong>,记录你上次同步时远程分支的位置</td><td><code>origin/main</code></td></tr>
+  </table>
+  <div class="callout tip"><strong>建立联系:</strong><code>origin/main</code> 不是远程实时状态,而是<strong>你本地缓存的"上次 fetch 时远程 main 在哪"</strong>。这解释了为什么 <code>git status</code> 说"落后 origin/main 2 个提交"却不自动更新——它比的是本地缓存的 ref,只有 <code>git fetch</code> 才会刷新 <code>refs/remotes/</code>。</div>
+
+  <h2>三、轻量标签 vs 附注标签</h2>
+  <p>标签有两种,底层不同:</p>
+  <ul>
+    <li><strong>轻量标签(lightweight):</strong>和分支一样,就是 <code>refs/tags/</code> 下一个<strong>直接指向 commit 哈希</strong>的文件,只是它不会移动。</li>
+    <li><strong>附注标签(annotated):</strong><code>git tag -a v1.0 -m "发版"</code> 会创建一个<strong>独立的 tag 对象</strong>(Git 的第四种对象),里面存打标签者、日期、说明、GPG 签名,再由它指向 commit。正式发版应用附注标签。</li>
+  </ul>
+
+  <h2>四、HEAD:指向"当前在哪个分支"的符号引用</h2>
+  <p>前面的 ref 直接存哈希,而 <strong>HEAD</strong> 特殊:它通常存的不是哈希,而是<strong>"指向另一个引用"的符号引用(symbolic ref)</strong>——它记录"我当前在哪个分支上"。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · HEAD 里存的是什么</span></div><pre><span class="fn">cat</span> .git/HEAD
+<span class="cm"># ref: refs/heads/main    ← 不是哈希!是"我现在在 main 分支上"</span>
+
+<span class="cm"># 所以 git commit 时,Git 顺着 HEAD → main → 更新 main 指向新提交</span>
+<span class="cm"># git checkout feature 就是把 HEAD 改写成 ref: refs/heads/feature</span></pre></div>
+  <p>这套两级间接(HEAD → 分支ref → commit哈希)解释了日常行为:你 <code>commit</code> 时 Git 顺着 HEAD 找到当前分支,把该分支的 ref 更新到新提交;你 <code>checkout</code> 另一分支时,只是改写 HEAD 里那行文本。</p>
+  <div class="callout warn"><strong>游离 HEAD(detached HEAD):</strong>如果你 <code>git checkout &lt;某个提交哈希&gt;</code> 而不是分支,HEAD 里会<strong>直接存那个哈希</strong>,而不是 <code>ref: refs/heads/xxx</code>。此时的新提交<strong>不属于任何分支</strong>,一旦切走就成悬空对象易丢失——这正是 bisect、submodule 里游离 HEAD 警告的底层原因。</div>
+
+  <h2>五、packed-refs:引用太多时的优化</h2>
+  <p>一个大项目可能有成千上万个标签和分支。若每个 ref 都是一个独立小文件,目录会塞满碎文件,遍历也慢。于是 Git 会在 <code>git gc</code> 时把这些松散的 ref 文件<strong>打包进一个 <code>.git/packed-refs</code> 文件</strong>(一行一个 ref),删除原来的单个文件。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · packed-refs 长这样</span></div><pre><span class="fn">cat</span> .git/packed-refs
+<span class="cm"># a0b34bb... refs/heads/main</span>
+<span class="cm"># c1d2e3f... refs/tags/v1.0</span>
+<span class="cm"># ...</span></pre></div>
+  <div class="callout info"><strong>查找顺序:</strong>Git 解析一个 ref 时,<strong>先看 <code>refs/</code> 下有没有对应的松散文件,没有再去 <code>packed-refs</code> 里找</strong>。所以打包后你更新了某个分支,它会以松散文件形式重新出现,优先级更高——两种形式共存并不矛盾。别手动编辑 packed-refs,用 <code>git update-ref</code> 等命令操作。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>ref 是给 SHA-1 哈希起的可读别名,本质是 <code>.git/refs/</code> 下存着哈希的文本文件;建分支=写个小文件,所以极快。</li>
+    <li>三大命名空间:<code>refs/heads/</code>(本地分支)、<code>refs/tags/</code>(标签)、<code>refs/remotes/</code>(远程跟踪,是本地缓存非实时)。</li>
+    <li>HEAD 是符号引用,通常存 <code>ref: refs/heads/xxx</code> 表示当前分支;checkout 提交哈希会进入游离 HEAD,新提交不属于任何分支易丢。</li>
+    <li>ref 过多时 <code>git gc</code> 把它们打包进 <code>packed-refs</code>;解析时松散文件优先于打包文件。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./07-Git对象模型.html" class="nav-btn">← 上一篇:Git 对象模型</a>
+    <a href="./09-打包文件packfile.html" class="nav-btn next">下一篇:打包文件 packfile →</a>
+  </div>
+</div>
+</body>
+</html>

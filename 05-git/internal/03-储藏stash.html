@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git · 储藏 stash(临时保存未完成改动)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #c084fc; } .ty { color: #38bdf8; } .st { color: #86efac; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #2e1065; border-color: #8b5cf6; color: #d8b4fe; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #2e1065; border-color: #c084fc; color: #d8b4fe; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #4c1d95; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../git-roadmap.html">Git 路线图</a> / 进阶与底层 / 储藏 stash</div>
+  <div class="hero">
+    <div class="tag">Git · 进阶与底层</div>
+    <h1>储藏 stash:把没做完的活先塞进抽屉</h1>
+    <p>改到一半突然要切分支救火,又不想凑合提交一个半成品——stash 让你把工作现场原样收起来,回头再原样铺开。</p>
+    <p class="src">📖 来源:<b>《Pro Git》</b> 第 7.3 章「储藏与清理」</p>
+  </div>
+
+  <h2>一、它解决什么问题</h2>
+  <p>Git 有个约束:<strong>切换分支时,如果当前改动会与目标分支冲突,Git 会拒绝切换</strong>。而你手头改了一半,还没到能提交的程度,直接提交又会留下一个"WIP"垃圾提交污染历史。<code>git stash</code> 就是为这个尴尬场景设计的:它把工作区 + 暂存区的<strong>所有未提交改动</strong>打包收起来,让工作区瞬间变干净(回到 HEAD 状态),你就能自由切分支了;活干完回来再取出来接着改。</p>
+
+  <h2>二、核心命令</h2>
+  <div class="code-block"><div class="cb-header"><span>bash · stash 常用操作</span></div><pre><span class="fn">git</span> stash                        <span class="cm"># 收起改动,工作区变干净(等价 git stash push)</span>
+<span class="fn">git</span> stash push <span class="punct">-m</span> <span class="st">"改到一半的登录页"</span>  <span class="cm"># 带说明,list 时更好认</span>
+
+<span class="fn">git</span> stash list                   <span class="cm"># 列出所有储藏:stash@{0}、stash@{1}...(栈,越新编号越小)</span>
+
+<span class="fn">git</span> stash apply                   <span class="cm"># 取出改动但【保留】储藏(可重复应用到多个分支)</span>
+<span class="fn">git</span> stash pop                     <span class="cm"># 取出改动并【删除】储藏(=apply + drop)</span>
+<span class="fn">git</span> stash pop stash@<span class="punct">{</span><span class="nu">1</span><span class="punct">}</span>          <span class="cm"># 指定取哪一个,不指定默认最新的 {0}</span>
+
+<span class="fn">git</span> stash drop stash@<span class="punct">{</span><span class="nu">0</span><span class="punct">}</span>         <span class="cm"># 删除某个储藏</span>
+<span class="fn">git</span> stash clear                   <span class="cm"># 清空所有储藏(不可轻易恢复)</span></pre></div>
+  <div class="callout info"><strong>apply vs pop:</strong>核心区别是 pop 成功后会自动删掉储藏,apply 不删。习惯用 <code>apply</code> 更保险——万一取出来发现应用到了错误的分支,储藏还在,可以再来一次;确认无误后再手动 <code>drop</code>。</div>
+
+  <h2>三、揭底:stash 其实是几个"隐藏的提交"</h2>
+  <p>stash 不是什么魔法。它的实现基于 Git 的对象模型:<code>git stash</code> 会悄悄创建<strong>提交对象</strong>来保存现场——通常是两到三个:一个记录暂存区的状态,一个记录工作区的状态,再用一个 commit 把它们打包,挂到特殊引用 <code>refs/stash</code> 上。</p>
+  <div class="code-block"><div class="cb-header"><span>bash · 印证 stash 的本质是提交</span></div><pre><span class="fn">git</span> stash
+<span class="fn">git</span> log <span class="punct">--oneline</span> <span class="fn">stash@</span><span class="punct">{</span><span class="nu">0</span><span class="punct">}</span>   <span class="cm"># 能看到 stash 生成的提交,还带着父提交</span>
+<span class="fn">cat</span> .git/refs/stash          <span class="cm"># 里面就是一个提交对象的 SHA-1</span></pre></div>
+  <div class="callout tip"><strong>建立联系:</strong>正因为 stash 底层就是提交对象,即使你误 <code>drop</code> 了一个储藏,它对应的提交对象短期内还在对象库里(悬空状态),可以用 <code>git fsck --unreachable</code> 或 <code>git stash</code> 相关 reflog 找回——和上一篇 reflog 找回提交是同一个原理。</div>
+
+  <h2>四、常见选项</h2>
+  <table>
+    <tr><th>选项</th><th>作用</th></tr>
+    <tr><td><code>git stash -u</code></td><td>连<strong>未跟踪(untracked)</strong>的新文件一起储藏(默认不含新文件,是常见坑)</td></tr>
+    <tr><td><code>git stash -a</code></td><td>连被 <code>.gitignore</code> 忽略的文件也储藏</td></tr>
+    <tr><td><code>git stash --keep-index</code></td><td>储藏后,已暂存的改动仍留在工作区(方便只测试暂存部分)</td></tr>
+    <tr><td><code>git stash branch &lt;name&gt;</code></td><td>基于储藏创建时的提交新建分支并弹出储藏,适合应用时有冲突的场景</td></tr>
+  </table>
+  <div class="callout warn"><strong>陷阱:</strong>默认 <code>git stash</code> <strong>不会储藏未跟踪的新文件</strong>。如果你新建了文件还没 <code>git add</code>,stash 后它们会原地不动地留在工作区——切分支时反而可能带来意外。要连新文件一起收,记得加 <code>-u</code>。</div>
+
+  <h2>五、典型场景</h2>
+  <ol>
+    <li><strong>临时切分支救火:</strong>正在 feature 分支开发,线上告急要去 main 修 bug。<code>git stash</code> → 切 main → 修复提交 → 切回 feature → <code>git stash pop</code> 继续。</li>
+    <li><strong>拉取远程更新前清场:</strong><code>git pull</code> 遇到本地改动阻塞,先 stash 再 pull,pull 完 pop 回来(不过更推荐 <code>git pull --rebase --autostash</code> 自动完成)。</li>
+    <li><strong>换个基准试验:</strong>把当前改动 stash,checkout 到别的提交上,apply 同一个储藏做对比测试。</li>
+  </ol>
+
+  <h2>小结</h2>
+  <ul>
+    <li>stash 把工作区 + 暂存区的未提交改动打包收起,让工作区变干净,解决"改到一半要切分支"的两难。</li>
+    <li><code>apply</code> 取出保留储藏、<code>pop</code> 取出并删除;<code>list</code> 看栈、<code>drop</code>/<code>clear</code> 删除。推荐 apply 更保险。</li>
+    <li>底层就是几个悬空的提交对象挂在 <code>refs/stash</code> 上,所以误删也可能找回。</li>
+    <li>默认不含未跟踪文件,需 <code>-u</code>;拉取场景更推荐 <code>git pull --rebase --autostash</code>。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./02-reflog引用日志.html" class="nav-btn">← 上一篇:reflog 引用日志</a>
+    <a href="./04-拣选cherry-pick.html" class="nav-btn next">下一篇:拣选 cherry-pick →</a>
+  </div>
+</div>
+</body>
+</html>
