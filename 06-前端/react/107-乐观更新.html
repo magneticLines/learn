@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · 乐观更新</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / 状态管理 / 乐观更新</div>
+  <div class="hero">
+    <div class="tag">React · TanStack Query</div>
+    <h1>乐观更新：先改 UI，再等服务器</h1>
+    <p>点赞、切换开关这类高频操作，如果每次都等服务器返回再更新 UI，会有明显延迟。<strong>乐观更新（Optimistic Update）</strong>反过来：<em>假设一定成功</em>，先立刻改界面，请求失败再回滚。</p>
+  </div>
+
+  <h2>悲观 vs 乐观</h2>
+  <div class="compare-grid">
+    <div class="compare-card">
+      <div class="label">悲观更新（默认）</div>
+      <pre>点击 → loading
+→ 等服务器返回
+→ 才更新 UI
+安全，但有等待感</pre>
+    </div>
+    <div class="compare-card">
+      <div class="label">乐观更新</div>
+      <pre>点击 → 立即改 UI
+→ 后台发请求
+→ 成功：保持
+   失败：回滚 + 提示
+体验丝滑，逻辑更复杂</pre>
+    </div>
+  </div>
+
+  <div class="callout info">
+    生活类比：发微信消息时，气泡<strong>立刻</strong>出现在对话里（乐观），如果发送失败才显示红色感叹号让你重发。没人愿意点发送后盯着转圈等服务器确认才看到自己的消息。
+  </div>
+
+  <h2>三步走：onMutate / onError / onSettled</h2>
+  <p>乐观更新的骨架就是 mutation 的三个回调协同工作：</p>
+
+  <div class="flow">
+    <div class="flow-box hl">onMutate<br>先改缓存 + 存快照</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-box danger">onError<br>用快照回滚</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-box ok">onSettled<br>invalidate 兜底同步</div>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>乐观切换 todo 完成状态</span></div>
+    <pre><span class="kw">const</span> <span class="var">qc</span> <span class="punct">=</span> <span class="fn">useQueryClient</span><span class="punct">();</span>
+
+<span class="kw">const</span> <span class="var">mutation</span> <span class="punct">=</span> <span class="fn">useMutation</span><span class="punct">({</span>
+  <span class="var">mutationFn</span><span class="punct">:</span> <span class="var">toggleTodo</span><span class="punct">,</span>   <span class="com">// (todo) =&gt; PATCH /todos/:id</span>
+
+  <span class="com">// ① onMutate：请求发出「前」执行——这里做乐观改动</span>
+  <span class="fn">onMutate</span><span class="punct">:</span> <span class="kw">async</span> <span class="punct">(</span><span class="var">newTodo</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+    <span class="com">// 取消进行中的重取，避免它用旧数据覆盖我们的乐观更新</span>
+    <span class="kw">await</span> <span class="var">qc</span><span class="punct">.</span><span class="fn">cancelQueries</span><span class="punct">({</span> <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'todos'</span><span class="punct">]</span> <span class="punct">});</span>
+    <span class="com">// 存快照，供失败时回滚</span>
+    <span class="kw">const</span> <span class="var">prev</span> <span class="punct">=</span> <span class="var">qc</span><span class="punct">.</span><span class="fn">getQueryData</span><span class="punct">([</span><span class="str">'todos'</span><span class="punct">]);</span>
+    <span class="com">// 直接把缓存改成「预期结果」——UI 立刻更新</span>
+    <span class="var">qc</span><span class="punct">.</span><span class="fn">setQueryData</span><span class="punct">([</span><span class="str">'todos'</span><span class="punct">],</span> <span class="punct">(</span><span class="var">old</span><span class="punct">)</span> <span class="punct">=&gt;</span>
+      <span class="var">old</span><span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="var">t</span> <span class="punct">=&gt;</span> <span class="var">t</span><span class="punct">.</span><span class="var">id</span> <span class="punct">===</span> <span class="var">newTodo</span><span class="punct">.</span><span class="var">id</span> <span class="punct">?</span> <span class="var">newTodo</span> <span class="punct">:</span> <span class="var">t</span><span class="punct">)</span>
+    <span class="punct">);</span>
+    <span class="kw">return</span> <span class="punct">{</span> <span class="var">prev</span> <span class="punct">};</span>   <span class="com">// 返回的对象成为 context，传给 onError/onSettled</span>
+  <span class="punct">},</span>
+
+  <span class="com">// ② onError：失败时用快照回滚，撤销乐观改动</span>
+  <span class="fn">onError</span><span class="punct">:</span> <span class="punct">(</span><span class="var">err</span><span class="punct">,</span> <span class="var">newTodo</span><span class="punct">,</span> <span class="var">context</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+    <span class="var">qc</span><span class="punct">.</span><span class="fn">setQueryData</span><span class="punct">([</span><span class="str">'todos'</span><span class="punct">],</span> <span class="var">context</span><span class="punct">.</span><span class="var">prev</span><span class="punct">);</span>  <span class="com">// 还原</span>
+    <span class="fn">toast</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">'操作失败，已撤销'</span><span class="punct">);</span>
+  <span class="punct">},</span>
+
+  <span class="com">// ③ onSettled：无论成败都重新拉一次，确保和服务器最终一致</span>
+  <span class="fn">onSettled</span><span class="punct">:</span> <span class="punct">()</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+    <span class="var">qc</span><span class="punct">.</span><span class="fn">invalidateQueries</span><span class="punct">({</span> <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'todos'</span><span class="punct">]</span> <span class="punct">});</span>
+  <span class="punct">},</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <div class="callout react">
+    <strong>为什么每一步都必要？</strong>
+    <ul style="margin-top:8px;color:#7dd3fc">
+      <li><strong>cancelQueries：</strong>不取消的话，一个恰好在途的后台重取可能带着旧数据返回，把你的乐观更新覆盖掉</li>
+      <li><strong>快照 prev：</strong>失败回滚必须知道"改之前长什么样"，所以要先存</li>
+      <li><strong>onSettled invalidate：</strong>即便成功，服务器返回的真实数据可能和你猜的略有出入（比如后端生成的 id、时间戳），最后同步一次才权威</li>
+    </ul>
+  </div>
+
+  <h2>代价与取舍：不是所有场景都该用</h2>
+  <table>
+    <tr><th>维度</th><th>说明</th></tr>
+    <tr><td>复杂度</td><td>要写快照、回滚、取消、兜底，比普通 mutation 代码量翻几倍</td></tr>
+    <tr><td>回滚闪烁</td><td>失败率高的操作，用户会频繁看到"改了又弹回去"，反而更糟</td></tr>
+    <tr><td>结果可预测性</td><td>只适合"结果基本能预判"的操作（点赞 +1、勾选完成）；若结果依赖服务器计算（如下单后的最终价格），别乐观</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>什么时候用、什么时候别用：</strong>点赞、收藏、开关、拖拽排序——高频、低失败率、结果可预测，<em>适合</em>乐观更新。支付、下单、涉及金额或强一致性、失败代价高的操作——<em>老老实实悲观更新</em>，让用户看到明确的加载和结果。别为了"炫技"给关键流程加乐观更新。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试点：</strong>①"乐观更新怎么实现？"——onMutate 里 cancelQueries + 存快照 + setQueryData 改缓存，onError 用快照回滚，onSettled invalidate 兜底。②"为什么要 cancelQueries？"——防止在途请求用旧数据覆盖乐观更新。③"什么场景不该用？"——高失败率或结果不可预测（支付、强一致）的操作。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="106-缓存与失效策略.html" class="nav-btn">← 缓存与失效策略</a>
+    <a href="../react-roadmap.html" class="nav-btn next">回到路线图 →</a>
+  </div>
+</div>
+</body>
+</html>

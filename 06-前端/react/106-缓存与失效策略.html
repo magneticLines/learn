@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · 缓存与失效策略</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / 状态管理 / 缓存与失效策略</div>
+  <div class="hero">
+    <div class="tag">React · TanStack Query</div>
+    <h1>缓存与失效策略：staleTime、gcTime 与 invalidate</h1>
+    <p>TanStack Query 的核心价值就是缓存。理解它的缓存生命周期——什么时候用缓存、什么时候后台刷新、什么时候丢弃——才能既省请求又不给用户看陈旧数据。</p>
+  </div>
+
+  <h2>queryKey：缓存的主键</h2>
+  <p>每份缓存都由 <code>queryKey</code> 唯一标识。key 相同 = 同一份缓存；key 不同 = 各自独立。key 是数组，可以嵌套对象，TanStack Query 会做<strong>确定性序列化</strong>（字段顺序不影响相等判断）。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>queryKey 的层级设计</span></div>
+    <pre><span class="punct">[</span><span class="str">'todos'</span><span class="punct">]</span>                          <span class="com">// 全部 todos</span>
+<span class="punct">[</span><span class="str">'todos'</span><span class="punct">,</span> <span class="punct">{</span> <span class="var">status</span><span class="punct">:</span> <span class="str">'done'</span> <span class="punct">}]</span>      <span class="com">// 已完成的（不同筛选 = 不同缓存）</span>
+<span class="punct">[</span><span class="str">'todo'</span><span class="punct">,</span> <span class="var">id</span><span class="punct">]</span>                      <span class="com">// 单条详情</span>
+
+<span class="com">// 失效时可按前缀「模糊」匹配：下面会让上面前两条一起失效</span>
+<span class="var">queryClient</span><span class="punct">.</span><span class="fn">invalidateQueries</span><span class="punct">({</span> <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'todos'</span><span class="punct">]</span> <span class="punct">});</span></pre>
+  </div>
+
+  <h2>staleTime vs gcTime：两条不同的时间线</h2>
+  <p>这是最容易混淆的两个概念。它们管的是缓存生命的<strong>不同阶段</strong>：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card">
+      <div class="label">staleTime（新鲜期）</div>
+      <pre>数据「多久内算新鲜」
+默认 0（立即变陈旧）
+
+新鲜期内：完全用缓存，
+   不发请求
+过了：数据仍显示，但
+   触发时机会后台重取</pre>
+    </div>
+    <div class="compare-card">
+      <div class="label">gcTime（垃圾回收）</div>
+      <pre>无组件使用后，缓存
+「多久后被删除」
+默认 5 分钟
+
+期间再用到 → 秒出旧数据
+到期删除 → 下次重新 loading
+（旧名 cacheTime）</pre>
+    </div>
+  </div>
+
+  <div class="callout react">
+    <strong>用图书馆类比：</strong>staleTime 是"这本书多久内不用去核对最新版"；gcTime 是"没人借的书在书架上留多久才下架"。一份数据可以<em>已经陈旧（stale）但仍在缓存里</em>——它会被展示给你（避免白屏），同时后台去取新版。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>按数据特性设置 staleTime</span></div>
+    <pre><span class="fn">useQuery</span><span class="punct">({</span>
+  <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'config'</span><span class="punct">],</span>
+  <span class="var">queryFn</span><span class="punct">:</span> <span class="var">fetchConfig</span><span class="punct">,</span>
+  <span class="com">// 配置类数据几乎不变：设长一点，减少无谓请求</span>
+  <span class="var">staleTime</span><span class="punct">:</span> <span class="num">1000</span> <span class="punct">*</span> <span class="num">60</span> <span class="punct">*</span> <span class="num">5</span><span class="punct">,</span>   <span class="com">// 5 分钟内不重取</span>
+  <span class="var">gcTime</span><span class="punct">:</span> <span class="num">1000</span> <span class="punct">*</span> <span class="num">60</span> <span class="punct">*</span> <span class="num">30</span><span class="punct">,</span>     <span class="com">// 无人使用后 30 分钟才清理</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <h2>触发后台重取的时机</h2>
+  <p>当数据已 <strong>stale</strong>（过了 staleTime），以下事件会触发自动后台重取（可逐项关闭）：</p>
+  <table>
+    <tr><th>选项</th><th>默认</th><th>含义</th></tr>
+    <tr><td><code>refetchOnMount</code></td><td>true</td><td>组件重新挂载时（数据 stale 才会真发）</td></tr>
+    <tr><td><code>refetchOnWindowFocus</code></td><td>true</td><td>浏览器标签重新聚焦时——切回页面看到最新</td></tr>
+    <tr><td><code>refetchOnReconnect</code></td><td>true</td><td>断网重连后</td></tr>
+    <tr><td><code>refetchInterval</code></td><td>false</td><td>轮询：设成毫秒数则定时重取</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>面试高频误区：</strong>"staleTime=0 是不是每次都重新请求、缓存没用？"——不是。staleTime=0 表示数据<em>立即变陈旧</em>，但只有在上面那些"触发时机"发生时才后台重取；两次触发之间，缓存照样直接返回旧数据（不闪 loading）。所以缓存一直在起作用，staleTime 只控制"何时认为需要刷新"。
+  </div>
+
+  <h2>主动失效：invalidateQueries</h2>
+  <p>写操作后要立刻让相关缓存失效。<code>invalidateQueries</code> 做两件事：把匹配的缓存标记为 stale，并对<em>当前正在使用</em>的 query 立即重取。</p>
+
+  <div class="flow">
+    <div class="flow-box">数据被 mutation 改动</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-box hl">invalidateQueries({ queryKey })</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-box">匹配缓存标记 stale</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-box ok">活跃 query 立即重取</div>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>invalidate 的几种粒度</span></div>
+    <pre><span class="com">// 精确失效一条</span>
+<span class="var">qc</span><span class="punct">.</span><span class="fn">invalidateQueries</span><span class="punct">({</span> <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'todo'</span><span class="punct">,</span> <span class="var">id</span><span class="punct">]</span> <span class="punct">});</span>
+
+<span class="com">// 前缀失效：所有以 ['todos'] 开头的缓存（含各种筛选）</span>
+<span class="var">qc</span><span class="punct">.</span><span class="fn">invalidateQueries</span><span class="punct">({</span> <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'todos'</span><span class="punct">]</span> <span class="punct">});</span>
+
+<span class="com">// 手动 refetch：不改 stale 状态，直接重取（较少用）</span>
+<span class="kw">const</span> <span class="punct">{</span> <span class="var">refetch</span> <span class="punct">}</span> <span class="punct">=</span> <span class="fn">useQuery</span><span class="punct">(...);</span>
+<span class="var">refetch</span><span class="punct">();</span></pre>
+  </div>
+
+  <h3>invalidate vs setQueryData</h3>
+  <div class="compare-grid">
+    <div class="compare-card">
+      <div class="label">invalidateQueries</div>
+      <pre>标记失效 → 重新请求
+拿到服务器权威数据
+代价：一次网络往返</pre>
+    </div>
+    <div class="compare-card">
+      <div class="label">setQueryData</div>
+      <pre>直接把新数据写进缓存
+无需请求，立即更新
+用于乐观更新（下一章）</pre>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <strong>面试点：</strong>①"staleTime 和 gcTime 区别？"——staleTime 控制"多久算新鲜、何时后台刷新"，gcTime 控制"无人用的缓存多久被删"。②"staleTime=0 缓存还有用吗？"——有，两次触发之间仍返回缓存，只是数据被视为可刷新。③"怎么让列表在新增后更新？"——mutation 的 onSuccess 里 invalidateQueries 对应 key。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="105-useMutation数据修改.html" class="nav-btn">← useMutation 数据修改</a>
+    <a href="107-乐观更新.html" class="nav-btn next">下一篇:乐观更新 →</a>
+  </div>
+</div>
+</body>
+</html>
