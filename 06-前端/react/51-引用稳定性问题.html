@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · 引用稳定性问题</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / Hooks / 引用稳定性问题</div>
+  <div class="hero">
+    <div class="tag">React · 性能 Hook</div>
+    <h1>引用稳定性：每次渲染都是"新"的函数和对象</h1>
+    <p>要理解 <code>useMemo</code> / <code>useCallback</code> 为什么存在，得先看清一个事实：组件每次渲染，函数体里写的对象字面量、数组字面量、箭头函数，都会被<strong>重新创建成一个全新的引用</strong>。这个"新引用"会悄悄破坏很多优化。</p>
+  </div>
+
+  <h2>根源：渲染就是重新执行函数</h2>
+  <p>函数组件每次渲染，就是把整个函数体从头执行一遍。里面每一处 <code>{...}</code>、<code>[...]</code>、<code>() =&gt; {}</code> 都是一条"创建新值"的语句——执行到就新建一个。所以哪怕内容一模一样，两次渲染拿到的也是两个不同的引用。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>内容相同，引用不同</span></div>
+    <pre><span class="kw">function</span> <span class="fn">Component</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="com">// 每次渲染，这三行都重新执行，产生全新引用</span>
+  <span class="kw">const</span> <span class="var">obj</span> <span class="punct">=</span> <span class="punct">{</span> <span class="var">a</span><span class="punct">:</span> <span class="num">1</span> <span class="punct">};</span>          <span class="com">// 新对象</span>
+  <span class="kw">const</span> <span class="var">arr</span> <span class="punct">=</span> <span class="punct">[</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">];</span>            <span class="com">// 新数组</span>
+  <span class="kw">const</span> <span class="var">fn</span> <span class="punct">=</span> <span class="punct">()</span> <span class="punct">=&gt;</span> <span class="punct">{};</span>          <span class="com">// 新函数</span>
+
+  <span class="com">// 上一次渲染的 obj !== 这一次的 obj，即使 { a: 1 } 完全相同</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout react">
+    <strong>回顾第 23 篇：</strong>React 用 <code>Object.is</code>（即 <code>===</code>）做<strong>引用比较</strong>，不看内容。<code>{a:1} === {a:1}</code> 永远是 <code>false</code>，因为它们是内存里两个不同的对象。基本类型（数字、字符串、布尔）没有这个问题——<code>1 === 1</code> 永远 <code>true</code>。问题只出在对象、数组、函数这些引用类型上。
+  </div>
+
+  <h2>破坏点一：React.memo 失效</h2>
+  <p><code>React.memo</code> 让子组件在"props 没变"时跳过重渲。但它判断"没变"也是用引用比较。父组件每次渲染都传一个新函数/新对象当 prop，<code>memo</code> 每次都认为"props 变了"，于是<strong>白白包了 memo 却从不生效</strong>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>新函数 prop 让 memo 形同虚设</span></div>
+    <pre><span class="kw">const</span> <span class="var">Child</span> <span class="punct">=</span> <span class="fn">React</span><span class="punct">.</span><span class="fn">memo</span><span class="punct">(</span><span class="kw">function</span> <span class="fn">Child</span><span class="punct">(</span><span class="punct">{</span> <span class="var">onClick</span> <span class="punct">})</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'Child 渲染'</span><span class="punct">);</span>
+  <span class="kw">return</span> <span class="punct">&lt;</span><span class="tag-c">button</span> <span class="attr">onClick</span><span class="punct">=</span><span class="jsx-expr">{</span><span class="var">onClick</span><span class="jsx-expr">}</span><span class="punct">&gt;</span>点我<span class="punct">&lt;/</span><span class="tag-c">button</span><span class="punct">&gt;;</span>
+<span class="punct">});</span>
+
+<span class="kw">function</span> <span class="fn">Parent</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="punct">[</span><span class="var">n</span><span class="punct">,</span> <span class="var">setN</span><span class="punct">]</span> <span class="punct">=</span> <span class="fn">useState</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+
+  <span class="com">// ❌ 每次 Parent 重渲都生成新函数 → Child 的 onClick prop 每次都"变"</span>
+  <span class="com">//    → React.memo 判定 props 变了 → Child 每次都重渲，memo 没用</span>
+  <span class="kw">return</span> <span class="punct">(</span>
+    <span class="punct">&lt;</span><span class="tag-c">div</span><span class="punct">&gt;</span>
+      <span class="punct">&lt;</span><span class="tag-c">button</span> <span class="attr">onClick</span><span class="punct">=</span><span class="jsx-expr">{</span><span class="punct">()</span> <span class="punct">=&gt;</span> <span class="fn">setN</span><span class="punct">(</span><span class="var">n</span> <span class="punct">+</span> <span class="num">1</span><span class="punct">)</span><span class="jsx-expr">}</span><span class="punct">&gt;{</span><span class="var">n</span><span class="jsx-expr">}</span><span class="punct">&lt;/</span><span class="tag-c">button</span><span class="punct">&gt;</span>
+      <span class="punct">&lt;</span><span class="tag-c">Child</span> <span class="attr">onClick</span><span class="punct">=</span><span class="jsx-expr">{</span><span class="punct">()</span> <span class="punct">=&gt;</span> <span class="fn">doSomething</span><span class="punct">()</span><span class="jsx-expr">}</span> <span class="punct">/&gt;</span>  <span class="com">// 新函数字面量</span>
+    <span class="punct">&lt;/</span><span class="tag-c">div</span><span class="punct">&gt;</span>
+  <span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>破坏点二：useEffect 依赖每次都"变"</h2>
+  <p><code>useEffect</code> 的依赖数组也是引用比较。如果把每次都新建的对象/函数放进依赖，React 每次都判定"依赖变了"，effect <strong>每次渲染都重新执行</strong>——可能变成无限请求、无限订阅。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>不稳定依赖导致 effect 反复触发</span></div>
+    <pre><span class="kw">function</span> <span class="fn">Search</span><span class="punct">(</span><span class="punct">{</span> <span class="var">keyword</span> <span class="punct">})</span> <span class="punct">{</span>
+  <span class="com">// 每次渲染都是新对象</span>
+  <span class="kw">const</span> <span class="var">options</span> <span class="punct">=</span> <span class="punct">{</span> <span class="var">q</span><span class="punct">:</span> <span class="var">keyword</span><span class="punct">,</span> <span class="var">limit</span><span class="punct">:</span> <span class="num">10</span> <span class="punct">};</span>
+
+  <span class="fn">useEffect</span><span class="punct">(</span><span class="punct">()</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+    <span class="fn">fetchData</span><span class="punct">(</span><span class="var">options</span><span class="punct">);</span>
+  <span class="punct">},</span> <span class="punct">[</span><span class="var">options</span><span class="punct">]);</span>  <span class="com">// ❌ options 引用每次都变 → 每次渲染都发请求</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>解法：把引用"钉住"</h2>
+  <p>这两个问题的根都是同一个：<strong>需要一个跨渲染保持稳定的引用</strong>。React 给了两个专门工具来"记住上次的引用、只在依赖变化时才换新"：</p>
+
+  <table>
+    <tr><th>要缓存的东西</th><th>工具</th><th>作用</th></tr>
+    <tr><td>一个函数</td><td><code>useCallback(fn, deps)</code></td><td>依赖不变则复用同一个函数引用</td></tr>
+    <tr><td>一个计算结果(对象/数组/值)</td><td><code>useMemo(() =&gt; v, deps)</code></td><td>依赖不变则复用同一个结果</td></tr>
+  </table>
+
+  <div class="flow">
+    <div class="flow-box danger">每次渲染新引用</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box hl">useMemo / useCallback</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box ok">依赖不变 = 引用稳定</div>
+  </div>
+
+  <div class="callout tip">
+    <strong>不是所有新引用都要修。</strong>只有当这个引用<strong>被别的东西比较</strong>时才要紧——比如传给 <code>memo</code> 子组件、进 <code>useEffect</code>/<code>useMemo</code> 依赖、当 Context value。如果只是组件内部用一下、不参与任何比较，新建引用完全无所谓，不用管。后两篇会反复强调这个"只在必要时才缓存"的原则。
+  </div>
+
+  <div class="callout warn">
+    <strong>面试常问：</strong>"为什么需要 useCallback？" 别答"为了性能"——那太笼统。要答到根上："因为函数组件每次渲染都会重建函数字面量，产生新引用；当这个函数作为 <code>memo</code> 子组件的 prop 或 <code>useEffect</code> 依赖时，新引用会导致本可避免的重渲/重执行。<code>useCallback</code> 缓存函数引用，让依赖不变时复用同一个函数。"
+  </div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>函数组件每次渲染都<strong>重新创建</strong>内部的对象/数组/函数，引用每次都不同。</li>
+    <li>React 到处用<strong>引用比较</strong>（<code>Object.is</code>）：memo 的 props、effect 的依赖、Context value。</li>
+    <li>不稳定引用会让 <code>memo</code> 失效、让 <code>useEffect</code> 反复触发。</li>
+    <li>解法是用 <code>useMemo</code>/<code>useCallback</code> 稳定引用——但<strong>只在引用真的被比较时</strong>才需要。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="50-useReducer与Context结合.html" class="nav-btn">← useReducer 与 Context 结合</a>
+    <a href="52-useMemo缓存计算.html" class="nav-btn next">下一篇:useMemo 缓存计算 →</a>
+  </div>
+</div>
+</body>
+</html>
