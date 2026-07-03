@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>蓝绿部署与金丝雀发布 — CI/CD</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #1f5132; }
+  .nav-btn.next { color: #4ade80; border-color: #1f5132; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../devops-roadmap.html">容器化与 CI/CD 路线图</a> / CI/CD / 蓝绿部署与金丝雀发布
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">CI/CD</div>
+    <h1>蓝绿部署与金丝雀发布</h1>
+    <p>两种最常被拿来对比的"零停机、低风险"发布策略。名字听起来花哨，本质其实是在回答同一个问题：<strong>新版本出问题了，怎么把影响范围和回滚成本降到最低？</strong></p>
+  </div>
+
+  <!-- 问题背景 -->
+  <h2>为什么不能直接"覆盖上线"</h2>
+  <p>
+    最朴素的发布方式是：停掉旧版本，用新版本覆盖，再启动。这样做有两个致命问题——<strong>发布过程中服务不可用</strong>（哪怕只有几秒钟），以及<strong>一旦新版本有问题，只能手忙脚乱地重新部署回旧版本</strong>，回滚同样有停机时间。蓝绿部署和金丝雀发布都是为了解决这两个问题而生，但走了两条不同的路。
+  </p>
+
+  <!-- 蓝绿部署 -->
+  <h2>蓝绿部署：整体切换，回滚是"秒级"的</h2>
+  <p>
+    蓝绿部署（Blue-Green Deployment）同时维护<strong>两套完全独立、配置对等的生产环境</strong>：一套叫"蓝"，一套叫"绿"。假设当前"蓝"环境正在承接所有线上流量，发布新版本时，把新版本完整部署到闲置的"绿"环境，在"绿"环境上做完充分验证（冒烟测试、内部走查）后，再把负载均衡 / 网关的流量入口<strong>瞬间切到"绿"环境</strong>。
+  </p>
+  <div class="tree">
+    <span class="hi">发布前</span>：用户流量 → 负载均衡 → 蓝环境（v1，在线）　　绿环境（空闲）<br>
+    <span class="hi">部署新版本</span>：用户流量 → 负载均衡 → 蓝环境（v1，在线）　　绿环境（部署 v2，验证中）<br>
+    <span class="hi">切换流量</span>：用户流量 → 负载均衡 → 绿环境（v2，在线）　　蓝环境（v1，保留，随时可回滚）
+  </div>
+  <p>
+    如果切换后发现 v2 有问题，只需要把流量入口<strong>切回蓝环境</strong>即可，这个操作通常在秒级完成，因为蓝环境的 v1 从始至终都是热的、随时能接流量的。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像商场里的两部电梯，一部在检修（部署新版本），检修完毕、确认没问题后把所有人引导到新电梯；如果新电梯出故障，立刻把大家引回旧电梯——旧电梯全程没有拆，随时能用。
+  </div>
+  <p>
+    代价也很直观：你需要同时维护两套一模一样规模的生产环境，也就是<strong>双倍的资源成本</strong>（至少在切换的窗口期是双倍）。此外，蓝绿部署是"整体切换"，所有用户在同一时刻都切到新版本，一旦新版本真的有问题，是<strong>全量用户</strong>都会受到影响。
+  </p>
+
+  <!-- 金丝雀发布 -->
+  <h2>金丝雀发布：先小范围观察，再逐步放量</h2>
+  <p>
+    金丝雀发布（Canary Release）这个名字来自矿工带金丝雀下矿井探测瓦斯的传统——金丝雀对毒气更敏感，一旦异常就是提前预警。放到发布场景里：先把新版本<strong>只暴露给一小部分流量或用户</strong>（比如 5%），密切观察错误率、延迟等关键指标，确认没问题后再逐步扩大比例（5% → 25% → 50% → 100%），直到全量切换完成。
+  </p>
+  <div class="tree">
+    <span class="hi">第一步</span>：95% 流量 → v1（旧版本）　　5% 流量 → v2（新版本，金丝雀）<br>
+    <span class="hi">观察指标</span>：错误率、P99 延迟、业务指标是否异常<br>
+    <span class="hi">逐步放量</span>：50% → v1　　50% → v2　　……直到 0% → v1　　100% → v2
+  </div>
+  <p>
+    金丝雀发布的最大优势是<strong>把影响范围控制在很小的比例内</strong>——即使新版本真的有 bug，也只有一小部分用户受影响，而且能在扩大范围之前就发现问题并叫停。代价是<strong>整个发布过程比较慢</strong>（要留出观察窗口），并且在新旧版本共存期间，需要处理好兼容性问题：比如新版本改了数据库字段格式，旧版本的代码还在跑，必须保证两个版本都能正确读写数据（也就是常说的"向前兼容、向后兼容"）。
+  </p>
+
+  <!-- 核心对比：高频考点 -->
+  <h2>核心区别（面试高频）</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>蓝绿部署</th><th>金丝雀发布</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>切换方式</td>
+        <td>整体瞬间切换（All-or-Nothing）</td>
+        <td>按比例逐步放量</td>
+      </tr>
+      <tr>
+        <td>问题影响范围</td>
+        <td>一旦切换出问题，影响全量用户</td>
+        <td>先影响一小部分用户，可及时止损</td>
+      </tr>
+      <tr>
+        <td>回滚速度</td>
+        <td>秒级（切回旧环境的流量入口）</td>
+        <td>较快，但需要把已放量的流量收回</td>
+      </tr>
+      <tr>
+        <td>资源成本</td>
+        <td>需要两套对等的生产环境（约双倍资源）</td>
+        <td>不需要双倍环境，新旧版本共存即可</td>
+      </tr>
+      <tr>
+        <td>兼容性负担</td>
+        <td>切换瞬间完成，共存时间极短</td>
+        <td>新旧版本较长时间共存，需处理兼容性</td>
+      </tr>
+      <tr>
+        <td>发布耗时</td>
+        <td>快（验证完直接切）</td>
+        <td>慢（需要多轮观察和放量）</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"蓝绿部署和金丝雀发布的区别？" 一句话答案：<strong>蓝绿部署是"整体瞬间切换、双倍资源换取秒级回滚"，金丝雀发布是"小流量试探、逐步放量以缩小问题的影响半径"。</strong> 两者不是互斥的，实践中常常组合使用：先用金丝雀验证正确性，确认无误后再用蓝绿式的整体切换完成全量发布。
+  </div>
+
+  <!-- 滚动发布补充对比 -->
+  <h2>再补一种：滚动发布</h2>
+  <p>
+    滚动发布（Rolling Update，Kubernetes 的默认发布方式）逐个替换旧版本实例：先关闭一个旧实例、启动一个新实例，确认健康后再处理下一个，直到全部替换完成。它<strong>不需要额外的双倍资源</strong>（只是短暂多出一两个实例），但发布过程中新旧版本必然同时在线，且如果发现问题，已经替换的部分需要逐个回滚，速度介于蓝绿部署和金丝雀发布之间。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>不要把"滚动发布"和"金丝雀发布"混为一谈。滚动发布的目标是"平滑地、不中断服务地替换全部实例"，最终一定会全量替换；金丝雀发布的目标是"先小范围验证，觉得有问题可以随时叫停，不必继续扩大"，两者出发点不同。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-GitHubActionsJenkins流水线设计思路.html" class="nav-btn">← GitHub Actions / Jenkins 流水线设计思路</a>
+    <a href="./04-部署流水线的设计思想.html" class="nav-btn next">部署流水线的设计思想 →</a>
+  </div>
+
+</div>
+</body>
+</html>

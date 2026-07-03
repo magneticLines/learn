@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>高基数问题与指标设计 — 指标监控</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../observability-roadmap.html">可观测性 路线图</a> / 指标监控 / 高基数问题与指标设计
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">指标监控</div>
+    <h1>高基数问题与指标设计</h1>
+    <p>给指标加标签很方便，能按维度细分查询——但如果标签的取值空间太大，看似无害的一个字段就可能把时序数据库的存储和查询拖垮。</p>
+  </div>
+
+  <!-- 标签的意义 -->
+  <h2>标签（Label）：让指标可以按维度切片</h2>
+  <p>
+    Prometheus 这类时序数据库允许给指标打上标签，比如 <code>http_requests_total{method="GET", status="200", endpoint="/api/order"}</code>。
+    标签的价值在于可以按任意维度组合过滤和聚合——"只看 <code>/api/order</code> 这个接口的错误率"，或者"按 <code>status</code> 分组统计请求数"，这些查询都要靠标签实现。
+  </p>
+  <p>
+    但标签不是免费的：<strong>标签的每一种不同取值组合，都会在时序数据库里独立开辟一条新的时间序列</strong>。这就引出了高基数问题的根源。
+  </p>
+
+  <!-- 高基数问题 -->
+  <h2>什么是高基数（High Cardinality）问题</h2>
+  <p>
+    "基数"指的是一个标签可能取值的数量。<code>status</code> 标签只有 <code>200</code>、<code>404</code>、<code>500</code> 等寥寥几种取值，基数很低；
+    但如果有人把 <code>userId</code> 当成标签打到指标上，比如 <code>http_requests_total{userId="1001", endpoint="/api/order"}</code>，
+    问题就来了：系统里可能有几十万甚至上千万个不同的 <code>userId</code>，<strong>每一个 userId 都会和其他标签组合，生成一条独立的时间序列</strong>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>高基数标签导致的时间序列爆炸</span></div>
+    <pre><span class="com">// 假设：10 个 endpoint × 3 个 status × 50 万个 userId</span>
+<span class="com">// 时间序列总数 = 10 × 3 × 500000 = 1500 万条独立时间序列</span>
+<span class="com">// 而不加 userId 时，只需要 10 × 3 = 30 条时间序列</span>
+
+http_requests_total{endpoint=<span class="str">"/api/order"</span>, status=<span class="str">"200"</span>, userId=<span class="str">"1001"</span>}
+http_requests_total{endpoint=<span class="str">"/api/order"</span>, status=<span class="str">"200"</span>, userId=<span class="str">"1002"</span>}
+http_requests_total{endpoint=<span class="str">"/api/order"</span>, status=<span class="str">"200"</span>, userId=<span class="str">"1003"</span>}
+<span class="com">// ... 数十万条类似的序列</span></pre>
+  </div>
+  <p>
+    时序数据库需要为每一条独立的时间序列单独维护索引和存储块，序列数量从 30 条暴涨到 1500 万条，会直接导致<strong>内存占用暴涨（时序数据库通常把活跃序列的索引放在内存里）、写入吞吐下降、查询变慢甚至查询超时</strong>，严重时可以把整个 Prometheus 实例拖垮。这在 SRE 圈子里有个专门的名字，叫作"基数爆炸"（Cardinality Explosion）。
+  </p>
+
+  <div class="callout info">
+    <strong>类比：</strong>这就像给图书馆按"书名首字母"分类，一共 26 个分类，管理员轻松应对；但如果改成按"每一本书的独立 ISBN 编号"分类，相当于给每一本书单独开一个分类抽屉——分类系统本身的管理开销远远超过了它带来的检索价值。userId 这种高基数字段就是"每本书一个抽屉"式的滥用。
+  </div>
+
+  <!-- 如何设计 -->
+  <h2>指标标签设计原则：避免使用高基数字段</h2>
+  <p>
+    设计指标标签时，一个基本准则是：<strong>标签的取值空间应该是有限且可枚举的</strong>，比如 HTTP 方法（GET/POST/...）、状态码分类（2xx/4xx/5xx）、服务名、接口路径模板（注意是模板 <code>/api/order/:id</code> 而不是把具体 id 拼进路径）。
+    像 userId、订单号、IP 地址、traceId 这类取值几乎无穷多的字段，天然不适合做指标标签。
+  </p>
+  <table>
+    <thead>
+      <tr><th>场景需求</th><th>该用哪种可观测性手段</th><th>原因</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>"这个接口整体错误率是多少"</td>
+        <td>指标（Metrics）</td>
+        <td>低基数聚合查询，指标系统的强项</td>
+      </tr>
+      <tr>
+        <td>"用户 1001 的这次请求为什么失败了"</td>
+        <td>日志（Logging）+ 链路追踪（Tracing）</td>
+        <td>需要定位到具体一次请求的完整上下文，高基数、需要精确查询单个事件</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    换句话说，<strong>需要按高基数字段做精确查询的场景，本身就不该用指标系统解决</strong>——日志系统（如 Elasticsearch）天生就是为高基数、可任意字段检索的场景设计的，链路追踪则专门解决"追踪某一次具体请求"的问题，指标系统的价值在于"快速聚合统计"，而不是"精确检索单个个体"。
+  </p>
+
+  <!-- 常见误区 -->
+  <h2>常见误区与面试高频考点</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>为了方便排查问题，把尽可能多的信息都塞进指标标签，觉得"标签越细，以后查起来越方便"。这是从日志思维直接照搬到指标系统上的典型误区——日志一条一条独立存储，加字段的边际成本很低；但指标是按标签组合聚合存储的时间序列，加一个高基数标签的边际成本是指数级的。
+  </div>
+  <div class="callout warn">
+    <strong>常见踩坑点：</strong>把 URL 全路径（包含具体参数）直接当标签，比如 <code>/api/order/20260703001</code> 而不是归一化成 <code>/api/order/:id</code> 模板。很多 HTTP 监控中间件默认这么做，如果不做路径归一化处理，订单号的数量就是这个标签的基数，规模上来之后同样会引发基数爆炸。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"什么是高基数问题？怎么规避？" 回答要点：标签的不同取值组合数决定了时间序列数量，高基数标签（如 userId）会导致存储爆炸和查询变慢；规避方法是只给低基数、可枚举的字段打标签，需要按用户/请求精确查询的场景改用日志或链路追踪。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>标签让指标可以按维度切片查询，但每个标签组合都是一条独立的存储代价：</strong>基数越高，代价越大。</li>
+    <li><strong>指标系统适合低基数的聚合统计，不适合高基数的精确检索：</strong>这是它和日志系统的本质分工差异。</li>
+    <li><strong>日志和指标各自解决了可观测性的一部分问题，但都无法回答"一次请求跨越了哪些服务、耗时分布在哪一段"</strong>——这正是下一个 Tab 链路追踪要解决的问题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-RED方法与USE方法论.html" class="nav-btn">← RED 方法与 USE 方法论</a>
+    <a href="../tracing/01-分布式链路追踪原理.html" class="nav-btn next">分布式链路追踪原理 →</a>
+  </div>
+
+</div>
+</body>
+</html>

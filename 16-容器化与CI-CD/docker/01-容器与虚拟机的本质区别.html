@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>容器与虚拟机的本质区别 — 容器化基础</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #60a5fa; }
+  p code, li code { color: #60a5fa; }
+  h2 { color: #60a5fa; border-left-color: #60a5fa; }
+  .hero .tag { color: #60a5fa; border-color: #1e4a7c; }
+  .nav-btn.next { color: #60a5fa; border-color: #1e4a7c; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../devops-roadmap.html">容器化与 CI/CD 路线图</a> / 容器化基础 / 容器与虚拟机的本质区别
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">容器化基础</div>
+    <h1>容器与虚拟机的本质区别</h1>
+    <p>面试必问的对比题——但大多数人只会背"容器更轻量"，说不清楚"轻在哪、为什么轻、轻了要付出什么代价"。这一篇把答案钉在内核层面。</p>
+  </div>
+
+  <!-- 虚拟机 -->
+  <h2>虚拟机：虚拟一整台电脑</h2>
+  <p>
+    虚拟机（Virtual Machine）的核心组件是 <strong>Hypervisor</strong>（也叫 VMM，Virtual Machine Monitor），它直接运行在物理硬件之上（Type 1，如 ESXi）或宿主操作系统之上（Type 2，如 VirtualBox），负责把一台物理机的 CPU、内存、磁盘、网卡等硬件资源<strong>虚拟化</strong>成多份"看起来独立的硬件"。
+  </p>
+  <p>
+    每一台虚拟机在这些虚拟硬件之上，都会安装一个<strong>完整独立的操作系统内核</strong>（可以是和宿主机完全不同的系统，比如宿主机是 Linux，虚拟机里装 Windows）。这意味着：一个物理机上开 5 台虚拟机，内存里就实实在在跑着 5 份内核 + 5 份完整的系统服务。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>虚拟机好比在一栋大楼里，给每个租户各盖一栋独立的小别墅——水电煤气（硬件资源）从大楼总管道（物理硬件）接过来，但每栋别墅都有自己完整的地基、承重墙、水表电表（独立内核）。安全隔离做到了极致，但盖房子的成本和空间开销也是实打实的。
+  </div>
+
+  <!-- 容器 -->
+  <h2>容器：共享内核，隔离视图</h2>
+  <p>
+    容器不虚拟硬件，也不跑独立内核，它<strong>直接复用宿主机的操作系统内核</strong>。容器的"隔离感"完全来自 Linux 内核提供的两个特性：
+  </p>
+  <ul>
+    <li><strong>Namespace（命名空间）</strong>：负责"隔离视图"。让每个容器看到的 PID 列表、网络接口、挂载点、主机名等各自独立——容器 A 里 <code>ps</code> 看到自己是 1 号进程，但在宿主机上看，它其实是宿主机进程树里的一个普通子进程，只是编号被换了个"马甲"。</li>
+    <li><strong>Cgroup（控制组）</strong>：负责"限制用量"。给这个进程组设置 CPU 时间片上限、内存配额上限、磁盘 IO 带宽上限，超了就限流或者 OOM Kill，防止一个容器把宿主机资源吃光。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>呼应 11-操作系统模块：</strong>容器本质上不是什么全新的黑科技，它就是<strong>一个被 namespace 换了视图、被 cgroup 加了资源枷锁的普通 Linux 进程</strong>。用 <code>docker run</code> 启动一个容器，宿主机上用 <code>ps aux</code> 依然能看到对应的进程，这就是最好的证明——它没有脱离"进程"这个操作系统概念，只是被套了两层特殊限制。
+  </div>
+
+  <!-- 架构对比图 -->
+  <h2>架构对比</h2>
+  <div class="tree">
+    <span class="hi">虚拟机架构</span><br>
+    App A / App B / App C<br>
+    &nbsp;&nbsp;├─ Guest OS（完整内核）× N<br>
+    &nbsp;&nbsp;├─ Hypervisor（虚拟化硬件）<br>
+    &nbsp;&nbsp;└─ Host OS + 物理硬件<br>
+    <br>
+    <span class="hi">容器架构</span><br>
+    App A / App B / App C（各自 namespace + cgroup）<br>
+    &nbsp;&nbsp;├─ Docker Engine（管理容器生命周期）<br>
+    &nbsp;&nbsp;└─ Host OS（唯一内核） + 物理硬件
+  </div>
+  <p>
+    可以直观看到：容器少了"每个实例一份 Guest OS + Hypervisor 虚拟化"这一整层开销，这正是它启动快、体积小、密度高的根本原因。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>核心对比一览</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>虚拟机</th><th>容器</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>隔离基础</strong></td>
+        <td>Hypervisor 虚拟化硬件，独立内核</td>
+        <td>共享宿主机内核，namespace 隔离视图</td>
+      </tr>
+      <tr>
+        <td><strong>启动速度</strong></td>
+        <td>分钟级（要引导一整个操作系统）</td>
+        <td>秒级甚至毫秒级（只是启动一个进程）</td>
+      </tr>
+      <tr>
+        <td><strong>镜像体积</strong></td>
+        <td>GB 级（包含完整操作系统）</td>
+        <td>MB 级（只包含应用和依赖）</td>
+      </tr>
+      <tr>
+        <td><strong>资源开销</strong></td>
+        <td>每个实例都要预留内核、系统服务的开销</td>
+        <td>只有应用进程本身的开销，密度高得多</td>
+      </tr>
+      <tr>
+        <td><strong>隔离强度</strong></td>
+        <td>强，内核级故障不会跨虚拟机传播</td>
+        <td>弱于虚拟机，共享内核意味着内核漏洞可能跨容器逃逸</td>
+      </tr>
+      <tr>
+        <td><strong>跨系统能力</strong></td>
+        <td>宿主机 Linux 上可以跑 Windows 虚拟机</td>
+        <td>容器必须和宿主机共用同一种内核（Linux 容器不能直接跑在 Windows 内核上）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"容器就是轻量级虚拟机。"
+    这个说法在直觉上方便理解，但技术上不准确，而且是面试里容易失分的地方。虚拟机的隔离单位是"硬件"，容器的隔离单位是"进程视图"；虚拟机里能跑一个完全不同的操作系统内核，容器不行——<strong>容器和宿主机永远共用同一个内核</strong>。这也是为什么 Docker Desktop 在 Windows/Mac 上跑 Linux 容器时，背后其实悄悄启动了一个轻量级 Linux 虚拟机来提供 Linux 内核。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"容器和虚拟机的区别？" 标准答案框架：<strong>隔离机制不同（内核虚拟化 vs namespace+cgroup）→ 直接导致启动速度、资源开销、隔离强度三方面的差异</strong>。不要只背"容器轻，虚拟机重"，要能讲出"轻在哪个环节、为什么轻"，这是"取舍"而不是"容器全面碾压虚拟机"——生产环境里对隔离性要求极高的多租户场景，依然会选虚拟机，甚至"容器跑在虚拟机里"两者叠加使用。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>本质区别是隔离层级：</strong>虚拟机隔离到硬件层，容器隔离到进程视图层，这是一切差异的根源。</li>
+    <li><strong>容器是 namespace + cgroup 包装的进程：</strong>没有脱离操作系统的进程模型，只是多了视图隔离和资源限制。</li>
+    <li><strong>没有绝对的优劣，只有场景取舍：</strong>要极致隔离性选虚拟机，要极致密度和启动速度选容器，很多生产架构两者结合使用。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../devops-roadmap.html" class="nav-btn">← 容器化与 CI/CD 路线图</a>
+    <a href="./02-Docker镜像与容器的关系.html" class="nav-btn next">Docker 镜像与容器的关系 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>服务发现与负载均衡 — Kubernetes 核心概念</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../devops-roadmap.html">容器化与 CI/CD 路线图</a> / Kubernetes 核心概念 / 服务发现与负载均衡
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Kubernetes 核心概念</div>
+    <h1>服务发现与负载均衡</h1>
+    <p>上一篇提到 Service 给动态变化的 Pod 提供固定入口，这一篇深入它的实现细节——标签选择器怎么匹配 Pod，服务名怎么变成可访问的地址。</p>
+  </div>
+
+  <!-- 标签选择器 -->
+  <h2>Label Selector：Service 如何找到它的 Pod</h2>
+  <p>
+    Service 并不知道具体有哪些 Pod、它们的 IP 是什么，它靠的是<strong>标签选择器（Label Selector）</strong>做动态匹配：Pod 在创建时会被打上一组 Label（如 <code>app: my-app</code>），Service 声明自己要选中"所有带有 <code>app: my-app</code> 标签的 Pod"。
+  </p>
+  <p>
+    这是一种<strong>动态、松耦合的关联方式</strong>——不需要手动维护一份 IP 列表。Deployment 每次创建新 Pod、销毁旧 Pod，只要新 Pod 依然带着同样的 Label，Service 就能自动把它纳入自己的转发范围，整个过程不需要人工介入去更新 Service 的配置。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>service.yaml</span><span>Service 通过 selector 关联 Pod</span></div>
+    <pre><span class="kw">apiVersion</span>: v1
+<span class="kw">kind</span>: Service
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: my-app-svc
+<span class="kw">spec</span>:
+  <span class="kw">selector</span>:
+    <span class="kw">app</span>: my-app        <span class="com"># 匹配所有带这个 label 的 Pod</span>
+  <span class="kw">ports</span>:
+    - <span class="kw">port</span>: 80
+      <span class="kw">targetPort</span>: 8080
+  <span class="kw">type</span>: ClusterIP</pre>
+  </div>
+  <p>
+    K8s 集群内部有一个持续运行的组件叫 <strong>Endpoints Controller</strong>，它会持续监听匹配这个 selector 的 Pod 列表变化，实时更新 Service 背后实际的转发目标（Endpoints）。这本质上也是上一篇讲的<strong>控制循环</strong>模式的一个具体应用。
+  </p>
+
+  <!-- DNS 服务发现 -->
+  <h2>基于 DNS 的服务发现</h2>
+  <p>
+    K8s 集群内置了一个 DNS 组件（通常是 CoreDNS），每创建一个 Service，就会自动为它注册一条 DNS 记录：<strong>Service 名称可以直接被解析为它的虚拟 IP（ClusterIP）</strong>。这意味着集群里的应用要调用另一个服务，<strong>不需要知道对方任何一个 Pod 的真实 IP，只需要知道对方 Service 的名字</strong>，剩下的交给 DNS 解析 + Service 负载均衡。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示例</span><span>应用代码里直接用 Service 名调用</span></div>
+    <pre><span class="com">// 应用代码里不写死任何 IP，直接用 Service 名 + 端口</span>
+String url = <span class="str">"http://my-app-svc:80/api/hello"</span>;
+
+<span class="com">// K8s 内部 DNS 会把 my-app-svc 解析成对应的 ClusterIP
+// 再由 Service 做负载均衡，转发到某个健康的 Pod</span></pre>
+  </div>
+
+  <!-- 呼应微服务 -->
+  <h2>呼应：K8s Service 本质上是一种内建的服务发现方案</h2>
+  <div class="callout info">
+    <strong>呼应 14-分布式与微服务模块：</strong>在没有 K8s 的传统微服务架构里，服务发现通常需要额外引入 Eureka、Nacos、Consul 这类注册中心组件——服务启动时向注册中心"注册"自己的地址，调用方向注册中心"查询"目标服务的地址列表，再自己做负载均衡（比如 Ribbon）。而在 K8s 里，<strong>这套服务注册、发现、负载均衡的能力被下沉到了平台层</strong>：Pod 的创建/销毁自动触发 Endpoints 更新（相当于自动注册/注销），DNS + Service 完成了查询和负载均衡。业务代码不再需要接入专门的注册中心 SDK，这是 K8s 相比传统微服务框架的一大简化。
+  </div>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"Service 会帮我把请求转发到具体某一个固定的 Pod 上。"
+    不对，Service 做的是<strong>动态、无状态的负载均衡</strong>——每次请求（或者说每次建立连接）具体转发给背后哪个 Pod，是由转发规则（默认基于 iptables 或 IPVS 的随机/轮询策略）决定的，不会绑定某个固定 Pod。如果误以为 Service 会话粘滞到固定 Pod，可能会在需要会话保持的场景踩坑——这种情况需要显式配置 <code>sessionAffinity</code>。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"K8s 里服务之间是怎么互相发现和调用的？" 答案要点：<strong>Pod 打标签，Service 通过 Label Selector 动态关联一组 Pod；K8s 内置 DNS 把 Service 名解析为 ClusterIP；调用方只需要用 Service 名访问，请求会被自动负载均衡到健康的 Pod 上</strong>——整个过程无需接入外部注册中心。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Label Selector 是 K8s 里"动态分组"的通用机制：</strong>不仅 Service 用它关联 Pod，很多其他资源对象也依赖同样的模式。</li>
+    <li><strong>DNS + ClusterIP 让服务调用变得"位置透明"：</strong>调用方不关心目标服务背后有多少个 Pod、部署在哪，只需要记住一个稳定的服务名。</li>
+    <li><strong>K8s 把服务发现和负载均衡能力内建到了平台层：</strong>这是 K8s 相较传统需要额外接入注册中心的微服务架构的一大简化，也是"容器化基础"到"K8s 核心概念"这两个 Tab 学习内容的自然落点——下一步就该进入 CI/CD，学习如何把代码自动构建、打包、部署到 K8s 集群里。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-声明式API与控制循环.html" class="nav-btn">← 声明式 API 与控制循环</a>
+    <a href="../cicd/01-持续集成与持续部署的理念.html" class="nav-btn next">持续集成与持续部署的理念 →</a>
+  </div>
+
+</div>
+</body>
+</html>

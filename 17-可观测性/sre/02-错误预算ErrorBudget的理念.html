@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>错误预算 Error Budget 的理念 — 可观测性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../observability-roadmap.html">可观测性 路线图</a> / SRE 实践 / 错误预算（Error Budget）的理念
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">SRE 实践</div>
+    <h1>错误预算（Error Budget）的理念 <span style="font-size:0.9rem;color:#4ade80;">[进阶]</span></h1>
+    <p>开发团队想快速上线新功能，运维团队想系统稳如磐石——这是几乎所有工程组织都会遇到的经典博弈。错误预算用一个简单的公式，把这场博弈变成了一道可以用数据回答的决策题。</p>
+  </div>
+
+  <!-- 问题背景：经典博弈 -->
+  <h2>开发与运维的经典博弈</h2>
+  <p>
+    在没有量化机制的团队里，"要不要发布这个新版本"往往变成一场立场之争：开发团队觉得需求排期很紧，功能早一天上线就早一天产生价值；运维/SRE 团队则天然倾向于保守，因为每一次发布都是新的风险来源，一旦出问题，凌晨被叫起来处理故障的是他们。这两种立场都有道理，但**谁都拿不出一个双方都认可的客观标准**来决定"这次到底该不该发"。
+  </p>
+  <p>
+    错误预算（Error Budget）正是 Google SRE 体系里用来化解这场博弈的核心工具。
+  </p>
+
+  <!-- 定义 -->
+  <h2>定义：错误预算 = 1 − SLO</h2>
+  <p>
+    回忆上一篇讲的 SLO——团队设定的可靠性目标，比如"月度可用性 SLO 是 99.9%"。这意味着团队默许系统在一个月内<strong>可以有 0.1% 的时间不可用</strong>，这 0.1% 就是<strong>错误预算</strong>：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>错误预算的计算</span></div>
+    <pre><span class="com">// SLO：月度可用性目标 99.9%</span>
+<span class="var">errorBudget</span> = <span class="num">1</span> - <span class="num">0.999</span> = <span class="num">0.001</span>  <span class="com">// 即 0.1%</span>
+
+<span class="com">// 换算成实际时间：一个月约 43200 分钟</span>
+<span class="var">allowedDowntime</span> = <span class="num">43200</span> * <span class="num">0.001</span> ≈ <span class="num">43</span> <span class="com">分钟</span>
+<span class="com">// 也就是说，这个月系统允许累计"挂掉"最多 43 分钟，
+// 只要没有超支，就说明系统仍在 SLO 承诺的范围内运行</span></pre>
+  </div>
+  <p>
+    这 43 分钟就是这个月的"可以拿去冒险的额度"——错误预算不是"允许系统故障"的借口，而是承认<strong>100% 可靠既不现实也不划算</strong>（99.9% 到 99.99% 之间的每一个 9，成本都是指数级增长），于是干脆划出一块明确的、可以消耗的"容错空间"。
+
+  </p>
+
+  <!-- 精妙之处 -->
+  <h2>巧妙之处：把"要不要冒险"变成数据决策</h2>
+  <p>
+    错误预算真正的价值不在于这个计算公式本身，而在于它给"发布新功能是否安全"这类原本靠"感觉"和"立场"博弈的问题，提供了一把统一的尺子：
+  </p>
+  <ul>
+    <li><strong>错误预算还有富余</strong>（比如这个月只消耗了 43 分钟额度里的 10 分钟）：说明系统的稳定性还有充分的缓冲空间，团队可以放心地加快发布节奏、尝试更激进的新功能，因为即使这次发布出了点小问题，也在预算容忍范围内。</li>
+    <li><strong>错误预算已经耗尽或超支</strong>（这个月已经因故障累计不可用 50 分钟，超过了 43 分钟额度）：这是一个明确的信号——<strong>暂停新功能发布，把资源集中投入到修复稳定性问题上</strong>，直到错误预算重新恢复到健康水平。
+</li>
+  </ul>
+  <p>
+    这样一来，"该不该发布"不再取决于开发经理还是 SRE 负责人嗓门更大、职级更高，而是取决于一个所有人都认可、可以随时查询的仪表盘数字。<strong>双方的目标被统一到了同一个量化指标上</strong>——开发团队想多消耗一点预算去快速迭代，运维团队想少消耗一点预算保持稳定，但双方争的已经不是"该不该",而是同一套规则下"还剩多少额度"，博弈的性质从对立变成了协作。
+  </p>
+
+  <div class="callout info">
+    <strong>类比：</strong>错误预算像信用卡的月度额度。额度充足时可以稍微放开消费（快速迭代、多做实验性发布）；额度即将刷爆时自然会收紧手脚（暂停非必要发布、优先还款/修复稳定性）。额度本身不是用来鼓励挥霍的，而是提供一个清晰、双方都认账的边界。
+  </div>
+
+  <!-- 落地方式 -->
+  <h2>常见落地方式</h2>
+  <ul>
+    <li><strong>发布冻结（Release Freeze）：</strong>错误预算耗尽时，暂停非紧急的功能发布，只允许修复稳定性问题的变更上线，直到预算恢复。</li>
+    <li><strong>燃尽图监控：</strong>把错误预算做成一个类似"燃尽图"的仪表盘，实时展示本周期已消耗/剩余的预算，让开发和运维双方都能随时看到当前状态，而不是等月底复盘时才发现已经超支。</li>
+    <li><strong>预算消耗速率告警：</strong>不仅关注总量是否超支，还关注消耗速率——如果预算在很短时间内被大量消耗（比如一次发布直接吃掉了一半预算），即使总量还没超支，也应该提前预警，因为这通常意味着某次变更引入了持续性的问题。</li>
+  </ul>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>把错误预算理解成"允许系统出故障的许可证"，从而降低对稳定性的重视程度。错误预算的本质是风险管理工具，用来在"完全不许出错"和"放任自流"之间找一个理性的中间地带，而不是给"不认真对待故障"找借口。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>认为错误预算耗尽后应该追究"是谁的问题"、追责到个人。错误预算机制的设计初衷是驱动团队集体决策（该不该发布），而不是用来做绩效考核的武器——一旦变成追责工具，团队会倾向于隐瞒故障或钻数据统计口径的空子，反而破坏了这套机制的价值。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"错误预算解决了什么问题？" 标准答案：<strong>错误预算 = 1 - SLO，它把"要不要冒险发布新功能"这种原本靠开发和运维双方博弈、拍脑袋决定的问题，转化成一个可以用数据客观回答的问题——预算充足就可以快速迭代，预算耗尽就应该暂停发布、优先修复稳定性，用一个共同的量化指标让双方目标一致。</strong>
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>错误预算 = 1 − SLO</strong>，是从 SLO 直接反推出来的"允许消耗的容错额度"。</li>
+    <li><strong>它把开发与运维的立场博弈，转化成了基于同一份数据的协作决策</strong>——这是错误预算理念最核心的价值，也是它超越单纯"技术指标"、成为一种组织协作机制的原因。</li>
+    <li><strong>错误预算不是故障许可证，也不是追责工具</strong>，用好它的前提是团队对"用数据说话"这套文化有共同的认同。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-SLISLOSLA的定义与关系.html" class="nav-btn">← SLI / SLO / SLA 的定义与关系</a>
+    <a href="../observability-roadmap.html" class="nav-btn next">🎉 已完成，返回路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

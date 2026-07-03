@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GitHub Actions / Jenkins 流水线设计思路 — CI/CD</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #1f5132; }
+  .nav-btn.next { color: #4ade80; border-color: #1f5132; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../devops-roadmap.html">容器化与 CI/CD 路线图</a> / CI/CD / GitHub Actions / Jenkins 流水线设计思路
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">CI/CD</div>
+    <h1>GitHub Actions / Jenkins 流水线设计思路</h1>
+    <p>不管用什么工具，一条像样的 CI/CD 流水线都会经历相似的阶段。先搞懂"标准流程长什么样"，再看两大主流工具各自的设计取舍。</p>
+  </div>
+
+  <!-- 典型阶段 -->
+  <h2>流水线的典型阶段</h2>
+  <p>
+    一条完整的流水线本质上是把"代码提交"到"用户用上新功能"之间的所有步骤串起来，每一步都是对上一步产出的进一步加工或验证：
+  </p>
+  <div class="tree">
+    <span class="hi">1. 代码检出</span>（Checkout）— 从代码仓库拉取本次提交的源码<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">2. 编译构建</span>（Build）— 把源码编译成可执行产物（如 Maven/Gradle 打包）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">3. 单元测试</span>（Unit Test）— 跑最快、最底层的自动化测试，快速拦截逻辑错误<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">4. 代码质量扫描</span>（Lint / SonarQube）— 静态检查代码规范、坏味道、安全漏洞<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">5. 打包镜像</span>（Docker Build & Push）— 产出带版本号的可发布制品<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">6. 部署到测试环境</span>（Deploy to Staging）— 在接近生产的环境里先跑一遍<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">7. 集成测试</span>（Integration Test）— 验证服务间协作、真实依赖是否正常<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">8. 部署到生产环境</span>（Deploy to Production）— 持续交付需人工确认，持续部署则自动执行
+  </div>
+  <div class="callout info">
+    <strong>设计思想：</strong>每个阶段都是一道"关卡"，前一关不过，后一关就不会执行——这正是下一篇要讲的"部署流水线"思想的雏形：<strong>用一系列自动化验证逐步建立起对发布候选版本的信心</strong>。同时，越靠前的阶段执行越快、成本越低（单元测试几秒钟，集成测试可能要几分钟），所以要"快失败"，把便宜的检查放在前面，尽早拦截问题。
+  </div>
+
+  <!-- 与测试模块呼应 -->
+  <div class="callout tip">
+    <strong>呼应 15-测试模块：</strong>流水线里的第 3、7 步直接依赖你写的自动化测试。没有单元测试和集成测试打底，流水线的"质量关卡"就是摆设——CI/CD 工具只是负责"自动跑"，跑得准不准全看测试本身的质量。
+  </div>
+
+  <!-- GitHub Actions 示例 -->
+  <h2>GitHub Actions：YAML 声明式，与生态深度融合</h2>
+  <p>
+    GitHub Actions 把流水线定义为仓库里的一个 YAML 文件（<code>.github/workflows/ci.yml</code>），触发条件、运行环境、每一步要执行的命令都以声明式的方式写清楚：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>.github/workflows/ci.yml</span></div>
+    <pre><span class="kw">name</span><span class="punct">:</span> <span class="str">CI Pipeline</span>
+<span class="kw">on</span><span class="punct">:</span> <span class="punct">[</span><span class="str">push</span><span class="punct">,</span> <span class="str">pull_request</span><span class="punct">]</span>
+
+<span class="kw">jobs</span><span class="punct">:</span>
+  <span class="var">build-and-test</span><span class="punct">:</span>
+    <span class="kw">runs-on</span><span class="punct">:</span> <span class="str">ubuntu-latest</span>
+    <span class="kw">steps</span><span class="punct">:</span>
+      <span class="punct">-</span> <span class="kw">uses</span><span class="punct">:</span> <span class="str">actions/checkout@v4</span>       <span class="com"># 1. 代码检出</span>
+      <span class="punct">-</span> <span class="kw">uses</span><span class="punct">:</span> <span class="str">actions/setup-java@v4</span>
+        <span class="kw">with</span><span class="punct">:</span> <span class="punct">{</span> <span class="var">java-version</span><span class="punct">:</span> <span class="str">'17'</span> <span class="punct">}</span>
+      <span class="punct">-</span> <span class="kw">run</span><span class="punct">:</span> <span class="str">mvn -B compile</span>            <span class="com"># 2. 编译构建</span>
+      <span class="punct">-</span> <span class="kw">run</span><span class="punct">:</span> <span class="str">mvn -B test</span>               <span class="com"># 3. 单元测试</span></pre>
+  </div>
+  <p>
+    这种"托管在代码仓库里、随代码一起版本化"的方式，加上 GitHub 官方维护和社区贡献的海量现成 Action（如 <code>setup-java</code>、<code>docker/build-push-action</code>），让 GitHub Actions 特别适合<strong>开源项目和中小团队</strong>：几乎零运维成本，配置即生效。
+  </p>
+
+  <!-- Jenkins -->
+  <h2>Jenkins：功能强大，但要自己运维</h2>
+  <p>
+    Jenkins 是更"重"的老牌方案，核心是 <strong>Master/Agent 架构</strong>：Master 负责调度和管理流水线定义，实际的构建任务分发给一个或多个 Agent（可以是不同操作系统、不同硬件配置的机器）去执行。流水线通常用 <code>Jenkinsfile</code>（Groovy DSL）描述：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Jenkinsfile</span></div>
+    <pre><span class="var">pipeline</span> <span class="punct">{</span>
+    <span class="var">agent</span> <span class="var">any</span>
+    <span class="var">stages</span> <span class="punct">{</span>
+        <span class="var">stage</span><span class="punct">(</span><span class="str">'Build'</span><span class="punct">)</span> <span class="punct">{</span> <span class="var">steps</span> <span class="punct">{</span> <span class="fn">sh</span> <span class="str">'mvn compile'</span> <span class="punct">}</span> <span class="punct">}</span>
+        <span class="var">stage</span><span class="punct">(</span><span class="str">'Test'</span><span class="punct">)</span>  <span class="punct">{</span> <span class="var">steps</span> <span class="punct">{</span> <span class="fn">sh</span> <span class="str">'mvn test'</span>    <span class="punct">}</span> <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>
+    Jenkins 的优势在于<strong>插件生态极其丰富</strong>（几乎所有你能想到的工具都有对应插件）、可以灵活自建 Agent 集群应对复杂的企业内部环境（多机房、多种构建环境、严格的权限隔离）。代价是你需要自己部署、升级、维护 Jenkins Master 本身，插件版本冲突、Master 单点故障等运维问题也需要团队投入精力应对。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>两者的取舍</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>GitHub Actions</th><th>Jenkins</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>配置方式</td>
+        <td>YAML，声明式，随仓库版本化</td>
+        <td>Jenkinsfile（Groovy），也可视化配置</td>
+      </tr>
+      <tr>
+        <td>运维成本</td>
+        <td>托管服务，零运维</td>
+        <td>需自建 Master/Agent，自行运维升级</td>
+      </tr>
+      <tr>
+        <td>生态集成</td>
+        <td>与 GitHub 深度绑定，社区 Action 丰富</td>
+        <td>插件生态极其丰富，几乎不挑代码托管平台</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>开源项目、中小团队、GitHub 生态用户</td>
+        <td>企业内部复杂流水线、私有化部署、强定制需求</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>常见误区：</strong>并不是"Jenkins 比 GitHub Actions 更强大所以更好"。工具选型要看团队规模和场景——中小团队为了省下运维一套 Jenkins 的人力成本，用 GitHub Actions 往往性价比更高；而大型企业内部有大量遗留系统、复杂的网络隔离要求时，自建 Jenkins 集群反而更可控。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-持续集成与持续部署的理念.html" class="nav-btn">← 持续集成与持续部署的理念</a>
+    <a href="./03-蓝绿部署与金丝雀发布.html" class="nav-btn next">蓝绿部署与金丝雀发布 →</a>
+  </div>
+
+</div>
+</body>
+</html>

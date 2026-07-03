@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Docker 镜像与容器的关系 — 容器化基础</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #60a5fa; }
+  p code, li code { color: #60a5fa; }
+  h2 { color: #60a5fa; border-left-color: #60a5fa; }
+  .hero .tag { color: #60a5fa; border-color: #1e4a7c; }
+  .nav-btn.next { color: #60a5fa; border-color: #1e4a7c; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../devops-roadmap.html">容器化与 CI/CD 路线图</a> / 容器化基础 / Docker 镜像与容器的关系
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">容器化基础</div>
+    <h1>Docker 镜像与容器的关系</h1>
+    <p>镜像和容器是 Docker 里最基础也最容易混淆的一对概念——一个是"类"，一个是"实例"，用面向对象的思维去理解，一下子就通了。</p>
+  </div>
+
+  <!-- 核心关系 -->
+  <h2>镜像是模板，容器是实例</h2>
+  <p>
+    <strong>镜像（Image）</strong>是一个<strong>只读的</strong>静态模板，它打包了运行一个应用所需要的一切：操作系统的基础文件系统、依赖库、运行时环境、应用代码、启动配置。镜像本身不运行，它只是"待命"在那里的一份完整快照。
+  </p>
+  <p>
+    <strong>容器（Container）</strong>是镜像的一个<strong>运行实例</strong>。当你执行 <code>docker run</code>，Docker 会在镜像的只读层之上，叠加一层<strong>可写层（Container Layer）</strong>，然后在这个基础上启动一个进程。容器运行过程中产生的所有变化——新建文件、修改配置、写日志——都发生在这层可写层里，不会污染底下的只读镜像。
+  </p>
+  <div class="callout info">
+    <strong>类比 Java：</strong>如果把镜像看作一个 <code>class</code>，容器就是 <code>new</code> 出来的对象实例。同一个类可以 <code>new</code> 出很多个相互独立的对象，同一个镜像也可以 <code>docker run</code> 启动出很多个相互独立的容器——它们共享同一份"类定义"（镜像的只读层），但各自的运行时状态（可写层）互不干扰。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端</span><span>验证"一个镜像可以启动多个容器"</span></div>
+    <pre><span class="com"># 同一个镜像，启动 3 个相互独立的容器实例</span>
+docker run -d --name web1 nginx
+docker run -d --name web2 nginx
+docker run -d --name web3 nginx
+
+<span class="com"># 三个容器各自独立运行、独立可写层，互不影响</span>
+docker ps</pre>
+  </div>
+
+  <!-- 分层存储 -->
+  <h2>镜像的分层存储结构</h2>
+  <p>
+    镜像不是一整块打包文件，而是由多个<strong>只读层（Layer）</strong>叠加而成，每一层记录的是相对上一层的<strong>文件系统变更</strong>（新增、修改、删除了哪些文件）。这套机制底层依赖 <strong>UnionFS（联合文件系统）</strong>，把多层内容"合并挂载"成一个统一的文件系统视图给容器使用。
+  </p>
+  <div class="tree">
+    <span class="hi">镜像分层示意（自上而下叠加）</span><br>
+    容器可写层（Container Layer，仅本容器可见，可读写）<br>
+    ─────────────────────────<br>
+    Layer 4：COPY app.jar /app（业务代码）<br>
+    Layer 3：RUN apt-get install -y curl（安装依赖）<br>
+    Layer 2：RUN apt-get update（更新源）<br>
+    Layer 1：FROM ubuntu:22.04（基础操作系统层）
+  </div>
+  <p>
+    分层的好处不止是"结构清晰"，更重要的是<strong>共享和复用</strong>：如果多个镜像都基于同一个 <code>ubuntu:22.04</code> 基础层构建，这一层在本地磁盘上只会存一份，多个镜像共享引用它，而不是各自复制一份完整的操作系统文件。这也是为什么同一台机器上跑几十个基于相同基础镜像的容器，磁盘占用远比想象中小。
+  </p>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"容器里改的文件，是不是也会改到镜像？"
+    不会。容器的可写层和镜像的只读层是彻底分开的，容器内的任何修改都只写入这层临时的可写层。<strong>容器删除后，可写层跟着一起被销毁，改动全部丢失</strong>；镜像本身永远不会被容器的运行过程修改。如果想把改动固化下来，需要显式执行 <code>docker commit</code>（不推荐，生产环境应该改 Dockerfile 重新构建），或者用数据卷把需要持久化的数据挂到容器外部。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"镜像和容器的关系？" 标准答案：<strong>镜像是静态的只读模板，容器是镜像的运行实例，二者关系类似类和对象</strong>。追问"容器里的改动去哪了？" 答：写入容器专属的可写层，容器删除即丢失，不会影响镜像本身。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>镜像负责"定义"，容器负责"运行"：</strong>职责分离让同一份环境定义可以被反复、一致地实例化。</li>
+    <li><strong>分层存储实现了空间和时间的双重节省：</strong>相同的基础层可以被多个镜像共享，减少磁盘占用；未变化的层可以直接复用，为下一篇要讲的构建缓存打下基础。</li>
+    <li><strong>只读 + 可写分离保证了镜像的不可变性：</strong>不管容器内部怎么折腾，镜像本身始终是干净、可复现的，这是"环境一致性"承诺的根基。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-容器与虚拟机的本质区别.html" class="nav-btn">← 容器与虚拟机的本质区别</a>
+    <a href="./03-Dockerfile的编写与镜像分层缓存.html" class="nav-btn next">Dockerfile 的编写与镜像分层缓存 →</a>
+  </div>
+
+</div>
+</body>
+</html>

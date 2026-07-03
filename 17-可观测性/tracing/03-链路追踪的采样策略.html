@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>链路追踪的采样策略 — 可观测性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../observability-roadmap.html">可观测性 路线图</a> / 链路追踪 / 链路追踪的采样策略
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">链路追踪</div>
+    <h1>链路追踪的采样策略 <span style="font-size:0.9rem;color:#a78bfa;">[补充]</span></h1>
+    <p>如果每一次请求都完整记录追踪数据，存储和性能开销会随流量线性膨胀——高并发系统一天产生的 Span 数据可能是天文数字。采样策略决定了"到底要不要记录这次请求的追踪数据"。</p>
+  </div>
+
+  <!-- 为什么需要采样 -->
+  <h2>为什么不能全量追踪</h2>
+  <p>
+    假设一个系统每秒处理 10000 次请求，每次请求平均产生 20 个 Span，全量记录意味着每秒要写入 20 万条 Span 数据，一天下来就是超过 170 亿条。这些数据不仅要存储，还要在采集、传输、写入的每一个环节消耗 CPU 和网络带宽——<strong>链路追踪本身也是一种"观测负载"，它自己也会拖慢被观测的系统</strong>，这是一个容易被忽视的悖论。
+  </p>
+  <p>
+    <strong>采样（Sampling）</strong> 就是在"追踪数据的完整性"和"系统开销"之间做取舍：只记录一部分请求的完整链路数据，而不是全部。关键问题是：<strong>用什么规则决定哪些请求被记录、哪些被丢弃？</strong> 这里引出两种主流思路：头部采样和尾部采样。
+  </p>
+
+  <!-- 头部采样 -->
+  <h2>头部采样（Head-based Sampling）</h2>
+  <p>
+    在请求<strong>刚进入系统的入口处</strong>（比如网关生成 TraceID 的那一刻），就立即决定这次请求要不要被追踪。最常见的做法是按固定比例随机采样，比如"每 100 次请求随机记录 1 次"（采样率 1%），这个决定一旦做出，会通过 Header 透传给下游所有服务——下游服务看到"不采样"的标记，直接跳过 Span 的记录和上报。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>头部采样：入口处一次性决定</span></div>
+    <pre><span class="com">// 网关生成 TraceID 时，同时掷骰子决定采样与否</span>
+<span class="kw">boolean</span> <span class="var">sampled</span> = <span class="ty">Math</span>.<span class="fn">random</span>() < <span class="num">0.01</span>; <span class="com">// 1% 采样率</span>
+<span class="var">request</span>.<span class="fn">header</span>(<span class="str">"trace-id"</span>, <span class="var">traceId</span>)
+       .<span class="fn">header</span>(<span class="str">"sampled"</span>, <span class="var">sampled</span> ? <span class="str">"1"</span> : <span class="str">"0"</span>);
+<span class="com">// 下游所有服务读取 "sampled" 标记，为 0 就不记录 Span、不上报</span></pre>
+  </div>
+  <p>
+    <strong>优点：</strong>实现简单，决策在最早的时间点一次性做完，下游服务不需要额外判断逻辑，对系统开销的控制最直接、最可预测（采样率固定，数据量就固定）。
+  </p>
+  <p>
+    <strong>缺点：</strong>决策发生在请求还没执行的时候，<strong>根本不知道这次请求后面会不会变慢、会不会报错</strong>。如果恰好这次请求命中了慢查询或者触发了异常，但没被抽中采样，这条最有价值的追踪数据就永久丢失了——好比在赛跑开始之前就随机选好"要拍谁的比赛录像"，万一没被选中的那个人恰好摔倒了，这个关键画面就没拍到。
+  </p>
+
+  <!-- 尾部采样 -->
+  <h2>尾部采样（Tail-based Sampling）</h2>
+  <p>
+    尾部采样反过来：<strong>先把这次请求的完整链路数据都记录下来（不管采不采样都先收集），等这次请求彻底结束之后，再根据结果决定要不要保留这份数据</strong>。判断条件通常是"是否耗时超过阈值""是否返回了错误状态码""是否包含异常堆栈"等。
+  </p>
+  <p>
+    这样一来，<strong>那些真正有排查价值的请求——慢请求、错误请求——几乎不会被漏掉</strong>，因为筛选发生在结果已知之后。同样是刚才赛跑的例子，尾部采样相当于"全程录像，比赛结束后只留下有人摔倒或破纪录的那几段"，价值密度高得多。
+  </p>
+  <div class="callout warn">
+    <strong>代价：</strong>尾部采样必须在请求执行期间，把所有 Span 数据先临时缓存起来（通常在专门的采集层做聚合缓冲），等链路结束、判断条件成立后再决定落盘或丢弃。这意味着需要额外的临时存储和更复杂的收集架构（要等一次请求涉及的所有 Span 都到齐才能做判断，跨服务的 Span 到达时间还可能不一致），实现和运维成本比头部采样高不少。
+  </div>
+
+  <!-- 对比表 -->
+  <h2>两种策略对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>头部采样</th><th>尾部采样</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>决策时机</td>
+        <td>请求刚进入系统时</td>
+        <td>请求完整结束之后</td>
+      </tr>
+      <tr>
+        <td>决策依据</td>
+        <td>随机比例，与请求结果无关</td>
+        <td>是否慢、是否出错等结果指标</td>
+      </tr>
+      <tr>
+        <td>实现复杂度</td>
+        <td>简单，下游只需读标记</td>
+        <td>复杂，需要临时缓存全部 Span</td>
+      </tr>
+      <tr>
+        <td>数据价值密度</td>
+        <td>低，可能错过关键的慢/错请求</td>
+        <td>高，精准保留有排查价值的数据</td>
+      </tr>
+      <tr>
+        <td>资源开销</td>
+        <td>可预测，按比例线性增长</td>
+        <td>需要额外的缓冲存储和聚合逻辑</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>实践中的折中：</strong>很多团队会把两者结合——头部采样保证正常请求也有一个基础的抽样比例（用于统计整体延迟分布等），同时对错误请求、超时请求做"强制 100% 采样"（这本质上是一种简化版的尾部判断，只是判断条件更前置，比如网关直接对非 2xx 响应强制标记采样）。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>认为采样率越低越好，"反正大部分请求都是正常的，不用记"。采样率设置需要结合排查需求：如果采样率过低，即使用了尾部采样，统计类的分析（比如某个接口 P99 延迟的整体趋势）样本量也会不足，产生偏差。采样策略的目标是"该留的留下、该省的省下"，而不是单纯追求更低的数据量。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"头部采样和尾部采样的区别？" 一句话：<strong>头部采样在请求开始前就随机决定采不采样，简单但可能漏掉有价值的慢请求/错误请求；尾部采样等请求结束后根据实际结果（是否慢、是否错）决定要不要保留，精准但需要额外的临时存储和更复杂的架构。</strong>
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>采样是在"数据完整性"与"系统开销"之间的权衡</strong>，全量追踪在高并发系统下不现实。</li>
+    <li><strong>头部采样简单但可能"抽不中"关键请求</strong>，尾部采样能精准捕获慢请求/错误请求，但需要更复杂的缓冲架构。</li>
+    <li><strong>实践中常常两者结合</strong>：基础比例的头部采样 + 对错误/超时请求的强制采样，兼顾统计意义和排查价值。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-常见链路追踪工具简介.html" class="nav-btn">← 常见链路追踪工具简介</a>
+    <a href="../sre/01-SLISLOSLA的定义与关系.html" class="nav-btn next">SLI / SLO / SLA 的定义与关系 →</a>
+  </div>
+
+</div>
+</body>
+</html>

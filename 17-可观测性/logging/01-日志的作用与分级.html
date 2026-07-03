@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>日志的作用与分级 — 日志体系</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb7185; }
+  p code, li code { color: #fb7185; }
+  h2 { color: #fb7185; border-left-color: #fb7185; }
+  .hero .tag { color: #fb7185; border-color: #881337; }
+  .nav-btn.next { color: #fb7185; border-color: #881337; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../observability-roadmap.html">可观测性 路线图</a> / 日志体系 / 日志的作用与分级
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">日志体系</div>
+    <h1>日志的作用与分级</h1>
+    <p>日志是排查线上问题最基础、成本最低的手段——但"基础"不代表"简单"，级别用错、日志量控制不好，反而会让排查问题变得更难。</p>
+  </div>
+
+  <!-- 日志的作用 -->
+  <h2>日志解决了什么问题</h2>
+  <p>
+    程序运行起来之后，它内部到底发生了什么，外部是看不到的——这就像一辆行驶中的汽车，仪表盘之外的发动机运转细节，司机全靠听声音、看仪表来猜。
+    <strong>日志就是程序主动留下的"行车记录仪"</strong>：某个时间点、某个方法、发生了什么事、带着什么数据。
+    没有日志，出了问题只能靠猜、靠复现、靠加断点本地调试——但线上环境很多问题根本无法在本地复现（依赖特定的数据、并发时序、网络状况），日志往往是唯一的线索来源。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>日志之于程序，相当于飞机的黑匣子之于飞行事故调查——事故（故障）发生后，调查员（开发/运维）靠回放黑匣子里记录的一系列事件，还原事发经过。日志记得越准确、越完整，故障排查就越快。
+  </div>
+
+  <!-- 分级 -->
+  <h2>日志级别：从 DEBUG 到 FATAL</h2>
+  <p>
+    日志级别（Log Level）的本质是给每条日志标注"重要程度"和"目标读者"，方便按需过滤。主流日志框架（Logback、Log4j2、java.util.logging）基本都遵循下面这套从低到高的级别体系：
+  </p>
+  <table>
+    <thead>
+      <tr><th>级别</th><th>使用场景</th><th>典型例子</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>DEBUG</strong></td>
+        <td>开发调试用的细节信息，帮助追踪代码执行路径和中间变量</td>
+        <td><code>DEBUG: 查询参数 userId=1001, pageSize=20</code></td>
+      </tr>
+      <tr>
+        <td><strong>INFO</strong></td>
+        <td>记录系统正常运行中的关键节点，证明"系统按预期在工作"</td>
+        <td><code>INFO: 订单 #20260703001 创建成功</code></td>
+      </tr>
+      <tr>
+        <td><strong>WARN</strong></td>
+        <td>出现了不正常但暂不影响系统继续运行的情况，是"苗头"</td>
+        <td><code>WARN: 第三方接口响应耗时 4.2s，超过预期阈值</code></td>
+      </tr>
+      <tr>
+        <td><strong>ERROR</strong></td>
+        <td>某个操作/请求失败了，但系统整体还能继续对外提供服务</td>
+        <td><code>ERROR: 支付回调处理失败，订单号 #20260703001</code></td>
+      </tr>
+      <tr>
+        <td><strong>FATAL</strong></td>
+        <td>致命错误，系统即将或已经无法继续运行（部分框架用 ERROR 顶格代替）</td>
+        <td><code>FATAL: 数据库连接池初始化失败，服务无法启动</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>日志级别使用示例（Slf4j + Logback）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderService</span> {
+    <span class="kw">private static final</span> <span class="ty">Logger</span> log = LoggerFactory.getLogger(OrderService.<span class="kw">class</span>);
+
+    <span class="kw">public void</span> <span class="fn">createOrder</span>(OrderRequest req) {
+        <span class="com">// DEBUG：只在排查问题时打开，记录详细入参，生产环境默认关闭</span>
+        log.debug(<span class="str">"创建订单入参: {}"</span>, req);
+
+        <span class="com">// INFO：记录关键业务节点，生产环境常开，量要克制</span>
+        log.info(<span class="str">"订单创建成功, orderId={}"</span>, order.getId());
+
+        <span class="kw">try</span> {
+            paymentClient.notify(order);
+        } <span class="kw">catch</span> (TimeoutException e) {
+            <span class="com">// WARN：不影响主流程（订单已创建），但要留意苗头</span>
+            log.warn(<span class="str">"支付通知超时, orderId={}"</span>, order.getId(), e);
+        } <span class="kw">catch</span> (Exception e) {
+            <span class="com">// ERROR：这次操作确实失败了，需要人工介入或告警</span>
+            log.error(<span class="str">"支付通知失败, orderId={}"</span>, order.getId(), e);
+        }
+    }
+}</pre>
+  </div>
+
+  <!-- 为什么要控制级别 -->
+  <h2>为什么生产环境要合理控制日志级别</h2>
+  <p>
+    这是一个典型的两难：日志开太多和开太少，都会让排查问题变得困难，只是困难的方式不同。
+  </p>
+  <div class="callout warn">
+    <strong>日志开太多（生产环境开 DEBUG）的问题：</strong>
+    每个请求打印几十条 DEBUG 日志，看起来"信息很全"，实际上会带来两个致命问题：
+    <strong>一是性能开销</strong>——高并发下频繁的字符串拼接、磁盘 I/O、日志采集网络传输会实实在在拖慢系统，甚至日志本身就能把磁盘写满；
+    <strong>二是"信噪比"太低</strong>——真正出问题时，有用的那一条 ERROR 淹没在成千上万条 DEBUG 里，人工翻找如同大海捞针，日志系统的检索和存储成本也会飙升。
+  </div>
+  <div class="callout warn">
+    <strong>日志开太少（关键路径完全没日志）的问题：</strong>
+    只有几条稀疏的 INFO，出问题时想还原现场却发现关键的中间状态、异常堆栈全都没有记录，只能靠猜测和临时加日志重新发布、等待问题复现——排查周期可能从几分钟拖成几小时甚至几天。
+  </div>
+  <div class="callout tip">
+    <strong>实践中的折中方案：</strong>生产环境默认开 <strong>INFO 及以上</strong>（正常运行留痕 + 异常告警），关键异常路径打印完整堆栈和上下文；同时保留"动态调级"的能力——通过配置中心或 JMX，在需要排查问题时临时把某个包/某个类的日志级别调到 DEBUG，排查完再调回去，而不需要重启或重新发布应用。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区与面试高频考点</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>把 WARN 和 ERROR 混用，比如把所有 catch 到的异常都打成 ERROR。这会导致告警系统被"狼来了"式的噪音淹没——真正需要人介入的 ERROR 被大量无关紧要的 WARN 级别问题掩盖。区分标准很简单：<strong>这次失败是否影响了当前请求/操作的最终结果？</strong>影响了才是 ERROR，只是有点异常但结果依然正确/有兜底方案就是 WARN。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>在循环体或高频调用路径里直接用字符串拼接打日志，比如 <code>log.debug("id=" + id)</code>。即使 DEBUG 级别没开，这行代码依然会执行字符串拼接的开销。正确写法是用占位符 <code>log.debug("id={}", id)</code>，框架内部会先判断级别是否启用，未启用则完全跳过参数求值和拼接。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"生产环境该开什么日志级别？为什么不直接全开 DEBUG 图方便？" 回答要点：默认 INFO，性能与信息量的折中；DEBUG 全开会拖累性能且信息过载难以定位问题；应该借助动态调级能力按需临时开启。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>日志是排查问题的第一道防线：</strong>没有其他任何手段能像日志一样精确还原代码执行时刻的上下文。</li>
+    <li><strong>级别是过滤噪音的关键旋钮：</strong>合理分级让"平时安静、出事详细"成为可能。</li>
+    <li><strong>但日志本身是非结构化文本，规模一大就难以检索分析</strong>——这正是下一篇"结构化日志"要解决的问题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../observability-roadmap.html" class="nav-btn">← 可观测性 路线图</a>
+    <a href="./02-结构化日志的重要性.html" class="nav-btn next">结构化日志的重要性 →</a>
+  </div>
+
+</div>
+</body>
+</html>

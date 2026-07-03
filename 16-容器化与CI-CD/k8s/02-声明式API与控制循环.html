@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>声明式 API 与控制循环 — Kubernetes 核心概念</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../devops-roadmap.html">容器化与 CI/CD 路线图</a> / Kubernetes 核心概念 / 声明式 API 与控制循环
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Kubernetes 核心概念</div>
+    <h1>声明式 API 与控制循环</h1>
+    <p>K8s 最深刻的设计哲学不是"某个具体功能"，而是一种编程范式的转变——从"告诉它怎么做"变成"告诉它要什么"，剩下的交给系统自己去趋近。</p>
+  </div>
+
+  <!-- 声明式 vs 命令式 -->
+  <h2>声明式 API：只说"要什么"，不说"怎么做"</h2>
+  <p>
+    传统运维脚本大多是<strong>命令式（Imperative）</strong>的：一步步写"先启动 3 台机器，再逐个部署应用，再配置负载均衡"。这类脚本的问题是，它只描述了"从当前状态到目标状态"的一条固定路径——一旦中途出错、或者运行环境和预期不符，脚本很可能就跑不下去或者产生错误结果。
+  </p>
+  <p>
+    K8s 采用的是<strong>声明式（Declarative）</strong>方式：你只需要在 YAML 里描述"最终我想要的状态"——比如"我要 3 个副本，用这个镜像"——然后把这份声明提交给 K8s，<strong>不关心具体怎么一步步达成，也不关心当前是什么状态</strong>。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>对比</span><span>命令式思维 vs 声明式思维</span></div>
+    <pre><span class="com">// 命令式：一步步告诉系统"怎么做"</span>
+if (currentReplicas &lt; 3) {
+    createPod(); createPod();
+}
+if (currentReplicas &gt; 3) {
+    deletePod();
+}
+
+<span class="com"># 声明式：只描述"要什么"，交给系统自己去趋近</span>
+spec:
+  replicas: 3   <span class="com"># 我不管现在几个，我只要最终变成 3 个</span></pre>
+  </div>
+
+  <!-- 控制循环 -->
+  <h2>控制循环：Reconcile Loop 是怎么工作的</h2>
+  <p>
+    声明式的"我只说要什么"能落地，靠的是 K8s 内部运行着大量<strong>控制器（Controller）</strong>，每个控制器都在不停地执行同一个逻辑循环，叫做<strong>控制循环（Control Loop）</strong>或<strong>调谐循环（Reconcile Loop）</strong>：
+  </p>
+  <div class="tree">
+    <span class="hi">Reconcile Loop 伪代码</span><br>
+    for (;;) {<br>
+    &nbsp;&nbsp;desired = 读取用户声明的期望状态（如 replicas: 3）<br>
+    &nbsp;&nbsp;actual  = 观察集群里的实际状态（如实际运行了几个 Pod）<br>
+    &nbsp;&nbsp;if (desired != actual) {<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;执行操作让 actual 趋近 desired（创建/删除 Pod）<br>
+    &nbsp;&nbsp;}<br>
+    &nbsp;&nbsp;sleep(一段时间) // 然后无限循环，持续观察和纠偏<br>
+    }
+  </div>
+  <p>
+    这个循环<strong>永不停止</strong>，也不管这次"意外"是怎么发生的——不管是节点宕机、Pod 被误删、还是网络抖动导致 Pod 假死，控制器只关心一件事：<strong>现在的实际状态和期望状态是否一致，不一致就想办法拉齐</strong>。
+  </p>
+
+  <!-- 优势 -->
+  <h2>相比命令式脚本的核心优势：自愈能力</h2>
+  <div class="callout tip">
+    <strong>举例：</strong>假设某个 Pod 被运维同学手滑误删了。命令式脚本运行完就结束了，不会有人盯着这个"事故"去补救；但 K8s 的 Deployment 控制器因为持续在跑 Reconcile Loop，下一次循环观察到"期望 3 个副本，实际只有 2 个"，立刻就会创建一个新 Pod 补上——<strong>整个自愈过程不需要任何人工介入</strong>，这就是"声明式 + 控制循环"这套设计带来的核心价值：系统具备了对抗各种意外情况的韧性。
+  </div>
+  <p>
+    这种设计还有一个好处：<strong>幂等性</strong>。同一份 YAML 声明，提交一次和提交一百次，最终收敛到的状态是完全一样的——不会因为"重复执行了脚本"而产生副作用，这对自动化流水线（CI/CD 反复部署同一份配置）尤其重要。
+  </p>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"我执行了 kubectl apply，K8s 应该立刻把状态改好了吧？"
+    声明式系统的状态收敛<strong>不是瞬时的，而是最终一致（Eventually Consistent）</strong>的——控制循环需要若干次迭代才能把实际状态拉到期望状态，中间会有短暂的过渡态（比如滚动更新过程中新旧 Pod 短暂并存）。理解"最终一致"而不是"立刻一致"，是排查 K8s 问题时的重要心智模型。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"K8s 为什么要用声明式 API？" 答案要点：<strong>声明式把"如何达成目标"的复杂性交给系统本身，用户只需要维护期望状态；配合永不停止的控制循环，系统天然具备自愈能力和幂等性，这是大规模集群自动化运维的基础</strong>。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>声明式 API 降低了心智负担：</strong>用户只描述目标状态，不用操心中间步骤和异常处理逻辑。</li>
+    <li><strong>控制循环是自愈能力的来源：</strong>持续观察 + 持续纠偏，让集群能够自动从各种意外中恢复。</li>
+    <li><strong>这是 K8s 几乎所有资源对象（Deployment、Service、甚至用户自定义 CRD）背后共同的设计范式</strong>，理解了这一篇，再看任何 K8s 控制器的行为都会豁然开朗。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-PodDeploymentService三大核心对象.html" class="nav-btn">← Pod / Deployment / Service 三大核心对象</a>
+    <a href="./03-服务发现与负载均衡.html" class="nav-btn next">服务发现与负载均衡 →</a>
+  </div>
+
+</div>
+</body>
+</html>

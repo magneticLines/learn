@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Docker 网络模式与数据卷 — 容器化基础</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #60a5fa; }
+  p code, li code { color: #60a5fa; }
+  h2 { color: #60a5fa; border-left-color: #60a5fa; }
+  .hero .tag { color: #60a5fa; border-color: #1e4a7c; }
+  .nav-btn.next { color: #60a5fa; border-color: #1e4a7c; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../devops-roadmap.html">容器化与 CI/CD 路线图</a> / 容器化基础 / Docker 网络模式与数据卷
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">容器化基础</div>
+    <h1>Docker 网络模式与数据卷</h1>
+    <p>容器化基础的最后一块拼图：容器之间怎么通信，容器的数据怎么在容器销毁后还能活下来。这两个问题分别由网络模式和数据卷解决。</p>
+  </div>
+
+  <!-- 网络模式 -->
+  <h2>网络模式：容器怎么和外界通信</h2>
+  <p>
+    容器依靠 namespace 拥有独立的网络视图（独立的网卡、IP、路由表），但独立不等于"与世隔绝"，Docker 提供几种网络模式来决定容器如何接入网络：
+  </p>
+  <ul>
+    <li><strong>bridge（桥接模式，默认）</strong>：Docker 会创建一个虚拟网桥（如 <code>docker0</code>），每个容器接入这个网桥，分配一个私有 IP。同一网桥下的容器之间可以互相访问，容器要访问宿主机外部网络需要经过 NAT 转换，外部要访问容器则需要显式做端口映射（<code>-p</code> 参数）。</li>
+    <li><strong>host（主机模式）</strong>：容器不再拥有独立的网络 namespace，而是直接共享宿主机的网络栈。容器里监听的端口就是宿主机上的端口，少了 NAT 转发这一层，性能更好，但代价是<strong>失去了网络层面的隔离性</strong>——容器和宿主机、以及宿主机上其他 host 模式容器共用同一套网络资源，端口冲突需要自己协调。</li>
+    <li><strong>none（无网络模式）</strong>：容器拥有独立的网络 namespace，但不做任何网络配置，只有一个回环接口（lo），无法与外界通信。适合完全不需要网络、只做本地计算的场景。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端</span><span>三种网络模式的使用示例</span></div>
+    <pre><span class="com"># bridge：默认模式，做端口映射，宿主机 8080 转发到容器 80</span>
+docker run -d -p 8080:80 nginx
+
+<span class="com"># host：容器直接用宿主机网络栈，容器里监听 80 就是宿主机的 80</span>
+docker run -d --network host nginx
+
+<span class="com"># none：无网络，容器完全隔离</span>
+docker run -d --network none alpine sleep 1000</pre>
+  </div>
+  <div class="callout info">
+    <strong>类比：</strong>bridge 像小区里每户单独装一个门牌号和信箱，快递员（外部请求）要通过小区大门保安（NAT）转发才能送到具体某户；host 模式像直接把这户人家的门牌号焊死成小区大门的地址，效率高但少了保安这层过滤和隔离。
+  </div>
+
+  <!-- 数据卷 -->
+  <h2>数据卷：解决容器"用完即焚"的矛盾</h2>
+  <p>
+    容器的可写层是和容器生命周期绑定的——<strong>容器一旦被删除，可写层里的所有数据都会一并消失</strong>。这对无状态应用（比如无状态的 Web 服务）没问题，但对数据库、日志这类需要持久化的数据就是灾难：难道每次升级重启容器，数据库里的数据就要清空重来？
+  </p>
+  <p>
+    <strong>数据卷（Volume）</strong>就是为了解决这个矛盾而生的：它是一块独立于容器生命周期的存储空间，由 Docker 在宿主机上专门管理（默认位于 <code>/var/lib/docker/volumes/</code>）。容器把某个目录挂载到数据卷上，读写这个目录时实际读写的是卷里的数据；<strong>容器被删除，卷不会跟着被删除</strong>，下次新容器挂载同一个卷，还能拿到之前的数据。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端</span><span>用数据卷持久化 MySQL 数据</span></div>
+    <pre><span class="com"># 创建一个具名数据卷</span>
+docker volume create mysql-data
+
+<span class="com"># 启动容器时把 /var/lib/mysql 挂载到这个数据卷上</span>
+docker run -d --name mysql -v mysql-data:/var/lib/mysql mysql:8
+
+<span class="com"># 即使删除并重新创建容器，只要挂载同一个卷，数据依然还在</span>
+docker rm -f mysql
+docker run -d --name mysql-new -v mysql-data:/var/lib/mysql mysql:8</pre>
+  </div>
+  <div class="callout tip">
+    <strong>补充：</strong>除了具名数据卷，Docker 还支持 <strong>Bind Mount（绑定挂载）</strong>，直接把宿主机上的某个具体路径挂载进容器（如 <code>-v /host/path:/container/path</code>），常用于开发阶段把本地代码实时映射进容器；数据卷则更适合生产环境，因为它由 Docker 统一管理、不依赖宿主机具体目录结构，也更方便备份和迁移。
+  </div>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"容器里的数据默认就是持久化的，删了容器数据也不会丢。"
+    恰恰相反，这是初学者最容易踩的坑。<strong>不挂载数据卷的容器，数据只存在于容器的可写层，删除容器数据就彻底丢失</strong>。凡是数据库、消息队列这类有状态服务，必须显式挂载数据卷，否则一次误删容器就是一次数据灾难。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Docker 数据卷解决了什么问题？" 答案要点：<strong>容器默认是无状态、易失的（可写层随容器销毁而消失），数据卷把数据的生命周期从容器的生命周期中解耦出来</strong>，从而实现数据持久化，同时也方便多个容器共享同一份数据。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>网络模式的选择是"隔离性"与"性能/便利性"的取舍：</strong>bridge 默认最安全，host 适合对网络性能敏感且信任宿主机环境的场景。</li>
+    <li><strong>数据卷把"数据的生命周期"从"容器的生命周期"中剥离：</strong>这是有状态应用能够容器化的关键前提。</li>
+    <li><strong>容器化基础到这里就完整了：</strong>隔离原理（namespace/cgroup）、镜像与容器关系、Dockerfile 构建、网络与存储，构成了理解 Docker 的完整闭环，下一步就可以进入 Kubernetes，学习如何编排成百上千个容器。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-Dockerfile的编写与镜像分层缓存.html" class="nav-btn">← Dockerfile 的编写与镜像分层缓存</a>
+    <a href="../k8s/01-PodDeploymentService三大核心对象.html" class="nav-btn next">Pod / Deployment / Service 三大核心对象 →</a>
+  </div>
+
+</div>
+</body>
+</html>

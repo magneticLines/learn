@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Prometheus 与 Grafana 的监控体系 — 指标监控</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../observability-roadmap.html">可观测性 路线图</a> / 指标监控 / Prometheus 与 Grafana 的监控体系
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">指标监控</div>
+    <h1>Prometheus 与 Grafana 的监控体系</h1>
+    <p>日志回答"发生了什么"，指标回答"系统现在怎么样"——Prometheus + Grafana 是目前云原生生态里最主流的指标监控组合，核心设计是一个反直觉的选择：主动去"拉"数据，而不是等别人"推"过来。</p>
+  </div>
+
+  <!-- 指标是什么 -->
+  <h2>指标：可聚合的数值型时间序列</h2>
+  <p>
+    和一条条独立的日志不同，<strong>指标（Metric）是随时间变化的数值</strong>，比如"当前 QPS"、"CPU 使用率"、"HTTP 500 错误数"。
+    每一条指标数据本质上是 <code>(指标名, 标签集合, 时间戳, 数值)</code> 这样一个四元组，成千上万个时间点连起来就是一条时间序列（Time Series）。
+    相比日志，指标的优势是<strong>体积小、能长期保存、天然适合做趋势图和阈值告警</strong>——没人会把几十亿条日志画成一张实时曲线图，但指标可以。
+  </p>
+
+  <!-- 拉模式 vs 推模式 -->
+  <h2>Prometheus 的核心设计：拉模式（Pull）</h2>
+  <p>
+    大多数人直觉上会觉得监控数据应该是"被监控的服务主动推送出去"（Push 模式），但 Prometheus 反其道而行之：
+    每个被监控的服务只需要在本地暴露一个 <code>/metrics</code> 的 HTTP 端点，把当前所有指标以文本格式列出来；Prometheus Server 周期性地（比如每 15 秒）主动去请求这个端点，把数据抓回来存进自己的时序数据库。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>/metrics 端点输出示例（文本格式）</span></div>
+    <pre><span class="com"># HELP http_requests_total 处理的 HTTP 请求总数</span>
+<span class="com"># TYPE http_requests_total counter</span>
+http_requests_total{method=<span class="str">"GET"</span>,status=<span class="str">"200"</span>} <span class="num">128934</span>
+http_requests_total{method=<span class="str">"GET"</span>,status=<span class="str">"500"</span>} <span class="num">23</span>
+
+<span class="com"># HELP jvm_memory_used_bytes 当前 JVM 堆内存使用量</span>
+<span class="com"># TYPE jvm_memory_used_bytes gauge</span>
+jvm_memory_used_bytes <span class="num">536870912</span></pre>
+  </div>
+
+  <h3>为什么选择拉模式</h3>
+  <p>
+    这个设计选择解决了推模式下两个不容易察觉的问题：
+  </p>
+  <div class="callout tip">
+    <strong>1. 天然能感知目标是否存活。</strong>拉模式下，如果 Prometheus 连续几次抓取某个目标失败（连不上、超时），本身就是一个强信号——目标大概率已经宕机或者网络不通，Prometheus 会自动把它标记为 <code>DOWN</code> 并可以据此触发告警。而推模式下，服务挂了就直接不再推数据，监控系统很难区分"服务正常但确实没有新指标要上报"和"服务已经挂了"这两种情况。
+  </div>
+  <div class="callout tip">
+    <strong>2. 配置集中在监控端，运维成本更低。</strong>要监控哪些目标、抓取频率是多少，这些配置全部集中写在 Prometheus 一端；新增一个被监控的服务，只需要把它加进 Prometheus 的抓取列表，被监控方完全不需要知道监控系统的地址、也不需要引入推送客户端去反过来连接监控系统。这在大规模集群里显著降低了配置分散带来的维护成本。
+  </div>
+  <div class="callout warn">
+    <strong>拉模式的局限：</strong>不适合"短生命周期任务"（比如一个跑几秒钟就退出的批处理 Job）——任务可能在 Prometheus 下一次抓取之前就已经结束了，指标根本来不及被抓到。这种场景 Prometheus 生态里用 <strong>Pushgateway</strong> 作为折中方案：短任务主动把指标推给 Pushgateway 暂存，再由 Prometheus 按正常拉模式去抓 Pushgateway。
+  </div>
+
+  <h3>拉模式 vs 推模式</h3>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>拉模式（Prometheus）</th><th>推模式（如 StatsD/Graphite）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>存活感知</td>
+        <td>抓不到即视为异常，天然支持</td>
+        <td>较弱，需要额外的心跳机制</td>
+      </tr>
+      <tr>
+        <td>配置管理</td>
+        <td>集中在监控端，新增目标改一处配置</td>
+        <td>分散在每个被监控方，需各自配置推送地址</td>
+      </tr>
+      <tr>
+        <td>短生命周期任务</td>
+        <td>不友好，需借助 Pushgateway 中转</td>
+        <td>天然友好，任务退出前推一次即可</td>
+      </tr>
+      <tr>
+        <td>网络方向</td>
+        <td>监控系统需要能访问到每个目标（内网友好）</td>
+        <td>被监控方需要能访问到监控系统（适合出网环境）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 整体架构 -->
+  <h2>整体监控体系：Prometheus + Grafana</h2>
+  <div class="tree">
+    <span class="hi">被监控服务</span>（暴露 /metrics 端点）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;↑ 周期性拉取<br>
+    <span class="hi">Prometheus Server</span><br>
+    &nbsp;&nbsp;├─ 抓取调度：按配置的间隔主动请求各目标的 /metrics<br>
+    &nbsp;&nbsp;├─ 时序数据库（TSDB）：按时间序列存储抓到的数据<br>
+    &nbsp;&nbsp;├─ PromQL：类 SQL 的查询语言，支持聚合、过滤、计算<br>
+    &nbsp;&nbsp;└─ Alertmanager：根据规则触发告警（邮件/钉钉/PagerDuty）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ PromQL 查询<br>
+    <span class="hi">Grafana</span><br>
+    &nbsp;&nbsp;└─ 可视化仪表盘：把查询结果画成曲线图、仪表盘、热力图
+  </div>
+  <p>
+    Prometheus 负责"采集 + 存储 + 查询 + 告警规则"，而<strong>可视化和告警配置的用户界面</strong>通常交给 Grafana——它不仅能接 Prometheus，也能同时接 Elasticsearch、MySQL 等多种数据源，在同一个仪表盘里混合展示不同来源的数据，这也是它比 Prometheus 自带的简陋 Web UI 更常被使用的原因。
+  </p>
+
+  <!-- 常见误区 -->
+  <h2>常见误区与面试高频考点</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>把指标和日志混为一谈，试图用 Prometheus 存储详细的业务日志。指标系统为"数值型时间序列"做了极致优化，但完全不适合存储非数值的详细上下文（比如某次请求的完整堆栈）——这类信息应该留给日志系统，指标系统只回答"多少"、"多快"、"是否超阈值"这类量化问题。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Prometheus 为什么用拉模式而不是推模式？" 回答要点：拉模式能天然感知目标存活状态（抓不到=可能挂了），配置集中在监控端便于管理；代价是不适合短生命周期任务，需要 Pushgateway 兜底。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>指标是量化系统健康状况的基本单位：</strong>体积小、可长期保存、适合画趋势图和设置告警阈值。</li>
+    <li><strong>拉模式是 Prometheus 的核心设计决策：</strong>用"抓不到即异常"的简单逻辑换来了存活感知和集中配置的双重好处。</li>
+    <li><strong>光有采集和存储还不够，"该监控哪些指标"是另一个问题</strong>——下一篇的 RED / USE 方法论会给出系统性的答案。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../logging/03-ELK技术栈简介.html" class="nav-btn">← ELK 技术栈简介</a>
+    <a href="./02-RED方法与USE方法论.html" class="nav-btn next">RED 方法与 USE 方法论 →</a>
+  </div>
+
+</div>
+</body>
+</html>

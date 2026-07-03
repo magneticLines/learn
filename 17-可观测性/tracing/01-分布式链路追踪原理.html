@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分布式链路追踪原理 — 可观测性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../observability-roadmap.html">可观测性 路线图</a> / 链路追踪 / 分布式链路追踪原理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">链路追踪</div>
+    <h1>分布式链路追踪原理（TraceID / SpanID）</h1>
+    <p>一次用户请求在微服务架构下可能跨越十几个服务，出问题时到底是哪个环节慢了、哪个环节报错了？链路追踪就是给每次请求发一张"身份证"，让它经过的每一站都留下可核对的足迹。</p>
+  </div>
+
+  <!-- 问题背景 -->
+  <h2>为什么需要链路追踪</h2>
+  <p>
+    回忆一下 <strong>14-分布式与微服务</strong> 模块讲过的场景：用户下一次单，请求先到网关，网关转发给订单服务，订单服务调用库存服务扣库存，再调用支付服务扣款，支付服务又要调用风控服务和银行接口……一条链路轻松跨越 6、7 个服务。
+  </p>
+  <p>
+    如果这次请求耗时 3 秒（正常应该 200ms），或者用户看到了一个 500 错误，<strong>问题出在哪一环？</strong> 在单体应用时代，一个进程内的调用栈能直接告诉你答案；但在分布式系统里，每个服务都是独立进程、独立日志文件，甚至部署在不同机器上。你打开订单服务的日志，只能看到"调用库存服务"和"库存服务返回成功"，至于库存服务内部花了多久、是否重试过、有没有报警告，订单服务的日志完全不知道。
+  </p>
+  <div class="callout warn">
+    <strong>没有链路追踪的排查方式：</strong>把十几个服务的日志按大致时间范围各自捞一遍，凭时间戳"猜"哪几条日志属于同一次请求。服务一多、并发一高，这种"猜"基本猜不出结果——这正是链路追踪要解决的核心痛点：<strong>把分散在各处的日志，串成一条完整的请求链路</strong>。
+  </div>
+
+  <!-- TraceID -->
+  <h2>TraceID：一次完整请求的身份证</h2>
+  <p>
+    <strong>TraceID</strong> 是一个全局唯一的 ID，在请求第一次进入系统（通常是网关或入口服务）时生成，代表<strong>这一次完整的端到端请求</strong>。无论这次请求后续流转到多少个服务，TraceID 全程保持不变——它就是这次请求的"身份证号"。
+  </p>
+  <p>
+    只要能在所有服务的日志或追踪系统里按同一个 TraceID 检索，就能把属于同一次请求的所有记录聚合到一起，还原出完整的调用全貌。
+  </p>
+
+  <!-- SpanID -->
+  <h2>SpanID：链路中每一段的具体环节</h2>
+  <p>
+    一次请求会经过多个服务、多次调用，每一次具体的调用（比如"订单服务调用库存服务"这一跳）称为一个 <strong>Span</strong>，用 <strong>SpanID</strong> 唯一标识。每个 Span 会记录：
+  </p>
+  <ul>
+    <li><strong>开始时间 / 结束时间</strong>：算出这一段调用耗时多久，一眼看出是不是这一环拖慢了整体</li>
+    <li><strong>父子关系（ParentSpanID）</strong>：记录"我是被谁调用的"，从而把所有 Span 拼装成一棵调用树，而不是一堆散乱的记录</li>
+    <li><strong>服务名、接口名、状态码、异常信息</strong>等业务相关的标签（Tag/Attribute）</li>
+  </ul>
+  <p>
+    一个 TraceID 下通常包含多个 Span，它们按父子关系组织成一棵树：网关的 Span 是根节点，订单服务调用库存/支付服务的 Span 是它的子节点，库存服务内部再调用数据库的 Span 又是订单→库存这个 Span 的子节点。
+  </p>
+
+  <div class="tree">
+    <span class="hi">TraceID: 8f3a2b91-...（贯穿全链路，唯一）</span><br>
+    &nbsp;&nbsp;├─ Span A：网关 → 订单服务（耗时 210ms）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ Span B：订单服务 → 库存服务（耗时 15ms，ParentSpanID = A）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ Span C：订单服务 → 支付服务（耗时 <span class="hi">180ms ← 慢在这里</span>，ParentSpanID = A）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ Span D：支付服务 → 银行接口（耗时 170ms，ParentSpanID = C）
+  </div>
+  <p>
+    有了这棵树，"这次请求为什么慢"就从"十几个服务日志里大海捞针"变成了"看一眼树状图，最粗的那根树枝就是瓶颈"——上图一眼就能看出真正的耗时大头在"支付服务调用银行接口"这一环，而不是订单服务或库存服务的问题。
+  </p>
+
+  <!-- 透传机制 -->
+  <h2>ID 如何在服务间透传</h2>
+  <p>
+    TraceID 和 SpanID 光生成出来没用，关键是要<strong>让下游服务知道自己属于哪次请求、自己的上级 Span 是谁</strong>。这靠的是请求头（HTTP Header）透传：调用方在发起请求前，把当前的 TraceID、SpanID 写进请求头，被调用方读取这些头，生成自己的新 SpanID（父级设为收到的 SpanID），处理完再继续往下游透传。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>HTTP Header 透传示例</span></div>
+    <pre><span class="com">// 订单服务调用库存服务时，在请求头里带上追踪上下文</span>
+<span class="var">httpClient</span>.<span class="fn">post</span>(<span class="str">"http://inventory-service/deduct"</span>)
+    .<span class="fn">header</span>(<span class="str">"trace-id"</span>, <span class="str">"8f3a2b91-..."</span>)      <span class="com">// 全链路不变</span>
+    .<span class="fn">header</span>(<span class="str">"span-id"</span>, <span class="str">"span-B"</span>)             <span class="com">// 本次调用新生成</span>
+    .<span class="fn">header</span>(<span class="str">"parent-span-id"</span>, <span class="str">"span-A"</span>);   <span class="com">// 指向上一级 Span
+
+// 库存服务收到请求后，从 Header 解析出这三个字段，
+// 记录自己的处理耗时，再原样透传给它调用的下游（如数据库、MQ）</span></pre>
+  </div>
+  <p>
+    不同追踪系统（如 Zipkin 的 B3 Header、W3C 标准的 <code>traceparent</code> Header）在字段命名和编码格式上略有差异，但核心思路一致：<strong>把追踪上下文塞进请求头，跨进程、跨服务地传递下去</strong>。这个透传逻辑通常由 SDK 或探针自动完成，业务代码基本无感知。
+  </p>
+  <div class="callout info">
+    <strong>与消息队列的配合：</strong>如果调用链路中出现了异步消息（比如订单服务发一条 MQ 消息，库存服务异步消费），HTTP Header 就用不上了，此时追踪上下文需要塞进消息的 Header 或属性字段里，消费者取出后继续挂到同一棵 Span 树上——这也是分布式追踪比同步调用链路更容易被遗漏埋点的地方。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为链路追踪只是"给日志加个请求 ID"。TraceID 确实可以关联日志，但完整的链路追踪还包含 Span 的耗时、父子关系、结构化标签，能画出调用树、算出瓶颈，这是纯日志关联做不到的。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>认为追踪上下文会自动透传，不需要业务代码关心。实际上，一旦链路中出现了"手写的" HTTP 调用、自定义线程池、消息队列等没有被探针自动埋点覆盖的环节，追踪链路就会在这里"断掉"——这也是接入链路追踪后最常见的排障工作：找到断链的环节，手动补齐透传逻辑。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"TraceID 和 SpanID 的区别？" 一句话：<strong>TraceID 标识一次完整的请求，全局唯一且全链路不变；SpanID 标识链路中的某一段具体调用，一次请求下会有多个 SpanID，通过 ParentSpanID 组织成调用树。</strong>
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>解决了微服务架构下"请求去哪儿了"的问题</strong>：把分散在十几个服务里的日志，用 TraceID 串成一条完整链路。</li>
+    <li><strong>Span 的父子关系还原了调用的因果结构</strong>，让"哪一环最慢"从人工猜测变成一眼可见的树状图。</li>
+    <li><strong>透传是链路追踪能落地的关键机制</strong>，理解了 Header 透传，才能理解为什么异步调用、跨语言调用容易"断链"。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../metrics/03-高基数问题与指标设计.html" class="nav-btn">← 高基数问题与指标设计</a>
+    <a href="./02-常见链路追踪工具简介.html" class="nav-btn next">常见链路追踪工具简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

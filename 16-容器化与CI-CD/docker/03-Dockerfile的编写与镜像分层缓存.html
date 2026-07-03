@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dockerfile 的编写与镜像分层缓存 — 容器化基础</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #60a5fa; }
+  p code, li code { color: #60a5fa; }
+  h2 { color: #60a5fa; border-left-color: #60a5fa; }
+  .hero .tag { color: #60a5fa; border-color: #1e4a7c; }
+  .nav-btn.next { color: #60a5fa; border-color: #1e4a7c; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../devops-roadmap.html">容器化与 CI/CD 路线图</a> / 容器化基础 / Dockerfile 的编写与镜像分层缓存
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">容器化基础</div>
+    <h1>Dockerfile 的编写与镜像分层缓存</h1>
+    <p>Dockerfile 是"如何构建镜像"的说明书，每一条指令都会生成一层。指令的顺序不只是风格问题，直接决定了你每次改代码要等多久。</p>
+  </div>
+
+  <!-- 常用指令 -->
+  <h2>常用指令一览</h2>
+  <table>
+    <thead>
+      <tr><th>指令</th><th>作用</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>FROM</code></td><td>指定基础镜像，是 Dockerfile 的第一条指令，决定了后续所有层的起点</td></tr>
+      <tr><td><code>RUN</code></td><td>在构建阶段执行命令（如安装依赖），执行结果会被提交为新的一层</td></tr>
+      <tr><td><code>COPY</code></td><td>把宿主机文件复制进镜像，最常用来复制业务代码</td></tr>
+      <tr><td><code>ADD</code></td><td>类似 COPY，但额外支持自动解压 tar 包和拉取 URL，语义更"重"，官方建议优先用 COPY</td></tr>
+      <tr><td><code>WORKDIR</code></td><td>设置后续指令的工作目录，等价于 <code>cd</code></td></tr>
+      <tr><td><code>ENV</code></td><td>设置环境变量，构建阶段和容器运行阶段都生效</td></tr>
+      <tr><td><code>EXPOSE</code></td><td>声明容器运行时监听的端口，仅作文档说明，不会真的做端口映射</td></tr>
+      <tr><td><code>CMD</code></td><td>容器启动时的默认命令，可以被 <code>docker run</code> 后面的参数整体覆盖</td></tr>
+      <tr><td><code>ENTRYPOINT</code></td><td>容器启动时固定执行的命令，<code>docker run</code> 后面的参数会作为参数追加，而不是覆盖整个命令</td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Dockerfile</span><span>一个典型的 Java 应用 Dockerfile</span></div>
+    <pre><span class="kw">FROM</span> eclipse-temurin:17-jre
+<span class="kw">WORKDIR</span> /app
+<span class="kw">COPY</span> pom.xml .
+<span class="kw">RUN</span> mvn dependency:go-offline
+<span class="kw">COPY</span> src ./src
+<span class="kw">RUN</span> mvn package -DskipTests
+<span class="kw">EXPOSE</span> 8080
+<span class="kw">ENTRYPOINT</span> [<span class="str">"java"</span>, <span class="str">"-jar"</span>, <span class="str">"target/app.jar"</span>]</pre>
+  </div>
+
+  <!-- 分层缓存机制 -->
+  <h2>分层缓存机制：为什么构建有时候秒过</h2>
+  <p>
+    Dockerfile 里<strong>每一条指令都会生成镜像的一层</strong>。Docker 构建镜像时，会按顺序逐层检查：如果某一层的<strong>指令内容和它依赖的上下文（比如 COPY 涉及的文件内容）跟上一次构建完全一致</strong>，就直接复用缓存中的那一层，跳过真正执行，直接进入下一条指令。
+  </p>
+  <p>
+    但这套缓存机制有个关键规则：<strong>一旦某一层缓存失效（miss），它之后的所有层都会跟着失效</strong>，即使那些层的指令内容本身没变化。这就是为什么指令的先后顺序如此重要。
+  </p>
+  <div class="callout warn">
+    <strong>反例：</strong>把 <code>COPY . .</code>（复制全部代码）放在 <code>RUN mvn dependency:go-offline</code>（下载依赖）之前。这样只要业务代码改了一行，<code>COPY</code> 这一层缓存就失效，导致后面"重新下载全部依赖"这一层也被迫重新执行——每次改一行代码都要等几分钟重新拉依赖，非常低效。
+  </div>
+  <div class="callout tip">
+    <strong>正例（最佳实践）：</strong>把变化频率低的指令放前面，变化频率高的放后面。上面的示例 Dockerfile 就是这个思路：先单独 <code>COPY pom.xml</code> 并下载依赖（pom.xml 极少变化，这一层缓存能长期复用），再 <code>COPY src</code> 复制业务代码并编译（代码天天改，但只影响它之后的层）。这样日常开发时，改代码只需要重新执行"复制代码 + 编译"两层，依赖下载那层永远命中缓存。
+  </div>
+
+  <!-- 缓存示意 -->
+  <h2>缓存命中与失效示意</h2>
+  <div class="tree">
+    <span class="hi">第一次构建（全部执行）</span><br>
+    FROM ...           [执行]<br>
+    COPY pom.xml .      [执行]<br>
+    RUN go:offline      [执行，耗时下载依赖]<br>
+    COPY src ./src      [执行]<br>
+    RUN mvn package     [执行]<br>
+    <br>
+    <span class="hi">只改了 src 下代码，第二次构建</span><br>
+    FROM ...           [缓存命中，跳过]<br>
+    COPY pom.xml .      [缓存命中，跳过]<br>
+    RUN go:offline      [缓存命中，跳过 —— 依赖不用重新下载]<br>
+    COPY src ./src      [缓存失效，重新执行]<br>
+    RUN mvn package     [失效层之后全部重新执行]
+  </div>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"CMD 和 ENTRYPOINT 有什么区别，随便用哪个不都一样？"
+    区别在于和 <code>docker run</code> 命令行参数的交互方式：<code>CMD</code> 指定的默认命令会被 <code>docker run image_name some_cmd</code> 中的 <code>some_cmd</code> 整体覆盖；而 <code>ENTRYPOINT</code> 指定的命令是固定的，命令行传入的参数只会作为追加参数拼接在后面。生产 Dockerfile 里常见的写法是 <code>ENTRYPOINT</code> 定死启动程序，<code>CMD</code> 提供默认参数（可被覆盖）。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Docker 镜像构建缓存的原理和最佳实践？" 答案要点：<strong>每条指令一层，前面某层缓存失效会导致后面所有层都重新构建</strong>，所以要把不常变的指令（装依赖）放前，常变的指令（复制业务代码）放后，最大化利用缓存、加速 CI 构建。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Dockerfile 是声明式的构建脚本：</strong>每条指令对应一层，指令集合起来就是完整的镜像构建过程，天然可追溯、可复现。</li>
+    <li><strong>分层缓存的关键是"顺序"：</strong>缓存失效会像多米诺骨牌一样向后传导，把稳定的部分前置、易变的部分后置是加速构建的核心技巧。</li>
+    <li><strong>这不只是性能优化，也是团队协作和 CI/CD 效率的基础：</strong>一个写得好的 Dockerfile 能让团队每次提交后的镜像构建从几分钟缩短到几秒钟。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-Docker镜像与容器的关系.html" class="nav-btn">← Docker 镜像与容器的关系</a>
+    <a href="./04-Docker网络模式与数据卷.html" class="nav-btn next">Docker 网络模式与数据卷 →</a>
+  </div>
+
+</div>
+</body>
+</html>

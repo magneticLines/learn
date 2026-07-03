@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SLI / SLO / SLA 的定义与关系 — 可观测性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../observability-roadmap.html">可观测性 路线图</a> / SRE 实践 / SLI / SLO / SLA 的定义与关系
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">SRE 实践</div>
+    <h1>SLI / SLO / SLA 的定义与关系</h1>
+    <p>三个长得很像的缩写，是 SRE（Site Reliability Engineering）体系里最基础也最容易混淆的概念。它们不是三个并列的东西，而是"测量 → 目标 → 承诺"层层递进的三个层次。</p>
+  </div>
+
+  <!-- 为什么需要这套体系 -->
+  <h2>为什么需要量化"可靠性"</h2>
+  <p>
+    "系统要稳定""服务要可靠"这种话谁都会说，但含糊的目标无法指导决策——多稳定算稳定？99% 可用性和 99.99% 可用性之间，差的可不只是两个 9，而是每年允许的故障时间从 87 小时骤降到 52 分钟，对应的架构复杂度和成本可能是数量级的差异。
+  </p>
+  <p>
+    Google SRE 体系用 <strong>SLI、SLO、SLA</strong> 这三个层层递进的概念，把"可靠性"从一句空话变成可以测量、可以设定目标、可以对外承诺的量化指标。
+  </p>
+
+  <!-- SLI -->
+  <h2>SLI：Service Level Indicator，实际测量值</h2>
+  <p>
+    <strong>SLI（服务水平指标）</strong>是<strong>实际测量出来的数值</strong>，回答"系统现在的表现到底是什么样"。比如：
+  </p>
+  <ul>
+    <li>"过去 5 分钟内，请求成功率是 99.95%"</li>
+    <li>"过去 1 小时内，P99 延迟是 180ms"</li>
+    <li>"过去 24 小时内，可用时间占比是 99.98%"</li>
+  </ul>
+  <p>
+    SLI 通常直接来自 <strong>16-可观测性</strong> 模块前面讲过的 Metrics 体系——请求成功率、延迟分布这些数值，本质上就是从监控系统里实时计算出来的 SLI。SLI 本身没有"好坏"之分，它只是一个客观的测量结果。
+  </p>
+
+  <!-- SLO -->
+  <h2>SLO：Service Level Objective，内部目标</h2>
+  <p>
+    <strong>SLO（服务水平目标）</strong>是团队<strong>给某个 SLI 设定的内部目标值</strong>，回答"我们希望这项指标达到什么水平"。比如：
+  </p>
+  <ul>
+    <li>"月度可用性 SLO：99.9%"（对应 SLI 是"可用时间占比"）</li>
+    <li>"P99 延迟 SLO：不超过 200ms"（对应 SLI 是"P99 延迟"）</li>
+  </ul>
+  <p>
+    SLO 是团队自己设定、自己对齐的内部标尺，用来指导日常的技术决策——要不要为了性能重构、要不要增加副本数、值不值得为了这 0.05% 的可用性投入更多资源。SLO 通常比技术上能达到的极限要宽松一些，因为把 SLO 定得过高（比如 99.999%）会带来不成比例的成本，而用户往往根本感知不到 99.9% 和 99.99% 的区别。
+  </p>
+
+  <!-- SLA -->
+  <h2>SLA：Service Level Agreement，对外承诺</h2>
+  <p>
+    <strong>SLA（服务水平协议）</strong>是<strong>对外做出的正式承诺</strong>，通常出现在和客户签署的合同或服务条款里，回答"我们保证给你提供什么水平的服务，做不到怎么办"。比如云服务商常见的："全年可用性承诺 99.95%，未达标按未达标时长比例退还费用"。
+  </p>
+  <p>
+    SLA 的数值<strong>通常比内部 SLO 更宽松</strong>，故意留出一部分缓冲空间。原因很直接：SLO 是内部目标，允许团队偶尔小幅波动、留出改进余地；而 SLA 一旦写进合同，<strong>违反就意味着要赔偿（退款、折扣、违约金等）</strong>，所以对外承诺的数字必须留足安全边际，确保团队有很大把握能达到，而不是卡着内部目标的边缘去承诺。
+  </p>
+
+  <!-- 三者关系图 -->
+  <h2>三者关系：测量值 → 内部目标 → 对外承诺</h2>
+  <div class="tree">
+    <span class="hi">SLI（测量值）</span>：过去 30 天可用性实际是 99.97%<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;↓ 团队据此设定内部目标<br>
+    <span class="hi">SLO（内部目标）</span>：月度可用性目标 99.9%（留有余地，方便日常迭代决策）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;↓ 对外承诺时留更大缓冲<br>
+    <span class="hi">SLA（对外承诺）</span>：合同承诺年可用性 99.5%，未达标按比例赔偿
+  </div>
+  <p>
+    一句话总结三者的层次关系：<strong>SLI 是"测量值"，SLO 是"内部目标"，SLA 是"对外承诺"</strong>——先有客观测量，才能设定合理目标，再基于目标留足缓冲对外承诺。数值上一般是 <strong>SLA ≤ SLO ≤ 实际 SLI 表现</strong>（正常运行时），这样即使某个月表现有波动，也大概率不会触发 SLA 违约。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>三者对比一览</h2>
+  <table>
+    <thead>
+      <tr><th>概念</th><th>全称</th><th>本质</th><th>面向对象</th><th>示例</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>SLI</strong></td>
+        <td>Service Level Indicator</td>
+        <td>实际测量出来的数值</td>
+        <td>内部技术团队</td>
+        <td>过去 5 分钟成功率 99.95%</td>
+      </tr>
+      <tr>
+        <td><strong>SLO</strong></td>
+        <td>Service Level Objective</td>
+        <td>团队内部设定的目标值</td>
+        <td>内部团队对齐用</td>
+        <td>月度可用性目标 99.9%</td>
+      </tr>
+      <tr>
+        <td><strong>SLA</strong></td>
+        <td>Service Level Agreement</td>
+        <td>对外做出的正式承诺</td>
+        <td>客户 / 合同相对方</td>
+        <td>年可用性承诺 99.5%，违约赔偿</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>把 SLO 和 SLA 当成同一个东西的两种叫法。区别在于 SLO 没有法律或合同约束力，达不到顶多是内部复盘、优化排期；SLA 一旦写进合同，达不到是要真金白银赔偿或担责的。很多团队图省事直接把 SLO 数字原样写进 SLA，一旦某个月波动稍大就要赔钱——这是实践中的常见坑。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>认为 SLI 选得越多越好、越细越好。SLI 的选择应该聚焦在真正反映用户体验的关键指标上（比如请求成功率、关键接口延迟），而不是把所有能采集到的指标都变成 SLI——这会导致后面的 SLO 目标制定和错误预算管理（下一篇）变得难以聚焦。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"SLI、SLO、SLA 的区别？" 标准答案结构：<strong>SLI 是测量值（是什么），SLO 是内部目标（想达到什么），SLA 是对外承诺（保证达到什么，违反要赔偿）。三者层层递进，SLA 通常比 SLO 更宽松，留出安全缓冲。</strong>
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>三者构成了从"客观测量"到"内部目标"再到"对外承诺"的完整链条</strong>，是 SRE 体系量化可靠性的基础语言。</li>
+    <li><strong>SLA 留缓冲不是偷懒，而是风险管理</strong>：内部目标可以进取一些，但对外承诺必须留足把握。</li>
+    <li><strong>理解了 SLO 是什么，才能理解下一篇"错误预算"</strong>——错误预算正是从 SLO 反推出来的、可以量化决策的管理工具。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../tracing/03-链路追踪的采样策略.html" class="nav-btn">← 链路追踪的采样策略</a>
+    <a href="./02-错误预算ErrorBudget的理念.html" class="nav-btn next">错误预算（Error Budget）的理念 →</a>
+  </div>
+
+</div>
+</body>
+</html>
