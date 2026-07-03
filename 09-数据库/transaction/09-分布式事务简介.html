@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分布式事务简介 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / 分布式事务简介
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>分布式事务简介（2PC 与柔性事务）</h1>
+    <p>单机事务的 ACID 靠 undo log、redo log、锁、MVCC 就能拼出来，但一旦事务跨越了多个数据库或多个微服务，这套单机机制就全部失效——没有一个"上帝视角"能同时控制所有参与者。这正是分布式事务这个领域存在的原因。</p>
+  </div>
+
+  <h2>跨库/跨服务事务的挑战</h2>
+  <p>
+    典型场景：电商下单，需要「订单服务扣库存」+「支付服务扣余额」+「积分服务加积分」，三个操作分别落在三个不同的数据库（甚至不同的微服务）里。
+    单机事务的 <code>COMMIT</code>/<code>ROLLBACK</code> 只能控制自己这一个数据库连接，<strong>没有办法用一条命令同时控制三个独立数据库的提交与回滚</strong>。
+    如果订单和支付都成功了，积分服务却因为网络抖动失败了，就会出现"钱扣了但积分没加"的数据不一致。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>单机事务像是一个人签一份合同，签字瞬间就能一次性生效或作废；分布式事务像是三方分别在不同城市签同一份合同的三份副本——你没法保证三个人在同一时刻签字，中间任何一方反悔或联系不上，合同就出现"部分生效"的尴尬局面。这正是分布式事务要解决的核心难题。
+  </div>
+
+  <h2>两阶段提交协议（2PC）：强一致性的经典方案</h2>
+  <p>
+    2PC 引入一个中心角色——<strong>协调者（Coordinator）</strong>，统一指挥所有参与者（Participant，即各个数据库）分两步走：
+  </p>
+  <ol>
+    <li>
+      <strong>阶段一：准备阶段（Prepare / Vote）</strong> —— 协调者问所有参与者"你能不能提交？"，每个参与者执行完本地事务的所有操作但<strong>先不提交</strong>，把 undo/redo 信息落盘，然后回复"我准备好了（Yes）"或"我不行（No）"。
+    </li>
+    <li>
+      <strong>阶段二：提交阶段（Commit）</strong> —— 如果所有参与者都回复 Yes，协调者通知所有参与者正式 <code>COMMIT</code>；只要有一个回复 No 或超时，协调者就通知所有参与者 <code>ROLLBACK</code>。
+    </li>
+  </ol>
+  <div class="tree">
+协调者                    参与者A          参与者B
+  │──── Prepare? ─────────▶│               │
+  │──── Prepare? ─────────────────────────▶│
+  │◀─── Yes ────────────────│               │
+  │◀─── Yes ─────────────────────────────── │
+  │ (全票通过，进入提交阶段)
+  │──── Commit! ───────────▶│               │
+  │──── Commit! ──────────────────────────▶│
+  </div>
+
+  <h3>2PC 的致命问题：阻塞</h3>
+  <div class="callout warn">
+    <strong>问题一：同步阻塞。</strong>准备阶段所有参与者都要锁住相关资源（持有事务锁）等待协调者的最终指令，如果这时候网络延迟或协调者迟迟不下发指令，所有参与者只能一直持锁等待，严重影响并发性能。
+  </div>
+  <div class="callout warn">
+    <strong>问题二：协调者单点故障。</strong>如果协调者在发出"Commit"指令给部分参与者后自己宕机了，其余参与者会永远卡在"不知道该提交还是回滚"的状态（这被称为"协调者故障导致的阻塞问题"），需要额外的恢复机制来兜底，工程复杂度陡增。
+  </div>
+  <p>正是因为这两个问题，2PC 虽然逻辑简单、强一致性有保证，但在高并发、追求高可用的互联网场景中很少被直接使用，业界更倾向于用柔性事务来换取更好的可用性。</p>
+
+  <h2>柔性事务：牺牲强一致，换取可用性</h2>
+  <p>柔性事务的核心思路是：不追求"所有操作在同一瞬间原子生效"，而是接受"中间有短暂不一致的状态，但最终一定能收敛到一致"，即<strong>最终一致性</strong>。</p>
+
+  <h3>TCC（Try-Confirm-Cancel）</h3>
+  <p>把一个操作拆成三个阶段，业务代码自己实现：</p>
+  <ul>
+    <li><strong>Try：</strong>预留资源（比如"冻结"账户里要扣的金额，但不真正扣除）。</li>
+    <li><strong>Confirm：</strong>所有参与者 Try 都成功后，真正执行业务操作（正式扣款）。</li>
+    <li><strong>Cancel：</strong>只要有一个 Try 失败，所有参与者释放预留的资源（解冻）。</li>
+  </ul>
+  <p>优点是业务侵入性带来的灵活性——不依赖数据库本地事务能力，甚至可以跨异构系统；缺点是每个业务操作都要多写 Try/Confirm/Cancel 三份代码，开发成本高。</p>
+
+  <h3>本地消息表</h3>
+  <p>
+    在本地事务中，把"要通知其他服务做什么"作为一条消息记录，和业务数据的修改<strong>放在同一个本地事务里一起提交</strong>（利用单机事务的原子性保证消息记录不丢）。
+    之后由一个独立的任务不断轮询这张消息表，把消息投递给下游服务，成功后标记完成，失败则重试，直到最终成功。
+  </p>
+
+  <h3>Saga</h3>
+  <p>
+    把一个大的分布式事务拆成一系列本地事务组成的链条，每一步本地事务都对应一个"补偿操作"。如果链条执行到中间某一步失败了，就<strong>依次反向调用前面已完成步骤的补偿操作</strong>来"撤销"效果（比如扣款操作的补偿是退款，而不是像单机事务那样物理回滚）。
+    优点是不需要像 2PC 那样一直持锁等待，各步骤可以尽早提交；缺点是需要为每一步设计对应的补偿逻辑，且中间状态对外部是可见的（比如短暂能看到订单已创建但支付还没完成）。
+  </p>
+
+  <h2>方案对比：怎么选</h2>
+  <table>
+    <thead><tr><th>方案</th><th>一致性</th><th>性能/可用性</th><th>开发成本</th><th>适用场景</th></tr></thead>
+    <tbody>
+      <tr><td><strong>2PC</strong></td><td>强一致</td><td>差（同步阻塞、单点风险）</td><td>低（数据库/中间件层面透明实现）</td><td>参与方少、对一致性要求极高（如金融核心系统内部）</td></tr>
+      <tr><td><strong>TCC</strong></td><td>最终一致</td><td>较好</td><td>高（每个操作要写三份代码）</td><td>核心链路，对性能和实时性要求高（如支付、电商下单）</td></tr>
+      <tr><td><strong>本地消息表</strong></td><td>最终一致</td><td>好</td><td>中</td><td>异步通知类场景，允许一定延迟（如下单后发通知）</td></tr>
+      <tr><td><strong>Saga</strong></td><td>最终一致</td><td>好</td><td>中高（需设计补偿逻辑）</td><td>长流程业务（如旅游预订涉及机票+酒店+租车多步骤）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>与本 Tab 前面知识点呼应：</strong>2PC 的"准备阶段持锁等待"本质上是把单机事务里"锁要等到提交才释放"（两阶段锁协议 2PL）的思路，扩展到了多个数据库之间——只不过多机协调引入了网络不可靠这个新变量，才导致了阻塞问题。这也是为什么上一篇要先强调 2PL 和 2PC 是完全不同的概念——2PC 的阻塞问题，某种意义上是"每个参与者内部都在用锁"这件事在分布式场景下被放大的结果。
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问："分布式事务的 CAP 权衡是什么？"</strong><br>
+    答：2PC 追求强一致性（C），代价是牺牲可用性（A）——协调者故障或网络分区时系统会阻塞甚至不可用；柔性事务（TCC/Saga/本地消息表）则反过来，优先保证可用性，接受短暂的不一致，但保证系统最终会收敛到一致状态。选型本质是业务对"能不能接受短暂不一致"这个问题的回答。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>分布式事务的根本困难是没有单一节点能同时看到并控制所有参与者，</strong>必须靠协调机制弥补。</li>
+    <li><strong>2PC 强一致但会阻塞、有协调者单点风险，</strong>柔性事务（TCC/本地消息表/Saga）牺牲强一致换取可用性和性能。</li>
+    <li><strong>选型的本质是业务对一致性和可用性的权衡，</strong>没有放之四海皆准的最优解。</li>
+    <li>本 Tab 到此结束，串起来看："ACID 定义目标 → 隔离级别是折中方案 → 锁与 MVCC 是单机实现手段 → 2PL 是单机理论保证 → 2PC/柔性事务是分布式场景下同一套问题的延伸"。下一 Tab 将深入 InnoDB 存储引擎内核，看 redo log/undo log 这些一直被提及但还未展开的机制究竟如何工作。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./08-两阶段锁协议.html" class="nav-btn">← 两阶段锁协议</a>
+    <a href="../innodb/01-InnoDB体系结构总览.html" class="nav-btn next">InnoDB 体系结构总览 →</a>
+  </div>
+
+</div>
+</body>
+</html>

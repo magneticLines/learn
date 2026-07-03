@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Buffer Pool 原理 — 存储引擎内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 存储引擎内核 / Buffer Pool 原理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">存储引擎内核</div>
+    <h1>Buffer Pool 原理</h1>
+    <p>磁盘 I/O 是数据库最大的性能瓶颈，Buffer Pool 就是 InnoDB 用来"少碰磁盘"的第一道防线。但光有缓存还不够——普通 LRU 在数据库场景下会被一次全表扫描彻底打乱，InnoDB 为此专门改造了淘汰算法。</p>
+  </div>
+
+  <!-- 为什么需要 Buffer Pool -->
+  <h2>为什么需要 Buffer Pool</h2>
+  <p>
+    InnoDB 以<strong>页（Page，默认 16KB）</strong>为单位读写磁盘。即使只想查一行记录，也要把整个 16KB 的页读入内存。
+    如果每次查询都直接读磁盘，机械硬盘的一次随机 I/O 耗时在毫秒级，而内存访问是纳秒级，两者差 5~6 个数量级。
+    <strong>Buffer Pool</strong> 就是 InnoDB 在内存里开辟的一大块缓存区域，专门用来存放从磁盘读上来的数据页和索引页，后续同一个页的访问只要还在缓存里命中，就完全不用碰磁盘。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>Buffer Pool 像图书馆的"还书暂存架"。读者刚还回来或刚被借阅过的书不会立刻归架入库（磁盘），而是先放在前台架子上（内存）。下一个人如果还要借同一本书，直接从架子上拿，不用跑去后面的书库翻找。架子空间有限，就得决定"新还的书"和"很久没人碰的书"谁该被请下架子。
+  </div>
+
+  <!-- 朴素 LRU 的问题 -->
+  <h2>朴素 LRU 为什么不够用</h2>
+  <p>
+    最直观的淘汰策略是经典 LRU（Least Recently Used）：一个链表，被访问的页移到链表头部，链表尾部就是最久未被访问、最该淘汰的页。
+    但这套朴素策略在数据库场景下有一个致命弱点：<strong>一次全表扫描会瞬间把所有热点数据挤出缓存</strong>。
+  </p>
+  <p>
+    设想执行一条 <code>SELECT * FROM big_table</code>（没有加索引、要扫全表），这张表有几百万行、几万个数据页。
+    按朴素 LRU 规则，这几万个页会被依次读入内存并全部放到链表头部——而这些页大概率<strong>只会被访问这一次</strong>（比如一次报表统计、一次数据导出）。
+    结果是：原本长期被高频查询访问的"热点页"，被这些只用一次的"冷页"挤到了链表尾部，惨遭淘汰。扫描一结束，缓存命中率暴跌，后续正常业务查询大量回源磁盘，整个系统性能骤降。
+  </p>
+
+  <!-- InnoDB 改进 LRU -->
+  <h2>InnoDB 的改进：冷热分离 + 分区插入</h2>
+  <p>
+    InnoDB 把 LRU 链表从逻辑上一分为二：<strong>new 子链表（热数据区，约占 5/8）</strong>和 <strong>old 子链表（冷数据区，约占 3/8）</strong>，比例由参数
+    <code>innodb_old_blocks_pct</code>（默认 37，即 3/8）控制。
+  </p>
+  <ul>
+    <li>一个页<strong>第一次</strong>被读入 Buffer Pool 时，不再直接插入链表头部（new 区），而是插入到 <strong>old 区的头部</strong>——这就是"midpoint insertion（中点插入）"策略。</li>
+    <li>只有当这个页在 old 区里<strong>停留时间超过 <code>innodb_old_blocks_time</code>（默认 1000 毫秒）之后再次被访问</strong>，才会被移动到 new 区头部，正式晋升为"热数据"。</li>
+    <li>如果页在 old 区停留期间被反复访问，但两次访问间隔都小于这个时间窗口，则<strong>不晋升</strong>——防止被短时间内密集重复扫描的页误判为热点。</li>
+  </ul>
+  <p>
+    这个设计巧妙地解决了全表扫描的问题：扫描时读入的海量页只会挤占 old 区，不会污染 new 区的热点数据；而且由于扫描通常是"从头到尾各页只访问一次"，
+    在 <code>innodb_old_blocks_time</code> 窗口内根本不会有第二次访问，这些页永远晋升不了 new 区，扫描结束后会很快在 old 区被自然淘汰，对热点数据毫发无损。
+  </p>
+
+  <!-- 具体走查示例 -->
+  <h3>走查示例：一次全表扫描如何被"隔离"</h3>
+  <div class="tree">
+    <span class="hi">Buffer Pool LRU 链表（简化示意）</span><br>
+    New 区头部 → [热页A] [热页B] [热页C] ... → New/Old 分界点（5/8 处）<br>
+    Old 区头部 → [热页D] ... → Old 区尾部（即将淘汰）<br>
+    <br>
+    执行全表扫描 SELECT * FROM big_table：<br>
+    &nbsp;&nbsp;1. 页 P1 读入 → 插入到 <span class="hi">Old 区头部</span>（不是 New 区！）<br>
+    &nbsp;&nbsp;2. 扫描继续，P1 只被访问这一次，之后再没人碰它<br>
+    &nbsp;&nbsp;3. 页 P2、P3 ... Pn 依次读入，同样插入 Old 区头部，把 P1 逐步挤向 Old 区尾部<br>
+    &nbsp;&nbsp;4. 扫描结束，P1 从未在 1000ms 后被二次访问 → 永远留在 Old 区 → 很快被淘汰<br>
+    &nbsp;&nbsp;5. 全程 New 区的热页 A/B/C/D 未被触碰，缓存命中率不受影响
+  </div>
+
+  <!-- free list / flush list -->
+  <h2>free list 与 flush list</h2>
+  <p>
+    除了 LRU 链表，Buffer Pool 内部还维护另外两个链表，共同管理缓存页的生命周期：
+  </p>
+  <table>
+    <thead>
+      <tr><th>链表</th><th>存放内容</th><th>作用</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>free list</strong></td><td>空闲、尚未使用的缓存页</td><td>需要从磁盘读入新页时，优先从这里取空闲槽位；用完则从 LRU 尾部淘汰腾位置</td></tr>
+      <tr><td><strong>flush list</strong></td><td>被修改过、与磁盘不一致的"脏页”</td><td>记录哪些页需要被后台线程或 Checkpoint 机制刷回磁盘（脏页刷盘细节见 07 篇）</td></tr>
+    </tbody>
+  </table>
+  <p>
+    注意这三个链表管理的是<strong>同一批物理内存页</strong>，只是从不同维度（是否被使用、是否最近访问、是否变脏）分别索引，一个页可能同时出现在 LRU 链表和 flush list 中。
+  </p>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"Buffer Pool 越大是不是缓存命中率就一定越高，应该尽量调大？"
+    命中率确实通常会提升，但 Buffer Pool 并非越大越好：它要和物理内存、操作系统及其他进程需求做平衡，官方建议在专用数据库服务器上设为物理内存的 <strong>50%~75%</strong> 左右；设置过大可能引发 swap，反而拖垮性能。此外，Buffer Pool 从 5.7 起支持拆分为多个 <code>instance</code>（<code>innodb_buffer_pool_instances</code>），减少多线程下的锁竞争，也是常被问到的调优点。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"MySQL 的预读（read-ahead）和这里的 LRU 有什么关系？" InnoDB 有线性预读和随机预读机制，会提前把"可能用到"的相邻页读入 Buffer Pool。这些预读页同样遵循 midpoint insertion 规则先进 old 区，如果预读判断错误、页没有真正被访问，也不会污染热数据，这也是改进版 LRU 设计上的一致性体现。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Buffer Pool 的本质是用内存换 I/O</strong>，命中率是衡量数据库性能的核心指标之一。</li>
+    <li><strong>冷热分离（new/old 子链表）+ 时间窗口晋升</strong>，是 InnoDB 对抗"全表扫描污染缓存"这一经典问题的核心手段，体现了"通用算法要结合业务场景做定制"的工程思路。</li>
+    <li><strong>free list / flush list</strong> 与 LRU 链表配合，分别解决"哪里有空位"和"哪些页要刷盘"的问题，为下一篇 Redo Log 如何配合脏页刷盘埋下伏笔。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-InnoDB体系结构总览.html" class="nav-btn">← InnoDB 体系结构总览</a>
+    <a href="./03-RedoLog与WAL机制.html" class="nav-btn next">Redo Log 与 WAL 机制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

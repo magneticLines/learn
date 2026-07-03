@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>主从延迟问题及优化 — 复制与高可用</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #6b21a8; }
+  .nav-btn.next { color: #a78bfa; border-color: #6b21a8; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 复制与高可用 / 主从延迟问题及优化
+  </div>
+
+  <div class="hero">
+    <div class="tag">复制与高可用</div>
+    <h1>主从延迟问题及优化</h1>
+    <p>"刚下单，刷新一下订单列表却看不到"——这是主从延迟最典型的线上事故现场。理解延迟从哪来，才能对症下药，而不是无脑加机器。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    主从延迟（Replication Lag）指的是<strong>从库应用完某个事务的时刻，比主库提交这个事务的时刻晚了多久</strong>。
+    延迟不是玄学，根本原因几乎都能归到三类：<strong>从库回放能力跟不上（单线程瓶颈/大事务）、网络传输慢、从库本身负载过高</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>主库像一个语速飞快、同时能处理很多笔业务的柜台，而早期的从库回放却像只有一个记账员在排队处理账本——柜台并发地接单，
+    记账员却只能一笔一笔地按顺序抄，一旦某一笔业务是"大额转账"（大事务）耗时特别久，后面排队的所有流水都得等着，队伍就越积越长，这就是延迟的直观来源。
+  </div>
+
+  <h2>延迟的常见原因</h2>
+  <table>
+    <thead>
+      <tr><th>原因</th><th>具体表现</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>从库 SQL 线程单线程回放（历史遗留问题）</strong></td>
+        <td>MySQL 5.6 之前，SQL 线程是单线程串行执行 relay log，即使主库是高并发多线程写入，从库也只能"排队"一条一条重放，回放速度天然跟不上写入速度。</td>
+      </tr>
+      <tr>
+        <td><strong>大事务</strong></td>
+        <td>一次性 UPDATE/DELETE 上百万行的大事务，在从库上重放也需要同样长的时间，期间会阻塞该线程后面所有的小事务排队等待。</td>
+      </tr>
+      <tr>
+        <td><strong>row 格式下的日志量放大</strong></td>
+        <td>结合上一篇讲的 binlog 格式：row 格式记录了每一行的变化，批量操作时日志量剧增，网络传输和从库应用耗时都会拉长。</td>
+      </tr>
+      <tr>
+        <td><strong>网络带宽/延迟</strong></td>
+        <td>主从跨机房、跨地域部署时，网络本身的传输时延就会造成延迟，binlog 体积越大受网络影响越明显。</td>
+      </tr>
+      <tr>
+        <td><strong>从库硬件/负载不足</strong></td>
+        <td>从库承担了大量只读查询（读写分离场景），CPU/IO 资源被查询占用，SQL 线程重放被挤占，延迟随读流量增大而增大。</td>
+      </tr>
+      <tr>
+        <td><strong>缺少索引</strong></td>
+        <td>row 格式下从库需要根据主键/唯一键定位要修改的行，如果表缺少合适的索引，重放时会退化成全表扫描，速度骤降。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>MySQL 5.7+ 的并行复制：基于组提交</h2>
+  <p>
+    为了解决"从库单线程回放跟不上主库多线程写入"这个核心瓶颈，MySQL 5.6 引入了基于库（schema）级别的并行复制——不同库的事务可以并行回放，
+    但同一个库内依然是串行的，实际效果有限（很多业务所有表都在一个库里）。
+  </p>
+  <p>
+    <strong>MySQL 5.7 引入了基于组提交（Group Commit）的并行复制</strong>，思路是：主库上如果两个事务是在同一次组提交中一起刷盘的，
+    说明它们在主库上本来就是"并发执行、互不冲突"的（否则不可能被同一次组提交打包），那么从库完全可以放心地把这些事务也并行地应用，
+    不需要退化成串行。这个逻辑通过 <code>last_committed</code> 和 <code>sequence_number</code> 两个标记在 binlog 中体现：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>基于组提交并行复制的核心思路</span></div>
+    <pre><span class="com">-- 通过 mysqlbinlog 查看 binlog 里的 GTID 事件，能看到 last_committed 和 sequence_number
+-- last_committed 相同的事务，说明主库上它们属于同一组提交，彼此无冲突
+-- 从库据此把这些事务分发给多个 worker 线程并行执行，大幅提升回放吞吐</span>
+<span class="kw">SET</span> <span class="kw">GLOBAL</span> <span class="var">slave_parallel_type</span> = <span class="str">'LOGICAL_CLOCK'</span>;
+<span class="kw">SET</span> <span class="kw">GLOBAL</span> <span class="var">slave_parallel_workers</span> = <span class="num">8</span>; <span class="com">-- 开启多个并行回放线程</span></pre>
+  </div>
+  <p>
+    这也是为什么"组提交"在《高性能MySQL》里经常和 redo log 刷盘的组提交一起被提起——两个组提交发生在不同层面（redo log 的组提交是为了减少 fsync 次数提升写入性能，
+    binlog 的组提交标记是为了给并行复制提供"可并行"的依据），但思路都是"把能一起处理的事情打包处理"。
+  </p>
+
+  <h2>业务层如何规避读到延迟数据</h2>
+  <p>即便做了并行复制优化，延迟也不可能完全消除（网络本身的传输时延无法消除），业务层常见的应对策略：</p>
+  <ul>
+    <li><strong>强制读主库</strong>：对写入后立刻需要读到最新结果的场景（如下单后立刻查询订单详情），直接路由到主库读，绕开延迟问题，代价是牺牲了读写分离带来的负载分摊。</li>
+    <li><strong>等待 GTID / 位点对齐</strong>：写入后拿到主库返回的 GTID，读请求前先用 <code>WAIT_FOR_EXECUTED_GTID_SET</code> 等待从库追上这个 GTID 再执行查询，等待超时则降级读主库。</li>
+    <li><strong>业务层缓存兜底</strong>：写入后把结果直接写入缓存（如 Redis），短时间内的读请求优先读缓存，绕开主从延迟窗口。</li>
+    <li><strong>监控延迟并动态摘除延迟从库</strong>：读写分离中间件持续监控每个从库的延迟（<code>SHOW SLAVE STATUS</code> 里的 <code>Seconds_Behind_Master</code>，但这个值在网络异常时并不精确，生产环境常配合心跳表打时间戳来更准确地度量），延迟超过阈值的从库临时从读流量中摘除。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong><code>Seconds_Behind_Master</code> 这个字段看起来是延迟的秒数，但它的计算方式是"从库当前时间 - 正在处理的这个事件在主库上打的时间戳"，
+    如果 I/O 线程本身卡住没有拉取到新的 binlog 事件（比如网络中断），这个值可能显示为 0 或 NULL，造成"看起来没延迟，其实早就断连了"的假象。
+    生产环境更可靠的做法是用心跳机制（如 pt-heartbeat，定期写入带时间戳的心跳表并在从库上比对）来精确度量延迟。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"如何解决主从延迟？"分层回答：1）架构层面开启基于组提交的并行复制提升从库回放吞吐；2）监控层面用心跳表而不是单纯依赖 <code>Seconds_Behind_Master</code>；3）业务层面对强一致性读需求采用强制读主库或等待 GTID 对齐，而不是指望"消灭"延迟——延迟在异步复制模型下是无法根除的，只能缓解和规避。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>延迟的根因是"从库回放速度 < 主库写入速度"</strong>，并行复制解决的是回放吞吐问题，但无法消除网络传输本身的时延。</li>
+    <li><strong>组提交并行复制的核心思路是"主库上并发无冲突的事务，从库也可以并行重放"</strong>，理解这一点能帮你理解很多分布式系统里"利用无冲突性做并行化"的通用套路。</li>
+    <li>延迟是读写分离架构必须正视的问题，下一篇讲读写分离架构时会具体展开这个话题。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-半同步复制与全同步复制.html" class="nav-btn">← 半同步复制与全同步复制</a>
+    <a href="./05-读写分离架构.html" class="nav-btn next">读写分离架构 →</a>
+  </div>
+
+</div>
+</body>
+</html>

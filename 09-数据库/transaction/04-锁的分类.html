@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>锁的分类 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / 锁的分类
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>锁的分类（共享锁 / 排他锁 / 意向锁）</h1>
+    <p>锁是隔离性的另一半实现（另一半是 MVCC）。先搞懂最基础的共享锁和排他锁，再理解一个容易被忽视但极其巧妙的设计——意向锁，它解决的是"怎么快速判断表上有没有行锁冲突"这个效率问题。</p>
+  </div>
+
+  <h2>为什么需要锁</h2>
+  <p>
+    MVCC 能让"读"不阻塞"写"，但"写"和"写"之间必须互斥——两个事务同时改同一行数据，必须有个先后顺序，不然数据会错乱（比如经典的库存超卖问题）。
+    <strong>锁就是解决"写-写冲突"和"部分读-写冲突"（当前读）的机制</strong>。
+  </p>
+
+  <h2>共享锁（S 锁）与排他锁（X 锁）</h2>
+  <table>
+    <thead><tr><th>锁类型</th><th>全称</th><th>语义</th><th>加锁方式</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>S 锁</strong></td>
+        <td>Shared Lock，共享锁</td>
+        <td>多个事务可以同时持有同一行的 S 锁（"共享"读权限），但持有 S 锁期间不允许任何事务加 X 锁</td>
+        <td><code>SELECT ... LOCK IN SHARE MODE</code>（或 <code>FOR SHARE</code>）</td>
+      </tr>
+      <tr>
+        <td><strong>X 锁</strong></td>
+        <td>Exclusive Lock，排他锁</td>
+        <td>同一时刻只能有一个事务持有某行的 X 锁，持有期间其他事务不能加 S 锁也不能加 X 锁</td>
+        <td><code>UPDATE</code>/<code>DELETE</code> 自动加，或显式 <code>SELECT ... FOR UPDATE</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout info">
+    <strong>类比：</strong>S 锁像图书馆的"阅览室座位"——很多人可以同时坐下来读同一本书的复印件（只读，互不干扰）；X 锁像"独占会议室"——一次只能一组人进去修改白板上的内容，其他人（包括只想看一眼的人）都得在外面等。
+  </div>
+  <p>兼容关系：S 锁与 S 锁兼容（可以共存），S 锁与 X 锁不兼容，X 锁与 X 锁也不兼容。这是所有锁设计的基本准则——只要涉及"写"，就必须独占。</p>
+
+  <h2>意向锁（Intention Lock）：为效率而生的巧妙设计</h2>
+  <h3>先看它解决的问题</h3>
+  <p>
+    假设事务 A 想给表 <code>account</code> 加一个表级 X 锁（比如 <code>LOCK TABLES account WRITE</code>），
+    但此时表里可能有其他事务正持有某几行的行级 X 锁——直接冲突，必须阻塞。<strong>问题是：怎么快速知道表上是否存在行锁，而不需要把几百万行数据全部扫一遍去检查？</strong>
+  </p>
+  <div class="callout warn">
+    <strong>没有意向锁的笨办法：</strong>要给表加锁前，逐行检查是否有行锁——数据量大的表这个检查本身就是灾难性的性能开销。
+  </div>
+
+  <h3>意向锁的思路：加行锁前先"打个招呼"</h3>
+  <p>
+    InnoDB 的做法是：<strong>事务给某一行加 S/X 锁之前，必须先在表级别加上对应的意向锁</strong>（IS 或 IX），相当于在表这个更粗粒度的对象上"登记"一下"我在下面某行加了锁"。
+    这样一来，其他事务想加表级锁时，只需要看这张表上有没有意向锁标记，一次判断就知道表内部有没有行锁冲突，完全不用遍历行。
+  </p>
+  <table>
+    <thead><tr><th>意向锁</th><th>全称</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><strong>IS 锁</strong></td><td>Intention Shared，意向共享锁</td><td>事务准备给表中某些行加 S 锁，先给表加 IS 锁</td></tr>
+      <tr><td><strong>IX 锁</strong></td><td>Intention Exclusive，意向排他锁</td><td>事务准备给表中某些行加 X 锁，先给表加 IX 锁</td></tr>
+    </tbody>
+  </table>
+
+  <h3>意向锁的兼容规则</h3>
+  <p>
+    意向锁之间是<strong>互相兼容</strong>的（IS 与 IS、IS 与 IX、IX 与 IX 都能共存），因为意向锁本身不锁定任何具体数据，只是一个"声明"。
+    真正会阻塞的是意向锁和表级 S/X 锁之间：
+  </p>
+  <table>
+    <thead><tr><th>已持有 \ 请求</th><th>IS</th><th>IX</th><th>S（表级）</th><th>X（表级）</th></tr></thead>
+    <tbody>
+      <tr><td>IS</td><td>兼容</td><td>兼容</td><td>兼容</td><td>冲突</td></tr>
+      <tr><td>IX</td><td>兼容</td><td>兼容</td><td>冲突</td><td>冲突</td></tr>
+      <tr><td>S（表级）</td><td>兼容</td><td>冲突</td><td>兼容</td><td>冲突</td></tr>
+      <tr><td>X（表级）</td><td>冲突</td><td>冲突</td><td>冲突</td><td>冲突</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>直觉记忆：</strong>意向锁只跟"表级的 S/X 锁"打架，意向锁之间从不打架。因为意向锁的作用就是让"想加表锁的人"一眼看出表内部有没有行锁，而不是控制行与行之间的关系。
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"意向锁会阻塞普通的行级 DML 操作（UPDATE/DELETE）。" 不会。意向锁只影响想要加<strong>表级</strong>锁的操作（比如 <code>LOCK TABLES</code>、<code>ALTER TABLE</code>），普通的行级 <code>UPDATE</code>/<code>DELETE</code> 之间该怎么并发还是怎么并发，只不过在加行锁前会顺带打一个意向锁的标记。
+  </div>
+  <div class="callout warn">
+    <strong>误区：</strong>把意向锁和行锁的粒度搞混，以为意向锁是"细粒度锁"。恰恰相反，意向锁是<strong>表级别的粗粒度锁</strong>，它存在的意义就是给更粗粒度的操作提供一个"快速探测"的手段。
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问："为什么需要意向锁？"</strong><br>
+    标准答案：如果没有意向锁，一个事务想给整张表加锁时，必须逐行检查是否存在行锁冲突，时间复杂度是 O(n)。有了意向锁后，只需要检查表级的意向锁标记，就能 O(1) 判断表内是否有行锁在使用，是一种"空间换时间"的效率优化设计。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>S 锁和 X 锁是数据层面的互斥控制，</strong>解决"谁能读、谁能写"的问题。</li>
+    <li><strong>意向锁是效率层面的优化设计，</strong>让粗粒度锁定（表锁）可以快速探测细粒度锁定（行锁）是否存在冲突，避免全表扫描式检查。</li>
+    <li>下一篇继续深入锁的粒度问题：行锁、表锁、间隙锁、临键锁，看 InnoDB 具体怎么用组合锁堵住幻读。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-脏读不可重复读幻读.html" class="nav-btn">← 脏读 / 不可重复读 / 幻读</a>
+    <a href="./05-行锁表锁间隙锁临键锁.html" class="nav-btn next">行锁 / 表锁 / 间隙锁 / 临键锁 →</a>
+  </div>
+
+</div>
+</body>
+</html>

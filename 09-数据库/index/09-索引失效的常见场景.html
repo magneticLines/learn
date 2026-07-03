@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>索引失效的常见场景 — 索引与执行计划</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #7c4a10; }
+  .nav-btn.next { color: #38bdf8; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 索引与执行计划 / 索引失效的常见场景
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">索引与执行计划</div>
+    <h1>索引失效的常见场景</h1>
+    <p>索引建了，但查询该慢还是慢——大多数时候不是索引没建对，而是 SQL 写法让优化器根本用不上索引。理解每种失效场景背后的原理，才能从"背口诀"升级到"能推理"。</p>
+  </div>
+
+  <!-- 总纲 -->
+  <h2>为什么索引会"失效"：一句话原理</h2>
+  <p>
+    B+ 树索引能加速查询的根本前提是：<strong>索引里存储的键值，是按原始列值排好序的</strong>，优化器可以利用这种有序性做二分查找或范围扫描。
+    一旦 SQL 的写法让"要查找的值"和"索引里存的原始有序值"对不上号（比如对列做了运算、类型不匹配、通配符打乱了前缀顺序），
+    B+ 树的有序性就用不上了，优化器只能放弃索引，退化为全表扫描（对应 <code>EXPLAIN</code> 中 <code>type=ALL</code>）。
+  </p>
+  <div class="callout info">
+    <strong>生活类比：</strong>索引就像一本按姓氏拼音排好序的通讯录。如果你说"帮我查一个姓名倒过来读是'某某张'的人"，接线员没法直接用这本按拼音排序的册子二分查找，只能从头翻到尾一个个核对——这就是对索引列做"函数运算"之后索引失效的本质。
+  </div>
+
+  <!-- 场景1 -->
+  <h2>场景一：对索引列做函数运算</h2>
+  <p>
+    索引存储的是列的<strong>原始值</strong>，一旦对列施加函数（如 <code>YEAR()</code>、<code>UPPER()</code>、<code>DATE_FORMAT()</code>），
+    结果值已经和索引里存的原始有序序列脱钩了，B+ 树没有办法按"变换后的值"做有序定位，只能对每一行都算一次函数值再比较——也就是全表扫描。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 错误写法（索引失效）</span></div>
+    <pre><span class="com">-- create_time 上有索引，但被 YEAR() 包裹后索引失效</span>
+<span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">orders</span> <span class="kw">WHERE</span> <span class="fn">YEAR</span><span class="punct">(</span><span class="var">create_time</span><span class="punct">)</span> <span class="punct">=</span> <span class="num">2024</span><span class="punct">;</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 正确写法（索引生效）</span></div>
+    <pre><span class="com">-- 改写成范围查询，不对索引列做任何运算</span>
+<span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">orders</span>
+<span class="kw">WHERE</span> <span class="var">create_time</span> <span class="punct">&gt;=</span> <span class="str">'2024-01-01'</span> <span class="kw">AND</span> <span class="var">create_time</span> <span class="punct">&lt;</span> <span class="str">'2025-01-01'</span><span class="punct">;</span></pre>
+  </div>
+
+  <!-- 场景2 -->
+  <h2>场景二：隐式类型转换</h2>
+  <p>
+    当列的类型是 VARCHAR，但查询条件传入了一个数字，MySQL 会按照类型转换规则，把 <strong>字符串转换为数字</strong>来比较（而不是把数字转成字符串）。
+    这本质上等价于对索引列做了 <code>CAST(phone AS SIGNED)</code> 这样的隐式函数运算，同样会导致索引失效。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 错误写法（索引失效）</span></div>
+    <pre><span class="com">-- phone 是 VARCHAR 类型，但传入的是数字字面量</span>
+<span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">users</span> <span class="kw">WHERE</span> <span class="var">phone</span> <span class="punct">=</span> <span class="num">13800000000</span><span class="punct">;</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 正确写法（索引生效）</span></div>
+    <pre><span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">users</span> <span class="kw">WHERE</span> <span class="var">phone</span> <span class="punct">=</span> <span class="str">'13800000000'</span><span class="punct">;</span></pre>
+  </div>
+
+  <!-- 场景3 -->
+  <h2>场景三：!= 或 &lt;&gt; 导致索引失效</h2>
+  <p>
+    <code>!=</code>（不等于）在语义上意味着"排除一个值，剩下的全都要"，优化器估算这类条件通常会匹配到<strong>表中的大部分行</strong>，
+    走索引再逐一回表的代价往往比直接全表扫描更高，因此优化器经常直接放弃索引。这不是"语法不支持"，而是<strong>代价评估后的主动选择</strong>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 容易失效</span></div>
+    <pre><span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">orders</span> <span class="kw">WHERE</span> <span class="var">status</span> <span class="punct">!=</span> <span class="str">'CANCELLED'</span><span class="punct">;</span></pre>
+  </div>
+  <div class="callout tip">
+    <strong>缓解思路：</strong>如果确实能预估结果集很小（比如 CANCELLED 占了 99% 的订单），可以改写为等价的 <code>IN</code> 或范围条件，帮助优化器更准确地判断选择性，例如 <code>WHERE status IN ('PENDING', 'PAID', 'SHIPPED')</code>。
+  </div>
+
+  <!-- 场景4 -->
+  <h2>场景四：LIKE 前导通配符</h2>
+  <p>
+    这一条呼应"最左前缀匹配"的核心思想：索引的有序性是<strong>按字符串从左到右比较</strong>建立的。<code>LIKE 'xxx%'</code>（后置通配符）等价于一个范围查询——
+    "找出所有以 xxx 开头的值"，天然符合前缀有序的特性，可以走索引；而 <code>LIKE '%xxx'</code>（前导通配符）要求"值的末尾是 xxx"，
+    这和按前缀排序的索引完全对不上，只能全表扫描逐行做字符串匹配。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 错误写法（索引失效）</span></div>
+    <pre><span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">users</span> <span class="kw">WHERE</span> <span class="var">name</span> <span class="kw">LIKE</span> <span class="str">'%明'</span><span class="punct">;</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 正确写法（索引生效）</span></div>
+    <pre><span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">users</span> <span class="kw">WHERE</span> <span class="var">name</span> <span class="kw">LIKE</span> <span class="str">'张%'</span><span class="punct">;</span></pre>
+  </div>
+
+  <!-- 场景5 -->
+  <h2>场景五：OR 连接了没有索引的列</h2>
+  <p>
+    <code>OR</code> 两侧任意一个条件命中的行都要返回。如果其中一侧的列<strong>没有索引</strong>，优化器就必须对这一侧做全表扫描，
+    既然都要扫全表了，索引带来的加速对整条查询已经没有意义，优化器索性放弃另一侧本可用的索引，整条语句退化为全表扫描。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 错误写法（索引失效，假设 email 无索引）</span></div>
+    <pre><span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">users</span> <span class="kw">WHERE</span> <span class="var">id</span> <span class="punct">=</span> <span class="num">100</span> <span class="kw">OR</span> <span class="var">email</span> <span class="punct">=</span> <span class="str">'a@x.com'</span><span class="punct">;</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 正确写法一（给 email 也建索引）</span></div>
+    <pre><span class="com">-- OR 两侧都有索引时，优化器可能使用 index_merge 策略分别走索引再合并结果</span>
+<span class="kw">ALTER</span> <span class="kw">TABLE</span> <span class="var">users</span> <span class="kw">ADD</span> <span class="kw">INDEX</span> <span class="var">idx_email</span> <span class="punct">(</span><span class="var">email</span><span class="punct">)</span><span class="punct">;</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 正确写法二（用 UNION 改写）</span></div>
+    <pre><span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">users</span> <span class="kw">WHERE</span> <span class="var">id</span> <span class="punct">=</span> <span class="num">100</span>
+<span class="kw">UNION</span>
+<span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">users</span> <span class="kw">WHERE</span> <span class="var">email</span> <span class="punct">=</span> <span class="str">'a@x.com'</span><span class="punct">;</span></pre>
+  </div>
+
+  <!-- 场景6 -->
+  <h2>场景六：联合索引未按最左前缀使用</h2>
+  <p>
+    联合索引 <code>(a, b, c)</code> 在 B+ 树里是先按 <code>a</code> 排序，<code>a</code> 相同的情况下再按 <code>b</code> 排序，以此类推——
+    这意味着只有查询条件从最左边的 <code>a</code> 开始连续使用，索引的有序性才能被利用。跳过 <code>a</code> 直接用 <code>b</code>、<code>c</code> 查询，
+    等于让优化器在一堆"不知道从哪开始比较"的数据里查找，索引用不上。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 错误写法（跳过最左列 a，索引失效）</span></div>
+    <pre><span class="com">-- 联合索引 idx_a_b_c (a, b, c)</span>
+<span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">t</span> <span class="kw">WHERE</span> <span class="var">b</span> <span class="punct">=</span> <span class="num">2</span> <span class="kw">AND</span> <span class="var">c</span> <span class="punct">=</span> <span class="num">3</span><span class="punct">;</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL · 正确写法（从最左列开始）</span></div>
+    <pre><span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">t</span> <span class="kw">WHERE</span> <span class="var">a</span> <span class="punct">=</span> <span class="num">1</span> <span class="kw">AND</span> <span class="var">b</span> <span class="punct">=</span> <span class="num">2</span> <span class="kw">AND</span> <span class="var">c</span> <span class="punct">=</span> <span class="num">3</span><span class="punct">;</span></pre>
+  </div>
+
+  <!-- 场景7 -->
+  <h2>场景七：字符集/排序规则不一致</h2>
+  <p>
+    多表关联时，如果两张表用于 JOIN 的列<strong>字符集或排序规则（collation）不一致</strong>（例如一个是 <code>utf8mb4_general_ci</code>，另一个是 <code>utf8mb4_bin</code>），
+    MySQL 需要先做隐式字符集转换才能比较，这同样属于对索引列做了"运算"，会导致相关列上的索引失效。生产实践中建议同一业务库的字符集与排序规则保持统一，避免这类隐性问题。
+  </p>
+
+  <!-- 汇总表 -->
+  <h2>失效场景速查表</h2>
+  <table>
+    <thead>
+      <tr><th>场景</th><th>失效原因</th><th>规避方式</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>索引列做函数运算</td><td>索引存原始值，运算后值与有序序列脱钩</td><td>把运算移到条件右侧，改写成范围查询</td></tr>
+      <tr><td>隐式类型转换</td><td>等价于对列做了 CAST 运算</td><td>保证字面量类型与列类型一致（字符串加引号）</td></tr>
+      <tr><td>!= / &lt;&gt;</td><td>优化器估算匹配行数过多，代价高于全表扫描</td><td>能确定小结果集时改写为 IN 或范围条件</td></tr>
+      <tr><td>LIKE '%xxx'</td><td>前导通配符破坏了按前缀比较的有序性</td><td>尽量用 LIKE 'xxx%'，或引入全文索引/搜索引擎</td></tr>
+      <tr><td>OR 含无索引列</td><td>其中一侧必须全表扫描，索引失去意义</td><td>给相关列都建索引，或用 UNION 改写</td></tr>
+      <tr><td>联合索引未按最左前缀</td><td>跳过最左列，无法利用树的排序层级</td><td>调整 WHERE 顺序或索引列顺序，从最左列开始用</td></tr>
+      <tr><td>字符集/排序规则不一致</td><td>需要隐式转换字符集再比较</td><td>统一相关表列的字符集与 collation</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>索引失效不代表 SQL 写错了语法，它完全可以正常返回结果，只是执行效率退化——这也是它更隐蔽、更容易被忽视的原因。定位这类问题的第一反应应该是跑一遍 <code>EXPLAIN</code>，看 <code>type</code> 是否退化为 <code>ALL</code>，<code>key</code> 是否为 <code>NULL</code>。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"哪些情况会导致索引失效？" 建议按"对索引列做了运算/类型转换" "OR 破坏了可用性" "前导通配符破坏了有序性" "违反最左前缀" 四大类去组织答案，而不是死记零散的规则列表——面试官更看重你是否理解"有序性被破坏"这一根本原理。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>索引失效的本质只有一个：</strong>SQL 写法破坏了 B+ 树"按原始值有序排列"这一前提，优化器就没法利用有序性做快速定位。</li>
+    <li><strong>排查方法统一：</strong>先用 EXPLAIN 观察 type 和 key，再对照本文的场景清单逐一排查 SQL 写法。</li>
+    <li><strong>下一篇会讲：</strong>即使索引生效，排序和分组也可能触发 filesort/临时表，这是另一层需要关注的性能问题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./08-EXPLAIN执行计划详解.html" class="nav-btn">← EXPLAIN 执行计划详解</a>
+    <a href="./10-排序与分组的索引优化.html" class="nav-btn next">排序与分组的索引优化(filesort) →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>主从复制原理 — 复制与高可用</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #6b21a8; }
+  .nav-btn.next { color: #a78bfa; border-color: #6b21a8; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 复制与高可用 / 主从复制原理
+  </div>
+
+  <div class="hero">
+    <div class="tag">复制与高可用</div>
+    <h1>主从复制原理</h1>
+    <p>MySQL 复制的本质，是把主库上发生的"数据变更事件"以日志的形式流式传输给从库，再由从库重放一遍——这套机制撑起了读写分离、异地容灾、数据分析等几乎所有高可用架构。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    主从复制不是"主库把数据文件同步给从库"，而是<strong>主库把自己执行过的变更写成一份日志（binlog），从库把这份日志原样"重放"一遍</strong>，
+    从而让两边的数据最终保持一致。这是一种<strong>基于日志的异步事件流复制</strong>，而不是数据文件级别的同步。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>主库像一个记账本很勤快的老板，每做一笔生意就把流水记在账本（binlog）上；从库是分店，专门派一个"抄写员"（I/O 线程）盯着总店账本抄新增的流水到本地草稿本（relay log），
+    再派一个"记账员"（SQL 线程）照着草稿本把每一笔生意在本地重新做一遍。整个过程分店和总店之间没有直接拷贝数据文件，靠的全是这本流水账。
+  </div>
+
+  <h2>复制的三个核心角色与流程</h2>
+  <p>MySQL 复制涉及主库 1 个线程 + 从库 2 个线程，一共三个角色协同工作：</p>
+
+  <div class="tree">
+    <span class="hi">Master（主库）</span><br>
+    &nbsp;&nbsp;├─ 客户端执行写操作（INSERT/UPDATE/DELETE/DDL）<br>
+    &nbsp;&nbsp;├─ 事务提交时，把变更写入 <span class="hi">binlog</span>（二进制日志，顺序追加写）<br>
+    &nbsp;&nbsp;└─ <span class="hi">Binlog Dump 线程</span>：从库来连接后，主库为每个从库启动一个该线程，负责把 binlog 事件推送给从库<br>
+    <br>
+    <span class="hi">Slave（从库）</span><br>
+    &nbsp;&nbsp;├─ <span class="hi">I/O 线程</span>：连接主库，请求 binlog 内容，写入本地的 <span class="hi">relay log</span>（中继日志，格式与 binlog 一致）<br>
+    &nbsp;&nbsp;└─ <span class="hi">SQL 线程</span>（或多线程并行复制）：读取 relay log，在从库上重放这些变更，应用到自己的数据文件
+  </div>
+
+  <p>完整流程可以概括为四步：</p>
+  <ol>
+    <li><strong>主库写 binlog</strong>：事务提交（严格说是在 InnoDB 两阶段提交流程中），变更事件被写入 binlog 文件。</li>
+    <li><strong>从库 I/O 线程拉取</strong>：从库主动向主库发起连接（复制是"拉"模式而不是主库主动"推"给所有从库），请求从某个 binlog 位点（或 GTID）之后的内容，主库的 Binlog Dump 线程把新增内容发过去。</li>
+    <li><strong>写入 relay log</strong>：从库 I/O 线程收到的 binlog 事件，原样落盘到本地 relay log，这一步只是"抄写"，不做任何数据变更。</li>
+    <li><strong>SQL 线程重放</strong>：SQL 线程按顺序读取 relay log，把里面记录的变更在从库上重新执行一遍，数据才真正落到从库的表里。</li>
+  </ol>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多初学者以为主库和从库的数据是"实时同步"的，其实<strong>默认的复制模式是异步复制（Asynchronous Replication）</strong>——
+    主库提交事务后立刻返回给客户端，完全不关心从库有没有收到、有没有回放完，这中间必然存在一个时间差（也就是后面要讲的"主从延迟"）。
+    这是理解读写分离、高可用容灾方案的前提：默认情况下，从库的数据永远比主库"旧一点"。
+  </div>
+
+  <h2>binlog 和 redo log 是两回事</h2>
+  <p>
+    这是一个高频面试坑：redo log 是 InnoDB 存储引擎层的日志，只服务于崩溃恢复，保证事务的持久性（D），格式是物理页的变更记录，写满会循环覆盖，
+    从来不会跨机器传输。<strong>binlog 是 MySQL Server 层的日志</strong>，与存储引擎无关（哪怕是 MyISAM 也有 binlog），
+    专门用来做数据复制和基于时间点的恢复，日志不会被覆盖（除非手动清理或过期删除），可以传给别的实例重放。
+  </p>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>redo log</th><th>binlog</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>所属层</td><td>InnoDB 存储引擎层</td><td>MySQL Server 层</td></tr>
+      <tr><td>作用</td><td>崩溃恢复，保证持久性</td><td>数据复制、时间点恢复</td></tr>
+      <tr><td>内容</td><td>物理页变更（redo）</td><td>逻辑操作记录（statement/row/mixed）</td></tr>
+      <tr><td>写满后</td><td>循环覆盖（固定大小）</td><td>持续追加，不会覆盖</td></tr>
+      <tr><td>能否跨实例使用</td><td>不能</td><td>能，是复制的基础</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"redo log 和 binlog 有什么区别？为什么两份日志都要写？" 因为它们各司其职：redo log 保证单机崩溃后事务不丢；
+    binlog 让数据可以传播到其它实例。两者通过"两阶段提交（2PC）"机制保证一致——这个细节会在存储引擎内核 Tab 的 Redo Log 篇里详细展开，这里只需要知道二者是完全独立、职责不同的两套日志。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>复制的本质是"日志重放"</strong>，而不是文件同步，这决定了它天然是异步、有延迟的。</li>
+    <li><strong>三个角色（Binlog Dump 线程、I/O 线程、SQL 线程）协作，靠 binlog 和 relay log 两份日志解耦</strong>——即便网络短暂中断，从库也能从上次的位点继续拉取，不需要重新全量同步。</li>
+    <li><strong>默认是异步复制</strong>，这是后续讲半同步复制、主从延迟、读写分离的地基，务必先建立这个心智模型。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../innodb/09-InnoDB与MyISAM对比.html" class="nav-btn">← InnoDB 与 MyISAM 对比</a>
+    <a href="./02-binlog三种格式.html" class="nav-btn next">binlog 三种格式 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Change Buffer — 存储引擎内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 存储引擎内核 / Change Buffer
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">存储引擎内核</div>
+    <h1>Change Buffer</h1>
+    <p>普通二级索引的写入天然是"随机 I/O 重灾区"——Change Buffer 用"先记账、后对账"的思路，把这部分随机写攒起来批量处理。</p>
+  </div>
+
+  <!-- 问题 -->
+  <h2>要解决的问题：二级索引的随机写代价</h2>
+  <p>
+    一张表通常有一个聚簇索引（主键索引，数据按主键顺序物理存放）和若干二级索引（辅助索引）。当我们按主键递增插入数据时，聚簇索引的写入是<strong>顺序</strong>的——新行大概率追加在最后一个页；但二级索引的键值往往不按插入顺序排列（比如按 <code>name</code> 建的索引，`name` 的字典序和插入顺序毫无关系），所以对二级索引的写入几乎是<strong>随机</strong的，可能落在索引 B+ 树的任何一个叶子页上。
+  </p>
+  <p>
+    随机写的代价在于：如果目标页当前不在 Buffer Pool 里，按照"先读后写"的常规流程，就必须先发起一次<strong>随机磁盘 I/O</strong>把整页读进内存，才能在内存里完成这次小小的修改——为了改几个字节，付出一次完整的随机 I/O，性价比很低，尤其是在写密集的场景下会显著拖慢吞吐。
+  </p>
+
+  <!-- 方案 -->
+  <h2>解决方案：先记到 Change Buffer，稍后合并</h2>
+  <p>
+    InnoDB 的做法是：如果要修改的二级索引页<strong>不在 Buffer Pool 中</strong>，就不立即读盘，而是把这次修改（INSERT / UPDATE / DELETE 对应的变更）先记录到一块叫 <strong>Change Buffer</strong> 的内存结构里（它也会被持久化到系统表空间，防止宕机丢失）。等到将来这个页<strong>因为别的原因被读入 Buffer Pool</strong>时（比如一次查询命中了它），再把 Change Buffer 里堆积的多条变更一次性<strong>合并（merge）</strong>到这个页上。
+  </p>
+  <p>
+    合并的时机主要有三种：(1) 该页被正常的读请求带入 Buffer Pool 时顺带合并；(2) 后台有专门的合并线程定期扫描并合并；(3) MySQL 正常关闭（clean shutdown）时会执行一次合并。这样一来，原本"多次随机读+改"被压缩成了"攒批之后一次性合并"，大幅减少了随机 I/O 次数。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>Change Buffer 像是快递驿站的"代收登记簿"。快递员（写请求）不必每次都跑到你家楼上敲门确认（读盘），先在登记簿上记一笔"3 号楼 502 有一件包裹"；等你哪天下楼恰好经过驿站（页面被读入内存），驿站阿姨才把攒的好几笔记录一次性告诉你，你一并领走——比每来一件包裹就上楼跑一趟效率高得多。
+  </div>
+
+  <!-- 为什么唯一索引不行 -->
+  <h2>为什么唯一索引和聚簇索引不能用 Change Buffer</h2>
+  <p>
+    Change Buffer 只对<strong>非唯一的二级索引</strong>生效，对唯一索引（含主键/聚簇索引）无效，原因在于唯一性约束的检查方式：
+  </p>
+  <ul>
+    <li><strong>唯一索引</strong>在插入或修改时必须保证"这个键值在索引里独一无二"，也就是说<strong>必须立刻读取目标页，检查是否已经存在相同键值</strong>才能判断这次写入是否合法。这个"读页校验"的动作是没法延后的——一旦延后，就可能出现两个并发事务都以为某个值不存在、都成功写入，造成重复数据。既然唯一性校验已经强制要求立即读盘，Change Buffer"延迟写入、避免读盘"的价值就荡然无存了。</li>
+    <li><strong>聚簇索引（主键索引）</strong>本身通常是顺序写入（自增主键场景下几乎总是追加到最后一页），随机 I/O 问题本来就不严重，用 Change Buffer 收益有限；而且聚簇索引存放的是整行数据，直接关系到主键唯一性检查，同样需要立即读页。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么唯一索引不能使用 Change Buffer？" 标准答案：唯一索引写入前必须读取目标页判断是否违反唯一约束，这个校验无法推迟，只要读页就已经产生了随机 I/O，Change Buffer 想要"避免立即读页"的初衷就无法达成，因此只有非唯一二级索引才能享受这个优化。
+  </div>
+
+  <!-- 参数 -->
+  <h2>相关参数</h2>
+  <table>
+    <thead>
+      <tr><th>参数</th><th>作用</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>innodb_change_buffer_max_size</code></td>
+        <td>Change Buffer 最多可占用 Buffer Pool 的百分比，默认 25，最大可调到 50。设太大会挤占正常的数据缓存空间。</td>
+      </tr>
+      <tr>
+        <td><code>innodb_change_buffering</code></td>
+        <td>控制对哪些操作类型启用 Change Buffer，可选 <code>all</code>、<code>inserts</code>、<code>deletes</code>、<code>changes</code>、<code>purges</code>、<code>none</code> 等，默认 <code>all</code>。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 对比 -->
+  <h2>适用场景对比</h2>
+  <table>
+    <thead>
+      <tr><th>索引类型</th><th>写入模式</th><th>能否用 Change Buffer</th><th>原因</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>非唯一二级索引</td>
+        <td>键值分布随机，写入常落在随机页</td>
+        <td>可以</td>
+        <td>无需立即校验，可延迟合并，收益最大</td>
+      </tr>
+      <tr>
+        <td>唯一二级索引</td>
+        <td>同样可能随机，但需要唯一性校验</td>
+        <td>不可以</td>
+        <td>必须立即读页判重，延迟写入的前提不成立</td>
+      </tr>
+      <tr>
+        <td>聚簇索引（主键）</td>
+        <td>自增场景下多为顺序写</td>
+        <td>不可以</td>
+        <td>本身随机 I/O 少，且承载唯一性校验</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"Change Buffer 能让所有写操作都变快。" 实际上它只对目标页<strong>不在 Buffer Pool 中</strong>的非唯一二级索引写入有效。如果实例内存充足、热数据都常驻在 Buffer Pool（例如整个数据库都是热点数据的中小型库），大部分写入本就命中内存，Change Buffer 的优化空间自然有限；反而在这种场景下 Change Buffer 占用的内存可能不如直接给 Buffer Pool 更划算。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Change Buffer 的本质是"写合并"</strong>：把分散的随机写攒批，延迟到页面被读入内存时再合并，减少随机 I/O 次数。</li>
+    <li><strong>只对非唯一二级索引生效</strong>，唯一性校验的强约束决定了它无法适用于唯一索引和聚簇索引。</li>
+    <li>与 <a href="./04-UndoLog与回滚.html" style="color:#4ade80;">Undo Log</a> 不同，Change Buffer 优化的是"写入路径的 I/O 效率"，而不涉及事务回滚或多版本可见性，二者是完全独立的机制，不要混淆。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-UndoLog与回滚.html" class="nav-btn">← Undo Log 与回滚</a>
+    <a href="./06-两次写机制.html" class="nav-btn next">两次写机制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

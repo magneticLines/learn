@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>覆盖索引 — 索引与执行计划</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #7c4a10; }
+  .nav-btn.next { color: #38bdf8; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 索引与执行计划 / 覆盖索引
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">索引与执行计划</div>
+    <h1>覆盖索引</h1>
+    <p>索引下推减少的是"不必要的回表次数"，覆盖索引则更激进——如果查询需要的数据二级索引里已经全部具备，那就干脆<strong>一次回表都不用</strong>。这是减少回表这件事能做到的极限。</p>
+  </div>
+
+  <!-- 核心原理 -->
+  <h2>核心原理：二级索引叶子节点里到底有什么</h2>
+  <p>
+    回忆第 3 篇讲过的知识：InnoDB 的二级索引叶子节点里存的不是完整行数据，而是<strong>索引列本身的值 + 该行的主键值</strong>。
+    正常查询如果 SELECT 的列超出了索引本身包含的范围，就必须拿着这个主键值回到聚簇索引（主键索引）里再查一次完整行，这就是"回表"。
+  </p>
+  <p>
+    但如果反过来想：<strong>如果 SELECT 需要的所有列，恰好都已经包含在这个二级索引的叶子节点里（索引列 + 主键值），那压根不需要回表</strong>——
+    直接从二级索引的叶子节点上就能拼出查询结果。这种"索引本身就覆盖了查询所需全部数据"的情况，就叫<strong>覆盖索引（Covering Index）</strong>。
+  </p>
+
+  <!-- 例子1 -->
+  <h3>例子一：单列索引覆盖主键查询</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>覆盖索引示例：只查 id 和索引列本身</span></div>
+    <pre><span class="kw">CREATE</span> <span class="kw">INDEX</span> idx_name <span class="kw">ON</span> user<span class="punct">(</span>name<span class="punct">)</span><span class="punct">;</span>
+
+<span class="kw">SELECT</span> id<span class="punct">,</span> name <span class="kw">FROM</span> user <span class="kw">WHERE</span> name <span class="punct">=</span> <span class="str">'张三'</span><span class="punct">;</span>
+<span class="com">-- idx_name 的叶子节点存的就是 (name, 主键id)
+-- SELECT 需要的两列 id、name，二级索引的叶子节点上天然就有，完全不用回表查聚簇索引</span></pre>
+  </div>
+
+  <!-- 例子2 -->
+  <h3>例子二：联合索引覆盖多列查询</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>覆盖索引示例：联合索引覆盖更多列</span></div>
+    <pre><span class="kw">CREATE</span> <span class="kw">INDEX</span> idx_name_age <span class="kw">ON</span> user<span class="punct">(</span>name<span class="punct">,</span> age<span class="punct">)</span><span class="punct">;</span>
+
+<span class="kw">SELECT</span> id<span class="punct">,</span> name<span class="punct">,</span> age <span class="kw">FROM</span> user <span class="kw">WHERE</span> name <span class="punct">=</span> <span class="str">'张三'</span><span class="punct">;</span>
+<span class="com">-- idx_name_age 叶子节点存 (name, age, 主键id)，SELECT 的 id、name、age 三列全部命中
+-- 即使 age 不在 WHERE 条件里，只要它出现在联合索引里，也照样能被"顺手"覆盖</span></pre>
+  </div>
+
+  <!-- 如何确认 -->
+  <h2>如何用 EXPLAIN 确认覆盖索引生效</h2>
+  <p>
+    <code>EXPLAIN</code> 的 <code>Extra</code> 列出现 <strong><code>Using index</code></strong>（注意不是 <code>Using index condition</code>，两者含义完全不同），就说明覆盖索引生效，查询没有回表：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>EXPLAIN 验证覆盖索引</span></div>
+    <pre><span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> id<span class="punct">,</span> name <span class="kw">FROM</span> user <span class="kw">WHERE</span> name <span class="punct">=</span> <span class="str">'张三'</span><span class="punct">;</span>
+
+<span class="com">-- 关键结果列（节选）：
+-- key: idx_name
+-- Extra: Using index      -- 表示整个查询只靠二级索引就完成，无需回表</span></pre>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Extra 值</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Using index</code></td>
+        <td>覆盖索引生效，查询所需全部列都从二级索引里直接拿到，无需回表。性能最优的信号之一。</td>
+      </tr>
+      <tr>
+        <td><code>Using index condition</code></td>
+        <td>索引下推（ICP）生效：存储引擎在遍历索引时就地过滤了部分条件，但仍需要回表补全其余列。（上一篇内容）</td>
+      </tr>
+      <tr>
+        <td><code>Using where</code></td>
+        <td>取到数据后（不管是否回表），还需要在 Server 层用 WHERE 条件再过滤一遍，说明有条件没能在存储引擎层处理掉。</td>
+      </tr>
+      <tr>
+        <td><code>Using filesort</code></td>
+        <td>排序无法依靠索引顺序完成，需要额外排序（内存或磁盘），通常是性能优化的重点对象，后续文章会展开细讲。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>生活类比：</strong>普通二级索引查询就像去图书馆先查目录卡片找到书架位置（索引定位），再走到书架把整本书取下来翻阅（回表）。覆盖索引则相当于目录卡片上直接把你要的内容（比如书名、作者、页数）都印好了，你查完卡片扭头就走，根本不用去书架，因为卡片上的信息已经够用了。
+  </div>
+
+  <!-- 陷阱 -->
+  <h2>常见陷阱</h2>
+  <div class="callout warn">
+    <strong>陷阱一：<code>SELECT *</code> 几乎不可能覆盖索引。</strong>
+    覆盖索引要求 SELECT 的所有列都存在于索引本身，而 <code>SELECT *</code> 意味着要取出表的全部列——除非这个索引恰好包含了表的所有列（现实中几乎不会这么设计），
+    否则一定会有列缺失，必然触发回表。这也是"不推荐使用 <code>SELECT *</code>"的一个重要工程原因：写清楚实际需要的列，才有可能吃到覆盖索引的红利。
+  </div>
+  <div class="callout warn">
+    <strong>陷阱二：不要为了凑覆盖索引盲目把很多列塞进联合索引。</strong>
+    索引不是越"宽"越好——每多一列，索引本身占用的存储空间就更大，写入（<code>INSERT</code>/<code>UPDATE</code>/<code>DELETE</code>）时需要同步维护的索引结构也更多，
+    也就是常说的"写放大"。是否值得为了某个高频查询专门加宽联合索引来换取覆盖索引效果，需要综合权衡查询频率、写入频率和索引维护成本，而不是看到"能覆盖"就无脑加列。
+  </div>
+
+  <!-- 建立联系 -->
+  <h2>与相邻知识点的联系</h2>
+  <p>
+    覆盖索引、索引下推、回表三者的关系可以这样串联：<strong>回表</strong>（第 3 篇）是二级索引查询的默认代价；<strong>索引下推</strong>（第 5 篇）在无法避免部分回表的前提下，
+    尽量减少不必要的回表次数；而<strong>覆盖索引</strong>是终极方案——直接让回表这个动作彻底消失。三者本质上都是围绕"如何降低二级索引查询相对于聚簇索引查询的额外代价"这个核心问题展开的不同层次的优化手段。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"什么是覆盖索引，为什么能提升性能？" 标准回答：查询所需的全部列都能从二级索引的叶子节点直接获取（索引列 + 隐含的主键值），不需要再回聚簇索引查完整行，
+    因此省去了一次额外的随机 IO（或缓冲池查找），可以通过 <code>EXPLAIN</code> 的 <code>Extra</code> 列出现 <code>Using index</code> 来验证。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>覆盖索引的本质：</strong>查询所需数据在二级索引叶子节点里已经齐全，无需回表查聚簇索引。</li>
+    <li><strong>验证方式：</strong><code>EXPLAIN</code> 的 <code>Extra</code> 列出现 <code>Using index</code>。</li>
+    <li><strong>工程取舍：</strong>覆盖索引能带来显著的读性能提升，但索引越宽写放大越严重，需要结合实际读写比例权衡，而不是盲目追求"全覆盖"。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-索引下推.html" class="nav-btn">← 索引下推(ICP)</a>
+    <a href="./07-哈希索引与自适应哈希索引.html" class="nav-btn next">哈希索引与自适应哈希索引 →</a>
+  </div>
+
+</div>
+</body>
+</html>

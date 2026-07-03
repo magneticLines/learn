@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Checkpoint 机制 — 存储引擎内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 存储引擎内核 / Checkpoint 机制
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">存储引擎内核</div>
+    <h1>Checkpoint 机制</h1>
+    <p>redo log 是一个大小固定的环形文件，它既不能无限写下去，也不能随意覆盖——checkpoint 就是在"写不下"和"覆盖了会丢数据"之间找平衡点的机制。</p>
+  </div>
+
+  <!-- 为什么需要 checkpoint -->
+  <h2>问题的起点：重启后要重放多久的日志？</h2>
+  <p>
+    回忆 <a href="./03-RedoLog与WAL机制.html">上一篇讲的 WAL 机制</a>：InnoDB 修改数据页时，先把"物理修改记录"顺序写进 redo log，
+    再由后台线程慢慢把脏页刷到磁盘。如果数据库突然宕机重启，就需要靠 redo log 把脏页丢失的修改<strong>重放（redo）</strong>回来。
+  </p>
+  <p>
+    但如果没有 checkpoint，重放该从哪里开始？唯一安全的答案是"从 redo log 文件最开头开始"——因为你不知道哪些修改已经落盘、哪些还没有。
+    对一个运行了几个月、写入量巨大的生产库来说，这意味着每次崩溃恢复都要把海量历史日志全部重放一遍，耗时可能是灾难性的。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>checkpoint 就像你写日记时定期夹的一张书签——"书签之前的内容我已经全部誊抄到正式笔记本上了（落盘），万一日记本丢了几页，
+    我只需要从书签开始的部分回忆重写，前面的不用管。"
+  </div>
+
+  <!-- checkpoint LSN 与 flush list -->
+  <h2>核心概念：Checkpoint LSN 与 Flush List</h2>
+  <p>
+    InnoDB 用 <strong>LSN（Log Sequence Number，日志序列号）</strong>标记每一条 redo log 记录在整个日志流中的绝对位置，LSN 单调递增。
+    <strong>Checkpoint LSN</strong> 是一个承诺："所有 LSN 小于它的修改，对应的数据页都已经安全落盘"。
+  </p>
+  <p>
+    要知道当前哪些页还没落盘，InnoDB 在 Buffer Pool 中维护一个 <strong>flush list</strong>：把所有脏页按照它们"第一次被修改时对应的 LSN"从小到大排序。
+    flush list 表头永远是最老、修改时间最早的脏页——它对应的 LSN 就是决定 checkpoint 能推进到哪里的关键：
+    checkpoint LSN 最多只能推进到 <code>flush list 中最老脏页的 LSN</code>，因为再往后就意味着"承诺已落盘"但实际还没有。
+  </p>
+
+  <!-- fuzzy checkpoint -->
+  <h2>为什么是"模糊检查点"而不是"停机检查点"</h2>
+  <p>
+    最简单粗暴的 checkpoint 方式是：暂停所有写入，把 Buffer Pool 里所有脏页一次性刷完，再把 checkpoint LSN 推到最新——这叫
+    <strong>sharp checkpoint（尖锐检查点）</strong>。问题很明显：刷盘期间数据库完全不可写，对在线业务是不可接受的停顿。
+  </p>
+  <p>
+    InnoDB 采用的是 <strong>fuzzy checkpoint（模糊检查点）</strong>：后台线程持续、增量地刷一小批脏页，每刷完一批就把 checkpoint LSN 往前推进一点，
+    整个过程与正常的读写业务并发进行，不需要停机。这也是为什么 InnoDB 会在多种场景下触发局部刷脏，例如：
+  </p>
+  <ul>
+    <li><strong>master thread 周期性刷脏</strong>：后台线程按一定比例定期刷一批最老的脏页；</li>
+    <li><strong>脏页比例过高时刷脏</strong>：Buffer Pool 中脏页占比超过阈值，主动多刷一些，避免脏页堆积到无法控制；</li>
+    <li><strong>redo log 空间紧张时刷脏</strong>：这是本文最重要的一种，见下节。</li>
+  </ul>
+
+  <!-- redo log 覆盖规则 -->
+  <h2>Checkpoint 与 redo log 复用：谁在等谁</h2>
+  <p>
+    redo log 文件（<code>ib_logfile0</code>、<code>ib_logfile1</code> ...）是<strong>大小固定的循环写文件</strong>：写到最后一个文件末尾后，
+    会绕回第一个文件开头继续写，覆盖旧内容。这就产生一条铁律：
+  </p>
+  <div class="callout warn">
+    <strong>核心规则：</strong>redo log 中 <strong>checkpoint LSN 之前的部分才允许被新日志覆盖</strong>。
+    因为 checkpoint 之前的修改已经保证落盘到数据页了，这段日志"任务已完成"，可以安全丢弃；而 checkpoint 之后的部分，是这些修改<strong>唯一还存在的记录</strong>
+    （数据页本身还没改完/没刷盘），一旦被覆盖，宕机后就再也无法恢复这部分修改，直接导致数据丢失。
+  </div>
+  <p>
+    由此可以推出一个容易被忽视的生产事故场景：如果写入速度远快于 checkpoint 推进速度（比如刷脏跟不上、或者一个大事务长时间不提交导致脏页无法刷出），
+    redo log 会写到"追上"checkpoint LSN 的位置——环形缓冲区绕了一圈又追上了自己的尾巴，再往前写就会覆盖还未落盘的修改。
+    这时 InnoDB 会被迫<strong>让新的写事务同步等待，强制推进 checkpoint（同步刷脏）</strong>，表现为应用侧写入延迟骤增甚至短暂卡顿。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"redo log 写满了会怎样？" 准确说法不是"写满"，而是"写入追上了 checkpoint"——此时 InnoDB 必须停下来先把老脏页刷盘、
+    推进 checkpoint 腾出空间，写入线程会被阻塞，这是生产环境常见的"写入毛刺"根因之一。排查思路：观察 <code>innodb_log_file_size</code> 是否过小、
+    是否有超大事务或刷脏跟不上写入速度。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>缩短崩溃恢复时间：</strong>恢复只需从 checkpoint LSN 开始重放，而不是从日志起点全量重放。</li>
+    <li><strong>释放 redo log 空间：</strong>checkpoint 之前的日志空间可以被覆盖复用，环形文件才能持续循环写下去。</li>
+    <li><strong>模糊检查点是并发与安全的折中：</strong>增量刷脏、增量推进，避免停机式刷盘，但也意味着推进速度有上限，写入压力过大时会反过来限流写入。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./06-两次写机制.html" class="nav-btn">← 两次写机制</a>
+    <a href="./08-崩溃恢复流程.html" class="nav-btn next">崩溃恢复流程 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分库分表的路由策略 — 数据库扩展性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c4a10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 扩展性 / 分库分表的路由策略
+  </div>
+
+  <div class="hero">
+    <div class="tag">扩展性</div>
+    <h1>分库分表的路由策略</h1>
+    <p>决定一行数据"该去哪个分片"的规则，是分库分表方案里最难反悔的一次决定——选错了，扩容那天就是噩梦的开始。</p>
+  </div>
+
+  <h2>路由策略要解决什么问题</h2>
+  <p>
+    上一篇讲到，水平拆分把一张大表的数据分散到多个分片里。但数据分散之后，<strong>应用层写入或查询一行数据时，怎么知道它在哪个分片？</strong>
+    这就是路由策略要回答的问题：给定一个分片键（sharding key，比如 <code>user_id</code>），用一个确定性的规则算出它落在哪个分片。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>路由策略就像图书馆给书编索书号的规则。按书名首字母分区（类似 hash）取书很快但很难"腾出一个新书架"；按入库时间分区（类似 range）方便加新书架，但热门新书全挤在最新那个区，其他区门可罗雀（数据倾斜）。
+  </div>
+
+  <h2>方案一：hash 路由</h2>
+  <p>对分片键做哈希运算，再对分片数量取模，决定数据落在哪个分片。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>hash 路由示例</span></div>
+    <pre><span class="com">-- 分片键 user_id，共 4 个分片</span>
+shard_index = <span class="fn">hash</span>(user_id) % <span class="num">4</span>
+
+<span class="com">-- user_id = 1001 → hash(1001) % 4 = 1  → 落在 order_1</span>
+<span class="com">-- user_id = 1002 → hash(1002) % 4 = 2  → 落在 order_2</span></pre>
+  </div>
+  <p><strong>优点：</strong>数据分布非常均匀，几乎不会出现某个分片数据量远超其他分片的"热点"问题。</p>
+  <div class="callout warn">
+    <strong>致命缺点：</strong>取模运算和分片数量强绑定。分片数从 4 扩容到 8，几乎所有数据的 <code>hash % N</code> 结果都会变化，
+    意味着<strong>绝大部分数据都要重新计算位置并迁移</strong>——这就是"扩容需要迁移大量数据"痛点的根源。这跟 Java 里 <code>HashMap</code> 扩容时重新计算桶位置、触发大量 rehash 是同一个道理。
+  </div>
+
+  <h2>方案二：range 路由</h2>
+  <p>按分片键的值区间划分，比如按 <code>user_id</code> 的范围分段，或按时间范围分表（常见于订单表按月分表）。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>range 路由示例</span></div>
+    <pre><span class="com">-- 按 user_id 区间分片</span>
+[<span class="num">0</span>, <span class="num">1000000</span>)     → shard_0
+[<span class="num">1000000</span>, <span class="num">2000000</span>) → shard_1
+[<span class="num">2000000</span>, <span class="num">3000000</span>) → shard_2
+<span class="com">-- 扩容时只需新增一个区间段，例如 [3000000, 4000000) → shard_3</span>
+<span class="com">-- 老数据完全不用动，新数据自然落到新分片</span></pre>
+  </div>
+  <p><strong>优点：</strong>扩容极其简单，只需要新增一个区间映射到新分片，历史数据不需要迁移；范围查询（比如按时间区间查订单）效率也很高，因为数据在物理上连续存放。</p>
+  <div class="callout warn">
+    <strong>致命缺点：</strong>容易出现<strong>数据倾斜</strong>——新注册用户、新订单集中在最新的分片，老分片逐渐冷却成"僵尸分片"，新分片则持续高负载，起不到真正分流的作用。电商大促期间新订单暴增更会加剧这种不均衡。
+  </div>
+
+  <h2>方案三：一致性哈希</h2>
+  <p>
+    一致性哈希是对 hash 路由痛点的改良：把哈希值空间抽象成一个环（0 ~ 2³²-1），每个分片节点在环上占据若干个位置，数据按哈希值顺时针找到最近的节点。
+  </p>
+  <div class="tree">
+    <span class="hi">一致性哈希环</span><br>
+    &nbsp;&nbsp;0 ────────────────────── 2³²-1<br>
+    &nbsp;&nbsp;│      │         │          │<br>
+    &nbsp;&nbsp;node-A  node-B    node-C    (回到 node-A)<br>
+    &nbsp;&nbsp;数据落点顺时针找最近的 node，新增 node-D 只影响相邻区间的一小部分数据
+  </div>
+  <p>
+    <strong>核心优势：</strong>新增或删除一个节点时，只有该节点相邻区间的数据需要迁移，<strong>不会像普通 hash 取模那样引发全量数据搬迁</strong>。
+    为了避免节点分布不均导致的数据倾斜，实践中通常引入<strong>虚拟节点</strong>（每个物理节点在环上映射成几百个虚拟节点），让数据分布更均匀。
+  </p>
+  <div class="callout tip">
+    <strong>联系已学：</strong>一致性哈希不是数据库独有的发明，Redis Cluster、分布式缓存、CDN 节点选择都在用同一套思想解决"增删节点尽量少影响已有数据"的问题。
+  </div>
+
+  <h2>三种方案对比</h2>
+  <table>
+    <thead>
+      <tr><th>路由策略</th><th>数据均匀性</th><th>扩容代价</th><th>范围查询效率</th><th>典型场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>hash 路由</td>
+        <td>很均匀</td>
+        <td>高（几乎全量数据迁移）</td>
+        <td>差（数据打散，无法利用区间）</td>
+        <td>分片数量长期固定的场景</td>
+      </tr>
+      <tr>
+        <td>range 路由</td>
+        <td>容易倾斜</td>
+        <td>低（新增区间即可）</td>
+        <td>好（区间数据物理连续）</td>
+        <td>按时间归档的日志表、订单表</td>
+      </tr>
+      <tr>
+        <td>一致性哈希</td>
+        <td>较均匀（配合虚拟节点）</td>
+        <td>低（只影响相邻区间）</td>
+        <td>差</td>
+        <td>节点会动态增减的分布式存储/缓存</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"分片数量定小一点没关系，不够了再加。" 恰恰相反——如果用的是普通 hash 取模路由，分片数量一旦要变化，代价极其高昂（需要停机或双写迁移几乎全部数据）。工程上常见的做法是<strong>预分片</strong>：一开始就按未来 3-5 年的数据量规划出足够多的逻辑分片（比如 1024 个逻辑分片），再把多个逻辑分片映射到少量物理库上；后续物理扩容时只需要迁移部分逻辑分片，而不用重新计算路由规则。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"分库分表扩容为什么困难？" 核心原因是路由规则和物理分片数量绑定，一旦分片数变化，路由结果全部失效，需要重新计算并迁移数据。一致性哈希和预分片都是为了缓解这个问题而生的工程手段。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>hash 路由</strong>换来分布均匀，代价是扩容困难。</li>
+    <li><strong>range 路由</strong>换来扩容简单，代价是容易数据倾斜。</li>
+    <li><strong>一致性哈希</strong>是二者的折中，用虚拟节点缓解倾斜，用环形结构缓解扩容代价。</li>
+    <li>路由策略是分库分表方案里最难事后修改的决定，选型前必须想清楚未来的扩容路径。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-垂直拆分与水平拆分.html" class="nav-btn">← 垂直拆分与水平拆分</a>
+    <a href="./03-分布式ID生成方案.html" class="nav-btn next">分布式 ID 生成方案 →</a>
+  </div>
+
+</div>
+</body>
+</html>

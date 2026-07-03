@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>InnoDB 体系结构总览 — 存储引擎内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 存储引擎内核 / InnoDB 体系结构总览
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">存储引擎内核</div>
+    <h1>InnoDB 体系结构总览</h1>
+    <p>前面几个 Tab 讲的 SQL 执行、事务 ACID、MVCC，全部要靠 InnoDB 这套存储引擎在底层落地。这一篇先画一张"全景地图"，把内存和磁盘上的各个部件摆清楚，后面每一篇再逐个深挖。</p>
+  </div>
+
+  <!-- 为什么要先看全景 -->
+  <h2>为什么要先建立全景图</h2>
+  <p>
+    事务 Tab 里讲过：<strong>持久性（Durability）</strong>要求事务提交后数据不能丢，<strong>MVCC</strong>要求能读到"历史版本"的数据（参见
+    <code>../transaction/06-MVCC原理.html</code>）。这些能力都不是抽象概念，而是由 InnoDB 内部一组具体的内存结构和磁盘文件配合实现的。
+    如果不知道这些部件叫什么、各自负责什么，后面讲 Redo Log 为什么能保证持久性、Undo Log 为什么能实现多版本，就成了"知其然不知其所以然"。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>把 InnoDB 想象成一个仓库管理系统。内存里的 Buffer Pool 是"前台货架"（常用货品放这里，取用飞快）；磁盘上的表空间是"仓库总库存"（容量大但存取慢）；Redo Log 是"出入库流水账"（先记账后搬货，保证账目不丢）；Undo Log 是"退货凭证"（记录改动前的样子，随时能退回去）。
+  </div>
+
+  <!-- 整体架构图 -->
+  <h2>整体架构：内存结构 + 磁盘结构</h2>
+  <p>InnoDB 的体系结构官方文档分为两大块：<strong>In-Memory Structures（内存结构）</strong>和<strong>On-Disk Structures（磁盘结构）</strong>。内存结构负责加速，磁盘结构负责持久化，二者通过刷盘（flush）和恢复（recovery）机制联系在一起。</p>
+
+  <div class="tree">
+    <span class="hi">InnoDB 存储引擎</span><br>
+    &nbsp;&nbsp;├─ <span class="hi">内存结构（In-Memory）</span><br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;├─ Buffer Pool（缓冲池：缓存表数据页 / 索引页，减少磁盘 I/O）→ 详见 02<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;├─ Change Buffer（写缓冲：缓存对非唯一二级索引的修改）→ 详见 05<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;├─ Adaptive Hash Index（自适应哈希索引：为热点页自动建哈希）<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;└─ Log Buffer（日志缓冲：暂存 Redo Log 记录，减少刷盘次数）→ 详见 03<br>
+    &nbsp;&nbsp;└─ <span class="hi">磁盘结构（On-Disk）</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 表空间 Tablespace（系统表空间 / 独立表空间 .ibd：存放表数据、索引、Undo 等）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ Redo Log 文件（ib_logfile：物理日志，保证持久性）→ 详见 03<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ Undo Log（回滚日志：保存修改前的旧版本，用于回滚与 MVCC）→ 详见 04<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ Doublewrite Buffer 文件（双写缓冲：防止页写入过程中损坏）→ 详见 06
+  </div>
+
+  <!-- 各组件速览 -->
+  <h2>各组件速览</h2>
+  <table>
+    <thead>
+      <tr><th>组件</th><th>位置</th><th>核心作用</th><th>后续文章</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Buffer Pool</strong></td><td>内存</td><td>缓存磁盘页，把随机 I/O 尽量变成内存访问；改进版 LRU 防止全表扫描污染热点数据</td><td>02</td></tr>
+      <tr><td><strong>Redo Log</strong></td><td>内存 Log Buffer + 磁盘 ib_logfile</td><td>WAL 机制的核心，记录"物理修改"，保证事务持久性、支撑崩溃恢复</td><td>03</td></tr>
+      <tr><td><strong>Undo Log</strong></td><td>磁盘（独立表空间或系统表空间）</td><td>记录修改前的旧值，用于事务回滚，也是 MVCC 构造历史版本的数据来源</td><td>04</td></tr>
+      <tr><td><strong>Change Buffer</strong></td><td>内存 + 磁盘（系统表空间持久化）</td><td>缓存对不在 Buffer Pool 中的二级索引页的修改，合并写操作减少随机 I/O</td><td>05</td></tr>
+      <tr><td><strong>Doublewrite Buffer</strong></td><td>内存 + 磁盘</td><td>解决"页写入过程中宕机导致页损坏（partial page write）"问题</td><td>06</td></tr>
+      <tr><td><strong>Checkpoint</strong></td><td>机制（跨内存与磁盘）</td><td>定期把脏页刷盘，标记 Redo Log 哪些部分可以被覆盖复用</td><td>07</td></tr>
+      <tr><td><strong>Crash Recovery</strong></td><td>机制</td><td>宕机重启后，结合 Redo Log 和 Undo Log 恢复到一致状态</td><td>08</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 与事务 Tab 的联系 -->
+  <h2>和事务 Tab 的呼应</h2>
+  <p>
+    事务 Tab 讲 ACID 时（见 <code>../transaction/01-事务的ACID特性.html</code>），"持久性"和"原子性"听起来像是两条抽象的保证，但落到 InnoDB 内部，其实分别对应两个具体的日志：
+  </p>
+  <ul>
+    <li><strong>持久性（Durability）</strong> 由 <strong>Redo Log</strong> 保证：只要日志刷盘成功，即便数据页还没落盘、进程崩溃，重启后也能靠日志"重做"出正确的数据页。</li>
+    <li><strong>原子性（Atomicity）</strong> 很大程度上由 <strong>Undo Log</strong> 保证：事务失败或主动回滚时，靠 Undo Log 把已经做的修改撤销，让事务要么全做要么全不做。</li>
+    <li><strong>MVCC</strong>（见 <code>../transaction/06-MVCC原理.html</code>）读取"历史版本"时，走的正是 Undo Log 链——这也是为什么 Undo Log 不能被无限制地及时删除，必须等所有可能用到它的事务都结束。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"MySQL 的 InnoDB 引擎，一条 UPDATE 语句执行时都发生了什么？" 标准答案的骨架就是把这张全景图串起来：先在 Buffer Pool 里定位/加载数据页 → 记录 Undo Log（为回滚和 MVCC 做准备）→ 修改内存中的数据页（此时是脏页）→ 记录 Redo Log 到 Log Buffer → 事务提交时按 <code>innodb_flush_log_at_trx_commit</code> 策略刷盘 Redo Log → 脏页由后台线程或 Checkpoint 机制异步刷回磁盘。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"数据是不是每次 COMMIT 都会立刻写到 .ibd 数据文件里？"
+    不是。真正立刻（同步）落盘的是 <strong>Redo Log</strong>（在默认配置下），而承载真实数据的表空间文件是<strong>异步、批量、延迟</strong>刷盘的，由后台线程根据 Buffer Pool 的脏页比例、Checkpoint 进度等条件决定何时刷。这正是 WAL（Write-Ahead Logging）机制的精髓：把"随机写数据页"转换成"顺序写日志"，具体原理在 03 篇详细展开。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>内存结构负责快：</strong>Buffer Pool、Change Buffer、Adaptive Hash Index 都是为了减少磁盘 I/O 这一最大的性能瓶颈。</li>
+    <li><strong>磁盘结构负责稳：</strong>表空间存真实数据，Redo Log 和 Undo Log 分别为持久性和原子性/MVCC 兜底。</li>
+    <li><strong>接下来的每一篇，都是在这张全景图里"放大"某一个方块</strong>——建议按 02 → 08 的顺序阅读，最终会重新拼出一条完整的事务执行与崩溃恢复链路。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../transaction/09-分布式事务简介.html" class="nav-btn">← 分布式事务简介</a>
+    <a href="./02-BufferPool原理.html" class="nav-btn next">Buffer Pool 原理 →</a>
+  </div>
+
+</div>
+</body>
+</html>

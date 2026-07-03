@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EXPLAIN 执行计划详解 — 索引与执行计划</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #7c4a10; }
+  .nav-btn.next { color: #38bdf8; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 索引与执行计划 / EXPLAIN 执行计划详解
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">索引与执行计划</div>
+    <h1>EXPLAIN 执行计划详解</h1>
+    <p>SQL 慢不慢，靠猜没有用。<code>EXPLAIN</code> 是优化器"翻译"给你看的执行计划，读懂它的每一列，才能知道一条查询到底走没走索引、走的对不对、扫了多少行。这是索引调优里投入产出比最高的一项技能。</p>
+  </div>
+
+  <!-- 概览 -->
+  <h2>EXPLAIN 是什么：优化器决策的"体检报告"</h2>
+  <p>
+    执行一条 <code>SELECT</code> 语句之前，MySQL 优化器会根据表的统计信息（行数估算、索引基数等）生成若干种可能的执行方案，
+    并从中挑选一个<strong>它认为代价最小</strong>的方案去真正执行。<code>EXPLAIN</code> 不会真正执行这条语句（不算 <code>EXPLAIN ANALYZE</code>），
+    而是把优化器"打算怎么做"这份计划原样打印出来，让你能审查优化器的决策是否合理。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL</span></div>
+    <pre><span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">employees</span> <span class="kw">WHERE</span> <span class="var">emp_no</span> <span class="punct">=</span> <span class="num">10001</span><span class="punct">;</span></pre>
+  </div>
+  <div class="callout info">
+    <strong>生活类比：</strong><code>EXPLAIN</code> 就像导航软件在你出发前给出的"预计路线"——它会告诉你走高速还是走小路（对应 <code>type</code>）、预计经过多少个红绿灯（对应 <code>rows</code>），但这只是"预案"，真实路况（真实数据分布变化）可能让预计和实际有出入。
+  </div>
+
+  <!-- 列总览表 -->
+  <h2>输出列总览</h2>
+  <table>
+    <thead>
+      <tr><th>列名</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>id</code></td><td>查询中每个 SELECT 子句的执行顺序标识</td></tr>
+      <tr><td><code>select_type</code></td><td>查询类型：简单查询、子查询、联合查询等</td></tr>
+      <tr><td><code>table</code></td><td>该行数据是关于哪张表的</td></tr>
+      <tr><td><code>partitions</code></td><td>匹配到的分区（未分区表显示 NULL）</td></tr>
+      <tr><td><code>type</code></td><td>本次查询的访问类型，性能等级的核心指标</td></tr>
+      <tr><td><code>possible_keys</code></td><td>优化器认为"可能用得上"的索引候选列表</td></tr>
+      <tr><td><code>key</code></td><td>优化器实际选择使用的索引</td></tr>
+      <tr><td><code>key_len</code></td><td>实际使用的索引长度（字节数），可反推用了联合索引的几列</td></tr>
+      <tr><td><code>ref</code></td><td>与索引比较的是常量还是某个字段（列出该字段）</td></tr>
+      <tr><td><code>rows</code></td><td>优化器估算本次查询需要扫描的行数</td></tr>
+      <tr><td><code>filtered</code></td><td>按条件过滤后剩余行数的百分比估算</td></tr>
+      <tr><td><code>Extra</code></td><td>其他补充信息，很多重要线索都在这一列</td></tr>
+    </tbody>
+  </table>
+
+  <!-- id -->
+  <h2>id：执行顺序标识</h2>
+  <p>
+    <code>id</code> 相同时，表示这几行是同一个查询块内的多表关联，<strong>按从上到下的顺序执行</strong>（即书写顺序通常等于驱动表顺序，但最终由优化器决定）；
+    <code>id</code> 不同时，<strong>id 值越大的查询越先被执行</strong>——这是很多人容易搞反的地方，原因是子查询、派生表必须先算出结果，外层查询才能使用这个结果。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL</span></div>
+    <pre><span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> <span class="var">employees</span> <span class="kw">e</span>
+<span class="kw">WHERE</span> <span class="var">e</span><span class="punct">.</span><span class="var">dept_no</span> <span class="kw">IN</span> <span class="punct">(</span>
+  <span class="kw">SELECT</span> <span class="var">d</span><span class="punct">.</span><span class="var">dept_no</span> <span class="kw">FROM</span> <span class="var">departments</span> <span class="kw">d</span> <span class="kw">WHERE</span> <span class="var">d</span><span class="punct">.</span><span class="var">dept_name</span> <span class="punct">=</span> <span class="str">'Sales'</span>
+<span class="punct">)</span><span class="punct">;</span>
+
+<span class="com">-- 输出（简化）：
+-- id  select_type      table         type  key         rows
+-- 1   PRIMARY          e             ALL   NULL        300000
+-- 2   SUBQUERY         d             ref   dept_name   1
+-- 说明：id=2 的子查询先执行，结果作为常量传给 id=1 的外层查询使用</span></pre>
+  </div>
+
+  <!-- select_type -->
+  <h2>select_type：查询的类型</h2>
+  <table>
+    <thead>
+      <tr><th>取值</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>SIMPLE</code></td><td>不包含子查询或 UNION 的简单查询</td></tr>
+      <tr><td><code>PRIMARY</code></td><td>包含子查询时，最外层的查询被标记为 PRIMARY</td></tr>
+      <tr><td><code>SUBQUERY</code></td><td>在 SELECT 或 WHERE 列表中包含的子查询</td></tr>
+      <tr><td><code>DERIVED</code></td><td>FROM 子句中的子查询（派生表），MySQL 会先执行并物化成临时表</td></tr>
+      <tr><td><code>UNION</code></td><td>UNION 语句中除第一个查询外的后续查询</td></tr>
+      <tr><td><code>UNION RESULT</code></td><td>从 UNION 临时表中读取结果的查询</td></tr>
+    </tbody>
+  </table>
+
+  <!-- type 核心表格 -->
+  <h2>type：访问类型（性能等级核心指标）</h2>
+  <p>
+    <code>type</code> 是 <code>EXPLAIN</code> 里最重要的一列，反映了 MySQL 找到目标数据所使用的访问方式。性能从好到差大致排列为：
+    <strong>system &gt; const &gt; eq_ref &gt; ref &gt; range &gt; index &gt; ALL</strong>。日常优化的目标通常是把 <code>type</code> 优化到 <code>range</code> 及以上级别。
+  </p>
+  <table>
+    <thead>
+      <tr><th>等级</th><th>含义</th><th>示例 SQL</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>system</code></td>
+        <td>表中只有一行数据（是 const 的特例），几乎不会在生产表上出现</td>
+        <td><code>SELECT * FROM (SELECT 1) t;</code></td>
+      </tr>
+      <tr>
+        <td><code>const</code></td>
+        <td>通过主键或唯一索引，与常量比较，最多匹配一行数据</td>
+        <td><code>SELECT * FROM employees WHERE emp_no = 10001;</code></td>
+      </tr>
+      <tr>
+        <td><code>eq_ref</code></td>
+        <td>多表关联时，使用主键或唯一索引作为关联条件，被驱动表每次最多匹配一行</td>
+        <td><code>SELECT * FROM orders o JOIN order_detail d ON o.id = d.order_id;</code>（<code>d.order_id</code> 为唯一索引）</td>
+      </tr>
+      <tr>
+        <td><code>ref</code></td>
+        <td>使用普通（非唯一）索引做等值查询，可能匹配多行</td>
+        <td><code>SELECT * FROM employees WHERE dept_no = 'd001';</code></td>
+      </tr>
+      <tr>
+        <td><code>range</code></td>
+        <td>利用索引做范围查询，如 &gt;、&lt;、BETWEEN、IN</td>
+        <td><code>SELECT * FROM employees WHERE hire_date BETWEEN '2020-01-01' AND '2020-12-31';</code></td>
+      </tr>
+      <tr>
+        <td><code>index</code></td>
+        <td>遍历整棵索引树（全索引扫描），无需回表但要扫描索引的所有叶子节点</td>
+        <td><code>SELECT emp_no FROM employees;</code>（emp_no 是主键，走主键索引全扫描）</td>
+      </tr>
+      <tr>
+        <td><code>ALL</code></td>
+        <td>全表扫描，没有用上任何索引，逐行比较</td>
+        <td><code>SELECT * FROM employees WHERE YEAR(hire_date) = 2020;</code>（对索引列做了函数运算，索引失效）</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>陷阱：</strong>很多初学者以为 <code>type=index</code> 一定比 <code>type=range</code> 差，其实两者可比性要看具体场景——<code>index</code> 是扫描整棵索引树，<code>range</code> 是索引树里的一段范围。
+    但通常 <code>range</code> 扫描的数据量更小，所以在多数实际场景中 <code>range</code> 优于 <code>index</code>。真正需要牢记的排序原则是从优化器代价估算的角度：<strong>能命中的行数越少、随机 I/O 越少，等级越靠前</strong>。
+  </div>
+
+  <!-- possible_keys vs key -->
+  <h2>possible_keys 与 key：为什么"可能用的"和"实际用的"不一样</h2>
+  <p>
+    <code>possible_keys</code> 列出的是优化器<strong>理论上</strong>可能会用到的索引（只要 WHERE 条件里出现的列上有索引，就会被列进来），
+    而 <code>key</code> 是优化器结合<strong>统计信息（行数估计、索引选择性）</strong>后，真正决定采用的那一个。
+  </p>
+  <p>
+    优化器有时会放弃看起来"更合适"的索引，本质原因是：<strong>MySQL 优化器的目标是让总代价（索引扫描代价 + 预计回表代价）最小，而不是简单套用"有索引就用"的规则</strong>。
+    如果某个索引的选择性很差（比如某列 90% 的值都相同），优化器估算走这个索引扫描的行数、再加上大量回表的随机 I/O，代价反而比直接全表扫描更高，于是干脆放弃这个索引。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>"possible_keys 有值，但 key 是 NULL"是一个常见的误解触发点——很多人以为这是 bug，实际上这恰恰说明优化器经过代价评估后认为<strong>不走任何索引（全表扫描）反而更快</strong>，这在返回结果集占全表比例很大（比如超过 20%~30%，具体阈值取决于统计信息和表结构）时很常见。
+  </div>
+
+  <!-- key_len -->
+  <h2>key_len：反推联合索引用了几列</h2>
+  <p>
+    <code>key_len</code> 表示实际使用的索引在存储上占用的字节数，可以通过它反推优化器到底用了联合索引的几列、是否用满了整个索引。计算规则大致是：定长类型按类型本身字节数累加，
+    可为 NULL 的列 +1 字节标记，变长类型（如 VARCHAR）额外 +2 字节记录实际长度。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL</span></div>
+    <pre><span class="com">-- 假设联合索引 idx_a_b_c (a INT NOT NULL, b INT NULL, c VARCHAR(10))
+-- a: 4 字节；b: 4 + 1(NULL标记) = 5 字节；c: 10*字符集字节数 + 2(变长) + 1(NULL标记)
+
+EXPLAIN SELECT * FROM t WHERE a = 1 AND b = 2;</span>
+<span class="com">-- key_len = 9  → 说明用到了 a、b 两列（4 + 5），没用到 c</span></pre>
+  </div>
+
+  <!-- ref -->
+  <h2>ref：与索引比较的是什么</h2>
+  <p>
+    当 <code>type</code> 是 <code>ref</code>、<code>eq_ref</code> 等类型时，<code>ref</code> 列会显示是与常量比较（显示 <code>const</code>），
+    还是与另一张表的某个字段比较（显示 <code>库名.表名.列名</code>），这对排查多表关联的驱动关系很有用。
+  </p>
+
+  <!-- rows / filtered -->
+  <h2>rows 与 filtered：预估值，不是精确值</h2>
+  <p>
+    <code>rows</code> 是优化器基于索引统计信息（基数估算）预估的<strong>需要扫描的行数</strong>，<code>filtered</code> 是预估应用 WHERE 条件后剩余行的百分比。
+    两者相乘大致得到预估的最终参与关联的行数。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong><code>rows</code> 是估算值，不是精确值！它依赖的统计信息（如 <code>ANALYZE TABLE</code> 生成的索引基数）可能过时或存在误差，尤其在数据分布不均匀、统计信息未及时更新的表上，<code>rows</code> 可能与真实扫描行数相差很大。不能只看这一个数字就断定 SQL 一定快或慢，需要结合 <code>type</code> 和 <code>Extra</code> 综合判断，必要时用 <code>EXPLAIN ANALYZE</code> 拿到真实执行的行数和耗时。
+  </div>
+
+  <!-- Extra 核心表格 -->
+  <h2>Extra：补充信息（高频考点）</h2>
+  <table>
+    <thead>
+      <tr><th>取值</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Using index</code></td>
+        <td>覆盖索引：查询所需的所有列都能在索引中取到，无需回表读聚簇索引</td>
+      </tr>
+      <tr>
+        <td><code>Using where</code></td>
+        <td>存储引擎返回记录后，服务层还需要用 WHERE 条件做进一步过滤</td>
+      </tr>
+      <tr>
+        <td><code>Using index condition</code></td>
+        <td>使用了索引下推（ICP，Index Condition Pushdown）：将部分 WHERE 条件下推到存储引擎层，在遍历索引时就过滤，减少回表次数</td>
+      </tr>
+      <tr>
+        <td><code>Using filesort</code></td>
+        <td>排序不能通过索引顺序直接得到，需要额外的排序操作（内存 quicksort 或磁盘归并排序）</td>
+      </tr>
+      <tr>
+        <td><code>Using temporary</code></td>
+        <td>需要借助临时表来完成查询（常见于 GROUP BY、DISTINCT、无法用索引优化的排序）</td>
+      </tr>
+      <tr>
+        <td><code>Using join buffer</code></td>
+        <td>关联查询中被驱动表没有可用索引，需要用连接缓冲区做嵌套循环关联（性能较差的信号）</td>
+      </tr>
+      <tr>
+        <td><code>Impossible WHERE</code></td>
+        <td>WHERE 条件恒为假，优化器判断出该查询不可能返回任何行，直接跳过执行</td>
+      </tr>
+      <tr>
+        <td><code>Using index for group-by</code></td>
+        <td>GROUP BY 所需的分组信息可以直接从索引中读取，无需额外排序或读取数据行</td>
+      </tr>
+      <tr>
+        <td><code>Select tables optimized away</code></td>
+        <td>使用聚合函数（如 MIN/MAX）且该列有索引，优化器可以直接从索引中取得结果，无需真正扫描表</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 示例1 -->
+  <h2>综合示例一：覆盖索引 + 索引下推</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL</span></div>
+    <pre><span class="com">-- 假设联合索引 idx_dept_hire (dept_no, hire_date)</span>
+<span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> <span class="var">dept_no</span><span class="punct">,</span> <span class="var">hire_date</span> <span class="kw">FROM</span> <span class="var">employees</span>
+<span class="kw">WHERE</span> <span class="var">dept_no</span> <span class="punct">=</span> <span class="str">'d005'</span> <span class="kw">AND</span> <span class="var">hire_date</span> <span class="punct">&gt;</span> <span class="str">'2020-01-01'</span><span class="punct">;</span>
+
+<span class="com">-- +----+-------------+-----------+------+---------------+---------------+---------+------+------+--------------------------+
+-- | id | select_type | table     | type | possible_keys | key           | key_len | ref  | rows | Extra                    |
+-- +----+-------------+-----------+------+---------------+---------------+---------+------+------+--------------------------+
+-- |  1 | SIMPLE      | employees | range| idx_dept_hire | idx_dept_hire | 40      | NULL | 120  | Using where; Using index |
+-- +----+-------------+-----------+------+---------------+---------------+---------+------+------+--------------------------+
+
+-- 分析：
+-- type=range        -> 走了联合索引的范围扫描（hire_date 部分是范围条件）
+-- key=idx_dept_hire  -> 用到了联合索引，且 key_len 说明 dept_no、hire_date 两列都用上了
+-- Using index        -> SELECT 的列（dept_no, hire_date）恰好都在索引里，无需回表，命中覆盖索引</span></pre>
+  </div>
+
+  <!-- 示例2 -->
+  <h2>综合示例二：filesort 与 temporary 的代价</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL</span></div>
+    <pre><span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> <span class="var">dept_no</span><span class="punct">,</span> <span class="kw">COUNT</span><span class="punct">(</span><span class="punct">*</span><span class="punct">)</span> <span class="kw">FROM</span> <span class="var">employees</span>
+<span class="kw">GROUP</span> <span class="kw">BY</span> <span class="var">dept_no</span> <span class="kw">ORDER</span> <span class="kw">BY</span> <span class="kw">COUNT</span><span class="punct">(</span><span class="punct">*</span><span class="punct">)</span> <span class="kw">DESC</span><span class="punct">;</span>
+
+<span class="com">-- +----+-------------+-----------+------+---------------+------+---------+------+--------+---------------------------------+
+-- | id | select_type | table     | type | possible_keys | key  | key_len | ref  | rows   | Extra                           |
+-- +----+-------------+-----------+------+---------------+------+---------+------+--------+---------------------------------+
+-- |  1 | SIMPLE      | employees | ALL  | NULL          | NULL | NULL    | NULL | 300000 | Using temporary; Using filesort |
+-- +----+-------------+-----------+------+---------------+------+---------+------+--------+---------------------------------+
+
+-- 分析：
+-- type=ALL          -> dept_no 上没有索引（或未命中），只能全表扫描
+-- Using temporary    -> GROUP BY 需要借助临时表汇总各分组的 COUNT 结果
+-- Using filesort     -> 按 COUNT(*) 排序，这是聚合结果，无法用索引顺序代替，只能额外排序
+-- 优化方向：在 dept_no 上建索引，可以避免全表扫描，并有机会用 "Using index for group-by" 省去临时表</span></pre>
+  </div>
+
+  <!-- 常见误区总结 -->
+  <h2>常见误区总结</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>只看 <code>rows</code> 数值断定 SQL 性能好坏——它只是统计信息驱动的估算值，可能失真，需结合 <code>type</code>、<code>Extra</code> 综合判断，必要时用 <code>EXPLAIN ANALYZE</code> 或实际执行时间验证。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>认为 <code>type=index</code> 一定比 <code>type=range</code> 好——字面顺序容易让人误解，实际是 <code>range</code> 通常优于 <code>index</code>，因为 <code>index</code> 要扫描整棵索引树。
+  </div>
+  <div class="callout warn">
+    <strong>误区三：</strong>看到 <code>possible_keys</code> 有值而 <code>key</code> 为 NULL 就以为索引没生效或有 bug——这其实是优化器主动判断全表扫描代价更低后的正常选择。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"EXPLAIN 里最重要看哪几列？" 标准答案：<code>type</code>（访问方式等级）、<code>key</code>（实际用的索引）、<code>rows</code>（扫描行数估算）、<code>Extra</code>（是否出现 Using filesort / Using temporary 等性能警示信号），四者结合起来才能判断一条 SQL 的真实执行路径与优化空间。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>EXPLAIN 是优化器决策的说明书，不是执行结果：</strong>要养成写 SQL 前后都过一遍 EXPLAIN 的习惯。</li>
+    <li><strong>type 是最先要看的等级指标：</strong>目标是尽量把 type 稳定在 range 及以上。</li>
+    <li><strong>Extra 里的 filesort / temporary / join buffer 是性能优化的重点排查对象</strong>，通常意味着有进一步加索引或改写 SQL 的空间。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./07-哈希索引与自适应哈希索引.html" class="nav-btn">← 哈希索引与自适应哈希索引</a>
+    <a href="./09-索引失效的常见场景.html" class="nav-btn next">索引失效的常见场景 →</a>
+  </div>
+
+</div>
+</body>
+</html>

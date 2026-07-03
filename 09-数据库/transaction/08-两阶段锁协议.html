@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>两阶段锁协议 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / 两阶段锁协议
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>两阶段锁协议（2PL）</h1>
+    <p>为什么 InnoDB 里一个事务申请到的所有锁，都要等到事务提交或回滚那一刻才统一释放，而不是"用完一个就立刻释放一个"？答案就在两阶段锁协议里——这是保证可串行化调度的理论基础。名字和"两阶段提交（2PC）"很像，但是完全不同的两个概念，极易被面试题绕进去。</p>
+  </div>
+
+  <h2>两阶段锁协议（2PL）是什么</h2>
+  <p>
+    2PL（Two-Phase Locking）把一个事务的加锁过程划分成严格的两个阶段：
+  </p>
+  <ul>
+    <li><strong>阶段一：加锁阶段（Growing Phase）</strong> —— 事务可以申请新锁，但不能释放任何已持有的锁。这个阶段锁的数量只增不减。</li>
+    <li><strong>阶段二：解锁阶段（Shrinking Phase）</strong> —— 事务只能释放锁，不能再申请新锁。一旦开始释放第一把锁，就意味着进入了这个阶段，不能回头再加锁。</li>
+  </ul>
+  <div class="tree">
+锁的数量
+  ▲
+  │        ╭──╮
+  │       ╱    ╲
+  │      ╱      ╲
+  │     ╱        ╲
+  │    ╱          ╲___
+  └───┴──────────────┴──────► 时间
+      加锁阶段(Growing)  解锁阶段(Shrinking)
+      只能加锁            只能解锁，不能再加
+  </div>
+  <p>
+    <strong>InnoDB 在实际实现中把两阶段锁协议做成了一种更简单粗暴但等价的形式</strong>：所有的锁都在事务执行过程中逐步申请（Growing 阶段贯穿整个事务执行），
+    然后在事务 <code>COMMIT</code> 或 <code>ROLLBACK</code> 的那一瞬间统一释放所有锁（Shrinking 阶段被压缩成一个时间点）。这就是为什么"锁要等到事务结束才释放"这条规则背后的理论依据。
+  </p>
+
+  <h2>2PL 如何保证可串行化调度</h2>
+  <p>
+    数据库理论中，如果一组事务的并发执行结果，等价于按某种顺序把它们逐个串行执行的结果，就称这个调度是<strong>可串行化</strong>的（这是并发调度能否被认为是"正确"的黄金标准）。
+    <strong>可以证明：只要所有事务都遵守两阶段锁协议，它们的并发调度就一定是可串行化的。</strong>
+  </p>
+  <div class="callout info">
+    <strong>直觉理解（不做形式化证明）：</strong>如果一个事务在"加锁阶段"结束前就已经拿到了后续操作需要的所有锁，那么它对其他事务而言，效果上就像是"一次性原子地"执行完了它加锁范围内的全部操作——因为在它持有锁期间，其他事务不可能插进来修改被锁住的数据。这正是"串行化"想要的效果。
+  </div>
+  <div class="callout warn">
+    <strong>注意边界：</strong>2PL 保证可串行化，但不保证不会死锁——事实上 2PL 因为"先加锁后释放"的严格顺序，反而更容易诱发死锁（多个事务在 Growing 阶段互相持锁又互相请求）。可串行化和无死锁是两个独立的目标，2PL 只解决前者，死锁问题依赖上一篇讲的检测与回滚机制来兜底。
+  </div>
+
+  <h2>2PL 与 2PC：一字之差，完全不同的两个概念</h2>
+  <p>
+    这是本篇要澄清的最大误区。<strong>2PL（两阶段锁协议）</strong>和<strong>2PC（两阶段提交协议，Two-Phase Commit）</strong>只是名字里都有"两阶段"，解决的问题风马牛不相及：
+  </p>
+  <table>
+    <thead><tr><th></th><th>2PL（两阶段锁协议）</th><th>2PC（两阶段提交协议）</th></tr></thead>
+    <tbody>
+      <tr><td><strong>解决的问题</strong></td><td>单个数据库内部，并发事务之间如何加锁才能保证可串行化</td><td>跨多个数据库/服务的分布式事务，如何保证所有参与者要么都提交、要么都回滚</td></tr>
+      <tr><td><strong>两个阶段指的是</strong></td><td>加锁阶段（Growing）+ 解锁阶段（Shrinking）</td><td>准备阶段（Prepare）+ 提交阶段（Commit）</td></tr>
+      <tr><td><strong>作用范围</strong></td><td>单机事务的并发控制</td><td>分布式事务的一致性协调</td></tr>
+      <tr><td><strong>关注点</strong></td><td>并发正确性（可串行化）</td><td>多节点原子性（要么都成功要么都失败）</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>面试高频陷阱：</strong>"讲讲两阶段提交（2PC）的原理" —— 如果你把 2PL 的加锁/解锁阶段讲出来了，那就是完全答错方向了。看到"两阶段"三个字，先确认题目问的是并发控制（2PL）还是分布式事务提交（2PC），这是下一篇的主题。
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问："InnoDB 的锁为什么要等到事务提交才释放？"</strong><br>
+    答：这是两阶段锁协议（2PL）的要求——只要不在中途释放锁，就不会出现"先释放了某把锁，之后又反悔重新加锁"的情况，从而保证事务的并发执行结果等价于某种串行顺序执行的结果，即满足可串行化。这是 InnoDB 隔离性实现的理论基石之一。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>2PL 把加锁过程分成加锁阶段和解锁阶段，</strong>一旦开始释放锁就不能再申请新锁。</li>
+    <li><strong>只要事务都遵守 2PL，并发调度就一定可串行化，</strong>这是理论保证，不是经验规律。</li>
+    <li><strong>2PL ≠ 2PC，</strong>前者管单机并发控制，后者管分布式事务提交，千万别在面试中张冠李戴。</li>
+    <li>下一篇正式进入分布式事务的世界，看看真正的 2PC 协议是怎么运作的，以及它有什么致命缺陷。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./07-死锁的产生与排查.html" class="nav-btn">← 死锁的产生与排查</a>
+    <a href="./09-分布式事务简介.html" class="nav-btn next">分布式事务简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>事务的 ACID 特性 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / 事务的 ACID 特性
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>事务的 ACID 特性</h1>
+    <p>ACID 是事务的四条"宪法"，但它们不是四个平级的独立机制——A/I/D 各有专门的底层实现负责兜底，C 只是前三者共同作用后自然得到的结果。理解这一点，是看懂 InnoDB 事务实现的第一把钥匙。</p>
+  </div>
+
+  <h2>先建立直觉：为什么需要事务</h2>
+  <p>
+    转账场景：把账户 A 的 100 元转给账户 B，本质是两条 SQL —— <code>UPDATE A 减 100</code> 和 <code>UPDATE B 加 100</code>。
+    如果第一条执行完机器断电，钱就凭空消失了。<strong>事务把这一组操作打包成一个不可分割的整体</strong>：要么全部生效，要么像什么都没发生过一样。这是 ACID 存在的根本原因。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>事务像是"一次性打包发货"——你在电商下单买了 3 件商品要求一起发，仓库要么把 3 件都装箱发出，要么因为缺货全部取消，不会出现"发了 2 件，第 3 件不知道去哪了"的中间状态。
+  </div>
+
+  <h2>四大特性逐个拆解</h2>
+
+  <h3>A —— 原子性（Atomicity）</h3>
+  <p>
+    事务中的所有操作，要么全部完成，要么全部不做。<strong>原子性由 undo log（回滚日志）保证</strong>：InnoDB 在修改数据前，会先把修改前的旧值记录到 undo log 中。
+    一旦事务中途失败或主动 <code>ROLLBACK</code>，就用 undo log 把数据"倒带"回事务开始前的样子。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>转账事务的原子性</span></div>
+    <pre><span class="kw">START TRANSACTION</span>;
+<span class="kw">UPDATE</span> account <span class="kw">SET</span> balance = balance - <span class="num">100</span> <span class="kw">WHERE</span> id = <span class="num">1</span>; <span class="com">-- undo log 记下 A 原来的余额</span>
+<span class="kw">UPDATE</span> account <span class="kw">SET</span> balance = balance + <span class="num">100</span> <span class="kw">WHERE</span> id = <span class="num">2</span>; <span class="com">-- undo log 记下 B 原来的余额</span>
+<span class="com">-- 如果这里断电重启，InnoDB 崩溃恢复时会读 undo log 把两条 UPDATE 都撤销</span>
+<span class="kw">COMMIT</span>;</pre>
+  </div>
+
+  <h3>D —— 持久性（Durability）</h3>
+  <p>
+    一旦事务提交，修改的数据必须永久保存，即使随后系统崩溃也不会丢失。<strong>持久性由 redo log（重做日志）+ WAL（Write-Ahead Logging）机制保证</strong>：
+    事务提交时，InnoDB 不是直接把随机分散在磁盘各处的数据页刷盘（太慢），而是先把"做了什么修改"顺序写入 redo log 并刷盘，数据页本身晚点再由后台线程慢慢刷。
+    只要 redo log 落盘成功就算提交成功，重启后可以靠 redo log 重放出未落盘的修改。
+  </p>
+  <div class="callout tip">
+    <strong>与后续知识点呼应：</strong>redo log 和 WAL 机制、undo log 与回滚的具体实现细节，会在"存储引擎内核"Tab 单独展开讲，这里先建立"A 找 undo，D 找 redo"的对应关系即可。
+  </div>
+
+  <h3>I —— 隔离性（Isolation）</h3>
+  <p>
+    多个事务并发执行时，彼此的中间状态不应互相干扰，就像每个事务都独占数据库一样。<strong>隔离性由锁 + MVCC（多版本并发控制）共同保证</strong>：
+    写操作靠行锁/间隙锁防止相互覆盖，读操作靠 MVCC 生成的历史快照（ReadView）避免读到其他未提交事务的数据，从而做到"读不加锁、写不阻塞读"。
+    隔离性还分四个强度不同的级别（读未提交/读已提交/可重复读/串行化），级别越高、隔离越彻底，但并发性能越差——这是下一篇的主题。
+  </p>
+
+  <h3>C —— 一致性（Consistency）</h3>
+  <p>
+    事务执行前后，数据库必须从一个合法状态转换到另一个合法状态（比如转账后两账户余额总和不变，外键约束、唯一约束不被破坏）。
+    <strong>一致性并不是一种独立的实现机制，而是原子性、隔离性、持久性共同作用之后自然得到的结果</strong>，再加上应用层自己定义的业务规则（比如"余额不能为负"要在 SQL 里用 <code>CHECK</code> 约束或业务代码兜底）。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多初学者把 C 理解成和 A/I/D 平级的、数据库要专门实现的一种机制，其实不是。数据库只能保证"数据不会因为并发或宕机而损坏"这种技术层面的一致性；业务层面的一致性（比如余额不能为负）必须靠应用代码或约束来保证，数据库无法替你判断业务逻辑对不对。
+  </div>
+
+  <h2>四大特性与实现机制对照表</h2>
+  <table>
+    <thead>
+      <tr><th>特性</th><th>英文</th><th>解决的问题</th><th>底层实现</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>原子性</strong></td>
+        <td>Atomicity</td>
+        <td>事务执行到一半失败，如何撤销已做的修改</td>
+        <td>undo log</td>
+      </tr>
+      <tr>
+        <td><strong>一致性</strong></td>
+        <td>Consistency</td>
+        <td>事务前后数据必须保持合法状态</td>
+        <td>A + I + D 共同作用 + 业务约束</td>
+      </tr>
+      <tr>
+        <td><strong>隔离性</strong></td>
+        <td>Isolation</td>
+        <td>并发事务之间互不干扰</td>
+        <td>锁 + MVCC</td>
+      </tr>
+      <tr>
+        <td><strong>持久性</strong></td>
+        <td>Durability</td>
+        <td>提交后的数据不因宕机丢失</td>
+        <td>redo log + WAL</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问："MySQL 是怎么保证事务的原子性和持久性的？"</strong><br>
+    标准答案：原子性靠 undo log，事务失败时用它回滚；持久性靠 redo log 配合 WAL 机制，提交时先顺序写日志再异步刷数据页。二者都是"日志先行"的思路，只是一个用来撤销、一个用来重放。
+  </div>
+  <div class="callout warn">
+    <strong>常见误区：</strong>把"隔离性"和"一致性"搞混。隔离性关注的是"并发事务之间看不看得见彼此的中间状态"，一致性关注的是"数据本身是否始终合法"。两者角度完全不同，隔离性是并发控制的手段，一致性是最终追求的目标。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>ACID 不是四个孤立的特性，而是有明确分工的一套体系：</strong>A 靠 undo log 兜底失败，D 靠 redo log 兜底宕机，I 靠锁 + MVCC 兜底并发，C 是三者共同作用的自然结果。</li>
+    <li><strong>理解这套分工，后面学 InnoDB 内核会事半功倍：</strong>看到 undo log 就想到回滚和 MVCC 版本链，看到 redo log 就想到崩溃恢复。</li>
+    <li>下一篇讲隔离性的四个级别，看它们各自允许牺牲多少"隔离"来换取并发性能。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../index/11-慢查询定位与优化流程.html" class="nav-btn">← 慢查询定位与优化流程</a>
+    <a href="./02-事务的隔离级别.html" class="nav-btn next">事务的隔离级别 →</a>
+  </div>
+
+</div>
+</body>
+</html>

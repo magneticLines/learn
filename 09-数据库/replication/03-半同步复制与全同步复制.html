@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>半同步复制与全同步复制 — 复制与高可用</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #6b21a8; }
+  .nav-btn.next { color: #a78bfa; border-color: #6b21a8; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 复制与高可用 / 半同步复制与全同步复制
+  </div>
+
+  <div class="hero">
+    <div class="tag">复制与高可用</div>
+    <h1>半同步复制与全同步复制</h1>
+    <p>默认的异步复制快但不安全，全同步复制安全但几乎不可用，半同步复制是 MySQL 在"性能"和"数据不丢失"之间找到的一个工程折中点。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    三种复制模式的区别在于：<strong>主库提交事务前，要不要等从库确认，等多少个从库确认</strong>。
+    异步复制完全不等；全同步复制要等<strong>所有</strong>从库都确认收到并应用完；半同步复制退一步，只要求<strong>至少一个</strong>从库确认"收到"了日志即可返回，不要求从库已经应用完。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>异步复制像老板记完账直接去干下一件事，完全不管分店有没有收到账本副本；
+    全同步复制像老板必须等所有分店都确认"账本抄好了、账也记完了"才能继续做生意，只要有一家分店网络卡顿，整个总店都要停摆；
+    半同步复制则是老板只要等<strong>其中一家</strong>分店说"我已经把账本内容抄到我这儿了"（不要求分店已经把账记完），就可以接着做下一单——多一次"确认收到"的开销，但不会被单点拖死。
+  </div>
+
+  <h2>三种模式详解</h2>
+
+  <h3>1. 异步复制（Asynchronous Replication，默认模式）</h3>
+  <p>
+    主库提交事务、写完 binlog 后立即返回给客户端，完全不关心从库是否收到。这是上一篇讲的默认流程。
+    优点是主库性能不受从库拖累；缺点是如果主库刚提交完事务就宕机，binlog 还没来得及传给任何从库，
+    那么<strong>这个事务在主库上是已提交的，但在所有从库上都不存在</strong>——一旦主库不可恢复，这部分数据就永久丢失了。
+  </p>
+
+  <h3>2. 全同步复制（Fully Synchronous Replication）</h3>
+  <p>
+    主库要等<strong>所有</strong>从库都执行完这个事务才能给客户端返回成功。这样能保证主从数据强一致，
+    但代价是：只要有一个从库变慢、宕机或者网络抖动，整个集群的写入都会被阻塞。在实际生产中，
+    <strong>MySQL 官方复制机制几乎不提供这种模式的直接支持</strong>，因为可用性代价太高，通常只在理论讨论或者特殊的强一致场景（配合 Paxos/Raft 类协议）才会出现。
+  </p>
+
+  <h3>3. 半同步复制（Semisynchronous Replication，MySQL 5.5+ 通过插件提供，5.7+ 增强为 Loss-Less 半同步）</h3>
+  <p>
+    主库提交事务后，<strong>至少要等一个从库的 I/O 线程确认"收到了 relay log"</strong>（注意：只是收到写入 relay log，不要求 SQL 线程已经重放完），
+    主库才返回成功给客户端。如果等待超时（<code>rpl_semi_sync_master_timeout</code>），会自动降级为异步复制，保证可用性不受影响，
+    但此时也就失去了数据安全保证，直到有从库重新跟上进度才会恢复半同步模式。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>开启半同步复制（简化示例，主库端）</span></div>
+    <pre><span class="kw">INSTALL</span> <span class="kw">PLUGIN</span> <span class="var">rpl_semi_sync_master</span> <span class="kw">SONAME</span> <span class="str">'semisync_master.so'</span>;
+<span class="kw">SET</span> <span class="kw">GLOBAL</span> <span class="var">rpl_semi_sync_master_enabled</span> = <span class="num">1</span>;
+<span class="kw">SET</span> <span class="kw">GLOBAL</span> <span class="var">rpl_semi_sync_master_timeout</span> = <span class="num">1000</span>; <span class="com">-- 单位毫秒，超时后自动降级为异步</span></pre>
+  </div>
+
+  <h2>三种模式对比</h2>
+  <table>
+    <thead>
+      <tr><th>模式</th><th>主库等待条件</th><th>性能影响</th><th>数据安全性</th><th>可用性风险</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>异步复制</td>
+        <td>不等，提交即返回</td>
+        <td>最好</td>
+        <td>最低：主库宕机可能丢数据</td>
+        <td>无（从库故障不影响主库）</td>
+      </tr>
+      <tr>
+        <td>半同步复制</td>
+        <td>至少 1 个从库确认收到 relay log</td>
+        <td>有一定延迟（一次网络往返）</td>
+        <td>较高：已确认的事务不会因主库宕机丢失</td>
+        <td>低（超时自动降级为异步，不阻塞写入）</td>
+      </tr>
+      <tr>
+        <td>全同步复制</td>
+        <td>所有从库都应用完事务</td>
+        <td>最差，受最慢节点拖累</td>
+        <td>最高：真正的强一致</td>
+        <td>高：任一从库故障都会阻塞写入</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>"开启了半同步复制，是不是从库上就能马上读到最新数据了？"
+    不是。半同步复制只保证"至少一个从库收到了日志内容"，并不保证这个从库已经把日志应用（重放）完。
+    读写分离场景下客户端读到的仍然是从库当前已经重放到的数据，半同步复制解决的是<strong>数据丢失风险</strong>，不是<strong>主从延迟</strong>问题，这是两个独立的话题（延迟问题下一篇专门讲）。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"半同步复制解决了什么问题？"标准答案：解决异步复制下主库宕机可能导致已提交事务丢失的问题，
+    通过"至少一个从库确认收到日志才返回"的机制，在性能损耗可控的前提下提升数据安全性；但它不保证强一致，超时会自动降级为异步以保证可用性，
+    是在 CAP/可用性与一致性之间做的工程折中，不是"银弹"。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>异步复制快但可能丢数据，全同步复制安全但几乎不可用，半同步复制是中间的工程折中</strong>。</li>
+    <li>半同步复制保证的是"数据不丢"，而不是"数据不延迟"——理解这个边界，才不会在方案选型时张冠李戴。</li>
+    <li>对数据安全性要求极高的场景（如金融交易），会考虑半同步复制配合多个从库，或者直接使用下面高可用篇要讲的 MGR 方案获得更强的一致性保证。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-binlog三种格式.html" class="nav-btn">← binlog 三种格式</a>
+    <a href="./04-主从延迟问题及优化.html" class="nav-btn next">主从延迟问题及优化 →</a>
+  </div>
+
+</div>
+</body>
+</html>

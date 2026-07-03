@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>慢查询定位与优化流程 — 索引与执行计划</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #7c4a10; }
+  .nav-btn.next { color: #38bdf8; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 索引与执行计划 / 慢查询定位与优化流程
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">索引与执行计划</div>
+    <h1>慢查询定位与优化流程</h1>
+    <p>前面几篇讲的最左前缀、索引失效、filesort，都是"武器库"；这一篇讲的是"打仗流程"——怎么在几百万条 SQL 里揪出真正拖垮系统的那一条，并且验证优化确实生效了。</p>
+  </div>
+
+  <!-- 慢查询日志 -->
+  <h2>第一步：打开慢查询日志，让问题"显形"</h2>
+  <p>
+    慢查询优化的前提是"知道慢在哪"，而不是凭感觉猜。MySQL 提供了慢查询日志（slow query log）功能，只要一条 SQL 的执行时间超过阈值，就会被记录下来。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL</span><span>开启慢查询日志</span></div>
+    <pre><span class="com">-- 打开慢查询日志开关</span>
+<span class="kw">SET GLOBAL</span> <span class="var">slow_query_log</span> = <span class="num">1</span>;
+
+<span class="com">-- 设置慢查询阈值：超过 1 秒的 SQL 才会被记录（单位：秒，支持小数）</span>
+<span class="kw">SET GLOBAL</span> <span class="var">long_query_time</span> = <span class="num">1</span>;
+
+<span class="com">-- 查看日志文件路径</span>
+<span class="kw">SHOW VARIABLES</span> <span class="kw">LIKE</span> <span class="str">'slow_query_log_file'</span>;
+
+<span class="com">-- 关键参数：把"没用上索引"的查询也记下来，哪怕它没超过 long_query_time</span>
+<span class="kw">SET GLOBAL</span> <span class="var">log_queries_not_using_indexes</span> = <span class="num">1</span>;</pre>
+  </div>
+  <p>
+    <code>log_queries_not_using_indexes</code> 很容易被忽略，但它是提前预警的利器：有些查询单次执行不慢（比如小表全表扫描只要几毫秒），但<strong>没走索引意味着数据量涨上来之后一定会变慢</strong>，这个参数能帮你在问题还小的时候就发现"没用索引"这个隐患。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong><code>long_query_time</code> 设得太小（比如默认的 10 秒改成 0.01 秒）会导致日志被大量正常查询淹没，反而找不到真正的重灾区；设得太大又会漏掉中等程度的慢查询。生产环境常见做法是先设一个适中值（如 0.5~1 秒）观察，再结合业务 SLA 微调。
+  </div>
+
+  <!-- pt-query-digest -->
+  <h2>第二步：用 pt-query-digest 找到"最该优化的那条"</h2>
+  <p>
+    慢查询日志文件本身只是流水账，一天下来可能有几万条记录。如果只挑一条看起来"最慢"的 SQL 去优化，很可能优化了一条一天只执行一次的报表查询，却放过了一条每秒执行几百次、单次只慢 200ms 但总耗时惊人的高频查询。
+    <strong>pt-query-digest</strong>（Percona Toolkit 里的一个工具）就是解决这个问题的：它会把慢查询日志里的 SQL 按<strong>查询指纹（query fingerprint）</strong>归类——把 SQL 里的具体参数值（如 <code>WHERE id = 123</code> 里的 <code>123</code>）替换成占位符，变成统一的"模板"，
+    这样同一类查询无论参数怎么变，都会被聚合到一起统计：出现次数、总耗时、平均耗时、最大耗时等等。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>bash</span><span>pt-query-digest 用法示例</span></div>
+    <pre><span class="com"># 分析慢查询日志，按总耗时降序输出 Top SQL 模板</span>
+pt-query-digest /var/lib/mysql/slow.log &gt; digest_report.txt
+
+<span class="com"># 报告里每个模板会给出：
+#   Count（出现次数）
+#   Exec time（总耗时 / 平均耗时 / 占比）
+#   对应的 SQL 模板，比如：
+#   SELECT * FROM orders WHERE user_id = ? AND status = ?</span></pre>
+  </div>
+  <div class="callout tip">
+    <strong>核心思路：</strong>优化的优先级应该是 <strong>总耗时 = 出现次数 × 平均耗时</strong> 最高的那一类查询，而不是单次执行时间最长的那一条。这才是"把力气花在刀刃上"，避免凭感觉猜哪条 SQL 该优化。
+  </div>
+
+  <!-- 完整排查流程 -->
+  <h2>第三步：完整排查流程</h2>
+  <p>找到目标 SQL 之后，一套可复用的排查流程是：</p>
+  <div class="tree">
+    <span class="hi">1. 发现慢查询</span>（慢查询日志 + pt-query-digest 定位高优先级 SQL）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">2. EXPLAIN 分析执行计划</span>（看 type / key / rows / Extra）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">3. 判断问题类型</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ 缺索引 / 索引设计不合理（最左前缀没用好、索引失效）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ 触发 filesort（Extra: Using filesort）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└─ 触发临时表（Extra: Using temporary，常见于 GROUP BY / DISTINCT）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">4. 加索引 或 改写 SQL</span>（SELECT * 改覆盖索引 / 拆分大 OR 为 UNION）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">5. 重新 EXPLAIN 验证</span>（type 是否变好、rows 是否大幅下降）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">6. 上线观察</span>（持续跟踪慢查询日志，确认问题真正消失）
+  </div>
+
+  <!-- 案例 -->
+  <h2>案例：一条全表扫描 SQL 的优化前后对比</h2>
+  <p>假设有订单表，客服系统里有这样一条按用户查询未支付订单的 SQL：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL</span><span>优化前</span></div>
+    <pre><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="fn">orders</span> (
+  <span class="var">id</span> <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  <span class="var">user_id</span> <span class="ty">BIGINT</span>,
+  <span class="var">status</span> <span class="ty">TINYINT</span>,
+  <span class="var">amount</span> <span class="ty">DECIMAL</span>(<span class="num">10</span>,<span class="num">2</span>),
+  <span class="var">created_at</span> <span class="ty">DATETIME</span>
+);
+
+<span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">orders</span>
+<span class="kw">WHERE</span> <span class="var">user_id</span> = <span class="num">10086</span> <span class="kw">AND</span> <span class="var">status</span> = <span class="num">0</span>;
+
+<span class="com">-- 优化前 EXPLAIN 结果：
+-- type: ALL          （全表扫描，最差的访问类型）
+-- key: NULL          （没有用到任何索引）
+-- rows: 1200000      （预计要扫描全表 120 万行）
+-- Extra: Using where</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>SQL</span><span>优化后</span></div>
+    <pre><span class="com">-- 分析：user_id 用于等值查询、status 也是等值查询，
+-- 按最左前缀原则建联合索引 (user_id, status)</span>
+<span class="kw">ALTER</span> <span class="kw">TABLE</span> <span class="fn">orders</span> <span class="kw">ADD</span> <span class="kw">INDEX</span> <span class="fn">idx_user_status</span> (<span class="var">user_id</span>, <span class="var">status</span>);
+
+<span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">orders</span>
+<span class="kw">WHERE</span> <span class="var">user_id</span> = <span class="num">10086</span> <span class="kw">AND</span> <span class="var">status</span> = <span class="num">0</span>;
+
+<span class="com">-- 优化后 EXPLAIN 结果：
+-- type: ref          （命中索引等值匹配，比 ALL 好得多）
+-- key: idx_user_status
+-- rows: 3            （精确命中，只需扫描 3 行）
+-- Extra: NULL</span></pre>
+  </div>
+  <p>
+    如果这条查询列很多、又频繁被调用，还可以进一步把索引扩展为覆盖索引（呼应"覆盖索引"知识点），把常用的输出列也加进索引里，避免回表，把 <code>Extra</code> 从 <code>NULL</code> 进一步优化为 <code>Using index</code>。
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>指标</th><th>优化前</th><th>优化后</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>type</td><td>ALL（全表扫描）</td><td>ref（索引等值匹配）</td></tr>
+      <tr><td>key</td><td>NULL</td><td>idx_user_status</td></tr>
+      <tr><td>rows（预估扫描行数）</td><td>1,200,000</td><td>3</td></tr>
+      <tr><td>Extra</td><td>Using where</td><td>NULL（或 Using index，若为覆盖索引）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 陷阱 -->
+  <h2>常见陷阱：不要无脑加索引</h2>
+  <div class="callout warn">
+    <strong>陷阱一：</strong>看到慢查询就加索引，是新手最容易犯的错误。索引不是免费的：<strong>每次 INSERT / UPDATE / DELETE 都要同步维护所有相关索引</strong>（写放大），索引本身还要占用磁盘空间和 Buffer Pool 内存。
+    加索引前应该先问：这条查询的调用频率高不高？是不是核心链路？如果是一天只跑一次的后台报表，哪怕它是全表扫描，也未必值得为它单独加一个索引，牺牲高频写入路径的性能。
+  </div>
+  <div class="callout tip">
+    <strong>陷阱二：</strong>EXPLAIN 里的 <code>rows</code> 是基于表的统计信息估算出来的，不是精确值。如果表刚做过大批量删改、统计信息严重过期，<code>rows</code> 可能被严重高估或低估，导致优化器选错执行计划。这时可以用 <code>ANALYZE TABLE orders;</code> 重新收集统计信息，往往能让优化器"重新想明白"该走哪个索引。
+  </div>
+
+  <!-- 知识地图总结 -->
+  <h2>本 Tab 知识地图收尾</h2>
+  <p>"索引与执行计划"这个 Tab 从底层到应用层，串起来的核心逻辑是：</p>
+  <ul>
+    <li><strong>存储结构层：</strong>页结构与记录存储格式、B+树叶子节点双向链表——理解索引为什么天然有序、为什么支持范围查询。</li>
+    <li><strong>索引设计层：</strong>最左前缀原则、覆盖索引、索引失效的常见场景——理解怎么设计索引才能被优化器真正用上。</li>
+    <li><strong>执行计划层：</strong>EXPLAIN 的 type / key / rows / Extra——理解怎么读懂 MySQL 到底选了哪条路径。</li>
+    <li><strong>排序优化层：</strong>filesort 的成因与两种排序算法——理解排序为什么有时候能"白嫖"索引，有时候不能。</li>
+    <li><strong>工程实践层（本篇）：</strong>把以上所有知识串成一套可以在生产环境复用的排查流程，并且知道加索引也有成本，不能滥用。</li>
+  </ul>
+  <p>
+    接下来进入"事务"这个 Tab，会从索引和查询优化，切换到 InnoDB 如何保证一条条 SQL 组合成的"事务"具备原子性、一致性、隔离性和持久性——这是另一套同样重要、但关注点完全不同的底层机制。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./10-排序与分组的索引优化.html" class="nav-btn">← 排序与分组的索引优化(filesort)</a>
+    <a href="../transaction/01-事务的ACID特性.html" class="nav-btn next">事务的 ACID 特性 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分库分表中间件简介 — 数据库扩展性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c4a10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 扩展性 / 分库分表中间件简介
+  </div>
+
+  <div class="hero">
+    <div class="tag">扩展性</div>
+    <h1>分库分表中间件简介（ShardingSphere）</h1>
+    <p>路由策略、分布式 ID、跨库 JOIN、分布式事务——每个环节都自己手写代码来处理，几乎不可能维护。中间件存在的意义，就是把这些脏活透明化。</p>
+  </div>
+
+  <h2>中间件解决的核心问题：透明化</h2>
+  <p>
+    前面几篇讲了分库分表引入的一堆新问题：路由到哪个分片、跨库怎么 JOIN、事务怎么保证一致性……
+    如果每个业务开发人员写每一条 SQL 时都要手动拼分片逻辑、手动聚合多个分片的结果，
+    这个心智负担会大到让团队完全无法正常开发业务。
+  </p>
+  <p>
+    <strong>分库分表中间件的核心价值就是"透明化"</strong>：让应用层写 SQL 时，感觉自己还是在操作一个单一的逻辑数据库，
+    中间件在背后自动完成 SQL 解析、分片路由、结果归并、必要时的分布式事务协调。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>中间件就像大型企业的总机转接台。外部打进来的电话只需要拨一个总机号码，不需要知道具体是哪个分机、哪个楼层、哪个部门在接听——总机在背后帮你把电话转接到正确的位置。业务代码只管"打电话"（发 SQL），不用关心"电话该转去哪个分机"（该去哪个分片）。
+  </div>
+
+  <h2>ShardingSphere 是怎么做到的</h2>
+  <p>
+    ShardingSphere（Apache 顶级项目）是国内使用最广泛的分库分表中间件，核心工作流程可以概括为四步：
+  </p>
+  <div class="tree">
+    <span class="hi">ShardingSphere 处理一条 SQL 的流程</span><br>
+    &nbsp;&nbsp;1. SQL 解析：把应用发来的 SQL 解析成抽象语法树，识别出表名、条件、分片键<br>
+    &nbsp;&nbsp;2. 路由：根据分片键的值和路由策略（hash/range，见第 2 篇），计算出该 SQL 需要发往哪些真实分片<br>
+    &nbsp;&nbsp;3. 改写：把逻辑表名（如 order）替换成真实的物理表名（如 order_3），必要时拆成多条 SQL<br>
+    &nbsp;&nbsp;4. 执行与归并：并行执行改写后的 SQL，再把多个分片返回的结果集合并、排序、分页，返回给应用
+  </div>
+  <p>
+    比如应用发出 <code>SELECT * FROM t_order WHERE user_id = 1001</code>，中间件会自动识别 <code>user_id</code> 是分片键，
+    算出它落在 <code>order_1</code> 分片，把 SQL 改写成 <code>SELECT * FROM order_1 WHERE user_id = 1001</code> 发到对应的物理库执行——
+    整个过程业务代码完全无感知，就像在操作一张叫 <code>t_order</code> 的普通表。
+  </p>
+
+  <h2>两种接入模式：客户端 vs 代理</h2>
+  <p>ShardingSphere 提供两种形态，分别对应不同的部署方式和适用场景。</p>
+
+  <h3>Sharding-JDBC（客户端模式）</h3>
+  <p>以 jar 包的形式嵌入到应用进程内部，重写 JDBC 驱动层的行为，SQL 解析、路由、归并都发生在应用进程本地。</p>
+  <div class="callout tip">
+    <strong>优点：</strong>无需额外部署中间件服务，没有多一跳网络开销，性能损耗小；适合 Java 技术栈的微服务直接引入依赖使用。
+  </div>
+
+  <h3>Sharding-Proxy（代理模式）</h3>
+  <p>独立部署成一个数据库代理服务，对外表现得像一个标准的 MySQL 实例，任何语言、任何客户端都可以像连接普通 MySQL 一样连接它。</p>
+  <div class="callout tip">
+    <strong>优点：</strong>与编程语言无关（Python、Go 等非 Java 应用也能直接使用）；可以被 DBA 用标准 MySQL 工具管理和监控；缺点是多了一层网络转发，有额外的性能开销，且这一层本身也需要考虑高可用部署。
+  </div>
+
+  <h2>两种模式对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>Sharding-JDBC（客户端）</th><th>Sharding-Proxy（代理）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>部署形态</td>
+        <td>以依赖包形式嵌入应用进程</td>
+        <td>独立部署的数据库代理服务</td>
+      </tr>
+      <tr>
+        <td>语言限制</td>
+        <td>仅支持 Java（基于 JDBC）</td>
+        <td>无限制，任何语言都可通过标准协议连接</td>
+      </tr>
+      <tr>
+        <td>性能开销</td>
+        <td>小（无额外网络跳转）</td>
+        <td>较大（多一跳网络转发）</td>
+      </tr>
+      <tr>
+        <td>运维方式</td>
+        <td>随应用一起发布、升级</td>
+        <td>可独立升级、独立扩容，DBA 可用标准工具管理</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>Java 技术栈为主的中小规模微服务</td>
+        <td>多语言异构系统、需要统一数据库入口的大型平台</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>"用了中间件就不用考虑分片键设计了，中间件会自动优化。" 中间件只负责执行路由规则，<strong>分片键怎么选、路由策略用 hash 还是 range、哪些表做成全局表</strong>，这些架构设计决策必须在接入中间件之前想清楚——中间件只是让这些决策的落地更方便，不能替你做决策。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>"中间件能让跨库 JOIN、分布式事务的性能和单库一样。" 中间件确实能自动帮你拆分和归并跨库查询、接入分布式事务框架（如 Seata），但底层"多次网络往返 + 结果归并"的开销是物理存在的，<strong>透明化的是编程复杂度，不是消除性能代价</strong>。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"ShardingSphere 的 JDBC 和 Proxy 模式怎么选？" 回答核心抓手：是否是纯 Java 技术栈（是则优先 JDBC，性能更好）；是否需要多语言统一入口或 DBA 独立管理（是则选 Proxy）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>分库分表中间件的核心使命是<strong>透明化</strong>：让应用层像操作单库一样操作分片集群，把 SQL 解析、路由、归并这些脏活自动化。</li>
+    <li>ShardingSphere 通过"解析 → 路由 → 改写 → 归并"四步完成这个透明化过程。</li>
+    <li>客户端模式（Sharding-JDBC）性能更好但限定 Java 生态；代理模式（Sharding-Proxy）语言无关但多一层网络开销。</li>
+    <li>中间件解决的是"怎么落地"的问题，"怎么设计分片方案"仍然是架构师必须提前想清楚的核心决策。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-分片场景下的分布式事务.html" class="nav-btn">← 分片场景下的分布式事务</a>
+    <a href="./07-NoSQL的定位与CAP理论.html" class="nav-btn next">NoSQL 的定位与 CAP 理论 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redo Log 与 WAL 机制 — 存储引擎内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 存储引擎内核 / Redo Log 与 WAL 机制
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">存储引擎内核</div>
+    <h1>Redo Log 与 WAL 机制</h1>
+    <p>这是整个存储引擎内核里最高频的面试考点，也是理解 MySQL 为什么"又快又不丢数据"的关键。核心就八个字：<strong>先写日志，后写数据</strong>。</p>
+  </div>
+
+  <!-- 什么是 Redo Log -->
+  <h2>Redo Log 是什么：物理日志</h2>
+  <p>
+    Redo Log 记录的不是"SQL 语句"，也不是"这一行数据改成了什么样"，而是<strong>对物理页做了什么修改</strong>——例如"在 XX 表空间、第 XX 号页、偏移量 XX 处，写入了这几个字节"。
+    这种"记录页面物理变化"的日志类型称为<strong>物理日志（Physical Logging）</strong>，与之相对的是 binlog 里 statement/row 格式所代表的逻辑日志。
+    正因为是物理日志，Redo Log 的恢复过程只需要"照着页地址和内容重放"，非常快，且和上层是什么 SQL、什么存储引擎逻辑无关。
+  </p>
+
+  <!-- WAL 原理 -->
+  <h2>WAL：Write-Ahead Logging 原理</h2>
+  <p>
+    如果没有 Redo Log，要保证事务提交后数据不丢，唯一办法是：<strong>每次提交都把修改过的数据页同步刷回磁盘</strong>。
+    但数据页在磁盘上的位置是随机的（一次更新可能涉及聚簇索引页、多个二级索引页，散落在文件各处），随机 I/O 极慢；而且一个页 16KB，即使只改了几个字节，也要整页刷盘，代价很不划算。
+  </p>
+  <p>
+    WAL（Write-Ahead Logging，预写日志）的思路是反过来：<strong>先把"修改了什么"顺序追加写到一个专门的日志文件里，数据页本身留在内存（Buffer Pool）里晚点再刷，甚至可以攒着多次修改一起刷</strong>。
+    这样做的关键收益：
+  </p>
+  <ul>
+    <li><strong>顺序写代替随机写：</strong>日志文件是追加写入，磁盘顺序 I/O 比随机 I/O 快一到两个数量级（机械盘尤其明显，即使 SSD 也有差距）。</li>
+    <li><strong>日志远小于数据页：</strong>一条 Redo Log 记录只有几十字节，而一个数据页是 16KB，写日志的数据量远小于写整页。</li>
+    <li><strong>脏页可以延迟、合并刷盘：</strong>同一个页可能被多次修改，只要日志保证了持久性，数据页什么时候刷、刷几次都不影响正确性，由后台线程根据负载择机处理（见 07 篇 Checkpoint）。</li>
+    <li><strong>支持组提交（Group Commit）：</strong>多个并发事务的 Redo Log 可以合并成一次 fsync 落盘，进一步摊薄磁盘同步的开销。</li>
+  </ul>
+  <div class="callout info">
+    <strong>类比：</strong>WAL 好比餐厅后厨先把"客人点了什么菜"记在小票上（顺序写、飞快），菜不用立刻端上桌摆盘（数据页刷盘可以延后）。哪怕后厨突然断电，只要小票还在，照着小票重新做一遍就能恢复所有订单，不会有客人的菜丢单。如果反过来要求"每接一单就必须立刻把菜摆到桌上才算数"，翻台效率会低得多。
+  </div>
+
+  <!-- 完整链路 -->
+  <h2>完整写入链路：Buffer → OS Cache → 磁盘</h2>
+  <p>Redo Log 从产生到真正落盘，要经过三层，理解这三层是理解 <code>innodb_flush_log_at_trx_commit</code> 参数的前提：</p>
+  <div class="tree">
+    <span class="hi">1. redo log buffer</span>（InnoDB 进程内存，随事务修改实时写入）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;│ write() 系统调用<br>
+    <span class="hi">2. OS page cache</span>（操作系统内核缓冲区，write() 后即可见，但进程崩溃不丢，OS 崩溃/断电会丢）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;│ fsync() 系统调用<br>
+    <span class="hi">3. ib_logfile（磁盘上的 redo log 文件）</span>（fsync 后才是真正落盘，任何故障都不会丢）
+  </div>
+  <p>
+    <code>write()</code> 只是把数据从进程内存拷贝到内核缓冲区，速度快但不保证掉电不丢；<code>fsync()</code> 才会强制内核把数据真正刷到磁盘介质，是真正意义上的持久化，但代价是一次磁盘同步 I/O 的时间开销。
+  </p>
+
+  <!-- flush_log_at_trx_commit -->
+  <h2>innodb_flush_log_at_trx_commit：三种策略详解</h2>
+  <p>这个参数决定"事务提交时，Redo Log 写到哪一层"，是性能和持久性之间的经典权衡，也是数据库方向的高频面试题：</p>
+  <table>
+    <thead>
+      <tr><th>取值</th><th>提交时的行为</th><th>持久性</th><th>性能</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>1</code>（默认）</td>
+        <td>每次事务提交，都执行 <code>write()</code> + <code>fsync()</code>，立即落盘</td>
+        <td>最高：只要提交返回成功，即使数据库进程崩溃、操作系统崩溃、服务器断电，事务都不会丢</td>
+        <td>最慢：每次提交都有一次磁盘同步开销（可靠组提交能部分缓解）</td>
+      </tr>
+      <tr>
+        <td><code>0</code></td>
+        <td>提交时不立即写，只由后台线程<strong>每秒</strong>执行一次 <code>write()</code> + <code>fsync()</code></td>
+        <td>最低：数据库进程崩溃或服务器断电，最多丢失约 1 秒内已提交的事务</td>
+        <td>最快：提交本身几乎没有 I/O 等待</td>
+      </tr>
+      <tr>
+        <td><code>2</code></td>
+        <td>每次事务提交立即 <code>write()</code>（写入 OS page cache），但 <code>fsync()</code> 交给后台线程每秒执行一次</td>
+        <td>中等：只要<strong>操作系统不崩溃</strong>（仅 MySQL 进程崩溃），数据在 OS cache 里不会丢；但服务器断电/OS 崩溃仍可能丢失约 1 秒数据</td>
+        <td>较快：省掉了每次提交的 fsync 开销，只有一次系统调用</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    实践中：<strong>核心交易类系统</strong>会用 <code>1</code>，用磁盘 I/O 换绝对的持久性；<strong>可以容忍秒级数据丢失、追求极致写入吞吐</strong>的场景（如日志类、统计类系统）可能选 <code>2</code> 甚至 <code>0</code>。
+  </p>
+
+  <!-- 循环使用 -->
+  <h2>Redo Log 文件是循环写的</h2>
+  <p>
+    Redo Log 不是无限增长的文件，而是由一组固定大小、数量的文件（如 <code>ib_logfile0</code>、<code>ib_logfile1</code>）构成的<strong>环形结构</strong>，总大小由
+    <code>innodb_log_file_size</code> × <code>innodb_log_files_in_group</code> 决定。写指针（write pos）不断向前推进，写到组末尾后会回到组头部覆盖写。
+    但覆盖的前提是：这部分日志对应的脏页<strong>已经真正刷到磁盘</strong>了，否则一旦覆盖、又发生崩溃，这部分修改就永久丢失、无法重做。
+    "已刷盘、可以被覆盖"这个边界正是由 <strong>Checkpoint 机制</strong>维护和推进的，具体如何计算和推进将在 07 篇展开。
+  </p>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"只要开着 Redo Log，MySQL 就绝对不会丢数据，跟 <code>innodb_flush_log_at_trx_commit</code> 设成几没关系。"
+    这是最容易被面试官抓住的误解。<strong>Redo Log 提供的持久性保证，强弱完全取决于这个参数设成什么值</strong>：设为 <code>1</code> 才是"提交即落盘"的强持久性；设为 <code>0</code> 或 <code>2</code> 时，为了性能都主动放弃了一部分持久性保证，在极端故障场景下（进程崩溃、系统崩溃、断电）会有不同程度的数据丢失窗口。理解这一点，才能在实际项目里根据业务对"丢多少数据可接受"做出正确的权衡选择，而不是死记"开了 Redo Log 就绝对安全"。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Redo Log 和 binlog 有什么区别？" 常见对比维度：Redo Log 是 InnoDB 引擎层的物理日志、固定大小循环写、用于崩溃恢复和持久性；binlog 是 MySQL Server 层的逻辑日志（statement/row/mixed）、可以无限追加、用于主从复制和数据归档。二者配合完成"两阶段提交（2PC）"，保证事务提交后 Redo Log 和 binlog 的内容一致，这也是后续可以延伸追问的方向。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>WAL 的本质是把随机写转换成顺序写</strong>，用日志的"快"换数据页刷盘的"慢"，是数据库系统里普遍适用的设计思想（不止 InnoDB，几乎所有支持崩溃恢复的存储系统都用这一套）。</li>
+    <li><strong>Redo Log 记录的是物理修改</strong>，配合 Checkpoint 机制实现空间循环复用，配合崩溃恢复机制（08 篇）把内存中未落盘的修改重放出来。</li>
+    <li><strong>innodb_flush_log_at_trx_commit 是性能与持久性的调节旋钮</strong>，没有绝对正确的取值，只有适合业务场景的取值——这正是"给出对比、权衡取舍"思维在数据库调优中的具体体现。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-BufferPool原理.html" class="nav-btn">← Buffer Pool 原理</a>
+    <a href="./04-UndoLog与回滚.html" class="nav-btn next">Undo Log 与回滚 →</a>
+  </div>
+
+</div>
+</body>
+</html>

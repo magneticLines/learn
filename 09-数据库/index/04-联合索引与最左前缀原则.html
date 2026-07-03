@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>联合索引与最左前缀原则 — 索引与执行计划</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #7c4a10; }
+  .nav-btn.next { color: #38bdf8; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 索引与执行计划 / 联合索引与最左前缀原则
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">索引与执行计划</div>
+    <h1>联合索引与最左前缀原则</h1>
+    <p>联合索引不是"给每一列都单独建了个索引"，而是把多列拼成一个复合排序键的<strong>一棵</strong>B+树——理解了这个物理事实，最左前缀原则就不再是需要死记的规则，而是显而易见的推论。</p>
+  </div>
+
+  <!-- 本质 -->
+  <h2>联合索引的物理本质：一棵按复合键排序的 B+树</h2>
+  <p>
+    假设有表 <code>user(id, a, b, c)</code>，建立联合索引 <code>INDEX idx_a_b_c (a, b, c)</code>。这棵 B+树的每个叶子节点存的是
+    <code>(a, b, c, 主键id)</code> 这样的复合值，排序规则是：<strong>先按 a 排序；a 相同的记录，再按 b 排序；a、b 都相同的记录，再按 c 排序</strong>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>idx_a_b_c 叶子节点排序示意（按 a,b,c 字典序）</span></div>
+    <pre><span class="com">-- (a, b, c) 三元组按字典序排列，注意 b 只在 a 相同时才有序，c 只在 a,b 都相同时才有序</span>
+<span class="num">(1, 1, 2)</span>
+<span class="num">(1, 2, 1)</span>
+<span class="num">(1, 2, 3)</span>
+<span class="num">(2, 1, 1)</span>
+<span class="num">(2, 1, 5)</span>
+<span class="num">(2, 2, 0)</span></pre>
+  </div>
+  <p>
+    观察上面的数据你会发现一个关键事实：<strong>整体上 c 列其实是无序的</strong>（比如全表看 c 依次是 2,1,3,1,5,0，毫无规律）。
+    c 只有在"a 和 b 都已经固定"的小范围内才是有序的。这就是"层层嵌套排序"——每一层排序都是在上一层排序结果相等的前提下才成立的<strong>局部有序</strong>，而不是全局有序。
+  </p>
+  <div class="callout info">
+    <strong>生活类比：</strong>联合索引就像一本按"姓氏拼音 → 名字拼音 → 出生日期"排序的电话簿。你可以快速翻到"王"姓开头的所有人（用上第一列），也能在"王"姓范围内快速定位"王小明"（用上前两列）；但如果你想直接查所有"出生日期是 5 月 1 日"的人，对不起，这本电话簿对你毫无帮助——因为出生日期只在姓名都锁定后才排序，全局是乱序的。你只能从头翻到尾，逐条比对。
+  </div>
+
+  <!-- 最左前缀原则 -->
+  <h2>最左前缀原则：为什么必须从最左列开始</h2>
+  <p>
+    B+树的检索依赖"有序"才能进行范围收缩（每一层根据大小关系决定往左还是往右走）。既然 b、c 列的有序性是建立在前面的列已经确定相等的基础上，
+    那么一旦查询条件<strong>跳过了最左列（或最左列不是等值条件）</strong>，后面的列在树里就退化成无序数据，B+树的比较、收缩逻辑完全用不上，只能退化为全表扫描式的比对。
+  </p>
+  <table>
+    <thead>
+      <tr><th>查询条件</th><th>能否用上 idx_a_b_c</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>WHERE a = 1</code></td>
+        <td>能，用到 a 一列</td>
+        <td>a 是最左列，直接可以做范围定位</td>
+      </tr>
+      <tr>
+        <td><code>WHERE a = 1 AND b = 2</code></td>
+        <td>能，用到 a、b 两列</td>
+        <td>a 等值锁定范围后，b 在该范围内依然有序</td>
+      </tr>
+      <tr>
+        <td><code>WHERE a = 1 AND b = 2 AND c = 3</code></td>
+        <td>能，a、b、c 全部用上</td>
+        <td>三列均为等值条件，索引查找可以精确定位</td>
+      </tr>
+      <tr>
+        <td><code>WHERE a = 1 AND b &gt; 2 AND c = 3</code></td>
+        <td>只能用到 a、b，c 用不上</td>
+        <td>b 是范围查询，一旦发生范围查询，后面列的有序性立刻中断（见下文重点）</td>
+      </tr>
+      <tr>
+        <td><code>WHERE b = 2</code></td>
+        <td>不能，无法使用该索引做定位</td>
+        <td>跳过最左列 a，b 在全表范围内无序，只能退化为扫描</td>
+      </tr>
+      <tr>
+        <td><code>WHERE c = 3</code></td>
+        <td>不能</td>
+        <td>同上，c 更靠后，全局更加无序</td>
+      </tr>
+      <tr>
+        <td><code>WHERE b = 2 AND c = 3</code></td>
+        <td>不能</td>
+        <td>缺少最左列 a，b、c 组合依然全局无序</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>重点陷阱：范围查询会中断最左前缀匹配。</strong>
+    <code>WHERE a = 1 AND b &gt; 2 AND c = 3</code> 这个例子极容易被忽视——很多人以为"a、b、c 都在 WHERE 里出现了，索引应该能全用上"。
+    但事实是：MySQL 在索引树里定位完 <code>a = 1</code> 后，进入 b 这一层做范围扫描（<code>b &gt; 2</code>），此时游标要在满足 <code>a=1</code> 的这一段叶子节点里从 <code>b=2</code> 往后扫描，
+    但这些被扫描到的记录中 <strong>c 已经不是全局有序的了</strong>（因为 b 在变化，c 只在 a、b 都固定时才有序）。
+    所以 <code>c = 3</code> 这个条件<strong>无法通过索引定位</strong>，只能对扫描到的每一行在索引里额外判断一次（这部分可以靠下一篇讲的"索引下推"优化，但索引本身的有序定位能力到 b 就截止了）。
+  </div>
+
+  <!-- 列顺序设计 -->
+  <h2>联合索引列顺序怎么设计</h2>
+  <p>
+    既然最左列决定了索引能否被命中、命中后能收缩多大范围，列的顺序设计就直接影响索引的使用效率，通常遵循两个原则：
+  </p>
+  <ul>
+    <li><strong>区分度（选择性）高的列放前面：</strong>比如 <code>status</code>（只有几个取值）和 <code>user_id</code>（几乎每行都不同）组合成索引，<code>user_id</code> 放最左边能更快地把候选行数收缩到很小范围，<code>status</code> 放最左边则收缩效果很差。</li>
+    <li><strong>常用作等值查询（<code>=</code>）的列放前面，范围查询（<code>&gt;</code>、<code>&lt;</code>、<code>BETWEEN</code>、<code>LIKE 前缀%</code>）的列放后面：</strong>因为范围查询一旦出现，后面所有列的有序性都会被打断（如上文重点所述），所以要把范围条件尽量往后放，让更多的等值列排在前面参与索引收缩。
+  </ul>
+  <div class="code-block">
+    <div class="cb-header"><span>列顺序对比示例</span></div>
+    <pre><span class="com">-- 场景：查询 "某用户在某个时间段之后创建的订单，且状态为已支付"</span>
+<span class="com">-- 反例：范围列 created_at 放在前面，等值列 status 放在后面用不上</span>
+<span class="kw">CREATE</span> <span class="kw">INDEX</span> idx_bad <span class="kw">ON</span> orders<span class="punct">(</span>created_at<span class="punct">,</span> status<span class="punct">,</span> user_id<span class="punct">)</span><span class="punct">;</span>
+
+<span class="com">-- 正例：等值列 user_id、status 放前面，范围列 created_at 放最后</span>
+<span class="kw">CREATE</span> <span class="kw">INDEX</span> idx_good <span class="kw">ON</span> orders<span class="punct">(</span>user_id<span class="punct">,</span> status<span class="punct">,</span> created_at<span class="punct">)</span><span class="punct">;</span>
+
+<span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> orders
+<span class="kw">WHERE</span> user_id <span class="punct">=</span> <span class="num">1001</span> <span class="kw">AND</span> status <span class="punct">=</span> <span class="str">'PAID'</span> <span class="kw">AND</span> created_at <span class="punct">&gt;</span> <span class="str">'2026-01-01'</span><span class="punct">;</span>
+<span class="com">-- idx_good：user_id、status 两个等值条件都能参与索引定位，只有 created_at 做范围扫描，收缩效果好</span>
+<span class="com">-- idx_bad：created_at 是最左列且是范围查询，后面的 status、user_id 全部用不上索引的有序性</span></pre>
+  </div>
+
+  <!-- 建立联系 -->
+  <h2>与相邻知识点的联系</h2>
+  <p>
+    最左前缀原则决定了"能不能用上索引、用到哪一列为止"，而<strong>索引下推（ICP）</strong>（下一篇）解决的是"用不上索引定位、但索引里其实已经有这一列数据"时如何减少不必要的回表——
+    就是上面 <code>WHERE a=1 AND b&gt;2 AND c=3</code> 例子里 c 这一列的场景。再往后的<strong>覆盖索引</strong>（第 6 篇）则是最左前缀原则的延伸应用：即使某些列没法参与索引定位，只要它们存在于索引里，就可能省去回表这一步。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"最左前缀原则中的'最左'具体指什么？" 很多人会误答成"where 条件里写的顺序"，正确理解是<strong>指联合索引定义时列的顺序</strong>，与 SQL 里 WHERE 子句写 <code>b=2 AND a=1</code> 还是 <code>a=1 AND b=2</code> 无关——MySQL 优化器会自动调整条件顺序去匹配索引定义顺序。真正决定能否命中的，是索引定义 <code>(a, b, c)</code> 里"从 a 开始连续出现"这几列有没有在 WHERE 条件里都给出。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>联合索引是一棵树，不是多棵单列索引的简单叠加：</strong>排序是层层嵌套的，后面列的有序性依赖前面列已经确定。</li>
+    <li><strong>最左前缀原则的根源是 B+树的物理排序结构，不是人为规定的规则</strong>——理解了这一点就不需要死记硬背命中规则表。</li>
+    <li><strong>范围查询会截断后续列的索引可用性，这是设计联合索引列顺序时最容易被忽视的一点。</strong></li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-聚簇索引与二级索引回表.html" class="nav-btn">← 聚簇索引与二级索引(回表)</a>
+    <a href="./05-索引下推.html" class="nav-btn next">索引下推(ICP) →</a>
+  </div>
+
+</div>
+</body>
+</html>

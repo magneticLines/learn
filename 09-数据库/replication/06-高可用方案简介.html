@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>高可用方案简介（MHA 与 MGR）— 复制与高可用</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #6b21a8; }
+  .nav-btn.next { color: #a78bfa; border-color: #6b21a8; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 复制与高可用 / 高可用方案简介
+  </div>
+
+  <div class="hero">
+    <div class="tag">复制与高可用</div>
+    <h1>高可用方案简介（MHA 与 MGR）</h1>
+    <p>主库一旦挂了，谁来接班、怎么保证数据不丢、怎么让业务无感知切换——这是高可用方案要解决的核心问题。MHA 和 MGR 代表了两代完全不同的设计思路。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    高可用（High Availability）方案要解决的核心问题是：<strong>主库故障后，如何快速、安全地选出新主库并让从库和应用切过去，尽量少丢数据、少停机</strong>。
+    <strong>MHA（Master High Availability）</strong>是一套基于传统异步/半同步复制的<strong>故障检测 + 自动切换工具</strong>；
+    <strong>MGR（MySQL Group Replication）</strong>则是 MySQL 官方基于 <strong>Paxos 协议</strong>原生实现的复制组方案，从复制机制的底层就重新设计了一致性保证。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>MHA 像是给一个"老板 + 若干分店"的传统架构外挂了一个经验丰富的"调度员"——老板万一出事，调度员负责在几秒内从分店里挑一个数据最全的顶上去当新老板，
+    再通知其它分店和收银系统认新老板。而 MGR 则是从根上换了一套治理模式：不再有绝对意义上的"唯一老板"，而是几个分店组成一个"合议组"，
+    每一笔生意都要合议组内多数成员投票通过才算数（Paxos 协议），这样即便原来的带头人挂了，剩下的成员也能立刻自己选出新的带头人，且投票通过的生意保证不会因为换人而丢失。
+  </div>
+
+  <h2>MHA：基于传统复制的故障转移工具</h2>
+  <p>
+    MHA 不改变 MySQL 原有的主从复制机制（还是异步或半同步复制），而是在这套机制之上加了一层管理程序，核心工作分两部分：
+  </p>
+  <ul>
+    <li><strong>MHA Manager</strong>：独立部署的监控节点，持续探测主库存活状态；一旦判定主库故障，触发故障转移流程。</li>
+    <li><strong>MHA Node</strong>：部署在每个 MySQL 节点上的代理，负责在故障转移时解析和补齐 binlog 差异。</li>
+  </ul>
+  <p>故障转移的核心步骤：</p>
+  <ol>
+    <li>确认主库真的宕机（避免网络抖动造成的误判，通常会多次探测或结合多个监控点交叉验证）。</li>
+    <li>从多个从库中找出<strong>relay log 最接近主库最新进度</strong>的那个从库（差异最小，意味着数据最全）。</li>
+    <li>让其它从库先从这个"数据最全"的从库补齐差异的 relay log（尽量减少数据丢失）。</li>
+    <li>把这个从库提升（promote）为新主库。</li>
+    <li>让其它从库重新指向新主库，通知应用层/VIP 切换连接到新主库。</li>
+  </ol>
+  <div class="callout warn">
+    <strong>常见误区：</strong>MHA 能做到"秒级"故障转移，但<strong>不能保证零数据丢失</strong>——因为它依赖的仍然是异步/半同步复制，
+    如果主库宕机时有事务的 binlog 还没来得及传给任何从库，这部分数据无论如何补偿都找不回来了。MHA 解决的是"尽快恢复服务、尽量减少数据丢失"，而不是"绝对不丢数据"。
+  </div>
+
+  <h2>MGR：基于 Paxos 的复制组</h2>
+  <p>
+    MGR 是 MySQL 5.7.17 引入的原生高可用方案，最大的区别在于：<strong>它不是在异步复制外面包一层管理工具，而是重新设计了复制协议本身</strong>。
+    MGR 中多个节点组成一个"复制组"，每个事务提交前需要经过组内基于 Paxos 协议的一致性协商，<strong>只有得到组内多数节点（Quorum）确认，事务才能真正提交</strong>。
+  </p>
+  <p>MGR 支持两种模式：</p>
+  <ul>
+    <li><strong>单主模式（Single-Primary）</strong>：组内自动选出一个主节点接受写入，其它节点只读，类似传统主从但故障转移是自动的且强一致。</li>
+    <li><strong>多主模式（Multi-Primary）</strong>：组内所有节点都可以接受写入，需要业务自行规避多点写入可能产生的冲突（如同一行数据在两个节点同时被修改），复杂度和使用门槛更高，生产环境更常用单主模式。</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>为什么 MGR 能做到自动选主且一致性更强：</strong>因为选主和事务提交的一致性保证都内建在 Paxos 协议里——多数派达成一致才能提交，天然避免了"数据丢失"和"脑裂"（多个节点都认为自己是主）的问题；
+    而 MHA 的选主是外部工具基于"看起来数据最全的从库"这种启发式判断做出的决策，本质上是"事后补救"，不是协议层面的强保证。
+  </div>
+
+  <h2>MHA 与 MGR 对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>MHA</th><th>MGR</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>复制机制</td>
+        <td>传统异步/半同步复制 + 外部管理工具</td>
+        <td>原生基于 Paxos 协议的复制组</td>
+      </tr>
+      <tr>
+        <td>一致性保证</td>
+        <td>尽力而为，可能丢失未同步的事务</td>
+        <td>多数派确认才提交，一致性更强</td>
+      </tr>
+      <tr>
+        <td>选主方式</td>
+        <td>外部监控工具触发，选"数据最全"的从库</td>
+        <td>协议内建自动选主，故障后组内自动完成</td>
+      </tr>
+      <tr>
+        <td>部署复杂度</td>
+        <td>相对简单，架构改动小，社区经验成熟</td>
+        <td>较高，网络分区容忍度、组内节点数（推荐奇数，通常3或5）需要仔细规划</td>
+      </tr>
+      <tr>
+        <td>写入性能</td>
+        <td>不受影响（本质还是普通主从）</td>
+        <td>有一定开销（每个事务都要走组内协商）</td>
+      </tr>
+      <tr>
+        <td>成熟度/生态</td>
+        <td>历史悠久，很多老系统仍在用（官方已停止维护，社区分支维护中）</td>
+        <td>MySQL 官方主推的高可用方向，云厂商（如阿里云 PolarDB-X、AWS Aurora 部分场景）也有借鉴类似思路</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"MHA 和 MGR 怎么选？" 没有绝对答案，要看场景：存量系统、团队对传统复制运维经验丰富、可以容忍极端情况下少量数据丢失，MHA 依然是稳妥选择；
+    新系统、对一致性要求高、愿意承担一定的写入性能开销和运维学习成本，MGR 是更现代化、官方推荐的方向。核心考察点是能否说清楚两者在"一致性保证来源"上的本质差异——MHA 是外部工具补救，MGR 是协议内建保证。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>MHA 是"给传统复制打补丁"的思路，MGR 是"重新设计复制协议"的思路</strong>，理解这个根本差异比记住两个名字更重要。</li>
+    <li><strong>Paxos/Raft 这类共识协议是分布式系统实现强一致性的通用武器</strong>，MGR 只是把它应用在了 MySQL 复制场景，后面学分布式系统会反复遇到同样的思想。</li>
+    <li>高可用方案要和前面讲的半同步复制、主从延迟结合起来看——它们共同构成了"MySQL 如何在保证可用性的前提下尽量减少数据风险"这条主线。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-读写分离架构.html" class="nav-btn">← 读写分离架构</a>
+    <a href="./07-数据备份与恢复策略.html" class="nav-btn next">数据备份与恢复策略 →</a>
+  </div>
+
+</div>
+</body>
+</html>

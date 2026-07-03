@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>数据库设计常见反模式 — 数据库设计与范式</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 数据库设计与范式 / 数据库设计常见反模式
+  </div>
+
+  <div class="hero">
+    <div class="tag">数据库设计与范式</div>
+    <h1>数据库设计常见反模式</h1>
+    <p>作为整个数据库模块的收尾，汇总几个"看起来很合理，实际上会埋雷"的设计反模式，并回顾一下我们走过的完整学习路径。</p>
+  </div>
+
+  <h2>反模式一：过度索引</h2>
+  <p>
+    "索引与执行计划" Tab 讲过 B+ 树索引能大幅加速查询，于是不少人走向另一个极端：<strong>给几乎每一列都建索引</strong>，觉得这样任何查询条件都能命中索引。
+  </p>
+  <p>
+    但索引不是免费的。每个二级索引本质上也是一棵独立的 B+ 树，<strong>每次 INSERT / UPDATE / DELETE 都需要同步维护所有相关索引</strong>——
+    写入一行数据，如果这张表有 8 个索引，就要对 8 棵 B+ 树分别做插入或调整，写入延迟和磁盘 I/O 成倍增加。
+  </p>
+  <div class="callout warn">
+    <strong>典型后果：</strong>某张表建了 10+ 个索引，查询确实很快，但每次批量导入数据要几十分钟——因为写入吞吐被索引维护开销拖垮了。索引设计要基于真实查询模式（结合 <code>EXPLAIN</code> 分析），而不是"宁滥勿缺"。
+  </div>
+  <p>正确做法：优先建<strong>联合索引</strong>覆盖多个高频查询场景（利用最左前缀原则），定期审查慢查询日志和索引使用率，删除长期零命中的冗余索引。</p>
+
+  <h2>反模式二：大字段放在高频访问的主表里</h2>
+  <p>
+    这一点在上一篇"字段类型选择的坑"里提到过：把 <code>TEXT</code>/<code>BLOB</code> 这类大字段（如商品详情富文本、用户简介长文本）直接放在高频查询的主表里，
+    会导致该表每一页能容纳的行数变少，全表扫描、<code>SELECT *</code> 都要多读很多物理页，Buffer Pool 缓存效率也会被拖低。
+  </p>
+  <p>
+    正确做法是<strong>垂直拆分</strong>：把访问频率低、体积大的字段拆到一张"扩展表"里，主表只保留高频访问的核心字段，通过主键关联查询。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>垂直拆分示例</span></div>
+    <pre><span class="com">-- 拆分前：一张表，商品详情富文本混在高频访问字段里</span>
+products(商品ID PK, 名称, 价格, 库存, 详情富文本 <span class="ty">TEXT</span>, 创建时间)
+
+<span class="com">-- 拆分后：主表只保留高频字段，大字段独立成扩展表</span>
+products(商品ID PK, 名称, 价格, 库存, 创建时间)
+product_details(商品ID PK FK, 详情富文本 <span class="ty">TEXT</span>)</pre>
+  </div>
+  <p>这样绝大多数"查询商品列表、下单"等高频操作只需要扫描瘦身后的主表，只有真正需要展示详情页时才去查扩展表。</p>
+
+  <h2>反模式三：滥用外键约束在高并发场景下的代价</h2>
+  <p>
+    外键约束（<code>FOREIGN KEY</code>）能保证引用完整性（比如订单表的 <code>客户ID</code> 必须在 <code>customers</code> 表中存在），这是理论上的优点。
+    但在高并发写入场景下，外键约束会带来实际的性能和运维代价：
+  </p>
+  <ul>
+    <li><strong>写入时的额外锁开销</strong>：每次插入/更新带外键的表，数据库都要去检查父表对应的行是否存在，这个检查会对父表相关行加锁，在高并发下容易造成额外的锁等待甚至死锁。</li>
+    <li><strong>级联操作的连锁反应</strong>：<code>ON DELETE CASCADE</code> 这类级联删除，一次删除可能引发大范围的连锁删除，代价不可控，且不便于灰度和补偿。</li>
+    <li><strong>分库分表场景下外键根本无法跨库生效</strong>：一旦做了水平拆分，父表和子表可能分布在不同的物理库，数据库层面的外键约束直接失效。</li>
+  </ul>
+  <p>
+    因此，很多大型互联网系统的做法是：<strong>不在数据库层面建外键约束，而是把引用完整性校验放到应用层（业务代码里判断）</strong>，
+    数据库只负责存储和索引，外键关系仅作为文档/ER 图上的逻辑约定。这是"用一致性保证换取写入性能和水平扩展能力"的典型取舍，
+    和第 2 篇讲的"范式化 vs 反范式化"是同一种工程哲学的不同体现。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"高并发系统为什么通常不建议使用数据库外键？" 回答要点：<strong>外键检查引入额外的锁竞争、级联操作影响不可控、且无法在分库分表后跨库生效；用应用层校验替代，能获得更好的写入性能和水平扩展灵活性，代价是需要业务代码自己保证数据一致性</strong>。
+  </div>
+
+  <h2>反模式四：EAV（实体-属性-值）模型</h2>
+  <p>
+    EAV（Entity-Attribute-Value）是一种试图用"万能表结构"应对"字段经常变化"需求的设计，常见于希望支持用户自定义字段的系统：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>EAV 反模式示例</span></div>
+    <pre><span class="com">-- 不区分具体业务字段，全部用"实体ID-属性名-属性值"三元组存储</span>
+eav_table(实体ID, 属性名, 属性值)
+
+<span class="com">-- 例如商品的"颜色""尺寸""重量"全部存成：</span>
+(1001, '颜色', '红色')
+(1001, '尺寸', 'XL')
+(1001, '重量', '1.2kg')</pre>
+  </div>
+  <p>这种设计表面上"无限灵活"，什么字段都能加，但代价极其沉重：</p>
+  <ul>
+    <li><strong>丧失类型系统</strong>：<code>属性值</code> 只能是字符串，数值比较、范围查询、排序全部失效或需要额外转换，前面讲的"字段类型选择"原则在 EAV 模式下根本无从谈起。</li>
+    <li><strong>查询变成噩梦</strong>：想查"颜色是红色且尺寸是 XL 的商品"，需要对同一张表自连接（self-join）多次，SQL 复杂度和执行成本随属性数量线性增长。</li>
+    <li><strong>无法有效索引</strong>：属性值列的选择性极低（同一列混装各种类型的数据），索引效果差。</li>
+    <li><strong>约束和默认值无法表达</strong>：数据库层面无法对"重量必须是正数"这类业务规则做约束。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>更好的替代方案：</strong>如果字段相对稳定，老老实实用具体列；如果确实需要支持少量可扩展属性，可以用 JSON 类型字段存储弹性属性（MySQL 5.7+ 支持 <code>JSON</code> 类型和虚拟列索引），在"结构化"和"灵活性"之间取得更好的平衡，而不是完全放弃关系模型退化成 EAV。
+  </div>
+
+  <h2>回顾整个数据库学习路径</h2>
+  <p>走到这里，整个数据库模块的 7 个 Tab 已经学完，可以串成一条完整的主线：</p>
+  <div class="tree">
+    <span class="hi">SQL 与关系模型基础</span> —— 关系代数与 SQL 是怎么描述"要什么数据"的（声明式）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">索引与执行计划</span> —— 数据库怎么把"要什么数据"翻译成高效的"怎么找到它"（B+树/聚簇索引）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">事务与并发控制</span> —— 多个请求同时读写同一份数据时，怎么保证结果正确（ACID/MVCC/锁）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">存储引擎内核</span> —— 上面这些机制在磁盘和内存里究竟是怎么落地实现的（Buffer Pool/redo log）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">复制与高可用</span> —— 单机扛不住故障，怎么让多台机器保持数据一致并互为备份<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">扩展性</span> —— 单机容量和吞吐到了瓶颈，怎么把数据横向拆分到多台机器<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">数据库设计与范式</span>（本 Tab）—— 一切性能优化的起点：一开始就把表结构设计对
+  </div>
+  <p>
+    这条主线的顺序其实也暗含了一种因果关系：<strong>设计与范式是地基，索引和内核是地基之上的承重结构，事务是保证多人同时施工不出乱子的规则，
+    复制和扩展性则是当这栋房子住不下人时如何"盖别墅群"</strong>。如果表设计从一开始就存在插入/更新异常，或者主键选型不合理导致页分裂，
+    后面无论怎么加索引、怎么优化复制拓扑，都是在给一个先天不足的地基做修补。这也是为什么"数据库设计与范式"虽然排在最后一个 Tab，
+    但建议在动手建表之初就应该先想清楚——理论上它更应该被放在最前面理解，只是内容依赖前面 Tab 建立的索引、事务等背景知识，所以放在收尾总结。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>过度索引</strong>用写入性能换查询性能，要基于真实查询场景取舍，而非"宁滥勿缺"。</li>
+    <li><strong>大字段应垂直拆分</strong>成扩展表，避免拖累主表的缓存效率和扫描性能。</li>
+    <li><strong>外键约束在高并发/分库分表场景下代价高昂</strong>，很多系统选择用应用层校验替代数据库外键。</li>
+    <li><strong>EAV 模式看似灵活，实则牺牲了整个关系模型的类型系统和查询能力</strong>，应优先用具体列或 JSON 字段代替。</li>
+    <li><strong>数据库设计不是孤立的知识点</strong>，它和索引原理、事务机制、扩展性方案共同构成一套完整的"如何设计一个可靠又高性能的数据系统"的方法论。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-字段类型选择的坑.html" class="nav-btn">← 字段类型选择的坑</a>
+    <a href="../database-roadmap.html" class="nav-btn next">回到路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

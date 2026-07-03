@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分片场景下的分布式事务 — 数据库扩展性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c4a10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 扩展性 / 分片场景下的分布式事务
+  </div>
+
+  <div class="hero">
+    <div class="tag">扩展性</div>
+    <h1>分片场景下的分布式事务</h1>
+    <p>单库时代一个 <code>BEGIN...COMMIT</code> 就能保证的原子性，分库分表之后升级成了一个跨网络、跨进程的世界性难题。</p>
+  </div>
+
+  <h2>为什么分库分表把本地事务问题升级成了分布式事务问题</h2>
+  <p>
+    事务 Tab 讲过，InnoDB 的本地事务靠 <strong>undo log + redo log</strong> 保证原子性和持久性：一个事务内的多条修改要么全部生效、要么全部回滚，
+    这一切都建立在"所有修改都发生在同一个存储引擎实例内部"这个前提上——引擎能看到事务涉及的全部修改，自然能统一决定提交或回滚。
+  </p>
+  <p>
+    分库分表之后，一个业务操作（比如"下单"）可能需要同时修改<strong>多个物理分片</strong>：扣减 <code>inventory_0</code> 库的库存、
+    在 <code>order_3</code> 分片插入订单、在 <code>account_1</code> 分片扣减账户余额。这些修改分散在不同的数据库实例上，
+    <strong>每个实例只能保证自己那部分修改的本地事务原子性，却完全不知道其他分片上的操作是否也成功了</strong>。
+  </p>
+  <div class="callout warn">
+    <strong>核心矛盾：</strong>如果库存分片提交成功，但订单分片因为网络抖动提交失败，就会出现"库存扣了、订单却没生成"的数据不一致——这是本地事务无论如何也保证不了的，必须引入跨节点的协调机制。这正是分库分表最大的隐藏代价之一：<strong>它把原本免费的原子性，变成了需要额外设计和成本去换取的东西</strong>。
+  </div>
+  <div class="callout info">
+    <strong>类比：</strong>本地事务像一个人自己转账给自己的两个钱包，要么都成功要么都不动，自己完全说了算；分布式事务像 A 银行的账户要转钱给 B 银行的账户，中间必须有一套跨行清算协议，两边都得配合，任何一方掉线都可能导致钱"半路丢失"或者"重复到账"。
+  </div>
+
+  <h2>回顾：2PC 与柔性事务</h2>
+  <p>
+    事务 Tab 的"分布式事务简介"一篇已经讲过 2PC 和柔性事务的基本原理，这里简单回顾并聚焦到分库分表这个具体场景下如何落地。
+  </p>
+
+  <h3>2PC（两阶段提交）：强一致方案</h3>
+  <div class="tree">
+    <span class="hi">2PC 在分片场景下的流程</span><br>
+    &nbsp;&nbsp;阶段一(准备)：协调者问每个分片"你能提交吗？" → 各分片执行修改但不提交，锁住资源，回复"可以"/"不可以"<br>
+    &nbsp;&nbsp;阶段二(提交)：所有分片都回复"可以" → 协调者通知全部提交；只要有一个回复"不可以" → 协调者通知全部回滚
+  </div>
+  <p><strong>优点：</strong>强一致性，业务代码几乎无感知（数据库/中间件层面自动处理）。</p>
+  <div class="callout warn">
+    <strong>缺点：</strong>准备阶段各分片要一直持锁等待协调者的最终指令，<strong>并发度大幅下降</strong>；协调者本身是单点，一旦协调者在阶段二崩溃，各分片会一直阻塞持锁（这也是 2PC 在高并发分库分表场景下很少被直接使用的原因）。
+  </div>
+
+  <h3>柔性事务：最终一致方案</h3>
+  <p>放弃"实时强一致"，转而追求"经过一个短暂中间状态后，最终一致"，用业务补偿代替数据库层面的强锁定。常见实现包括：</p>
+  <ul>
+    <li><strong>TCC（Try-Confirm-Cancel）：</strong>每个分片操作拆成预留资源（Try）、确认（Confirm）、取消（Cancel）三个阶段，业务代码需要自己实现三个接口。</li>
+    <li><strong>本地消息表 / 事务消息：</strong>业务修改和"发一条消息"绑定在同一个本地事务里，通过消息队列异步驱动其他分片完成后续操作，失败可重试。</li>
+    <li><strong>Saga：</strong>把一个大事务拆成一串本地事务，每一步都定义好对应的补偿操作，一旦某一步失败，依次调用之前步骤的补偿操作回滚。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>联系已学：</strong>柔性事务本质上是用"应用层补偿逻辑"替代"数据库层原子性保证"，这跟跨库 JOIN 那篇讲的"业务层聚合查询"是同一种权衡思路——分片打破了数据库原生能力后，只能把责任转移到应用层，用更多代码换取可扩展性。
+  </div>
+
+  <h2>2PC 与柔性事务对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>2PC</th><th>柔性事务（TCC/Saga/消息表）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>一致性强度</td>
+        <td>强一致（同步阻塞）</td>
+        <td>最终一致（允许短暂不一致窗口）</td>
+      </tr>
+      <tr>
+        <td>并发性能</td>
+        <td>差（持锁等待协调者）</td>
+        <td>好（不长时间持锁）</td>
+      </tr>
+      <tr>
+        <td>实现复杂度</td>
+        <td>低（依赖数据库/中间件支持）</td>
+        <td>高（业务代码需要实现补偿逻辑）</td>
+      </tr>
+      <tr>
+        <td>故障影响</td>
+        <td>协调者宕机可能导致全局阻塞</td>
+        <td>某一步失败通过补偿恢复，不阻塞其他请求</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>分片数少、对一致性要求极高的核心链路</td>
+        <td>高并发、可以接受短暂不一致的大多数互联网业务场景</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"只要用了分库分表中间件，分布式事务就能自动帮我搞定，业务代码不用管。" 中间件（如 ShardingSphere 集成 Seata）确实能提供分布式事务的接入能力，但<strong>补偿逻辑、幂等设计、重试策略这些业务语义相关的部分永远需要开发者自己实现</strong>。分布式事务从来不是"配置一下就免费获得"的能力，它是用开发和运维的复杂度换来的。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"分库分表之后怎么保证事务一致性？" 标准答题思路：先说明本地事务失效的根本原因（多个独立的存储引擎实例无法共享一个原子提交决策），再对比 2PC（强一致但性能差）和柔性事务（最终一致但需要业务补偿），最后结合具体业务场景（比如支付这种强一致场景 vs 积分这种可柔性场景）说明该怎么选。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>分库分表把"多条 SQL 在一个事务里要么都成功要么都失败"这个本地事务天然具备的能力，升级成了需要额外协调机制解决的分布式问题。</li>
+    <li><strong>2PC</strong> 强一致但牺牲并发性能和可用性，<strong>柔性事务</strong>牺牲实时一致性换取高并发和高可用。</li>
+    <li>设计分片方案时应该尽量通过好的分片键设计（比如上一篇讲的 ER 分片）让大部分业务操作落在单个分片内，从源头上减少真正需要跨分片事务的场景。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-跨库Join与全局表.html" class="nav-btn">← 跨库 Join 与全局表</a>
+    <a href="./06-分库分表中间件简介.html" class="nav-btn next">分库分表中间件简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

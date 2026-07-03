@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>两次写机制（Double Write Buffer） — 存储引擎内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 存储引擎内核 / 两次写机制（Double Write Buffer）
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">存储引擎内核</div>
+    <h1>两次写机制（Double Write Buffer）</h1>
+    <p>Redo log 能保证"崩溃后把已提交的修改补回来"，但前提是"页本身是完好的"。如果页在写入时就被写坏了一半，redo log 也无力回天——这正是两次写要解决的问题。</p>
+  </div>
+
+  <!-- 问题：部分页写入 -->
+  <h2>要解决的问题：部分页写入（Partial Page Write）</h2>
+  <p>
+    InnoDB 的页大小默认是 <strong>16KB</strong>，但操作系统与磁盘的原子写单元往往比这小得多——比如传统机械盘的扇区是 512B，一些文件系统/存储设备的原子写单元是 4KB。这意味着，操作系统一次向磁盘刷新 16KB 的页时，底层实际上是拆成多次更小的写操作完成的。如果这时候<strong>系统断电或进程崩溃</strong>，就可能出现"这 16KB 里前 4KB 是新数据，后 12KB 还是旧数据"的情况——这种页被称为<strong>部分写入页 / "脏页断裂"（torn page）</strong>，它已经不是一份完整一致的数据，而是新旧数据的拼接体。
+  </p>
+  <div class="callout warn">
+    <strong>为什么 redo log 救不了这种情况：</strong>redo log 记录的是"在某个基准页的基础上，某个偏移处的内容改成了什么"，它的前提假设是<strong>这个基准页本身必须是完整、未损坏的</strong>。如果页已经是新旧数据交错的"缝合怪"，在这个已经损坏的页上再叠加 redo log 描述的增量修改，结果依然是错的——因为损坏的部分根本不在 redo log 的描述范围内。要恢复这种页，必须先有一份<strong>完整无损的页副本</strong>作为起点，再在其上应用 redo log。
+  </div>
+
+  <!-- 方案 -->
+  <h2>解决方案：先顺序写副本，再落盘到真实位置</h2>
+  <p>
+    Double Write Buffer（两次写缓冲区）的思路是：在把脏页真正写到表空间中它该在的位置之前，<strong>先额外写一份完整副本到一块专门、物理连续的缓冲区域</strong>，等这份副本安全落盘之后，再把页写到它真正的位置。整个过程分两步：
+  </p>
+
+  <div class="tree">
+    <span class="hi">Step 1：顺序写入 doublewrite 缓冲区</span><br>
+    &nbsp;&nbsp;脏页（16KB）→ 顺序追加写入 doublewrite 缓冲区（连续磁盘空间，顺序 I/O，速度快）<br>
+    &nbsp;&nbsp;写完并 fsync 后，这份副本已经安全落盘<br>
+    <br>
+    <span class="hi">Step 2：分散写入表空间真实位置</span><br>
+    &nbsp;&nbsp;脏页（同一份数据）→ 写入 ibd 数据文件中该页真正所在的位置（随机 I/O，分散在文件各处）<br>
+    &nbsp;&nbsp;如果这一步中途断电，页可能损坏，但 doublewrite 里还留着一份完好的副本
+  </div>
+
+  <p>
+    第一步之所以能做到又快又安全，是因为 doublewrite 缓冲区在磁盘上是<strong>物理连续</strong>的一段空间，写入是顺序 I/O，代价远低于第二步那种落在表空间各处的随机写；即便顺序写本身也可能遇到断电，但因为一次只覆盖 doublewrite 自己的连续区域，容易通过校验判断这次写是否完整。
+  </p>
+  <p>
+    在 MySQL 8.0.20 之前，doublewrite 缓冲区位于共享表空间 <code>ibdata1</code> 内；从 <strong>MySQL 8.0.20</strong> 开始，doublewrite 被拆分到独立的文件中（形如 <code>#ib_16384_0.dblwr</code>），使其管理更灵活，也便于按表空间粒度扩展。
+  </p>
+
+  <!-- 崩溃恢复流程 -->
+  <h2>崩溃恢复时如何使用 doublewrite</h2>
+  <p>
+    实例重启时，InnoDB 会对每个数据页做<strong>校验和（checksum）校验</strong>，用来判断这个页是否是一个"torn page"：
+  </p>
+  <ol>
+    <li>如果页的 checksum 正常，说明这个页写入是完整的，直接按正常流程用 redo log 前滚即可。</li>
+    <li>如果发现某个页 checksum 校验失败（即部分写入导致的损坏），InnoDB 会去 doublewrite 缓冲区里找到该页对应的完好副本，用这份副本<strong>整页覆盖恢复</strong>该页，使其恢复到写入前那一刻的完整状态。</li>
+    <li>页恢复为完整状态后，再在其上应用 redo log 中属于该页、且发生在这次写入之后的修改记录，把该页"前滚"到崩溃前应有的最新状态。</li>
+  </ol>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"两次写机制解决了什么问题？和 redo log 是什么关系？" 标准答案：两次写解决的是"页级别的写入完整性"问题（防止部分页写入导致页损坏），是 redo log 能够正确前滚恢复的前提条件；redo log 假设应用它的目标页是完整的，doublewrite 负责在崩溃后先把损坏的页"修复"成完整页，两者配合才能保证 crash-safe。
+  </div>
+
+  <!-- 对比 -->
+  <h2>与 Redo Log、Change Buffer 的角色对比</h2>
+  <table>
+    <thead>
+      <tr><th>机制</th><th>解决的问题</th><th>作用层面</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Redo Log</td>
+        <td>已提交事务的修改在崩溃后不丢失（前滚）</td>
+        <td>逻辑上的"修改是否被持久化"，见
+          <a href="./03-RedoLog与WAL机制.html" style="color:#4ade80;">Redo Log 与 WAL 机制</a>
+        </td>
+      </tr>
+      <tr>
+        <td>Double Write Buffer</td>
+        <td>页本身在写入过程中是否完整，防止 torn page</td>
+        <td>物理层面的"页是否完好"，是 redo log 前滚的前提</td>
+      </tr>
+      <tr>
+        <td>Change Buffer</td>
+        <td>非唯一二级索引的随机写入效率</td>
+        <td>写入路径的性能优化，与崩溃安全无关，见
+          <a href="./05-ChangeBuffer.html" style="color:#4ade80;">Change Buffer</a>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"开了 doublewrite 就是把每次写入的数据量翻倍，太浪费性能了，应该关掉（<code>innodb_doublewrite=OFF</code>）。" 虽然 doublewrite 确实带来了额外的写入量，但由于第一步是顺序 I/O，实际开销远低于"数据量翻倍"给人的直觉；而如果关闭它，一旦发生部分页写入，几乎没有办法恢复出一份干净的页，代价是数据损坏且难以修复。生产环境一般不建议关闭，除非底层存储本身已经保证了页级别的原子写（比如某些支持 atomic write 的文件系统/云盘），此时 doublewrite 才可以考虑关闭。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>两次写解决的是"页级别的写入原子性"问题</strong>：磁盘/文件系统的原子写单元可能小于 InnoDB 页大小，断电会导致 torn page。</li>
+    <li><strong>先顺序写副本、再分散写真实位置</strong>，用一次可控的顺序 I/O 开销换取"崩溃后总能找回一份完整页"的保障。</li>
+    <li><strong>它是 redo log 能正确前滚的前提</strong>：redo log 假设页是完整的，doublewrite 负责在崩溃恢复时先把损坏页修复为完整页，两者配合才构成完整的 crash-safe 链路。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-ChangeBuffer.html" class="nav-btn">← Change Buffer</a>
+    <a href="./07-Checkpoint机制.html" class="nav-btn next">Checkpoint 机制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

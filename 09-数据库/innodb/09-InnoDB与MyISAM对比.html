@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>InnoDB 与 MyISAM 对比 — 存储引擎内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 存储引擎内核 / InnoDB 与 MyISAM 对比
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">存储引擎内核</div>
+    <h1>InnoDB 与 MyISAM 对比</h1>
+    <p>MySQL 5.5 之前默认引擎是 MyISAM，之后换成了 InnoDB——这不是一次随意的换皮，而是"能不能撑起真实在线业务"的路线之争。</p>
+  </div>
+
+  <!-- 总览 -->
+  <h2>两种截然不同的设计哲学</h2>
+  <p>
+    MyISAM 的设计目标是"简单、快、省内存"：不支持事务，不做崩溃安全保证，换取更小的存储开销和某些只读场景下的高性能。
+    InnoDB 的设计目标是"安全、并发、可靠"：完整支持事务与崩溃恢复（正是前面几篇 <a href="./03-RedoLog与WAL机制.html">redo log</a>、
+    <a href="./04-UndoLog与回滚.html">undo log</a>、<a href="./08-崩溃恢复流程.html">崩溃恢复</a> 讲的那一整套机制），代价是更复杂的实现和相对更高的存储/内存开销。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>核心维度对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>InnoDB</th><th>MyISAM</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>事务支持</strong></td>
+        <td>完整支持 ACID 事务，配合 <a href="../transaction/01-事务的ACID特性.html">ACID 四大特性</a>与 <a href="../transaction/06-MVCC原理.html">MVCC</a> 提供隔离性</td>
+        <td>不支持事务，每条语句执行完立即生效，无法回滚</td>
+      </tr>
+      <tr>
+        <td><strong>锁粒度</strong></td>
+        <td>基于索引实现行级锁，不同事务可以并发修改同一张表的不同行</td>
+        <td>只支持表级锁，写操作会锁住整张表，写并发能力弱</td>
+      </tr>
+      <tr>
+        <td><strong>外键约束</strong></td>
+        <td>支持</td>
+        <td>不支持（语法上可以写，但不会真正生效约束）</td>
+      </tr>
+      <tr>
+        <td><strong>崩溃恢复能力</strong></td>
+        <td>基于 redo log + undo log 的日志式崩溃恢复，可精确恢复到崩溃前状态</td>
+        <td>没有类似的日志机制，崩溃后极易损坏，需要 <code>myisamchk</code> 手动修复，且可能丢数据</td>
+      </tr>
+      <tr>
+        <td><strong>全文索引</strong></td>
+        <td>MySQL 5.6 才开始支持 FULLTEXT 索引</td>
+        <td>很早就支持 FULLTEXT 索引，曾是全文检索的唯一选择</td>
+      </tr>
+      <tr>
+        <td><strong>数据组织方式</strong></td>
+        <td>聚簇索引：数据按主键顺序物理存储在 B+ 树叶子节点中，主键查询即数据查询</td>
+        <td>非聚簇：数据单独存于堆文件（.MYD），所有索引（包括主键）都是指向数据物理行号的引用，没有聚簇概念</td>
+      </tr>
+      <tr>
+        <td><strong>COUNT(*) 性能</strong></td>
+        <td>无条件 <code>COUNT(*)</code> 需要走索引扫描计数，因为 MVCC 下不同事务看到的可见行集合不同，无法简单缓存一个数字，复杂度 O(n)</td>
+        <td>在表的元数据里缓存了精确行数，无条件 <code>COUNT(*)</code> 直接读取该值，复杂度 O(1)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 行锁 vs 表锁 展开 -->
+  <h2>行级锁 vs 表级锁：并发能力的本质差异</h2>
+  <p>
+    MyISAM 的表锁意味着：只要有一个写事务在改表，其它任何读写都要排队等待，哪怕它们操作的是完全不同的行。这在写多读多的并发场景下会成为严重瓶颈。
+    InnoDB 的行锁基于索引实现——锁加在索引记录上，只有真正访问到同一行（或同一索引区间，涉及间隙锁时）的事务才会互相阻塞，
+    不同行之间的修改可以完全并行，这是 OLTP（高并发在线事务处理）场景下 InnoDB 碾压 MyISAM 的关键原因。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>"InnoDB 的行锁是加在行数据上的" ——更准确的说法是<strong>行锁通过给索引记录加锁来实现</strong>。
+    如果一条 UPDATE 语句的 WHERE 条件没有命中任何索引，InnoDB 会退化成锁住全表扫描到的所有行，效果上等同于表锁，这也是为什么"锁等待"问题经常和"缺索引"绑在一起排查。
+  </div>
+
+  <!-- COUNT 展开 -->
+  <h2>COUNT(*) 差异背后的根本原因：MVCC</h2>
+  <p>
+    这是一道经典面试题，很多人只记住结论"MyISAM 的 COUNT 快"，却说不清原因。本质在于 <a href="../transaction/06-MVCC原理.html">MVCC</a>：
+    InnoDB 中同一时刻不同事务因为隔离级别和可见性判断，看到的"当前表里有多少行"可能是不同的数字（比如一个事务开始后另一个事务插入了新行，
+    在可重复读隔离级别下前者可能看不到这行）。因此 InnoDB 无法维护一个所有事务通用的"精确行数"缓存，只能老老实实扫描索引、逐行做可见性判断后计数。
+    MyISAM 没有事务和多版本并发的概念，任意时刻表的行数是唯一确定的，所以可以直接维护并读取这个缓存值。
+  </p>
+
+  <!-- 为什么切换默认引擎 -->
+  <h2>为什么 MySQL 5.5 之后默认引擎换成了 InnoDB</h2>
+  <p>
+    MySQL 5.5（2010 年）将默认存储引擎从 MyISAM 切换为 InnoDB，根本原因是<strong>绝大多数真实在线业务的核心诉求，MyISAM 从架构上就无法满足</strong>：
+  </p>
+  <ul>
+    <li><strong>事务是刚需：</strong>转账、下单、库存扣减这类操作必须保证原子性和一致性，MyISAM 完全没有事务能力；</li>
+    <li><strong>写并发是刚需：</strong>互联网应用普遍是高并发读写混合负载，MyISAM 的表锁在写密集场景下几乎无法扩展；</li>
+    <li><strong>崩溃安全是刚需：</strong>生产环境无法接受"服务器一断电，表就可能损坏，需要人工介入修复"这种风险，InnoDB 的日志式恢复机制解决了这个问题。</li>
+  </ul>
+  <p>
+    MyISAM 剩下的优势场景（只读或读远大于写、不需要事务、需要早期版本的全文索引）在今天已经相当边缘——现代 InnoDB 已支持全文索引，
+    读性能差距也随着版本演进大幅缩小，因此新项目基本不再有理由主动选择 MyISAM。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么 MySQL 5.5 之后默认引擎换成了 InnoDB？" 参考答案：因为 InnoDB 提供了 MyISAM 不具备的三大能力——
+    事务（ACID）、行级锁定的高并发写入、基于 redo/undo log 的崩溃安全恢复，而这三者正是绝大多数生产 OLTP 系统的刚性需求，
+    MyISAM 仅存的性能优势（如 O(1) 的 COUNT(*)）不足以弥补其在可靠性和并发性上的根本缺陷。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>本质区别是"要不要事务、要不要崩溃安全"</strong>，其余差异（锁粒度、索引组织方式、COUNT 性能）大多是这个根本选择派生出来的结果。</li>
+    <li><strong>行级锁 + MVCC 是 InnoDB 支撑高并发的两大支柱</strong>，与本 Tab 前面几篇讲的 redo/undo/checkpoint/崩溃恢复共同构成了 InnoDB 的可靠性基石。</li>
+    <li><strong>选型时不是"哪个更好"，而是"业务要不要事务和高并发写"</strong>——现代 MySQL 生态下，InnoDB 几乎是默认且正确的选择。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./08-崩溃恢复流程.html" class="nav-btn">← 崩溃恢复流程</a>
+    <a href="../replication/01-主从复制原理.html" class="nav-btn next">主从复制原理 →</a>
+  </div>
+
+</div>
+</body>
+</html>

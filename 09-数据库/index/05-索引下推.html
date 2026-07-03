@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>索引下推(ICP) — 索引与执行计划</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #7c4a10; }
+  .nav-btn.next { color: #38bdf8; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 索引与执行计划 / 索引下推(ICP)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">索引与执行计划</div>
+    <h1>索引下推(ICP)</h1>
+    <p>上一篇提到"范围查询会截断最左前缀匹配，后面的列用不上索引定位"——但"用不上定位"不等于"索引里没有这份数据"。索引下推做的事情，就是把这份被浪费的数据利用起来，尽量少走一次回表。</p>
+  </div>
+
+  <!-- 没有 ICP 之前 -->
+  <h2>没有 ICP 之前：白白多走的回表</h2>
+  <p>
+    假设有联合索引 <code>INDEX idx_name_age (name, age)</code>，执行查询：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示例查询</span></div>
+    <pre><span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> user
+<span class="kw">WHERE</span> name <span class="kw">LIKE</span> <span class="str">'张%'</span> <span class="kw">AND</span> age <span class="punct">=</span> <span class="num">20</span><span class="punct">;</span></pre>
+  </div>
+  <p>
+    这里 <code>name LIKE '张%'</code> 是一个前缀匹配，本质上是一个<strong>范围查询</strong>（等价于 <code>name &gt;= '张' AND name &lt; '张'的下一个字符</code>）。
+    按照上一篇讲的最左前缀原则：a 列（这里是 name）参与范围查询后，后面的 age 列在索引树里已经不再全局有序，<strong>无法通过索引直接定位</strong>。
+  </p>
+  <p>
+    在 MySQL 5.6 引入 ICP 之前，存储引擎（InnoDB）的做法很"老实"：只要 name 满足 <code>LIKE '张%'</code>，不管 age 是多少，
+    <strong>先把这条记录对应的主键取出来，回表到聚簇索引查出完整行</strong>，再把整行数据交给 Server 层，由 Server 层根据 <code>WHERE</code> 条件里的
+    <code>age = 20</code> 做二次过滤，不满足的就丢弃。
+  </p>
+  <div class="tree">
+<span class="hi">没有 ICP：</span><br>
+&nbsp;&nbsp;存储引擎层：遍历 idx_name_age，找到所有 name LIKE '张%' 的记录 → 逐条回表取完整行<br>
+&nbsp;&nbsp;Server 层：拿到所有"姓张"的完整行 → 再用 age = 20 过滤 → 返回结果<br>
+&nbsp;&nbsp;<span class="hi">问题：如果姓张的有 10000 人，但只有 50 人是 20 岁，白白多做了 9950 次不必要的回表</span>
+  </div>
+
+  <!-- 有 ICP 之后 -->
+  <h2>有了 ICP 之后：在索引遍历阶段就地过滤</h2>
+  <p>
+    索引下推（Index Condition Pushdown）的核心思路是：<strong>age 虽然不能参与索引的"定位"（不能用来缩小 B+树的查找范围），但它的值本来就实实在在地存在于 idx_name_age 这棵索引树的叶子节点里</strong>
+    （联合索引的叶子节点存的是 <code>(name, age, 主键id)</code>）。既然数据已经在手边，为什么不直接在存储引擎层就把 <code>age = 20</code> 这个条件判断掉，
+    而非要大老远回表取出整行、交给 Server 层才做这件事？
+  </p>
+  <p>
+    有了 ICP，执行流程变成：存储引擎在遍历 <code>name LIKE '张%'</code> 命中的每一条索引记录时，<strong>顺手检查一下该记录里的 age 值是否等于 20</strong>，
+    只有 name、age 都满足条件的记录，才会拿着主键去聚簇索引回表；不满足 age 条件的，直接在索引层跳过，连回表的机会都没有。
+  </p>
+  <div class="tree">
+<span class="hi">有 ICP：</span><br>
+&nbsp;&nbsp;存储引擎层：遍历 idx_name_age，找到 name LIKE '张%' 的记录 → 就地判断 age = 20 → 只有都满足的才回表<br>
+&nbsp;&nbsp;Server 层：直接拿到已经完全符合条件的行，无需二次过滤<br>
+&nbsp;&nbsp;<span class="hi">效果：10000 个姓张的人里最终只回表 50 次，而不是 10000 次</span>
+  </div>
+
+  <div class="callout info">
+    <strong>类比：</strong>没有 ICP 就像去仓库找"姓张的顾客"的完整档案——保安只看得懂门口登记簿上的姓名栏，凡是姓张的一律把整份档案（回表）搬出来，再由前台工作人员（Server 层）翻开档案看年龄是否等于 20，不符合的扔掉。
+    有了 ICP，相当于登记簿上除了姓名，年龄也顺手记了一笔——保安直接在登记簿上比对完姓名和年龄，只有两项都符合的人，才值得搬一次档案出来。
+  </div>
+
+  <!-- 如何确认生效 -->
+  <h2>如何确认 ICP 生效：EXPLAIN 的 Extra 列</h2>
+  <p>用 <code>EXPLAIN</code> 查看执行计划，如果 <code>Extra</code> 列出现 <strong><code>Using index condition</code></strong>，说明 ICP 被用上了：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>EXPLAIN 验证 ICP</span></div>
+    <pre><span class="kw">EXPLAIN</span> <span class="kw">SELECT</span> <span class="punct">*</span> <span class="kw">FROM</span> user
+<span class="kw">WHERE</span> name <span class="kw">LIKE</span> <span class="str">'张%'</span> <span class="kw">AND</span> age <span class="punct">=</span> <span class="num">20</span><span class="punct">;</span>
+
+<span class="com">-- 关键结果列（节选）：
+-- key: idx_name_age
+-- Extra: Using index condition   -- 说明 age 条件在索引遍历阶段就已经被下推判断</span></pre>
+  </div>
+  <p>
+    对比一下：如果把 age 换成一个索引里不存在的列（比如 <code>email = 'xxx'</code>），由于 email 不在 idx_name_age 里，存储引擎层无法就地判断，
+    这个条件就只能等到回表拿到完整行之后，在 Server 层通过 <code>Using where</code> 来过滤——这时 Extra 列会同时出现 <code>Using index condition</code>（针对 age）和
+    <code>Using where</code>（针对 email 这类索引外的列），两者并不互斥。
+  </p>
+
+  <!-- 适用范围 -->
+  <h2>ICP 的适用范围</h2>
+  <table>
+    <thead>
+      <tr><th>条件</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>只能用在二级索引上</td>
+        <td>聚簇索引的叶子节点本身就是完整行数据，遍历聚簇索引不存在"要不要回表"的问题，ICP 无从谈起。</td>
+      </tr>
+      <tr>
+        <td>只能处理"索引列本身能判断"的条件</td>
+        <td>下推的条件必须是索引里已经包含的列，且判断逻辑不依赖索引之外的数据（比如不能是需要访问 TEXT/BLOB 大字段之类不在索引里的列）。</td>
+      </tr>
+      <tr>
+        <td>需要优化器选择该策略</td>
+        <td>ICP 是否启用受 <code>optimizer_switch</code> 中的 <code>index_condition_pushdown</code> 开关控制，MySQL 5.6+ 默认开启。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见误解：</strong>不少人以为"只要 WHERE 条件里的列都在联合索引里，就一定能走 ICP 全部命中"。但 ICP <strong>不能让本该无序的部分重新变得有序</strong>——
+    它优化的是"减少回表次数"，而不是"让索引定位范围变得更精确"。也就是说，即使 ICP 生效，存储引擎依然需要把 <code>name LIKE '张%'</code> 命中的所有记录逐条扫描一遍
+    （只是省去了逐条回表的开销），扫描的行数并没有减少，减少的只是<strong>回表</strong>这一步的次数。
+  </div>
+
+  <!-- 建立联系 -->
+  <h2>与相邻知识点的联系</h2>
+  <p>
+    ICP 直接承接上一篇「联合索引与最左前缀原则」里提到的问题：范围查询打断最左前缀匹配后，后面的列本来就"英雄无用武之地"，ICP 给了它们一个新用途——就地过滤减少回表。
+    而下一篇要讲的<strong>覆盖索引</strong>是这一思路的极限形态：如果查询需要的所有列（不只是用来过滤的列）都已经在二级索引里，那么连"回表"这个动作本身都可以彻底省略，比 ICP 更进一步。
+  </p>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>ICP 解决的问题：</strong>联合索引中最左前缀之后、无法用于定位但仍存在于索引里的列，如何避免"先回表、再过滤"的浪费。</li>
+    <li><strong>生效标志：</strong><code>EXPLAIN</code> 的 <code>Extra</code> 列出现 <code>Using index condition</code>。</li>
+    <li><strong>能力边界：</strong>只减少回表次数，不改变索引扫描的行数；只能用在二级索引上，且条件必须能通过索引列本身判断。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-联合索引与最左前缀原则.html" class="nav-btn">← 联合索引与最左前缀原则</a>
+    <a href="./06-覆盖索引.html" class="nav-btn next">覆盖索引 →</a>
+  </div>
+
+</div>
+</body>
+</html>

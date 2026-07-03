@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>脏读 / 不可重复读 / 幻读 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / 脏读 / 不可重复读 / 幻读
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>脏读 / 不可重复读 / 幻读</h1>
+    <p>这三种异常现象是理解隔离级别的钥匙，也是面试最爱问、最容易答混的知识点——尤其是"不可重复读"和"幻读"，很多人分不清区别。用时间线例子过一遍，彻底记住。</p>
+  </div>
+
+  <h2>三个名字，三种完全不同的"看走眼"</h2>
+  <p>
+    这三种现象都是"事务并发执行时，读到了不该读到的东西"，但具体错在哪不一样：
+  </p>
+  <ul>
+    <li><strong>脏读：</strong>读到了别人<strong>还没提交</strong>的数据（可能后面还会被回滚，等于读到了"假数据"）。</li>
+    <li><strong>不可重复读：</strong>同一事务内两次读<strong>同一行</strong>，结果不一样（因为中间别人 <code>UPDATE</code> 并提交了这一行）。</li>
+    <li><strong>幻读：</strong>同一事务内两次执行<strong>同一条范围查询</strong>，返回的<strong>行数</strong>不一样（因为中间别人 <code>INSERT</code> 了新行并提交，像是变魔术一样"幻"出来的行）。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>核心区别一句话记住：</strong>不可重复读针对的是<strong>已存在的行被修改</strong>，幻读针对的是<strong>冒出了新的行（或行消失了）</strong>。前者是"内容变了"，后者是"数量变了"。
+  </div>
+
+  <h2>脏读：时间线演示</h2>
+  <p>场景：账户 A 原有余额 1000 元。事务 2 转账时先扣了 100 但还没提交，事务 1 在读未提交级别下"偷看"到了这个中间状态。</p>
+  <table>
+    <thead><tr><th>时间</th><th>事务 1</th><th>事务 2</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td></td><td><code>BEGIN;</code></td></tr>
+      <tr><td>T2</td><td></td><td><code>UPDATE account SET balance=900 WHERE id=1;</code>（未提交）</td></tr>
+      <tr><td>T3</td><td><code>SELECT balance FROM account WHERE id=1;</code> → 读到 <strong>900</strong></td><td></td></tr>
+      <tr><td>T4</td><td></td><td><code>ROLLBACK;</code>（余额恢复 1000）</td></tr>
+      <tr><td>T5</td><td>此前读到的 900 已经是"脏数据"，从未真实存在过</td><td></td></tr>
+    </tbody>
+  </table>
+  <p>只有<strong>读未提交</strong>级别会出现脏读，读已提交及以上级别都已解决。</p>
+
+  <h2>不可重复读：时间线演示</h2>
+  <p>场景：读已提交（RC）级别下，事务 1 两次读同一行，中间被事务 2 修改并提交，两次结果不一致。</p>
+  <table>
+    <thead><tr><th>时间</th><th>事务 1</th><th>事务 2</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td><code>BEGIN;</code></td><td></td></tr>
+      <tr><td>T2</td><td><code>SELECT balance FROM account WHERE id=1;</code> → <strong>1000</strong></td><td></td></tr>
+      <tr><td>T3</td><td></td><td><code>UPDATE account SET balance=900 WHERE id=1; COMMIT;</code></td></tr>
+      <tr><td>T4</td><td><code>SELECT balance FROM account WHERE id=1;</code> → <strong>900</strong>（变了！）</td><td></td></tr>
+    </tbody>
+  </table>
+  <p>
+    <strong>RC 级别</strong>下会出现（因为 RC 每次快照读都重新生成 ReadView，能看到别人刚提交的最新值）；
+    <strong>RR 级别</strong>下已解决（整个事务复用同一份 ReadView，两次读结果都基于事务开始时刻的快照）。
+  </p>
+
+  <h2>幻读：时间线演示</h2>
+  <p>场景：可重复读（RR）级别下，事务 1 两次执行同一个范围查询，中间事务 2 插入了一行新数据并提交。</p>
+  <table>
+    <thead><tr><th>时间</th><th>事务 1</th><th>事务 2</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td><code>BEGIN;</code></td><td></td></tr>
+      <tr><td>T2</td><td><code>SELECT * FROM account WHERE balance > 500;</code> → 3 行</td><td></td></tr>
+      <tr><td>T3</td><td></td><td><code>INSERT INTO account VALUES(..., balance=800); COMMIT;</code></td></tr>
+      <tr><td>T4</td><td><code>SELECT * FROM account WHERE balance > 500;</code> → 快照读仍是 3 行（MVCC 生效，未出现幻读）</td><td></td></tr>
+      <tr><td>T5</td><td><code>UPDATE account SET balance=balance+1 WHERE balance > 500;</code> → 当前读，惊讶地发现影响了 4 行</td><td></td></tr>
+    </tbody>
+  </table>
+  <div class="callout info">
+    <strong>关键细节：</strong>InnoDB 的幻读特指"当前读"（<code>UPDATE</code>/<code>DELETE</code>/<code>SELECT...FOR UPDATE</code>）遇到的行数变化，普通快照读（<code>SELECT</code>）因为 MVCC 的存在其实已经"看不到"新插入的行。
+    真正需要防范的幻读场景是：<strong>先用快照读确认没有某行，再插入这一行，结果因为间隙锁缺失导致并发下插入了重复数据</strong>。这正是下一篇间隙锁/临键锁要解决的问题。
+  </div>
+
+  <h2>三种异常与隔离级别对照总结</h2>
+  <table>
+    <thead>
+      <tr><th>隔离级别</th><th>脏读</th><th>不可重复读</th><th>幻读</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>读未提交</td><td style="color:#f87171">会出现</td><td style="color:#f87171">会出现</td><td style="color:#f87171">会出现</td></tr>
+      <tr><td>读已提交（RC）</td><td style="color:#4ade80">已解决</td><td style="color:#f87171">会出现</td><td style="color:#f87171">会出现</td></tr>
+      <tr><td>可重复读（RR，SQL标准定义）</td><td style="color:#4ade80">已解决</td><td style="color:#4ade80">已解决</td><td style="color:#f87171">标准允许出现</td></tr>
+      <tr><td>可重复读（RR，InnoDB 实际实现）</td><td style="color:#4ade80">已解决</td><td style="color:#4ade80">已解决</td><td style="color:#4ade80">间隙锁已解决</td></tr>
+      <tr><td>串行化</td><td style="color:#4ade80">已解决</td><td style="color:#4ade80">已解决</td><td style="color:#4ade80">已解决</td></tr>
+    </tbody>
+  </table>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问："不可重复读和幻读有什么区别？"</strong><br>
+    标准答案：不可重复读关注的是同一行数据被修改（UPDATE），两次读到的内容不同；幻读关注的是查询的行集合发生变化（INSERT/DELETE），两次读到的行数不同。有人用"内容 vs 数量"来记，也有人说"幻读是不可重复读的加强版——针对的是范围查询而不是单行"。
+  </div>
+  <div class="callout warn">
+    <strong>常见误区：</strong>认为 MySQL 的 RR 级别下快照读也会有幻读现象。实际上普通的一致性读（快照读）借助 MVCC 已经不会看到新插入的行；真正可能"幻读"的是当前读（加锁读），而这一漏洞又被间隙锁堵上了，所以说"MySQL 的 RR 基本解决了幻读"是成立的，但要清楚这是 InnoDB 实现层面的加强，不是 SQL 标准本身的保证。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>三种异常本质都是"隔离性不够"导致的读到不该读的东西，</strong>区别在于读到的是未提交数据、被修改的行、还是变化的行数。</li>
+    <li><strong>记忆口诀：</strong>脏读读到"没提交的"，不可重复读读到"改过的"，幻读读到"多/少的"。</li>
+    <li>下一篇进入锁机制，看看 InnoDB 具体用什么锁的组合来堵住不可重复读和幻读这两个漏洞。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-事务的隔离级别.html" class="nav-btn">← 事务的隔离级别</a>
+    <a href="./04-锁的分类.html" class="nav-btn next">锁的分类 →</a>
+  </div>
+
+</div>
+</body>
+</html>

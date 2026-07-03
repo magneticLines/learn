@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>聚合函数与 GROUP BY 原理 — 数据库</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f89820; }
+  p code, li code { color: #f89820; }
+  h2 { color: #f89820; border-left-color: #f89820; }
+  .hero .tag { color: #f89820; border-color: #7c4a10; }
+  .nav-btn.next { color: #f89820; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / SQL 与关系模型基础 / 聚合函数与 GROUP BY 原理
+  </div>
+
+  <div class="hero">
+    <div class="tag">SQL 与关系模型基础</div>
+    <h1>聚合函数与 GROUP BY 原理</h1>
+    <p>GROUP BY 做的事情，本质是把"一堆元组的集合"重新划分成"若干个子集合"，再对每个子集合分别计算一个汇总值。理解这个"分组降维"的过程，才能理解 SELECT 列表为什么有严格限制。</p>
+  </div>
+
+  <h2>聚合函数：把多行压缩成一个值</h2>
+  <table>
+    <thead><tr><th>函数</th><th>作用</th><th>是否忽略 NULL</th></tr></thead>
+    <tbody>
+      <tr><td><code>COUNT(*)</code></td><td>统计行数</td><td>不忽略，数所有行（包括含 NULL 的行）</td></tr>
+      <tr><td><code>COUNT(列)</code></td><td>统计该列非 NULL 的行数</td><td>忽略 NULL</td></tr>
+      <tr><td><code>SUM(列)</code></td><td>求和</td><td>忽略 NULL（相当于 NULL 不参与求和）</td></tr>
+      <tr><td><code>AVG(列)</code></td><td>求平均值</td><td>忽略 NULL（分母是非 NULL 的行数，不是总行数）</td></tr>
+      <tr><td><code>MAX(列)</code>/<code>MIN(列)</code></td><td>求最大/最小值</td><td>忽略 NULL</td></tr>
+    </tbody>
+  </table>
+  <p>第 11 篇会专门讲 <code>COUNT(*)</code> 和 <code>COUNT(列)</code> 的差异陷阱，这里先记住一个核心规律：<strong>几乎所有聚合函数（除 COUNT(*) 外）都会自动忽略 NULL 值</strong>。</p>
+
+  <h2>没有 GROUP BY 时，整张表就是"一个组"</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>不写 GROUP BY，聚合函数作用于整表</span></div>
+    <pre><span class="kw">SELECT</span> <span class="fn">COUNT</span>(*), <span class="fn">AVG</span>(age) <span class="kw">FROM</span> students;
+<span class="com">-- 整张表被当成唯一的一个分组，只返回一行汇总结果</span></pre>
+  </div>
+
+  <h2>GROUP BY：按列值重新分桶</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>students 表</span></div>
+    <pre>id | name | age | major
+---+------+-----+-------
+1  | 张三 | 20  | CS
+2  | 李四 | 22  | CS
+3  | 王五 | 19  | 数学</pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>按专业分组统计人数与平均年龄</span></div>
+    <pre><span class="kw">SELECT</span> major, <span class="fn">COUNT</span>(*) <span class="kw">AS</span> cnt, <span class="fn">AVG</span>(age) <span class="kw">AS</span> avg_age
+<span class="kw">FROM</span> students
+<span class="kw">GROUP BY</span> major;
+
+<span class="com">-- 结果：
+-- CS,   2, 21.0
+-- 数学, 1, 19.0</span></pre>
+  </div>
+  <p>
+    执行过程可以理解成两步：<strong>先把 students 按 major 的值切成若干个子集合</strong>（CS 组 = {张三,李四}，数学组 = {王五}），
+    <strong>再对每个子集合分别计算 COUNT 和 AVG</strong>。这正是"关系 = 集合"这一抽象在聚合场景下的自然延伸——GROUP BY 是把一个大集合划分成若干个不相交的子集合（这在数学上叫"划分/Partition"）。
+  </p>
+
+  <h2>核心原理：为什么 SELECT 列表只能出现分组列或聚合函数</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>❌ 违反 ONLY_FULL_GROUP_BY 的写法</span></div>
+    <pre><span class="kw">SELECT</span> major, name, <span class="fn">AVG</span>(age)  <span class="com">-- name 既不是分组列，也没被聚合函数包裹</span>
+<span class="kw">FROM</span> students
+<span class="kw">GROUP BY</span> major;</pre>
+  </div>
+  <p>
+    问题出在：分组之后，<code>CS</code> 这一组里有张三和李四两个人——<strong>"这一组的 name 到底该显示哪一个？"这是一个没有唯一答案的问题</strong>。
+    分组运算的本质是"多对一"的降维：一组里可能有多行，但输出只有一行，任何"没有被聚合函数处理、又不是分组依据"的列，在语义上都是模糊不清的（该取哪一行的值？第一行？随便一行？）。
+  </p>
+  <p>
+    MySQL 5.7 之前默认允许这种"暧昧"的写法（会随机挑一行的值返回，容易造成隐蔽 bug），从 5.7 开始默认开启 <strong><code>ONLY_FULL_GROUP_BY</code></strong> SQL 模式，
+    强制要求 <code>SELECT</code> 列表中的每一列必须满足：<strong>要么出现在 GROUP BY 中，要么被聚合函数包裹</strong>，否则直接报错，从语法层面堵住这个语义模糊的坑。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多人升级 MySQL 版本后突然发现老 SQL 报错 <code>this is incompatible with sql_mode=only_full_group_by</code>，第一反应是"关掉这个模式"。但这其实是在掩盖一个真正的设计缺陷——报错的 SQL 本身逻辑就是有歧义的，正确做法是把 <code>name</code> 也纳入 <code>GROUP BY</code>（如果每个 name 唯一对应一个 major，语义就清晰了），或者干脆用聚合函数如 <code>GROUP_CONCAT(name)</code> 把这一组里所有的 name 拼起来显示。
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问：为什么 GROUP BY 之后 SELECT 不能随便写列？</strong> 答：因为分组是"多行压缩成一行"的降维操作，任何没有被聚合、也不是分组依据的列，在一个分组里可能对应多个不同的值，语义上无法确定该显示哪一个。<code>ONLY_FULL_GROUP_BY</code> 模式就是为了防止这种歧义。
+  </div>
+  <div class="callout tip">
+    <strong>问：GROUP BY 和 DISTINCT 有什么关系？</strong> 答：<code>SELECT DISTINCT major FROM students</code> 和 <code>SELECT major FROM students GROUP BY major</code> 在只查分组列、不做聚合计算时结果等价，都是"去重"；但 <code>GROUP BY</code> 的能力更强，它可以同时对每组计算聚合值，这是纯 <code>DISTINCT</code> 做不到的。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>GROUP BY 的本质是把集合划分成互不相交的子集合：</strong>这是理解一切分组行为的起点。</li>
+    <li><strong>聚合函数默认忽略 NULL：</strong>这会直接影响 AVG 的分母、COUNT(列) 的计数，是常见的数据统计误差来源。</li>
+    <li><strong>ONLY_FULL_GROUP_BY 不是限制，而是在防止歧义：</strong>报错时应该反思 SQL 逻辑本身，而不是简单粗暴关掉这个模式。</li>
+    <li><strong>下一篇窗口函数会打破"多行必须压成一行"的限制：</strong>这是窗口函数与 GROUP BY 最根本的区别。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./07-子查询与关联子查询.html" class="nav-btn">← 子查询与关联子查询</a>
+    <a href="./09-窗口函数.html" class="nav-btn next">窗口函数 →</a>
+  </div>
+
+</div>
+</body>
+</html>

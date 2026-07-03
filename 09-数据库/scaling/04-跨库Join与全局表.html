@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>跨库 Join 与全局表 — 数据库扩展性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c4a10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 扩展性 / 跨库 Join 与全局表
+  </div>
+
+  <div class="hero">
+    <div class="tag">扩展性</div>
+    <h1>跨库 Join 与全局表</h1>
+    <p>单库时代一条 JOIN 语句就能搞定的关联查询，分库分表之后突然变得无解——数据库引擎压根不知道另一个分片上还有数据。</p>
+  </div>
+
+  <h2>为什么分片后无法跨库 JOIN</h2>
+  <p>
+    MySQL 的 JOIN 是在<strong>单个数据库实例内部</strong>完成的：优化器扫描驱动表，对每一行去被驱动表里查找匹配（联系索引 Tab 讲过的 Nested-Loop Join 原理）。
+    这一切都建立在"两张表在同一个数据库进程里，可以互相访问"的前提上。
+  </p>
+  <p>
+    分库之后，<code>order</code> 表可能在 <code>db_0</code>，而 <code>user</code> 表在另一个完全独立的库 <code>user_db</code>，
+    甚至同一张 <code>order</code> 表本身也被拆成了分布在不同物理库上的 <code>order_0</code>、<code>order_1</code>……
+    <strong>数据库实例之间没有原生的跨进程 JOIN 能力</strong>，一条 <code>SELECT ... FROM order o JOIN user u ON o.user_id = u.id</code> 根本无法直接执行。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>单库 JOIN 就像在一个仓库里，管理员可以同时打开两排货架对照着找货；分库之后货物被分散存放在不同城市的仓库里，管理员没法人肉"当场对照"，必须先把其中一批货运到同一个地方，或者提前在每个仓库都放一份小字典方便就地核对。
+  </div>
+
+  <h2>思路一：业务层聚合查询</h2>
+  <p>
+    把原本一条 SQL 完成的 JOIN，拆成多条独立查询，在应用代码里做内存关联（俗称"服务层 join"）。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>业务层聚合示例</span></div>
+    <pre><span class="com">// 1. 先查订单分片，拿到 order 列表</span>
+<span class="ty">List</span>&lt;<span class="ty">Order</span>&gt; orders = orderMapper.<span class="fn">selectByUserId</span>(userId);
+
+<span class="com">// 2. 再查用户库，拿到关联的用户信息</span>
+<span class="ty">Set</span>&lt;<span class="ty">Long</span>&gt; userIds = orders.<span class="fn">stream</span>().<span class="fn">map</span>(<span class="ty">Order</span>::getUserId).<span class="fn">collect</span>(...);
+<span class="ty">List</span>&lt;<span class="ty">User</span>&gt; users = userMapper.<span class="fn">selectByIds</span>(userIds);
+
+<span class="com">// 3. 在应用内存里按 id 关联，组装成最终结果</span>
+<span class="ty">Map</span>&lt;<span class="ty">Long</span>, <span class="ty">User</span>&gt; userMap = users.<span class="fn">stream</span>().<span class="fn">collect</span>(<span class="fn">toMap</span>(<span class="ty">User</span>::getId, u -&gt; u));</pre>
+  </div>
+  <p><strong>优点：</strong>不依赖任何中间件，实现直观，适用于任意分片方案。</p>
+  <div class="callout warn">
+    <strong>代价：</strong>把数据库的关联能力转移到了应用层，多次网络往返，代码复杂度上升；如果关联的数据量很大（比如上万条订单要关联上万个用户），还得自己处理分批查询，稍不注意就会写出 N+1 查询的低效代码。
+  </div>
+
+  <h2>思路二：全局表（冗余字典表）</h2>
+  <p>
+    对于<strong>数据量小、几乎不变、被频繁关联查询</strong>的表（比如省市区字典表、商品类目表、配置表），
+    干脆在<strong>每个分片里都存一份完整拷贝</strong>，这样任何分片上的业务表都能在本地直接 JOIN，不需要跨库。
+  </p>
+  <div class="tree">
+    <span class="hi">全局表：城市字典表在每个分片冗余一份</span><br>
+    &nbsp;&nbsp;db_0: order_0 表 + city 表（全量拷贝）<br>
+    &nbsp;&nbsp;db_1: order_1 表 + city 表（全量拷贝，与 db_0 内容一致）<br>
+    &nbsp;&nbsp;db_2: order_2 表 + city 表（全量拷贝，与 db_0 内容一致）
+  </div>
+  <p>
+    代价是<strong>写多份、维护一致性</strong>：字典表一旦更新，需要同步更新到所有分片，通常通过中间件自动广播写入，或者干脆约定这类表极少变更来规避一致性问题。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>全局表只适合"小表 + 几乎不变"的场景，别把订单表这种大表也搞成全局表——那样每个分片都要存全量数据，直接违背了分片的初衷。
+  </div>
+
+  <h2>思路三：ER 分片（绑定关系分片）</h2>
+  <p>
+    ER 分片（Entity-Relationship 分片）的思路是：<strong>把经常一起查询的表，按同一个分片键分片</strong>，让关联的数据始终落在同一个物理分片上，从而在分片内部就能完成 JOIN。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>ER 分片示例：订单与订单明细</span></div>
+    <pre><span class="com">-- order 表按 user_id 分片</span>
+<span class="kw">CREATE TABLE</span> <span class="fn">order</span> (id, user_id, ...);   <span class="com">-- 分片键 user_id</span>
+
+<span class="com">-- order_item 表也按 order 所属的 user_id 分片（而不是按自己的主键）</span>
+<span class="kw">CREATE TABLE</span> <span class="fn">order_item</span> (id, order_id, user_id, ...); <span class="com">-- 分片键同样是 user_id</span>
+
+<span class="com">-- 结果：同一个用户的 order 和 order_item 永远落在同一个物理分片上</span>
+<span class="com">-- 分片内部可以直接 JOIN，无需跨库</span></pre>
+  </div>
+  <p>这是业界最常用的思路，因为大部分业务场景里"父子表""主表与明细表"天然有一个共同的归属键（比如都归属于某个用户或某个租户）。</p>
+
+  <h2>三种思路对比</h2>
+  <table>
+    <thead>
+      <tr><th>方案</th><th>核心思想</th><th>适用场景</th><th>主要代价</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>业务层聚合查询</td>
+        <td>拆分成多次查询，应用内存里关联</td>
+        <td>任意场景的兜底方案</td>
+        <td>多次网络往返，代码复杂度上升</td>
+      </tr>
+      <tr>
+        <td>全局表</td>
+        <td>小表在每个分片冗余一份全量拷贝</td>
+        <td>字典表、配置表等小且几乎不变的数据</td>
+        <td>写入需要同步到所有分片，只适合小表</td>
+      </tr>
+      <tr>
+        <td>ER 分片</td>
+        <td>关联表按同一分片键分片，保证物理同分片</td>
+        <td>父子表、主从明细表等有天然归属键的场景</td>
+        <td>分片键选择被强约束，灵活性下降</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"上了分库分表中间件（如 ShardingSphere），跨库 JOIN 就能像单库一样随便写了。" 中间件确实能帮你自动把跨库 JOIN 拆解成多次查询再合并（下一篇会讲），但这只是把"业务层聚合查询"的脏活自动化了，<strong>性能代价依然存在</strong>——涉及的分片越多，合并成本越高。设计阶段就应该通过 ER 分片尽量减少真正需要跨库关联的场景，而不是指望中间件"魔法般"解决一切。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"分库分表之后怎么处理关联查询？" 标准答案要覆盖三点：能否通过 ER 分片让数据物理同分片；小表能否做成全局表冗余；实在不行退化成业务层多次查询再内存聚合。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>分片打破了单库天然支持的 JOIN 能力，本质原因是数据库实例之间没有跨进程关联查询的能力。</li>
+    <li><strong>全局表</strong>用空间换关联能力，<strong>ER 分片</strong>用分片键设计规避跨库关联，<strong>业务层聚合</strong>是通用兜底方案。</li>
+    <li>好的分片键设计应该在项目初期就考虑关联查询模式，而不是分完片才发现处处要跨库 JOIN。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-分布式ID生成方案.html" class="nav-btn">← 分布式 ID 生成方案</a>
+    <a href="./05-分片场景下的分布式事务.html" class="nav-btn next">分片场景下的分布式事务 →</a>
+  </div>
+
+</div>
+</body>
+</html>

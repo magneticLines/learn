@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>死锁的产生与排查 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / 死锁的产生与排查
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>死锁的产生与排查</h1>
+    <p>锁解决了并发安全问题，却也带来了新麻烦：多个事务互相等待对方释放锁，谁都不肯先退让，系统就卡死了。好在 InnoDB 有一套自动检测机制，能主动识破僵局并选择一个"牺牲品"来打破它。</p>
+  </div>
+
+  <h2>死锁产生的四个必要条件</h2>
+  <p>这是操作系统课程里的经典理论，同样适用于数据库锁场景。四个条件<strong>同时满足</strong>才会发生死锁，破坏其中任意一个都能避免死锁：</p>
+  <table>
+    <thead><tr><th>条件</th><th>含义</th><th>在数据库锁场景中的体现</th></tr></thead>
+    <tbody>
+      <tr><td><strong>互斥条件</strong></td><td>资源同一时刻只能被一个事务占用</td><td>X 锁天然互斥，两个事务不能同时持有同一行的 X 锁</td></tr>
+      <tr><td><strong>请求与保持条件</strong></td><td>事务已经持有至少一个资源，同时又在请求新的资源</td><td>事务已经拿到了 A 行的锁，又想申请 B 行的锁</td></tr>
+      <tr><td><strong>不可剥夺条件</strong></td><td>已分配的资源不能被其他事务强行抢走，只能自己主动释放</td><td>InnoDB 的锁只有在事务提交/回滚时才释放，别的事务无法强行剥夺</td></tr>
+      <tr><td><strong>环路等待条件</strong></td><td>存在一个事务等待环路：A 等 B，B 等 C，……，最后又回到等 A</td><td>典型两事务互锁：A 等 B 持有的锁，B 又在等 A 持有的锁</td></tr>
+    </tbody>
+  </table>
+
+  <h2>经典死锁场景演示</h2>
+  <p>两个事务以相反顺序更新两行数据，是最常见的死锁诱因：</p>
+  <table>
+    <thead><tr><th>时间</th><th>事务 A</th><th>事务 B</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td><code>BEGIN;</code></td><td><code>BEGIN;</code></td></tr>
+      <tr><td>T2</td><td><code>UPDATE t SET v=1 WHERE id=1;</code>（获得 id=1 的 X 锁）</td><td><code>UPDATE t SET v=2 WHERE id=2;</code>（获得 id=2 的 X 锁）</td></tr>
+      <tr><td>T3</td><td><code>UPDATE t SET v=3 WHERE id=2;</code>（请求 id=2 的锁，被 B 占用，阻塞等待）</td><td><code>UPDATE t SET v=4 WHERE id=1;</code>（请求 id=1 的锁，被 A 占用，阻塞等待）</td></tr>
+      <tr><td>T4</td><td colspan="2" style="text-align:center;">A 等 B 释放 id=2，B 等 A 释放 id=1 —— 形成环路等待，死锁产生</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>常见诱因：</strong>业务代码里多个事务对多张表/多行数据的加锁顺序不一致。修复思路很简单——<strong>让所有事务都按相同的顺序访问资源</strong>（比如都按主键从小到大更新），就能破坏"环路等待"这个条件，从根本上避免死锁。
+  </div>
+
+  <h2>MySQL 的死锁检测机制：wait-for graph</h2>
+  <p>
+    InnoDB 默认开启 <code>innodb_deadlock_detect</code>，维护一张"等待关系图"（wait-for graph）：每个事务是一个节点，如果事务 A 在等待事务 B 持有的锁，就画一条 A → B 的边。
+    每当有新的锁等待发生，InnoDB 就会检查这张图里<strong>有没有环</strong>——一旦出现环，就判定为死锁。
+  </p>
+  <p>
+    检测到死锁后，InnoDB 不会让所有涉事事务都傻等下去，而是<strong>自动选择一个"代价最小"的事务作为牺牲品，强制回滚它</strong>（通常是修改行数较少、undo log 量较小的那个），让另一个事务得以继续执行，从而打破僵局。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像两辆车在窄路上迎面相遇互不相让——与其两车都熄火等到天荒地老，不如交警过来直接让其中一辆倒车让路（回滚），让另一辆先通过。
+  </div>
+
+  <h2>实战排查：SHOW ENGINE INNODB STATUS</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>MySQL 8.0</span></div>
+    <pre><span class="kw">SHOW ENGINE INNODB STATUS</span>\G</pre>
+  </div>
+  <p>
+    输出中的 <code>LATEST DETECTED DEADLOCK</code> 小节记录了最近一次死锁的完整现场，重点关注这几处信息：
+  </p>
+  <ul>
+    <li><strong>TRANSACTION：</strong>每个涉事事务的 ID、执行了多久、修改了多少行。</li>
+    <li><strong>LOCK WAIT ... lock_mode X locks rec but not gap ...</strong>：具体在等待哪张表哪一行的哪种锁，能定位到 SQL 语句本身。</li>
+    <li><strong>WE ROLL BACK TRANSACTION (n)：</strong>末尾会明确标注 InnoDB 选择回滚了哪一个事务。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>工程实践：</strong>生产环境建议开启 <code>innodb_print_all_deadlocks = ON</code>，把每次死锁的详情打到错误日志（<code>SHOW ENGINE INNODB STATUS</code> 默认只保留最近一次），方便事后统一排查高频死锁的 SQL 模式。应用层收到死锁异常（错误码 1213）后，通常的处理方式是<strong>捕获异常并重试</strong>，因为死锁涉事的事务大概率重试后能成功。
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问："怎么减少死锁？"</strong><br>
+    从破坏四个必要条件的角度回答最系统：① 让所有事务以一致的顺序访问资源（破坏环路等待）；② 尽量用较低的隔离级别或更精确的索引减少锁的范围（减少互斥资源数量）；③ 缩短事务长度、尽快提交，减少持锁时间（减少请求与保持窗口）；④ 应用层做好死锁重试机制作为兜底。
+  </div>
+  <div class="callout warn">
+    <strong>常见误区：</strong>认为死锁是 bug，应该想办法彻底杜绝。实际上在高并发场景下死锁很难 100% 避免，业界的共识是"降低死锁概率 + 死锁发生后能自动恢复（重试）"，而不是追求零死锁。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>死锁四条件：</strong>互斥、请求与保持、不可剥夺、环路等待，破坏任意一条即可避免。</li>
+    <li><strong>InnoDB 用 wait-for graph 主动检测环路，自动回滚代价最小的事务，</strong>不需要人工干预即可打破僵局。</li>
+    <li><strong>排查死锁的第一手工具是 <code>SHOW ENGINE INNODB STATUS</code>，</strong>结合日志能定位到具体的加锁顺序和 SQL。</li>
+    <li>下一篇讲两阶段锁协议（2PL）——它解释了"为什么事务里所有的锁都要等到提交时才释放"这个设计背后的理论依据。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-MVCC原理.html" class="nav-btn">← MVCC 原理</a>
+    <a href="./08-两阶段锁协议.html" class="nav-btn next">两阶段锁协议 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>视图的本质与作用 — 数据库</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f89820; }
+  p code, li code { color: #f89820; }
+  h2 { color: #f89820; border-left-color: #f89820; }
+  .hero .tag { color: #f89820; border-color: #7c4a10; }
+  .nav-btn.next { color: #f89820; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / SQL 与关系模型基础 / 视图的本质与作用
+  </div>
+
+  <div class="hero">
+    <div class="tag">SQL 与关系模型基础</div>
+    <h1>视图的本质与作用</h1>
+    <p>视图常被误解成"另一张表"，但它实际上连一份数据都不存——它只是一条被存起来、起了个名字的 SELECT 语句。理解这一点，你才能明白它的能力边界在哪。</p>
+  </div>
+
+  <h2>视图的本质：存储的查询，不存储数据</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>创建一个视图</span></div>
+    <pre><span class="kw">CREATE VIEW</span> cs_students <span class="kw">AS</span>
+<span class="kw">SELECT</span> id, name, age <span class="kw">FROM</span> students <span class="kw">WHERE</span> major = <span class="str">'CS'</span>;</pre>
+  </div>
+  <p>
+    执行完这条语句后，数据库并没有真的把"CS 专业的学生"复制一份存到磁盘上。<strong>它只是把这条 SELECT 语句的定义保存在数据字典（元数据）里，起了个名字叫 <code>cs_students</code></strong>。
+    之后你查询这个视图：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>查询视图</span></div>
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> cs_students <span class="kw">WHERE</span> age > <span class="num">20</span>;</pre>
+  </div>
+  <p>
+    数据库会在执行时把它<strong>原地展开（View Expansion）</strong>，等价于把视图定义代入替换，变成：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>数据库实际执行的等价语句</span></div>
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> (
+  <span class="kw">SELECT</span> id, name, age <span class="kw">FROM</span> students <span class="kw">WHERE</span> major = <span class="str">'CS'</span>
+) <span class="kw">AS</span> cs_students
+<span class="kw">WHERE</span> age > <span class="num">20</span>;</pre>
+  </div>
+  <div class="callout info">
+    <strong>类比：</strong>视图就像 Excel 里的"高级筛选/自定义视图"功能，它不复制一份新表格，只是记住了"筛选条件是什么"，每次打开都用这个条件在原表上重新算一遍结果。数据万一在原表变了，视图看到的立刻就是新数据——因为视图压根没存旧数据。
+  </div>
+
+  <h2>视图的两大核心作用</h2>
+
+  <h3>1. 简化复杂查询</h3>
+  <p>把一个复杂的多表连接/聚合查询封装成一个视图，之后业务代码只需要 <code>SELECT * FROM 视图名</code>，不用每次都写一遍冗长的 JOIN 逻辑。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>把复杂查询封装成视图</span></div>
+    <pre><span class="kw">CREATE VIEW</span> student_course_summary <span class="kw">AS</span>
+<span class="kw">SELECT</span> s.name, <span class="fn">COUNT</span>(e.course) <span class="kw">AS</span> course_count
+<span class="kw">FROM</span> students s
+<span class="kw">LEFT JOIN</span> enrollments e <span class="kw">ON</span> s.id = e.student_id
+<span class="kw">GROUP BY</span> s.id, s.name;
+
+<span class="com">-- 之后业务方只需要：</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> student_course_summary <span class="kw">WHERE</span> course_count > <span class="num">1</span>;</pre>
+  </div>
+
+  <h3>2. 权限隔离</h3>
+  <p>
+    如果表里有敏感字段（比如身份证号、薪资），可以创建一个只暴露"安全字段"的视图，把权限授予视图而不是原表，实现<strong>列级别的权限控制</strong>（很多数据库的原生权限系统只能做到表级别）。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>用视图做列级权限隔离</span></div>
+    <pre><span class="kw">CREATE VIEW</span> employee_public <span class="kw">AS</span>
+<span class="kw">SELECT</span> id, name, department <span class="kw">FROM</span> employees;  <span class="com">-- 不暴露 salary、id_card 等敏感列</span>
+
+<span class="kw">GRANT SELECT</span> <span class="kw">ON</span> employee_public <span class="kw">TO</span> <span class="str">'hr_readonly'</span>@<span class="str">'%'</span>;
+<span class="com">-- 完全不给这个账号访问 employees 原表的权限</span></pre>
+  </div>
+
+  <h2>视图 vs 物化视图：核心取舍</h2>
+  <p>
+    上面讲的都是<strong>普通视图（View）</strong>，它每次查询都重新执行底层 SQL。而<strong>物化视图（Materialized View）</strong>则相反——它会<strong>真正把查询结果存储成物理数据</strong>，查询时直接读存好的结果，不用重新计算。
+  </p>
+  <table>
+    <thead><tr><th>维度</th><th>普通视图（View）</th><th>物化视图（Materialized View）</th></tr></thead>
+    <tbody>
+      <tr><td>是否存储数据</td><td>不存储，只存查询定义</td><td>存储，是查询结果的物理快照</td></tr>
+      <tr><td>数据实时性</td><td>永远实时，因为每次都重新查询原表</td><td>存在"数据滞后"，需要刷新（Refresh）才能同步最新数据</td></tr>
+      <tr><td>查询性能</td><td>取决于底层 SQL 本身的性能，复杂聚合每次都要重算</td><td>非常快，直接读预计算好的结果，适合复杂聚合的报表场景</td></tr>
+      <tr><td>写入/维护成本</td><td>无额外成本</td><td>需要定期刷新或增量维护，有额外的存储和计算开销</td></tr>
+      <tr><td>MySQL 原生支持</td><td>支持（<code>CREATE VIEW</code>）</td><td><strong>不原生支持</strong>，通常用"定时任务 + 真实表"或触发器手动模拟，PostgreSQL/Oracle 原生支持 <code>MATERIALIZED VIEW</code></td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>陷阱：</strong>很多人以为"用视图能提升查询性能"，这是常见的误解——<strong>普通视图本身不缓存任何数据，也不会让底层的复杂 JOIN/聚合变快</strong>，它带来的收益只是"减少手写重复 SQL、统一权限管理入口"。真正想用空间换时间来加速复杂报表查询，需要的是物化视图或者手动维护的汇总表。
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问：视图能提高查询性能吗？</strong> 答：不能。普通视图只是存储了查询定义，执行时会展开成对原表的查询，本身不做任何缓存，性能取决于展开后 SQL 的执行计划。真正能提速的是物化视图（存储计算结果）或索引优化。
+  </div>
+  <div class="callout tip">
+    <strong>问：什么情况下视图不可更新（不能对视图做 INSERT/UPDATE）？</strong> 答：当视图的 SELECT 中包含聚合函数、GROUP BY、DISTINCT、多表 JOIN、子查询等，数据库无法确定"更新视图的哪一列应该反映回原表的哪一行哪一列"，此时视图是只读的。简单的单表无聚合视图通常可更新。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>视图的本质是"存储的 SELECT 语句"：</strong>不存储数据，查询时原地展开为对底层表的查询。</li>
+    <li><strong>两大作用是简化复杂查询与实现权限隔离：</strong>而不是性能优化。</li>
+    <li><strong>物化视图是"用存储空间换查询速度"的取舍：</strong>牺牲实时性，换来复杂聚合查询的性能，MySQL 需要手动模拟。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./09-窗口函数.html" class="nav-btn">← 窗口函数</a>
+    <a href="./11-NULL的三值逻辑陷阱.html" class="nav-btn next">NULL 的三值逻辑陷阱 →</a>
+  </div>
+
+</div>
+</body>
+</html>

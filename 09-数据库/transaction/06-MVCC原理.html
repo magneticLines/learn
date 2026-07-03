@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MVCC 原理 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / MVCC 原理
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>MVCC 原理（多版本并发控制）</h1>
+    <p>本 Tab 最核心的考点。MVCC 的野心是：让"读"完全不用加锁，也能读到符合隔离级别语义的正确数据，从而实现读写不互相阻塞。拆开看它靠三个零件拼出来的魔法：隐藏列、undo log 版本链、ReadView。</p>
+  </div>
+
+  <h2>MVCC 要解决的问题</h2>
+  <p>
+    如果读也要加锁（比如串行化级别那样），读写之间会互相阻塞，并发性能大打折扣。
+    <strong>MVCC（Multi-Version Concurrency Control，多版本并发控制）的核心思想是：不修改原数据，而是为每一行保留多个历史版本，让读操作可以选择读某个历史版本，而不必等待写操作释放锁</strong>。
+    这样"读"永远不阻塞"写"，"写"也不阻塞"读"——只有"写"和"写"之间才需要用锁互斥。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>MVCC 像是 Git 的版本历史——你在看某个历史 commit 的内容时，完全不影响别人同时往仓库里继续提交新的 commit。每次 <code>UPDATE</code> 就像生成了一个新版本，而旧版本并没有被销毁，只是被链接到了历史记录里，需要时可以"检出"查看。
+  </div>
+
+  <h2>零件一：两个隐藏列</h2>
+  <p>InnoDB 会给每一行数据额外加上两个用户不可见的隐藏列（此外还有一个 <code>row_id</code>，与 MVCC 无关这里不展开）：</p>
+  <table>
+    <thead><tr><th>隐藏列</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>trx_id</code></td><td>记录最近一次修改（插入/更新）这行数据的事务 ID，是一个全局递增的编号</td></tr>
+      <tr><td><code>roll_pointer</code></td><td>回滚指针，指向这一行被修改前的旧版本在 undo log 中的位置</td></tr>
+    </tbody>
+  </table>
+
+  <h2>零件二：undo log 版本链</h2>
+  <p>
+    每次事务修改一行数据前，都会把旧版本的数据写入 undo log，并让新版本的 <code>roll_pointer</code> 指向这条 undo log 记录。
+    多次修改之后，这些 undo log 记录会通过 <code>roll_pointer</code> 串成一条<strong>版本链</strong>，链表头是最新版本，顺着链表往下走能找到任意历史版本。
+  </p>
+  <div class="tree">
+假设账户余额初始为 1000，先后被事务 100、事务 200 修改：
+
+当前行(最新版本): balance=700, trx_id=<span class="hi">200</span>, roll_pointer ──┐
+                                                            │
+                            ┌───────────────────────────────┘
+                            ▼
+undo log 版本: balance=800, trx_id=<span class="hi">100</span>, roll_pointer ──┐
+                                                            │
+                            ┌───────────────────────────────┘
+                            ▼
+undo log 版本: balance=1000, trx_id=<span class="hi">90</span>(最初插入), roll_pointer = NULL
+  </div>
+  <p>这条链就是"多版本"里"多版本"的字面意思——同一行数据同时存在好几份历史快照，靠 <code>roll_pointer</code> 串起来。</p>
+
+  <h2>零件三：ReadView（读视图）的可见性判断</h2>
+  <p>
+    有了版本链，接下来的问题是：<strong>一个事务开始查询时，应该在这条链上停在哪个版本？</strong>这就是 ReadView 要回答的问题。
+    ReadView 本质是一个"快照"，记录了生成这个 ReadView 时刻，系统中所有<strong>活跃（未提交）事务</strong>的信息，包含四个关键字段：
+  </p>
+  <table>
+    <thead><tr><th>字段</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>m_ids</code></td><td>生成 ReadView 时，当前系统中所有活跃（已开始但未提交）事务的 ID 列表</td></tr>
+      <tr><td><code>min_trx_id</code></td><td><code>m_ids</code> 中的最小值</td></tr>
+      <tr><td><code>max_trx_id</code></td><td>系统预分配给下一个事务的 ID（即当前最大事务 ID + 1）</td></tr>
+      <tr><td><code>creator_trx_id</code></td><td>生成这个 ReadView 的事务自己的 ID</td></tr>
+    </tbody>
+  </table>
+
+  <h3>可见性判断规则</h3>
+  <p>对于版本链上某个版本的 <code>trx_id</code>，按下面的规则依次判断是否可见（能不能读到这个版本）：</p>
+  <ol>
+    <li>如果 <code>trx_id == creator_trx_id</code>：这是自己修改的，<strong>可见</strong>（自己当然能看到自己的修改）。</li>
+    <li>如果 <code>trx_id &lt; min_trx_id</code>：这个版本是在生成 ReadView 之前就已经提交的事务改的，<strong>可见</strong>。</li>
+    <li>如果 <code>trx_id &gt;= max_trx_id</code>：这个版本是 ReadView 生成之后才开始的事务改的，<strong>不可见</strong>（未来的事务，不该看到）。</li>
+    <li>如果 <code>min_trx_id &lt;= trx_id &lt; max_trx_id</code>：说明这个事务在生成 ReadView 时活跃：
+      <ul>
+        <li>如果它在 <code>m_ids</code> 列表里 → 说明还没提交 → <strong>不可见</strong></li>
+        <li>如果它不在 <code>m_ids</code> 列表里 → 说明在生成 ReadView 之前已经提交了 → <strong>可见</strong></li>
+      </ul>
+    </li>
+  </ol>
+  <p>
+    如果当前版本不可见，就顺着 <code>roll_pointer</code> 沿版本链往下找上一个版本，重复上面的判断，直到找到一个可见版本为止（如果全部不可见，说明这行数据对当前事务来说"根本不存在"）。
+  </p>
+
+  <h2>核心问题：RC 和 RR 的 ReadView 生成时机不同</h2>
+  <p>这是最容易混淆但也是最关键的一点——RC 和 RR 用的是同一套 ReadView 机制，唯一的区别是<strong>什么时候生成 ReadView</strong>：</p>
+  <table>
+    <thead><tr><th>隔离级别</th><th>ReadView 生成时机</th><th>效果</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>读已提交（RC）</strong></td>
+        <td>每次执行 <code>SELECT</code> 语句时都重新生成一份 ReadView</td>
+        <td>能看到其他事务在此期间刚提交的最新数据 → 同一事务内多次读结果可能不同（不可重复读）</td>
+      </tr>
+      <tr>
+        <td><strong>可重复读（RR）</strong></td>
+        <td>只在事务内<strong>第一次</strong>执行快照读时生成 ReadView，之后整个事务复用这一份</td>
+        <td>事务全程看到的都是同一个时间点的快照 → 同一事务内多次读结果一致（可重复读）</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>这就是"可重复读"名字的由来：</strong>不是因为 InnoDB 加了什么特殊的锁让你"重复读到一样的东西"，而是因为 ReadView 只生成一次、全程复用，版本链的可见性判断结果自然就一直不变。这是理解 RC/RR 行为差异最核心的一句话。
+  </div>
+
+  <h2>为什么 MVCC 能让"读不加锁"</h2>
+  <p>
+    因为普通的 <code>SELECT</code>（快照读）走的是 ReadView + 版本链的逻辑判断，全程不需要对数据行加任何锁——它读的是版本链上某个历史版本的"快照"，而不是当前正在被修改的最新数据，所以完全不会和正在执行 <code>UPDATE</code> 的事务产生锁冲突。
+    只有当前读（<code>SELECT ... FOR UPDATE</code>、<code>UPDATE</code>、<code>DELETE</code>）才需要读取最新版本并加锁，因为这些操作必须基于最新数据做修改，不能容忍脏数据。
+  </p>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>以为 MVCC 能完全替代锁，事务并发控制不再需要锁。实际上 MVCC 只解决"读"的并发问题，"写-写冲突"依然必须靠锁（行锁/间隙锁）来解决，MVCC 和锁是配合工作、缺一不可的两套机制。
+  </div>
+  <div class="callout warn">
+    <strong>误区：</strong>以为 RR 级别下"事务开始"（<code>BEGIN</code>）那一刻就生成了 ReadView。实际上是"第一条快照读语句执行时"才生成，<code>BEGIN</code> 本身只是标记事务的起点，不触发 ReadView 生成——这个细节在分析边界场景时很容易踩坑。
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问："MVCC 是怎么实现的？"</strong><br>
+    标准答案分三层：① 每行数据有 <code>trx_id</code> 和 <code>roll_pointer</code> 两个隐藏列；② 通过 <code>roll_pointer</code> 把 undo log 中的历史版本串成版本链；③ 事务通过 ReadView 记录的活跃事务列表，按可见性规则判断版本链上哪个版本对自己可见。RC 和 RR 的区别就在于 ReadView 生成一次还是每次查询都生成。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>MVCC 的三大零件：</strong>隐藏列（定位版本）、undo log 版本链（保存历史）、ReadView（判断可见性）。</li>
+    <li><strong>MVCC 让读写不互相阻塞，</strong>是 InnoDB 高并发性能的核心支柱之一。</li>
+    <li><strong>RC 每次查询生成新 ReadView，RR 整个事务复用同一份，</strong>这是二者行为差异的唯一根源，务必吃透。</li>
+    <li>下一篇讲死锁——当锁和 MVCC 都无法避免多个事务互相等待时，InnoDB 如何检测并打破僵局。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-行锁表锁间隙锁临键锁.html" class="nav-btn">← 行锁 / 表锁 / 间隙锁 / 临键锁</a>
+    <a href="./07-死锁的产生与排查.html" class="nav-btn next">死锁的产生与排查 →</a>
+  </div>
+
+</div>
+</body>
+</html>

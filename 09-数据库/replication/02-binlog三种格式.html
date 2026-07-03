@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>binlog 三种格式 — 复制与高可用</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #6b21a8; }
+  .nav-btn.next { color: #a78bfa; border-color: #6b21a8; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 复制与高可用 / binlog 三种格式
+  </div>
+
+  <div class="hero">
+    <div class="tag">复制与高可用</div>
+    <h1>binlog 三种格式（statement / row / mixed）</h1>
+    <p>binlog 里到底记的是"我执行了什么 SQL"还是"我改动了哪些数据行"，这个选择直接决定了主从数据能不能保持一致，也是无数生产事故的根源。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    binlog 记录变更事件的方式有三种：<strong>statement（记录 SQL 语句本身）</strong>、<strong>row（记录每一行数据实际变化前后的值）</strong>、
+    <strong>mixed（混合，MySQL 自动判断用哪种）</strong>。三者的核心区别是：<strong>statement 记的是"做什么"，row 记的是"结果是什么"</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>statement 格式像是把菜谱（"放两勺盐、炒三分钟"）传给分店的厨师，让他自己照着做一遍；
+    row 格式则是直接把炒好的成品菜（"最终这盘菜是什么味道、什么样子"）打包送过去。
+    如果菜谱里写的是"放当季最新鲜的盐"这种模糊指令（对应 SQL 里的 <code>NOW()</code>、<code>RAND()</code> 这类不确定函数），
+    两个厨师在不同时间照做，结果可能完全不同；而直接送成品菜就不存在这个问题。
+  </div>
+
+  <h2>三种格式的原理</h2>
+  <table>
+    <thead>
+      <tr><th>格式</th><th>记录内容</th><th>日志量</th><th>一致性风险</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>statement</strong></td>
+        <td>原始 SQL 语句文本</td>
+        <td>小（一条 UPDATE 影响10万行，也只记一条 SQL）</td>
+        <td>高：依赖不确定函数、触发器、存储过程等场景可能导致主从数据不一致</td>
+      </tr>
+      <tr>
+        <td><strong>row</strong>（MySQL 5.7.7+ 默认）</td>
+        <td>每一行变更前后的实际列值（before-image / after-image）</td>
+        <td>大（大事务、批量更新时日志膨胀明显）</td>
+        <td>低：记的是确定性的结果，从库重放不会有歧义</td>
+      </tr>
+      <tr>
+        <td><strong>mixed</strong></td>
+        <td>默认走 statement，遇到不安全语句（如包含 <code>NOW()</code>、<code>UUID()</code>、非确定性 UPDATE 等）自动切换成 row</td>
+        <td>介于两者之间</td>
+        <td>较低，但需要理解 MySQL 判定"不安全"的规则，调试成本比纯 row 更高</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>为什么 statement 格式会导致主从不一致</h2>
+  <p>典型的反例是使用了不确定性函数：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>statement 格式的隐患示例</span></div>
+    <pre><span class="kw">UPDATE</span> <span class="var">orders</span> <span class="kw">SET</span> <span class="var">created_at</span> = <span class="fn">NOW</span>() <span class="kw">WHERE</span> <span class="var">id</span> = <span class="num">1001</span>;
+<span class="com">-- statement 格式：binlog 里原样记录这条 SQL
+-- 从库重放时会重新执行一次 NOW()，此时的时间已经和主库执行时不同
+-- 主库 created_at = 10:00:00.123，从库重放后 created_at = 10:00:03.456
+-- 主从数据出现不一致，且不会报任何错，非常隐蔽</span></pre>
+  </div>
+  <p>类似的坑还包括：</p>
+  <ul>
+    <li><strong>非确定性函数</strong>：<code>NOW()</code>、<code>RAND()</code>、<code>UUID()</code>、<code>CONNECTION_ID()</code> 等，每次执行结果都可能不同。</li>
+    <li><strong>依赖 AUTO_INCREMENT 的多行插入</strong>：并发场景下多个连接交叉插入时，SQL 层面的执行顺序在从库上未必和主库完全一致。</li>
+    <li><strong>存储过程 / 触发器 / UDF</strong>：如果内部使用了不确定性逻辑，同一条调用语句在从库重放时可能产生不同结果。</li>
+    <li><strong>LIMIT 且没有 ORDER BY 的 UPDATE/DELETE</strong>：没有确定排序时，"命中哪几行"本身就是不确定的。</li>
+  </ul>
+  <p>
+    而 row 格式记录的是"这一行从值 A 变成了值 B"，不管 <code>NOW()</code> 求值结果是什么，binlog 里落地的都是具体的时间戳，
+    从库只需要"把这一行改成这个值"，不存在重新计算的过程，天然规避了这类不确定性问题。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>不要以为"mixed 格式已经把不安全的语句都转成 row 了，所以可以放心用 statement 的日志量优势"。
+    mixed 模式下的判定规则相当复杂（涉及数百个规则和边界条件，各版本还有变化），排查问题时经常要先确认"这条语句到底被记成了 row 还是 statement"，
+    调试成本并不比直接用纯 row 格式低多少。目前生产环境的主流选择就是<strong>直接使用 row 格式</strong>，用日志量换取确定性。
+  </div>
+
+  <h2>row 格式的代价与应对</h2>
+  <p>
+    row 格式最大的问题是日志量：一条不带 WHERE 的 <code>UPDATE users SET status = 1</code> 如果影响 100 万行，
+    row 格式下 binlog 要记录 100 万条行变更，而 statement 格式只需要记一行 SQL。这直接影响：
+  </p>
+  <ul>
+    <li><strong>磁盘占用和 IO</strong>：大事务、批量操作场景下 binlog 文件增长迅速。</li>
+    <li><strong>主从延迟</strong>：从库需要重放这 100 万条行变更，SQL 线程处理时间被拉长（下一篇会展开讲主从延迟的成因）。</li>
+    <li><strong>网络带宽</strong>：binlog 需要通过网络传给从库，日志量大意味着传输时间更长。</li>
+  </ul>
+  <p>
+    工程上常见的缓解手段：把大事务拆成多个小批次执行（如分批 <code>UPDATE ... LIMIT 1000</code>）；
+    开启 <code>binlog_row_image=MINIMAL</code>（只记录变化的列而不是整行）减少日志量；对于超大表的 DDL 使用 <code>gh-ost</code>/<code>pt-online-schema-change</code> 等工具规避直接产生海量 binlog。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"binlog 有几种格式，生产环境用哪种，为什么？" 标准答案：三种格式 statement/row/mixed；
+    生产环境优先用 row，因为它记录的是确定性的行变化结果，能规避 statement 格式在非确定性函数、触发器等场景下的主从数据不一致风险；
+    代价是日志量变大，需要结合 <code>binlog_row_image</code> 等参数和分批操作来控制。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>statement 省空间但不安全，row 安全但费空间</strong>，mixed 是过渡期的折中方案，现在已不推荐深度依赖。</li>
+    <li><strong>判断一致性风险的关键在于"操作是否具有确定性"</strong>——只要 SQL 的执行结果可能因为执行时间、执行环境不同而变化，statement 格式就有隐患。</li>
+    <li>这个知识点直接关联下一篇要讲的半同步/异步复制，以及后面的主从延迟问题——理解 binlog 格式是理解整条复制链路的基础。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-主从复制原理.html" class="nav-btn">← 主从复制原理</a>
+    <a href="./03-半同步复制与全同步复制.html" class="nav-btn next">半同步复制与全同步复制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

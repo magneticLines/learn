@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>B+ 树索引的原理 — 索引与执行计划</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #7c4a10; }
+  .nav-btn.next { color: #38bdf8; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 索引与执行计划 / B+ 树索引的原理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">索引与执行计划</div>
+    <h1>B+ 树索引的原理</h1>
+    <p>索引的本质，是用一种额外的数据结构，把"全表扫描"的 O(n) 查找变成 O(log n)。MySQL 选择了 B+ 树，而不是二叉树、B 树或哈希表——这背后是一整套针对磁盘 I/O 特性做出的权衡。</p>
+  </div>
+
+  <!-- 为什么不用二叉查找树 -->
+  <h2>为什么不用二叉查找树？</h2>
+  <p>
+    二叉查找树（BST）每个节点只有两个子节点，如果数据是顺序插入的（比如自增 id），树会退化成一条链表，查找复杂度从 O(log n) 退化到 O(n)。
+    即使是平衡二叉树（如红黑树），高度依然是 <code>O(log₂ n)</code>——面对百万级数据，树高也要 20 层左右。
+  </p>
+  <p>
+    问题的关键在于：<strong>树的每一层通常对应一次磁盘 I/O</strong>（因为节点太大装不进内存，需要从磁盘读取）。20 次随机 I/O 相当于几十毫秒的延迟，
+    对于要求毫秒级响应的数据库查询来说是不可接受的。所以数据库索引结构的首要目标是<strong>压低树的高度</strong>，二叉树"一个节点两个分支"的设计天生就很"高瘦"，不适合。
+  </p>
+
+  <!-- B树 vs B+树 -->
+  <h2>B 树 vs B+ 树：多叉平衡树的两种设计</h2>
+  <p>
+    B 树通过让每个节点存储多个键值、多个子指针（即"多叉"），大幅降低了树高。但 InnoDB 选择的是 B 树的变种——<strong>B+ 树</strong>，
+    两者的核心差异在于：
+  </p>
+  <table>
+    <thead>
+      <tr><th>特性</th><th>B 树</th><th>B+ 树</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>数据存放位置</td>
+        <td>每个节点（包括非叶子节点）都存索引键 + 完整数据</td>
+        <td>只有<strong>叶子节点</strong>存完整数据，非叶子节点只存索引键 + 子节点指针</td>
+      </tr>
+      <tr>
+        <td>非叶子节点容量</td>
+        <td>因为要存数据，单个节点能容纳的键值数量较少</td>
+        <td>不存数据，单个节点能塞下更多键值和指针，<strong>树更矮更"胖"</strong></td>
+      </tr>
+      <tr>
+        <td>范围查询</td>
+        <td>需要对树做中序遍历，反复回退父节点，效率低</td>
+        <td>所有叶子节点通过<strong>双向链表</strong>相连，范围查询只需定位起点后顺着链表扫</td>
+      </tr>
+      <tr>
+        <td>查询稳定性</td>
+        <td>数据可能落在任意层，查询耗时不稳定</td>
+        <td>所有数据都在叶子层，<strong>每次查询的 I/O 次数几乎相同</strong>（等于树高）</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    正是因为非叶子节点不存数据、只存"路标"，B+ 树的<strong>扇出（fan-out，即每个节点的子节点数量）</strong>比 B 树大得多，
+    树高也就压得更低。这一点还与上一篇讲的"页"直接挂钩：InnoDB 把 B+ 树的<strong>每一个节点设计成刚好对应一个数据页（16KB）</strong>，
+    页装得下多少个"键值+指针"，就决定了这棵树的扇出有多大。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>B 树像一本每页都夹杂着"目录条目 + 正文内容"的书，翻页效率低；B+ 树则像"前面几页纯目录（只有页码索引），后面才是正文，且正文页之间还用书签串成一条线"——查目录能塞下更多条目（矮），翻到正文后还能一直往后翻读完整个区间（范围查询友好）。
+  </div>
+
+  <!-- 为什么不用哈希表 -->
+  <h2>为什么不直接用哈希表？</h2>
+  <p>
+    哈希索引的等值查询（<code>WHERE id = 5</code>）确实是 O(1)，比 B+ 树的 O(log n) 更快。但哈希表<strong>不保存数据的顺序关系</strong>，
+    无法支持范围查询（<code>WHERE id &gt; 5</code>）、排序（<code>ORDER BY</code>）、前缀匹配（<code>LIKE 'abc%'</code>）——这些都要求数据按序可遍历。
+    InnoDB 内部的 Adaptive Hash Index 会针对高频等值查询自动在内存里建哈希索引做加速，但这只是 B+ 树之上的一层"缓存优化"，不能替代 B+ 树作为主体结构。
+  </p>
+
+  <!-- 三层B+树示例 -->
+  <h2>估算一棵三层 B+ 树能存多少数据</h2>
+  <p>以 InnoDB 默认页大小 16KB、主键为 <code>BIGINT</code>（8 字节）、指针占 6 字节为例，简化模型如下：</p>
+
+  <div class="tree">
+    <span class="hi">第 1 层（根节点，1 个页）</span><br>
+    &nbsp;&nbsp;约 16KB / (8+6)字节 ≈ <span class="hi">1170 个指针</span>，指向 1170 个第 2 层节点<br>
+    <span class="hi">第 2 层（非叶子节点，1170 个页）</span><br>
+    &nbsp;&nbsp;每个节点再指向约 1170 个叶子节点 → 共 1170 × 1170 ≈ <span class="hi">137 万个叶子节点</span><br>
+    <span class="hi">第 3 层（叶子节点，137 万个页）</span><br>
+    &nbsp;&nbsp;每页约能存 16KB / 1KB(假设单行 1KB) ≈ 16 行 → 总数据量 ≈ 137万 × 16 ≈ <span class="hi">2192 万行</span>
+  </div>
+
+  <p>
+    这就是为什么常说"<strong>一棵三层的 B+ 树足以支撑千万级数据量</strong>，且查询一条记录只需要 3 次磁盘 I/O"——而这 3 次 I/O 里，
+    根节点和第二层节点通常因为被频繁访问，早已被 Buffer Pool 缓存在内存中，实际只有最后一次读叶子节点才真正落盘，效率非常高。
+  </p>
+
+  <!-- 陷阱 -->
+  <h2>常见陷阱</h2>
+  <div class="callout warn">
+    <strong>陷阱一：索引列越长，树越"矮胖"的效果越差。</strong>
+    上面的估算能看到，非叶子节点能容纳的指针数量 = 页大小 / (索引键长度 + 指针长度)。如果索引列是一个 <code>VARCHAR(255)</code> 的长字符串，
+    单个键值可能就占几十甚至上百字节，一个页能塞的指针数量骤降，扇出变小，树就会变"高瘦"，查询所需的 I/O 次数随之增加。
+    这也是为什么实践中提倡<strong>索引列尽量短、必要时用前缀索引</strong>（<code>INDEX(name(10))</code>）。
+  </div>
+  <div class="callout warn">
+    <strong>陷阱二：为什么自增主键比 UUID 更适合做聚簇索引？</strong>
+    InnoDB 的主键索引（聚簇索引，下一篇详细展开）要求叶子节点里的记录<strong>按主键值physically排序存放</strong>。
+    自增主键的插入永远发生在最后一页的末尾，属于顺序追加，不会导致页分裂；而 UUID 这类随机值会导致新记录随机插入到已排满的中间页，
+    频繁触发<strong>页分裂（Page Split）</strong>——不仅写入变慢，还会产生大量存储碎片，让树的实际利用率下降。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么 MySQL 索引要用 B+ 树而不是 B 树/红黑树/哈希表？" 标准答案要点：① 非叶子节点不存数据，扇出更大，树更矮，减少磁盘 I/O 次数；② 叶子节点用链表相连，天然支持范围查询和排序；③ 每次查询的 I/O 次数稳定（都要走到叶子层），不像 B 树数据可能分布在任意层导致耗时不稳定。
+  </div>
+
+  <!-- 总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>B+ 树的核心权衡</strong>：牺牲非叶子节点的数据存储能力，换取更大的扇出、更矮的树高，本质是在为"减少磁盘 I/O 次数"这个目标服务。</li>
+    <li><strong>叶子节点的双向链表</strong>是范围查询、排序高效的关键，这一点是 B 树和哈希表都不具备的。</li>
+    <li><strong>索引列的长度直接影响树的高度</strong>：列越短，一页能塞的键值越多，树越矮，这是索引设计中"短索引优先"的理论依据。</li>
+    <li>下一篇将展开 InnoDB 里两类具体的 B+ 树——<strong>聚簇索引</strong>和<strong>二级索引</strong>，以及二者协作产生的"回表"问题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-页结构与记录存储格式.html" class="nav-btn">← 页结构与记录存储格式</a>
+    <a href="./03-聚簇索引与二级索引回表.html" class="nav-btn next">聚簇索引与二级索引(回表) →</a>
+  </div>
+
+</div>
+</body>
+</html>

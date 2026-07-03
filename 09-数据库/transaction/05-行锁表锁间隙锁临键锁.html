@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>行锁 / 表锁 / 间隙锁 / 临键锁 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / 行锁 / 表锁 / 间隙锁 / 临键锁
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>行锁 / 表锁 / 间隙锁 / 临键锁</h1>
+    <p>锁的粒度决定了并发度的上限。从表锁到行锁是第一次取舍，从"只锁存在的行"到"连行与行之间的空隙也锁住"是第二次取舍——后者正是 InnoDB 堵住幻读的关键武器。</p>
+  </div>
+
+  <h2>粒度取舍：表锁 vs 行锁</h2>
+  <table>
+    <thead><tr><th></th><th>表锁</th><th>行锁</th></tr></thead>
+    <tbody>
+      <tr><td>锁定范围</td><td>整张表</td><td>符合条件的具体行</td></tr>
+      <tr><td>并发度</td><td>低——一个事务锁表，其他事务的读写全部等待</td><td>高——不同行之间互不影响</td></tr>
+      <tr><td>开销</td><td>加锁快，内存开销小</td><td>需要为每一行维护锁信息，开销相对大</td></tr>
+      <tr><td>适用场景</td><td>批量 DDL、MyISAM 引擎（只支持表锁）</td><td>InnoDB 默认的并发写场景</td></tr>
+    </tbody>
+  </table>
+  <div class="callout info">
+    <strong>类比：</strong>表锁像是"锁整个房间"——谁进这个房间干什么都要排队；行锁像是"只锁房间里那一张具体的桌子"——别人可以同时进来用别的桌子。粒度越细，冲突概率越低，并发度越高，但维护成本也越高。
+  </div>
+  <p>InnoDB 通过索引来实现行锁——<strong>行锁本质是锁在索引记录上的</strong>。这意味着如果 <code>WHERE</code> 条件没有用上索引，InnoDB 只能退化成锁全表（扫描到的每一行都加锁，效果等同于表锁）。这是索引设计影响锁粒度的一个重要陷阱。</p>
+
+  <h2>为什么行锁还不够：幻读的漏洞</h2>
+  <p>
+    回顾上一篇：行锁只能锁住<strong>已经存在的行</strong>。如果事务 A 执行 <code>SELECT * FROM t WHERE id BETWEEN 10 AND 20 FOR UPDATE</code>，
+    行锁只会锁住当前查到的那几行——但 <strong>id=15 这个位置目前是空的，行锁根本锁不住"空位"</strong>。
+    此时事务 B 完全可以往这个空位插入一条 <code>id=15</code> 的新记录并提交，导致事务 A 再次查询时行数变多，出现幻读。
+  </p>
+
+  <h2>间隙锁（Gap Lock）：锁住"空隙"本身</h2>
+  <p>
+    间隙锁的思路很直接：<strong>不仅锁住已存在的行，还要把行与行之间的"间隙"也锁起来</strong>，禁止其他事务在这个间隙里插入新记录。
+    间隙锁只在<strong>可重复读（RR）及以上隔离级别</strong>下生效（RC 级别不需要防幻读，所以不加间隙锁）。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>间隙锁示例（id 索引上现有值：5, 10, 20）</span></div>
+    <pre><span class="com">-- 事务 A：查询 id 在 10 到 20 之间的记录并加锁</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> t <span class="kw">WHERE</span> id <span class="kw">BETWEEN</span> <span class="num">10</span> <span class="kw">AND</span> <span class="num">20</span> <span class="kw">FOR UPDATE</span>;
+<span class="com">-- InnoDB 会在 (5,10)、(10,20)、(20,+∞) 这些间隙上加间隙锁</span>
+<span class="com">-- 事务 B 此时插入 id=15 会被阻塞，因为 15 落在被锁住的间隙 (10,20) 里</span>
+<span class="kw">INSERT INTO</span> t (id) <span class="kw">VALUES</span> (<span class="num">15</span>); <span class="com">-- 阻塞，直到事务 A 提交或回滚</span></pre>
+  </div>
+  <div class="callout warn">
+    <strong>注意：</strong>间隙锁之间是<strong>互相兼容</strong>的——两个事务都可以同时持有同一个间隙的间隙锁（因为间隙锁的目的只是阻止插入，不是阻止并发读取间隙这个"概念"），这一点和行锁的 X 锁互斥不同，容易搞混。间隙锁真正阻塞的是"往间隙里插入新记录"的动作。
+  </div>
+
+  <h2>临键锁（Next-Key Lock）：行锁 + 间隙锁的组合拳</h2>
+  <p>
+    临键锁 = <strong>行锁（锁住记录本身） + 间隙锁（锁住该记录前面的间隙）</strong>，是一个左开右闭的区间。
+    InnoDB 在 RR 级别下，默认用临键锁给索引记录加锁，这样既防止了别的事务修改已有行（行锁的作用），又防止了别的事务在间隙里插入新行（间隙锁的作用），双重保险堵住幻读。
+  </p>
+  <div class="tree">
+索引 id 上的现有值: <span class="hi">5</span> ─── <span class="hi">10</span> ─── <span class="hi">20</span> ─── +∞
+临键锁区间划分:
+  (-∞, 5]   (5, 10]   (10, 20]   (20, +∞)
+每个临键锁 = "一个间隙" + "间隙右边紧邻的那条记录"
+  </div>
+
+  <h2>三种锁的对比总结</h2>
+  <table>
+    <thead><tr><th>锁类型</th><th>锁定对象</th><th>解决的问题</th><th>生效隔离级别</th></tr></thead>
+    <tbody>
+      <tr><td><strong>行锁（Record Lock）</strong></td><td>单条已存在的索引记录</td><td>防止并发修改同一行</td><td>所有级别</td></tr>
+      <tr><td><strong>间隙锁（Gap Lock）</strong></td><td>两条记录之间的空隙（不含记录本身）</td><td>防止在空隙里插入新记录，堵幻读</td><td>RR 及以上</td></tr>
+      <tr><td><strong>临键锁（Next-Key Lock）</strong></td><td>行锁 + 前面的间隙锁</td><td>综合防止修改行和插入新行</td><td>RR 及以上（默认）</td></tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>以为间隙锁和临键锁只在 <code>BETWEEN</code>/范围查询时才会加。实际上只要在 RR 级别下用索引做当前读（<code>UPDATE</code>/<code>DELETE</code>/<code>SELECT...FOR UPDATE</code>），即便是等值查询，只要查询的值不存在，InnoDB 也会在这个值所在的间隙上加间隙锁，防止别人插入这个值。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"临键锁退化成行锁或间隙锁的场景？" 当等值查询命中一个<strong>唯一索引</strong>上确实存在的记录时，临键锁会退化为只有行锁（不需要锁间隙，因为这一行已经唯一确定，不存在插入同值记录的问题）；当查询条件在索引最右侧、没有匹配的具体行时，会退化为纯粹的间隙锁（俗称 "supremum" 间隙）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>行锁只能保护"已存在的行"，</strong>无法阻止新行插入，这是幻读的根源。</li>
+    <li><strong>间隙锁负责封锁空隙，临键锁 = 行锁 + 间隙锁</strong>，是 InnoDB 在 RR 级别下默认使用的组合，用来同时防范修改和插入两类幻读诱因。</li>
+    <li>下一篇讲 MVCC——它解决的是"读"路径的并发问题（读不加锁），和本篇讲的锁机制（主要管"写"和"当前读"）是并发控制的两条腿，缺一不可。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-锁的分类.html" class="nav-btn">← 锁的分类</a>
+    <a href="./06-MVCC原理.html" class="nav-btn next">MVCC 原理 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SELECT 语句的执行逻辑顺序 — 数据库</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f89820; }
+  p code, li code { color: #f89820; }
+  h2 { color: #f89820; border-left-color: #f89820; }
+  .hero .tag { color: #f89820; border-color: #7c4a10; }
+  .nav-btn.next { color: #f89820; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / SQL 与关系模型基础 / SELECT 语句的执行逻辑顺序
+  </div>
+
+  <div class="hero">
+    <div class="tag">SQL 与关系模型基础</div>
+    <h1>SELECT 语句的执行逻辑顺序</h1>
+    <p>你写 SQL 时是按 SELECT → FROM → WHERE 的顺序敲的，但数据库理解它的顺序完全不同。这个"书写顺序"与"逻辑执行顺序"的错位，是无数初学者困惑的根源，也是最高频的面试题之一。</p>
+  </div>
+
+  <h2>书写顺序 ≠ 执行顺序</h2>
+  <p>一条完整的 <code>SELECT</code> 语句书写时是这样排列的：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>书写顺序</span></div>
+    <pre><span class="kw">SELECT</span> [<span class="kw">DISTINCT</span>] 列
+<span class="kw">FROM</span> 表
+<span class="kw">WHERE</span> 行过滤条件
+<span class="kw">GROUP BY</span> 分组列
+<span class="kw">HAVING</span> 分组后过滤条件
+<span class="kw">ORDER BY</span> 排序列
+<span class="kw">LIMIT</span> 限制条数;</pre>
+  </div>
+  <p>但数据库真正执行（求值）这条语句时，遵循的<strong>逻辑处理顺序</strong>是：</p>
+  <div class="tree">
+    1. <span class="hi">FROM</span>&nbsp;&nbsp;&nbsp;&nbsp;— 确定数据源，做笛卡尔积/JOIN，产出原始工作表<br>
+    2. <span class="hi">WHERE</span>&nbsp;&nbsp;&nbsp; — 对每一行做条件过滤，去掉不满足的行<br>
+    3. <span class="hi">GROUP BY</span> — 把剩下的行按分组列聚合成若干组<br>
+    4. <span class="hi">HAVING</span>&nbsp;&nbsp; — 对分组结果做条件过滤，去掉不满足的组<br>
+    5. <span class="hi">SELECT</span>&nbsp;&nbsp;&nbsp; — 计算最终要输出的列（含聚合函数、别名）<br>
+    6. <span class="hi">DISTINCT</span> — 对第 5 步的结果去重<br>
+    7. <span class="hi">ORDER BY</span> — 对结果排序<br>
+    8. <span class="hi">LIMIT</span>&nbsp;&nbsp;&nbsp;&nbsp; — 截取指定条数
+  </div>
+  <div class="callout info">
+    <strong>类比：</strong>这就像工厂的流水线：先从仓库调货（FROM），质检剔除次品（WHERE），按品类装箱分组（GROUP BY），再剔除不合格的整箱（HAVING），贴标签打印展示信息（SELECT），去掉重复的箱子（DISTINCT），按顺序码放上架（ORDER BY），最后只出货前 N 箱（LIMIT）。你写 SQL 时是按"给顾客看的顺序"写的，但工厂内部流程完全不是这个顺序。
+  </div>
+
+  <h2>由此推出的第一个高频考点：WHERE 为什么不能用 SELECT 起的别名</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>❌ 错误写法：WHERE 里用 SELECT 的别名</span></div>
+    <pre><span class="kw">SELECT</span> age * <span class="num">12</span> <span class="kw">AS</span> age_months
+<span class="kw">FROM</span> students
+<span class="kw">WHERE</span> age_months > <span class="num">240</span>;  <span class="com">-- 报错：Unknown column 'age_months'</span></pre>
+  </div>
+  <p>
+    原因很直接：按逻辑执行顺序，<strong>WHERE（第 2 步）在 SELECT（第 5 步）之前执行</strong>。执行到 WHERE 这一步时，
+    <code>age_months</code> 这个别名根本还没有被计算出来，数据库自然找不到这个列。正确写法是在 WHERE 里重复写表达式，或者用子查询/CTE 包一层：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>✅ 正确写法</span></div>
+    <pre><span class="kw">SELECT</span> age * <span class="num">12</span> <span class="kw">AS</span> age_months
+<span class="kw">FROM</span> students
+<span class="kw">WHERE</span> age * <span class="num">12</span> > <span class="num">240</span>;</pre>
+  </div>
+
+  <h2>第二个高频考点：为什么 HAVING 能用聚合函数而 WHERE 不能</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>❌ 错误写法：WHERE 里用聚合函数</span></div>
+    <pre><span class="kw">SELECT</span> major, <span class="fn">COUNT</span>(*) <span class="kw">AS</span> cnt
+<span class="kw">FROM</span> students
+<span class="kw">WHERE</span> <span class="fn">COUNT</span>(*) > <span class="num">10</span>  <span class="com">-- 报错：Invalid use of group function</span>
+<span class="kw">GROUP BY</span> major;</pre>
+  </div>
+  <p>
+    <code>COUNT(*)</code> 这样的聚合函数，其计算前提是"数据已经按组分好"——而按执行顺序，<strong>WHERE（第 2 步）发生在 GROUP BY（第 3 步）之前</strong>，
+    此时行还没有被分组，"每组有多少行"这个概念根本不存在，所以聚合函数在 WHERE 里毫无意义。
+    <strong>HAVING（第 4 步）发生在 GROUP BY 之后</strong>，这时候分组已经完成，每组的聚合值都已经算出来了，自然可以拿聚合函数的结果做过滤。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>✅ 正确写法</span></div>
+    <pre><span class="kw">SELECT</span> major, <span class="fn">COUNT</span>(*) <span class="kw">AS</span> cnt
+<span class="kw">FROM</span> students
+<span class="kw">GROUP BY</span> major
+<span class="kw">HAVING</span> <span class="fn">COUNT</span>(*) > <span class="num">10</span>;</pre>
+  </div>
+
+  <h2>WHERE 与 HAVING 的本质区别</h2>
+  <table>
+    <thead><tr><th>维度</th><th>WHERE</th><th>HAVING</th></tr></thead>
+    <tbody>
+      <tr><td>作用时机</td><td>分组之前，逐行过滤</td><td>分组之后，逐组过滤</td></tr>
+      <tr><td>能否用聚合函数</td><td>不能</td><td>能</td></tr>
+      <tr><td>能否用列别名</td><td>不能（MySQL 对 GROUP BY/HAVING/ORDER BY 中的别名有特殊放宽，但 WHERE 严格不行）</td><td>同样不建议依赖别名，理论上应使用原表达式</td></tr>
+      <tr><td>性能影响</td><td>能提前过滤掉大量行，减少参与分组的数据量，通常更高效</td><td>只能在分组聚合完成后再过滤，无法减少参与聚合计算的行数</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>调优思路：</strong>如果一个条件既可以写在 WHERE 也可以等价改写成不依赖聚合的形式，优先放到 WHERE 里，让优化器尽早排除数据（这与前面讲的"谓词下推"思想一致），减少 GROUP BY 阶段要处理的数据量。
+  </div>
+
+  <h2>为什么要理解 ORDER BY / LIMIT 在最后</h2>
+  <p>
+    <code>ORDER BY</code> 和 <code>LIMIT</code> 排在逻辑顺序的最后两步，意味着：<strong>排序和截取都是作用在"最终结果集"上的</strong>，而不是作用在某张原始表或某个中间分组上。
+    这也解释了为什么 <code>ORDER BY</code> 里<strong>可以</strong>使用 <code>SELECT</code> 中定义的别名（因为 SELECT 已经在它之前执行完毕，别名已经就绪）：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>ORDER BY 可以用别名，因为它在 SELECT 之后</span></div>
+    <pre><span class="kw">SELECT</span> age * <span class="num">12</span> <span class="kw">AS</span> age_months
+<span class="kw">FROM</span> students
+<span class="kw">ORDER BY</span> age_months <span class="kw">DESC</span>;  <span class="com">-- 合法，因为 ORDER BY 在 SELECT 之后执行</span></pre>
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout tip">
+    <strong>问：SELECT 语句的逻辑执行顺序是什么？</strong> 答：<code>FROM → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT</code>。这道题几乎是数据库面试的"必考基础题"，一定要能默写。
+  </div>
+  <div class="callout tip">
+    <strong>问：为什么 WHERE 不能用聚合函数，HAVING 可以？</strong> 答：WHERE 在分组之前执行，此时"组"还不存在，聚合函数无意义；HAVING 在分组之后执行，聚合值已经就绪，因此可以拿来做条件过滤。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>书写顺序是给人看的，逻辑执行顺序才是数据库真正的处理流程：</strong>理解这个错位，才能理解很多"看起来该能用却报错"的写法。</li>
+    <li><strong>WHERE 过滤行、HAVING 过滤组：</strong>本质区别源于它们在流水线上的位置不同。</li>
+    <li><strong>为下一篇 JOIN 打基础：</strong>FROM 阶段如果涉及多表，第一步做的就是各种连接运算，下一篇展开讲连接的具体种类。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-DDL与DML与DCL与TCL.html" class="nav-btn">← DDL / DML / DCL / TCL 分类</a>
+    <a href="./06-连接的种类.html" class="nav-btn next">连接的种类(inner/left/right/full/cross) →</a>
+  </div>
+
+</div>
+</body>
+</html>

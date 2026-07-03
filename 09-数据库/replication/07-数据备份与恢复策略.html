@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>数据备份与恢复策略 — 复制与高可用</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #6b21a8; }
+  .nav-btn.next { color: #a78bfa; border-color: #6b21a8; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 复制与高可用 / 数据备份与恢复策略
+  </div>
+
+  <div class="hero">
+    <div class="tag">复制与高可用</div>
+    <h1>数据备份与恢复策略</h1>
+    <p>复制解决的是"实时容灾"，但误删数据、程序 bug 写脏数据这类问题复制根本救不了（脏数据会原封不动地同步到所有从库）——这时候能救命的只有备份。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    备份分两大类：<strong>逻辑备份</strong>（把数据导出成一条条可以重新执行的 SQL 语句，代表工具 <code>mysqldump</code>）和
+    <strong>物理备份</strong>（直接拷贝数据文件本身，代表工具 <strong>Percona Xtrabackup</strong>）。
+    生产环境的标准做法是<strong>全量物理备份 + 增量 binlog</strong> 组合，而不是单独依赖 mysqldump。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>逻辑备份像是把整个图书馆的书目内容重新誊抄一份文字记录（"《高性能MySQL》共400页，第一页写着……"），
+    恢复的时候要照着记录把每本书重新印刷装订一遍，速度慢但格式通用、方便挑着恢复某几本书；
+    物理备份则是直接把图书馆的实体书架原样打包搬走，恢复时直接把书架放回去就行，速度快很多，但打包和摆放过程要格外小心不能有偏差（要保证文件级别的一致性）。
+  </div>
+
+  <h2>逻辑备份：mysqldump</h2>
+  <p>
+    <code>mysqldump</code> 通过连接数据库执行 <code>SELECT</code>，把表结构和数据转换成一条条 <code>CREATE TABLE</code> / <code>INSERT</code> 语句写入文件，
+    恢复时就是把这些 SQL 重新执行一遍。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>mysqldump 常见用法</span></div>
+    <pre><span class="com"># 全库逻辑备份，--single-transaction 依赖 InnoDB 的 MVCC 快照读
+# 保证导出期间读到的是一致的快照，而不用对整个库加锁</span>
+mysqldump --single-transaction --master-data=2 -u root -p --all-databases &gt; full_backup.sql
+
+<span class="com"># 恢复：把导出的 SQL 重新跑一遍
+# 大表恢复时相当于重新逐行 INSERT，速度明显慢于物理备份的恢复方式</span>
+mysql -u root -p &lt; full_backup.sql</pre>
+  </div>
+  <p><strong>mysqldump 的问题在大库场景下会被明显放大：</strong></p>
+  <ul>
+    <li><strong>备份耗时随数据量线性增长</strong>：本质是在跑大量 SELECT，几十 GB 的表可能要跑几个小时。</li>
+    <li><strong>恢复更慢</strong>：恢复是重新执行 INSERT 语句、重建索引，同样数据量的恢复往往比物理备份慢一个数量级。</li>
+    <li><strong>对源库有压力</strong>：即便用了 <code>--single-transaction</code> 避免长时间锁表，大量的读 IO 依然会挤占 Buffer Pool、影响线上查询性能。</li>
+    <li><strong>不支持增量</strong>：mysqldump 每次都是全量导出，没有原生的增量备份能力。</li>
+  </ul>
+
+  <h2>物理备份：Xtrabackup</h2>
+  <p>
+    Percona Xtrabackup（开源免费）直接在文件系统层面拷贝 InnoDB 的数据文件（<code>.ibd</code>），并且能在<strong>不锁表、不阻塞正常读写</strong>的情况下完成，
+    原理是：拷贝数据文件的同时持续追踪拷贝期间产生的 redo log，备份完成后用这部分 redo log 把数据文件"补齐"到一个一致的时间点（类似崩溃恢复的思路，可以回顾存储引擎内核 Tab 的 Redo Log 与崩溃恢复篇加深理解）。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Xtrabackup 全量 + 增量备份示例</span></div>
+    <pre><span class="com"># 全量物理备份</span>
+xtrabackup --backup --target-dir=/backup/full
+
+<span class="com"># 基于上一次全量备份做增量备份，只拷贝变化的数据页
+# 大幅减少后续备份的时间和存储空间</span>
+xtrabackup --backup --target-dir=/backup/inc1 --incremental-basedir=/backup/full
+
+<span class="com"># 恢复：先 prepare 把 redo log 应用进数据文件使其一致，再 copy-back 拷回数据目录</span>
+xtrabackup --prepare --apply-log-only --target-dir=/backup/full
+xtrabackup --prepare --target-dir=/backup/full --incremental-dir=/backup/inc1
+xtrabackup --copy-back --target-dir=/backup/full</pre>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th>逻辑备份（mysqldump）</th><th>物理备份（Xtrabackup）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>备份内容</td><td>SQL 语句（CREATE/INSERT）</td><td>数据文件本身</td></tr>
+      <tr><td>备份速度</td><td>慢，随数据量线性增长</td><td>快，接近文件拷贝速度</td></tr>
+      <tr><td>恢复速度</td><td>慢，需要重新执行 SQL、重建索引</td><td>快，直接使用数据文件</td></tr>
+      <tr><td>是否支持增量</td><td>不支持</td><td>支持（基于 LSN 增量拷贝变化页）</td></tr>
+      <tr><td>跨版本/跨引擎兼容性</td><td>好，SQL 文本可读、可编辑、可迁移到不同版本</td><td>较差，通常要求 MySQL 版本、存储引擎相近</td></tr>
+      <tr><td>适用场景</td><td>小库、需要人工可读的备份、跨版本迁移</td><td>大库、生产环境定期全量+增量备份的主力方案</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>为什么大库不能只用 mysqldump：</strong>假设一个几百 GB 的库，用 mysqldump 全量备份可能要跑数小时，期间对源库的读压力不可忽视；
+    一旦需要恢复，重新执行几百 GB 的 INSERT 语句、重建所有索引，耗时可能是以"天"为单位——这在任何有 RTO（恢复目标时间）要求的生产环境里都是不可接受的。
+    Xtrabackup 的物理备份 + 增量备份能把备份时间和恢复时间都压缩到可控范围内，这是大库场景下几乎没有选择余地的方案。
+  </div>
+
+  <h2>全量备份 + 增量 binlog 的组合策略</h2>
+  <p>
+    生产环境标准做法是：<strong>定期全量物理备份（如每周一次）+ 期间持续保留 binlog（相当于全量备份之后的所有增量变更）</strong>。
+    恢复时的流程是：
+  </p>
+  <ol>
+    <li>用最近一次全量备份恢复出一个基准状态。</li>
+    <li>找到该次全量备份对应的 binlog 位点（或 GTID）。</li>
+    <li>用 <code>mysqlbinlog</code> 把该位点之后的所有 binlog 重放到恢复出来的实例上，追上到故障发生前的最后一刻（甚至可以精确恢复到"误删除之前的那一秒"）。</li>
+  </ol>
+  <div class="code-block">
+    <div class="cb-header"><span>基于 binlog 的时间点恢复（Point-in-Time Recovery）</span></div>
+    <pre><span class="com"># 从全量备份对应的位点开始，重放到误操作发生前的那一刻，跳过误操作本身
+# 这也是为什么 binlog 不能只保留很短时间——它是"全量备份之后所有变更"的唯一凭证</span>
+mysqlbinlog --start-position=<span class="num">154</span> --stop-datetime=<span class="str">"2026-07-03 10:29:59"</span> \
+  mysql-bin.000123 | mysql -u root -p</pre>
+  </div>
+  <p>
+    这套组合策略正是为什么 binlog 不仅仅是复制链路的基础设施，也是备份体系里不可或缺的一环——它把"两次全量备份之间"这段时间的变更完整记录了下来，
+    是实现"精确恢复到任意时间点"（Point-in-Time Recovery）的唯一途径。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"你们的备份策略是什么？" 一个合格的回答结构：全量物理备份（周期性，如每天/每周）用 Xtrabackup 保证备份和恢复速度可控；
+    binlog 持续保留作为增量凭证，支持时间点恢复；定期做恢复演练验证备份可用性（很多事故发生在"以为有备份，真恢复时才发现备份文件损坏或不完整"）；
+    根据业务的 RPO/RTO 要求决定备份频率和 binlog 保留时长。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>逻辑备份灵活可读但慢，物理备份快但可读性差</strong>，大库场景优先选物理备份。</li>
+    <li><strong>全量备份 + binlog 增量是标准组合</strong>，binlog 在这里的角色和它在复制链路里的角色是一致的——都是"完整的变更事件流"。</li>
+    <li>备份策略不是"配置一次就完事"，一定要定期做恢复演练，否则备份文件本身出问题时根本发现不了，等真正需要恢复才追悔莫及。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-高可用方案简介.html" class="nav-btn">← 高可用方案简介</a>
+    <a href="../scaling/01-垂直拆分与水平拆分.html" class="nav-btn next">垂直拆分与水平拆分 →</a>
+  </div>
+
+</div>
+</body>
+</html>

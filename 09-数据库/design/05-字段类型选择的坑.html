@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>字段类型选择的坑 — 数据库设计与范式</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 数据库设计与范式 / 字段类型选择的坑
+  </div>
+
+  <div class="hero">
+    <div class="tag">数据库设计与范式</div>
+    <h1>字段类型选择的坑</h1>
+    <p>字段类型选错，表面上看程序照样能跑，但会在排序、索引、精度、存储空间上埋下隐患，往往等数据量大了才集中爆发。</p>
+  </div>
+
+  <h2>为什么字段类型不是小事</h2>
+  <p>
+    很多人建表时图省事，能用 <code>VARCHAR</code> 就不纠结用什么类型，能用 <code>TEXT</code> 就不管长度限制。
+    但字段类型决定了三件事：<strong>存储空间占用、比较/排序的语义是否正确、索引能否被高效使用</strong>。选错类型不会让 SQL 报错，
+    却会在数据量增长后逐渐显现为查询变慢、排序结果诡异、金额对不上账这类"隐性 bug"。
+  </p>
+
+  <h2>坑一：用 VARCHAR 存数字</h2>
+  <p>
+    比如把订单状态码、商品编号定义成 <code>VARCHAR</code>，看似灵活，实际上会导致<strong>字符串排序和数值排序语义不一致</strong>：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>字符串排序 vs 数值排序</span></div>
+    <pre><span class="com">-- 字段是 VARCHAR，存的是 '1', '2', '10', '20'</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> orders <span class="kw">ORDER BY</span> 排序号;
+<span class="com">-- 字符串比较结果：'1' < '10' < '2' < '20'，排序变成 1, 10, 2, 20 —— 不是你想要的数值顺序！</span></pre>
+  </div>
+  <p>
+    除了排序语义错误，字符串比较、索引查找的效率也明显低于整数比较（字符集、排序规则都会参与比较逻辑，CPU 开销更大）。
+    <strong>只要是参与数值计算、范围查询、排序的字段，一定要用 <code>INT</code> / <code>BIGINT</code> / <code>DECIMAL</code> 等数值类型，不要图方便用字符串。</strong>
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>"手机号该用什么类型？" 很多人下意识用 <code>INT</code>，但手机号从不参与加减乘除运算，也可能有前导 0（部分国家/地区区号），本质是一串"标识符"而非"数字"，应该用 <code>VARCHAR</code> 存储。判断标准不是"看起来像不像数字"，而是"这个字段是否会参与数值运算或范围比较"。
+  </div>
+
+  <h2>坑二：滥用 TEXT/BLOB 存本可以定长存储的数据</h2>
+  <p>
+    <code>TEXT</code>/<code>BLOB</code> 类型在 InnoDB 中的存储和访问方式与普通列不同：短字符串可能和行数据一起存在聚簇索引页里，
+    超过阈值后会被存储到<strong>溢出页（Overflow Page）</strong>中，访问时需要额外的一次页读取。
+  </p>
+  <p>常见的滥用场景：</p>
+  <ul>
+    <li>用 <code>TEXT</code> 存储固定格式的状态描述（比如"启用/禁用"），实际上用 <code>ENUM</code> 或 <code>TINYINT</code> 编码即可。</li>
+    <li>用 <code>TEXT</code> 存储省份/城市名称，实际上是有限枚举集合，<code>VARCHAR(20)</code> 甚至字典表 + 外键 ID 更合适。</li>
+    <li>用 <code>BLOB</code> 直接在业务库里存图片、文件内容，导致主表体积暴涨，备份、迁移、Buffer Pool 缓存效率都会被拖累（更好的做法是文件存对象存储，数据库只存 URL）。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>后果：</strong>大字段拖慢的不只是这一列本身的读写，还会拖累整张表的扫描效率——因为 <code>SELECT *</code> 或全表扫描时，这些大字段会占用大量 I/O 带宽和 Buffer Pool 空间，把本该用来缓存热点数据的内存挤占掉。这个问题在最后一篇"反模式"里还会结合"大字段垂直拆分"进一步展开。
+  </div>
+
+  <h2>坑三：金额用 FLOAT / DOUBLE 导致精度丢失</h2>
+  <p>
+    <code>FLOAT</code>/<code>DOUBLE</code> 是<strong>近似浮点数</strong>，底层用二进制科学计数法表示，无法精确表达大多数十进制小数（这和 Java 里 <code>0.1 + 0.2 != 0.3</code> 是同一个根源问题）。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>浮点数精度丢失示例</span></div>
+    <pre><span class="kw">SELECT</span> <span class="num">0.1</span> + <span class="num">0.2</span>;
+<span class="com">-- 结果可能不是精确的 0.3，而是 0.30000000000000004（取决于具体实现和精度）</span>
+
+<span class="com">-- 如果金额字段用 FLOAT，多次加减后误差累积，账对不上</span></pre>
+  </div>
+  <p>
+    金额、汇率、税率这类<strong>要求精确计算</strong>的字段，必须使用 <code>DECIMAL(M, D)</code>（定点数，M 是总位数，D 是小数位数），
+    它是按十进制精确存储的，不会有浮点数的舍入误差。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>正确做法</span></div>
+    <pre>订单金额 <span class="ty">DECIMAL(10, 2)</span> <span class="com">-- 最多 8 位整数 + 2 位小数，精确到分</span></pre>
+  </div>
+  <p>
+    另一种业界常见做法是<strong>把金额换算成"分"存成整数</strong>（<code>金额_分 BIGINT</code>），彻底避开小数运算，
+    在需要展示时再除以 100 转换成"元"。这也是很多支付系统（如支付宝、微信支付接口）对外部约定金额单位为"分"的原因。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"数据库里金额字段该用什么类型？为什么不用 FLOAT？" 标准答案：<strong>FLOAT/DOUBLE 是二进制近似浮点数，无法精确表示大多数十进制小数，多次运算后误差会累积，导致账务对不上；应该用 DECIMAL 定点数保证精确计算，或者把金额转为最小单位（分）用整数存储</strong>。
+  </div>
+
+  <h2>坑四：时间用字符串存储</h2>
+  <p>
+    有些团队图方便，把时间字段定义成 <code>VARCHAR</code>，存 <code>"2026-07-03 10:30:00"</code> 这样的字符串。这看起来能正常显示，但代价很大：
+  </p>
+  <ul>
+    <li><strong>无法用日期函数计算</strong>：<code>DATE_ADD</code>、<code>DATEDIFF</code> 等函数无法直接作用于字符串，要先做类型转换，既麻烦又可能因为格式不统一（有的存 <code>2026/07/03</code>，有的存 <code>2026-07-03</code>）而转换失败。</li>
+    <li><strong>范围查询无法走索引优化或语义错误</strong>：字符串的字典序比较在格式不统一时会给出错误结果，即使格式统一，效率也不如原生时间类型的二进制比较。</li>
+    <li><strong>存储空间浪费</strong>：字符串形式的时间通常需要 19+ 字节，而 <code>DATETIME</code> 只需要 5-8 字节（视精度而定），<code>TIMESTAMP</code> 只需要 4 字节。</li>
+  </ul>
+  <p>正确做法是使用原生时间类型：</p>
+  <table>
+    <thead>
+      <tr><th>类型</th><th>存储空间</th><th>取值范围</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>DATE</code></td>
+        <td>3 字节</td>
+        <td>1000-01-01 ~ 9999-12-31</td>
+        <td>只需要日期，不需要时间（如生日、日报日期）</td>
+      </tr>
+      <tr>
+        <td><code>DATETIME</code></td>
+        <td>5-8 字节</td>
+        <td>1000-01-01 ~ 9999-12-31</td>
+        <td>不受时区影响的时间点，范围宽（如历史记录、日志）</td>
+      </tr>
+      <tr>
+        <td><code>TIMESTAMP</code></td>
+        <td>4 字节</td>
+        <td>1970-01-01 ~ 2038-01-19</td>
+        <td>需要自动转换时区的时间点，占用空间更小，但范围窄（要注意 2038 问题）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>坑五（附带提醒）：字段该不该允许 NULL</h2>
+  <p>
+    这个知识点在"SQL 与关系模型基础" Tab 讲过 NULL 的三值逻辑陷阱，这里从字段设计角度补一句：
+    尽量给字段设置合理的默认值（如数值型默认 0，字符串默认空字符串），减少不必要的 <code>NULL</code>。
+    <code>NULL</code> 列会让索引统计和存储结构（NULL 值标记位）复杂化，也容易在业务判断时踩三值逻辑的坑。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>选型原则：</strong>该用数值类型的字段不要用字符串（排序/索引效率），该用定长类型的字段不要用大字段类型（I/O 和缓存效率），该用精确类型的字段不要用浮点数（精度），该用原生时间类型的字段不要用字符串（计算和存储效率）。</li>
+    <li><strong>本质规律：</strong>字段类型选择的核心是让"存储的物理表示"匹配"这个字段真实的业务语义"——是数字就该能做数值比较，是钱就该精确无误差，是时间就该能做日期运算。</li>
+    <li><strong>这些坑往往在数据量小时不会暴露</strong>，等到表变大、查询变多才会集中体现为性能问题或数据错误，所以类型选择要在建表阶段就想清楚，而不是等出问题再返工迁移（大表改字段类型的成本极高）。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-主键设计.html" class="nav-btn">← 主键设计(自增/UUID/雪花算法)</a>
+    <a href="./06-数据库设计常见反模式.html" class="nav-btn next">数据库设计常见反模式 →</a>
+  </div>
+
+</div>
+</body>
+</html>

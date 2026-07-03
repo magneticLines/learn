@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>读写分离架构 — 复制与高可用</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #6b21a8; }
+  .nav-btn.next { color: #a78bfa; border-color: #6b21a8; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 复制与高可用 / 读写分离架构
+  </div>
+
+  <div class="hero">
+    <div class="tag">复制与高可用</div>
+    <h1>读写分离架构</h1>
+    <p>数据库扛不住读流量时，最直接的思路就是"写只走一个主库，读分摊到多个从库"——但落地这套架构，绕不开"从库数据不是最新的"这个先天缺陷。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    读写分离（Read/Write Splitting）利用主从复制的特性，把<strong>写请求（INSERT/UPDATE/DELETE）路由到主库，读请求（SELECT）分摊到一个或多个从库</strong>，
+    从而横向扩展数据库的读吞吐能力。它解决的是"读多写少"场景下单机读性能瓶颈的问题，本质是一种"利用复制的副作用做负载均衡"的架构手段。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像一家总店生意太好，光靠总店的收银台既要收钱（写）又要回答顾客"这个东西多少钱、有没有货"（读）的咨询，忙不过来。
+    于是干脆开几家分店专门用来"查询咨询"，所有实际的进货、改价格（写操作）还是必须回总店做，分店的商品信息定期从总店同步过来——但分店的信息可能不是最新的，
+    总店刚改的价格，分店的价签可能还没来得及换。
+  </div>
+
+  <h2>典型架构：应用层路由 vs 中间件</h2>
+
+  <h3>方案一：应用层路由</h3>
+  <p>
+    在应用代码或数据访问层（如 MyBatis 拦截器、Spring 的 <code>AbstractRoutingDataSource</code>）根据 SQL 类型或业务显式指定，把请求路由到主库数据源还是从库数据源。
+  </p>
+  <div class="tree">
+    <span class="hi">应用层路由架构</span><br>
+    &nbsp;&nbsp;├─ 应用服务<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;├─ 写请求 → 主库数据源（DataSource-Master）<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;└─ 读请求 → 从库数据源（DataSource-Slave，可配置多个做负载均衡）<br>
+    &nbsp;&nbsp;├─ 优点：架构简单，不引入额外组件，路由逻辑可以按业务灵活定制<br>
+    &nbsp;&nbsp;└─ 缺点：路由逻辑侵入业务代码，多语言技术栈需要各自实现一遍
+  </div>
+
+  <h3>方案二：中间件（如 MyCat、ProxySQL、Atlas）</h3>
+  <p>
+    在应用和数据库之间加一层数据库代理，代理对外表现得像一个单一的 MySQL 实例，应用完全无感知，由中间件负责解析 SQL、判断读写类型、路由到对应节点、
+    甚至做负载均衡和故障转移。
+  </p>
+  <div class="tree">
+    <span class="hi">中间件代理架构</span><br>
+    &nbsp;&nbsp;├─ 应用服务（像连接单一数据库一样连接中间件）<br>
+    &nbsp;&nbsp;├─ 中间件（ProxySQL / MyCat）<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;├─ 解析 SQL，判断是读还是写<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;├─ 写 → 路由到主库<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;└─ 读 → 按负载均衡策略路由到某个从库<br>
+    &nbsp;&nbsp;├─ 优点：对业务代码透明，统一管理路由规则、监控、故障转移<br>
+    &nbsp;&nbsp;└─ 缺点：多一层网络跳转有性能损耗，中间件本身也要考虑高可用（避免单点）
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th>应用层路由</th><th>中间件代理</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>接入成本</td><td>需要改造代码/配置数据源</td><td>业务基本无感知</td></tr>
+      <tr><td>灵活性</td><td>可按业务定制路由策略（如强制读主）</td><td>依赖中间件本身支持的规则能力</td></tr>
+      <tr><td>运维复杂度</td><td>路由逻辑分散在各服务里</td><td>集中管理，但多一个需要维护的组件</td></tr>
+      <tr><td>性能损耗</td><td>无额外网络跳转</td><td>多一跳网络代理，有一定延迟</td></tr>
+    </tbody>
+  </table>
+
+  <h2>必须面对的问题：读到从库的旧数据</h2>
+  <p>
+    读写分离架构天生要面对上一篇讲过的主从延迟问题：<strong>写请求刚提交到主库，紧接着的读请求如果被路由到还没追上进度的从库，就会读到旧数据</strong>。
+    这在很多业务场景下是不可接受的，比如：
+  </p>
+  <ul>
+    <li>用户刚发布一条动态，刷新页面却看不到自己刚发的内容。</li>
+    <li>下单后立刻查询订单状态，返回"订单不存在"。</li>
+    <li>修改密码后用新密码登录失败，因为登录校验请求打到了还没同步过来的从库。</li>
+  </ul>
+
+  <p>常见应对策略（与上一篇主从延迟篇呼应）：</p>
+  <ul>
+    <li><strong>写后读强制走主库</strong>：最简单粗暴也最常用的方案，在写请求完成后的一小段时间窗口内（或者同一个用户会话内），强制该用户的读请求路由到主库。</li>
+    <li><strong>会话粘滞（Session Sticky）</strong>：同一个事务/会话内的读写都路由到主库，跨会话的读才走从库，减少"自己写完自己读不到"的体验问题。</li>
+    <li><strong>基于 GTID/位点等待</strong>：中间件记录写请求提交时的位点，后续读请求先等从库追上该位点（或超时后降级读主库）。</li>
+    <li><strong>业务可接受最终一致</strong>：如果业务本身对"稍微旧一点的数据"不敏感（如商品详情页浏览量、历史订单列表查询），可以直接接受从库延迟，不做特殊处理。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>"上了读写分离之后是不是所有 SELECT 都应该走从库？" 不是。哪些查询必须读主库、哪些可以容忍延迟读从库，
+    需要按业务场景逐个判断——一刀切地把所有读请求都甩给从库，是读写分离踩坑最常见的原因，往往是上线后才发现"用户反馈自己的操作结果看不到"才回头补救。
+    正确的做法是在设计阶段就明确哪些接口对一致性敏感，提前做好路由策略。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"读写分离怎么解决数据不一致的问题？" 核心答案：读写分离本身不能消除主从延迟，只能通过"强制读主库"、"会话粘滞"、"等待位点对齐"等策略在特定场景下规避用户能感知到的不一致，本质是在性能收益和一致性体验之间做业务级别的权衡，而不是技术上根治延迟。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>读写分离的收益是横向扩展读吞吐</strong>，代价是引入了主从延迟带来的一致性问题，二者是一体两面。</li>
+    <li><strong>应用层路由灵活但侵入代码，中间件代理透明但多一层依赖</strong>，选型要结合团队技术栈和运维能力。</li>
+    <li>读写分离必须结合前一篇讲的延迟监控和应对策略一起设计，不能只关注"怎么把读流量分出去"而忽视"分出去之后数据可能是旧的"这个核心矛盾。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-主从延迟问题及优化.html" class="nav-btn">← 主从延迟问题及优化</a>
+    <a href="./06-高可用方案简介.html" class="nav-btn next">高可用方案简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>事务的隔离级别 — 数据库全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 事务与并发控制 / 事务的隔离级别
+  </div>
+
+  <div class="hero">
+    <div class="tag">事务与并发控制</div>
+    <h1>事务的隔离级别</h1>
+    <p>隔离性不是非黑即白的开关，而是一个"用多少并发性能换多少数据安全感"的滑动刻度。SQL 标准定义了四挡，MySQL 默认停在第三挡——这背后是工程上的权衡，不是拍脑袋决定的。</p>
+  </div>
+
+  <h2>为什么隔离性需要分级</h2>
+  <p>
+    如果隔离性做到极致（完全串行化，事务一个接一个排队执行），数据绝对安全，但并发度约等于零，性能无法接受。
+    如果完全不隔离，事务之间互相看得见对方的中间状态，性能最好但数据可能读出脏数据、算错账。
+    <strong>SQL 标准干脆把这个"安全 vs 性能"的取舍点位标准化成四个级别</strong>，让开发者按业务场景自己选。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像图书馆的自习室管理规则——"串行化"是一次只放一个人进去看书，绝对不会有人打扰你；"读未提交"是谁都能随便进出随便翻你摊开的草稿，最快但最容易被打扰。四个级别就是在"绝对安静"和"完全开放"之间取不同的点。
+  </div>
+
+  <h2>四种隔离级别逐个讲</h2>
+
+  <h3>1. 读未提交（Read Uncommitted）</h3>
+  <p>
+    最低级别：一个事务可以读到另一个事务<strong>尚未提交</strong>的修改。几乎不提供任何隔离保证，会产生脏读。
+    实际生产环境几乎不用，性能收益和数据风险完全不成正比。
+  </p>
+
+  <h3>2. 读已提交（Read Committed，RC）</h3>
+  <p>
+    一个事务只能读到别的事务<strong>已经提交</strong>的数据。解决了脏读，但同一个事务内两次读同一行，如果中间别的事务提交了修改，两次读到的结果会不一样（不可重复读）。
+    Oracle、SQL Server 默认用这个级别。<strong>RC 下每条 SELECT 语句执行时都会重新生成一份 ReadView</strong>，所以能立刻看到别人刚提交的最新数据。
+  </p>
+
+  <h3>3. 可重复读（Repeatable Read，RR）—— MySQL 默认级别</h3>
+  <p>
+    保证同一个事务内，多次读同一行数据的结果一致，不会因为别的事务提交而改变。<strong>InnoDB 在 RR 级别下，事务只在第一次执行快照读时生成 ReadView，之后整个事务复用同一份</strong>，这就是"可重复读"名字的由来。
+    并且 InnoDB 的 RR 级别通过间隙锁（Gap Lock）/ 临键锁（Next-Key Lock），额外解决了标准定义中 RR 应该还会出现的幻读问题——这是 InnoDB 对标准的加强，不是所有数据库的 RR 都能防幻读。
+  </p>
+
+  <h3>4. 串行化（Serializable）</h3>
+  <p>
+    最高级别：强制所有事务串行执行，读操作也会加锁（相当于把普通 SELECT 变成 <code>SELECT ... LOCK IN SHARE MODE</code>）。
+    彻底杜绝脏读、不可重复读、幻读，但并发性能最差，一般只在对数据一致性要求极端严苛的场景使用（比如金融对账批处理）。
+  </p>
+
+  <h2>四种级别的取舍对比</h2>
+  <table>
+    <thead>
+      <tr><th>隔离级别</th><th>脏读</th><th>不可重复读</th><th>幻读</th><th>并发性能</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>读未提交</td><td>会出现</td><td>会出现</td><td>会出现</td><td>最高</td></tr>
+      <tr><td>读已提交（RC）</td><td>已解决</td><td>会出现</td><td>会出现</td><td>较高</td></tr>
+      <tr><td>可重复读（RR，MySQL 默认）</td><td>已解决</td><td>已解决</td><td>InnoDB 已解决（间隙锁）</td><td>中等</td></tr>
+      <tr><td>串行化</td><td>已解决</td><td>已解决</td><td>已解决</td><td>最低</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>与下一篇呼应：</strong>脏读、不可重复读、幻读这三种异常现象的精确定义和区分（尤其是不可重复读和幻读极易混淆），下一篇会用两个事务交错的时间线例子逐一演示。
+  </div>
+
+  <h2>怎么选隔离级别</h2>
+  <ul>
+    <li><strong>不确定就用默认（RR）：</strong>MySQL InnoDB 默认 RR 级别在正确性和性能之间已经是一个很均衡的点，且借助间隙锁解决了幻读，多数业务无需调整。</li>
+    <li><strong>高并发只读报表：</strong>可以考虑 RC，减少间隙锁带来的并发阻塞（间隙锁范围更大，容易造成不必要的锁等待）。</li>
+    <li><strong>极端一致性要求：</strong>用串行化，或者干脆用悲观锁 <code>SELECT ... FOR UPDATE</code> 显式控制。</li>
+  </ul>
+
+  <h2>查看与设置隔离级别</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>MySQL 8.0</span></div>
+    <pre><span class="com">-- 查看当前会话隔离级别</span>
+<span class="kw">SELECT</span> @@transaction_isolation;
+
+<span class="com">-- 设置当前会话隔离级别</span>
+<span class="kw">SET SESSION</span> TRANSACTION ISOLATION LEVEL <span class="kw">READ COMMITTED</span>;
+
+<span class="com">-- 设置全局隔离级别（对新建立的连接生效）</span>
+<span class="kw">SET GLOBAL</span> TRANSACTION ISOLATION LEVEL <span class="kw">REPEATABLE READ</span>;</pre>
+  </div>
+
+  <h2>面试高频考点</h2>
+  <div class="callout warn">
+    <strong>常见误区：</strong>"MySQL 的 RR 级别也会有幻读，因为 SQL 标准是这么定义的。" 这句话只说对了一半——<strong>标准定义的 RR 确实允许幻读，但 InnoDB 的具体实现通过间隙锁把这个漏洞补上了</strong>。回答面试题时要说清楚"标准定义"和"InnoDB 实现"是两码事。
+  </div>
+  <div class="callout tip">
+    <strong>问："MySQL 默认隔离级别是什么，为什么？"</strong><br>
+    答：可重复读（RR）。因为 MySQL 最初设计时基于 binlog 的 statement 格式做主从复制，如果用 RC 级别，同一个事务内多次读结果不一致，会导致主从数据不一致；RR 级别配合间隙锁则能保证复制的一致性，这是历史原因和工程考量共同作用的结果。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>隔离级别的本质是"安全性 vs 并发性能"的刻度选择</strong>，级别越高读写互相阻塞越多，性能越差。</li>
+    <li><strong>RC 每次快照读都生成新 ReadView，RR 整个事务复用一份 ReadView</strong>——这是二者行为差异的根本原因，也是理解 MVCC 的关键前置知识。</li>
+    <li>下一篇具体演示三种异常现象，把"隔离级别能防住什么"讲清楚。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-事务的ACID特性.html" class="nav-btn">← 事务的 ACID 特性</a>
+    <a href="./03-脏读不可重复读幻读.html" class="nav-btn next">脏读 / 不可重复读 / 幻读 →</a>
+  </div>
+
+</div>
+</body>
+</html>

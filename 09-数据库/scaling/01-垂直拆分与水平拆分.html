@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>垂直拆分与水平拆分 — 数据库扩展性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c4a10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 扩展性 / 垂直拆分与水平拆分
+  </div>
+
+  <div class="hero">
+    <div class="tag">扩展性</div>
+    <h1>垂直拆分与水平拆分</h1>
+    <p>单机数据库撑不住了怎么办？先别急着分库分表——搞清楚你的瓶颈到底是"业务太复杂"还是"数据太多"，答案完全不同。</p>
+  </div>
+
+  <h2>为什么单机数据库会遇到瓶颈</h2>
+  <p>
+    一台数据库服务器的容量是有物理上限的：CPU 核数、内存大小、磁盘 IOPS、网卡带宽都是有限资源。
+    当业务增长到一定规模，会遇到两类完全不同性质的瓶颈：
+  </p>
+  <ul>
+    <li><strong>业务复杂度瓶颈：</strong>一个库里塞了用户、订单、商品、支付、日志几十张毫不相关的表，任何一个模块的变更都可能锁全库、影响其他模块，团队协作也互相踩脚。</li>
+    <li><strong>数据量/并发瓶颈：</strong>单表几亿行，索引树深度增加、Buffer Pool 装不下热数据，查询越来越慢；或者单机连接数、TPS 到顶，加多少索引都无济于事。</li>
+  </ul>
+  <div class="callout info">
+    <strong>类比：</strong>垂直拆分好比一家小饭馆生意好了，把"炒菜""收银""洗碗"分给不同的人专门负责（分工提效）；水平拆分则是饭馆一家店坐不下人了，直接开分店，同样的菜单，不同的客人分流到不同的店里（分流量）。这是两个完全不同维度的问题，解法自然也不同。
+  </div>
+
+  <h2>垂直拆分：按业务/字段拆</h2>
+  <p>
+    <strong>垂直拆分</strong>是把一个大库按<strong>业务模块</strong>拆成多个库（比如用户库、订单库、商品库各自独立），
+    或者把一张宽表按<strong>字段冷热</strong>拆成多张表（常用字段一张表，很少查询的大字段/富文本另放一张表）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>垂直拆分示例：宽表拆分</span></div>
+    <pre><span class="com">-- 拆分前：一张大宽表，商品详情富文本很少被列表查询用到，却每次 SELECT * 都要带上</span>
+<span class="kw">CREATE TABLE</span> <span class="fn">product</span> (
+  id <span class="ty">BIGINT</span>, name <span class="ty">VARCHAR</span>(<span class="num">255</span>), price <span class="ty">DECIMAL</span>,
+  description <span class="ty">MEDIUMTEXT</span>,  <span class="com">-- 几十 KB 的富文本，占满 Buffer Pool</span>
+  detail_images <span class="ty">TEXT</span>
+);
+
+<span class="com">-- 拆分后：高频字段和低频大字段分离，主表页密度大幅提升</span>
+<span class="kw">CREATE TABLE</span> <span class="fn">product</span> (id <span class="ty">BIGINT</span>, name <span class="ty">VARCHAR</span>(<span class="num">255</span>), price <span class="ty">DECIMAL</span>);
+<span class="kw">CREATE TABLE</span> <span class="fn">product_detail</span> (product_id <span class="ty">BIGINT</span>, description <span class="ty">MEDIUMTEXT</span>, detail_images <span class="ty">TEXT</span>);</pre>
+  </div>
+
+  <p><strong>垂直拆分解决的是"业务耦合"问题</strong>，它带来的好处：</p>
+  <ul>
+    <li>不同业务库可以独立扩容、独立优化、独立运维，互不干扰。</li>
+    <li>热点字段和冷字段分离后，主表每页能装下更多行，缓存命中率更高（联系索引 Tab 讲过的页结构，一页 16KB，行越窄能塞的行数越多）。</li>
+    <li>符合微服务"数据库随服务拆分"的天然演进路径。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>注意：</strong>垂直拆分并<strong>不能解决单表数据量过大</strong>的问题——拆完之后订单表还是那张订单表，该有几亿行还是几亿行。它只是让"不相关的东西不再互相拖累"，本质上是业务架构层面的解耦，不是容量层面的扩容。
+  </div>
+
+  <h2>水平拆分：按行拆（分库分表）</h2>
+  <p>
+    <strong>水平拆分</strong>是把同一张表的<strong>数据行</strong>按某种规则（通常是某个字段的 hash 或 range）分散到多个库或多张结构相同的表中，
+    每个分片只存全量数据的一部分。这就是俗称的"分库分表"。
+  </p>
+
+  <div class="tree">
+    <span class="hi">order 表（水平拆分为 4 张分表）</span><br>
+    &nbsp;&nbsp;├─ order_0（user_id % 4 == 0 的订单）<br>
+    &nbsp;&nbsp;├─ order_1（user_id % 4 == 1 的订单）<br>
+    &nbsp;&nbsp;├─ order_2（user_id % 4 == 2 的订单）<br>
+    &nbsp;&nbsp;└─ order_3（user_id % 4 == 3 的订单）
+  </div>
+
+  <p><strong>水平拆分解决的是"单表数据量/并发"瓶颈</strong>：每张分表的数据量只有原来的 1/N，索引树更浅、查询更快；同时多个分片可以分布在不同物理机器上，并发写入能力也随分片数线性提升。</p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>很多人一遇到"表太大就分表"，但没想清楚路由规则怎么定、以后怎么扩容——这些坑会在下一篇"分库分表的路由策略"里展开讲。水平拆分是一把双刃剑，它在解决容量问题的同时，会引入跨库 JOIN、分布式事务、分布式 ID 等一整套新问题（后面几篇会依次讲）。
+  </div>
+
+  <h2>两者对比：解决的瓶颈不同</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>垂直拆分</th><th>水平拆分</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>拆分依据</td>
+        <td>按业务模块 / 字段冷热</td>
+        <td>按行（某个字段的值）</td>
+      </tr>
+      <tr>
+        <td>解决的瓶颈</td>
+        <td>业务耦合、团队协作效率、宽表 IO</td>
+        <td>单表数据量过大、单机并发/连接数瓶颈</td>
+      </tr>
+      <tr>
+        <td>拆分后表结构</td>
+        <td>不同库/表结构不同</td>
+        <td>各分片表结构完全相同</td>
+      </tr>
+      <tr>
+        <td>典型触发条件</td>
+        <td>一个库塞了几十个不相关业务模块</td>
+        <td>单表数据量达到千万到亿级、单机 QPS 到顶</td>
+      </tr>
+      <tr>
+        <td>引入的新问题</td>
+        <td>跨库事务（不同业务库间）</td>
+        <td>跨分片 JOIN、分布式 ID、分布式事务、路由维护</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>"表变大了就应该分库分表。" 实际上应该先看：能不能加索引、能不能优化 SQL、能不能升级硬件（垂直扩容）、能不能读写分离分担查询压力？分库分表是最后一步，因为它的运维复杂度和开发成本极高，一旦分了想合回来非常困难。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>把垂直拆分和水平拆分对立起来。实际工程中两者经常<strong>组合使用</strong>：先按业务垂直拆成订单库、用户库，订单库量还是太大，再对订单表做水平拆分成多张分表。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"分库分表的分库和分表有什么区别？" 分表解决单表数据量和索引效率问题；分库解决单机连接数、CPU、磁盘 IO 等物理资源瓶颈。实践中通常"先分库，库内再分表"，因为分库能把压力真正分散到不同物理机器上。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>垂直拆分是业务解耦</strong>，按模块或字段冷热拆分，降低系统复杂度，不解决容量问题。</li>
+    <li><strong>水平拆分是容量扩容</strong>，按行拆分到多个分片，是应对海量数据和高并发的终极手段，但代价高昂。</li>
+    <li>两者常常组合使用，且水平拆分会引出路由策略、分布式 ID、跨库 JOIN 等一系列新问题，这也是本 Tab 接下来几篇的主线。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../replication/07-数据备份与恢复策略.html" class="nav-btn">← 数据备份与恢复策略</a>
+    <a href="./02-分库分表的路由策略.html" class="nav-btn next">分库分表的路由策略 →</a>
+  </div>
+
+</div>
+</body>
+</html>

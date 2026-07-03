@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分布式 ID 生成方案 — 数据库扩展性</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c4a10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 扩展性 / 分布式 ID 生成方案
+  </div>
+
+  <div class="hero">
+    <div class="tag">扩展性</div>
+    <h1>分布式 ID 生成方案</h1>
+    <p>单机时代 <code>AUTO_INCREMENT</code> 一劳永逸，分库分表之后，"给一行数据分配唯一主键"突然变成了一个需要专门设计方案的分布式问题。</p>
+  </div>
+
+  <h2>为什么分库分表后自增主键会失效</h2>
+  <p>
+    单机数据库里，主键用 <code>AUTO_INCREMENT</code> 非常简单：数据库自己维护一个计数器，每插入一行就 +1，天然保证唯一、有序、连续。
+    但分库分表之后，同一张逻辑表被拆成了 <code>order_0</code>、<code>order_1</code>、<code>order_2</code>……多个物理表，
+    <strong>每个分片各自维护自己的自增计数器</strong>，于是 <code>order_0</code> 和 <code>order_1</code> 里都会各自生成 <code>id=1</code>、<code>id=2</code>——主键冲突了。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像一家连锁店原本只有一个总店，取号机从 1 开始发号，谁先谁后一目了然；现在开了 10 家分店，如果每家店的取号机都各自从 1 开始发号，顾客拿着"3 号"小票根本不知道是哪家店的第几位顾客——需要一个能跨门店统一发号的机制。
+  </div>
+  <p>因此分库分表后，主键的生成必须挪到<strong>应用层或独立服务</strong>来做，业界主要有三种主流方案。</p>
+
+  <h2>方案一：UUID</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>UUID 示例</span></div>
+    <pre><span class="com">-- 128 位，通常以 36 字符的字符串表示</span>
+<span class="str">"550e8400-e29b-41d4-a716-446655440000"</span></pre>
+  </div>
+  <p><strong>优点：</strong>本地生成，无需网络交互，天然全局唯一，实现极其简单。</p>
+  <div class="callout warn">
+    <strong>致命缺点：</strong>UUID 是<strong>无序的随机值</strong>。回忆索引 Tab 讲过的 B+ 树聚簇索引原理——InnoDB 按主键顺序把数据组织在叶子节点，自增主键能保证顺序追加写；而随机的 UUID 插入会导致页分裂频繁发生、索引树逐渐碎片化，写入性能明显下降。此外 UUID 占 36 字节（或存成 16 字节二进制），比 <code>BIGINT</code>（8 字节）大很多，二级索引和外键关联的存储与比较开销都更高。
+  </div>
+
+  <h2>方案二：数据库号段模式</h2>
+  <p>
+    专门用一张（或一组）表来分配 ID 区间（号段），应用启动时向号段表申请一批 ID（比如一次申请 1000 个），
+    在内存里自增使用，用完再去申请下一批，大幅减少数据库交互次数。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>号段表结构与获取逻辑</span></div>
+    <pre><span class="kw">CREATE TABLE</span> <span class="fn">id_segment</span> (
+  biz_type <span class="ty">VARCHAR</span>(<span class="num">32</span>) <span class="kw">PRIMARY KEY</span>,  <span class="com">-- 业务类型，如 'order'</span>
+  max_id   <span class="ty">BIGINT</span>,                <span class="com">-- 当前已分配到的最大 ID</span>
+  step     <span class="ty">INT</span>                    <span class="com">-- 每次申请的号段步长，如 1000</span>
+);
+
+<span class="com">-- 应用申请号段：一条 UPDATE + 一条 SELECT，原子性靠事务保证</span>
+<span class="kw">UPDATE</span> id_segment <span class="kw">SET</span> max_id = max_id + step <span class="kw">WHERE</span> biz_type = <span class="str">'order'</span>;
+<span class="kw">SELECT</span> max_id, step <span class="kw">FROM</span> id_segment <span class="kw">WHERE</span> biz_type = <span class="str">'order'</span>;
+<span class="com">-- 应用拿到 [max_id - step + 1, max_id] 区间，在内存里自增分配，无需每次都查库</span></pre>
+  </div>
+  <p><strong>优点：</strong>ID 单调递增（趋势递增），对聚簇索引友好；号段表压力很小（用一次网络请求换取上千个 ID），性能好。</p>
+  <div class="callout warn">
+    <strong>缺点：</strong>依赖一个中心化的号段服务/表，存在单点风险（需要主备保证高可用）；服务重启若号段没用完会造成 ID 空洞（可接受，因为不要求连续，只要求唯一递增）。
+  </div>
+
+  <h2>方案三：雪花算法（Snowflake）</h2>
+  <p>
+    Twitter 开源的 Snowflake 算法用一个 64 位整数编码出全局唯一且趋势递增的 ID，完全不依赖数据库，纯内存计算，性能极高。
+  </p>
+  <div class="tree">
+    <span class="hi">Snowflake 64 位结构</span><br>
+    &nbsp;&nbsp;┌─ 1 bit 符号位（固定为 0）<br>
+    &nbsp;&nbsp;├─ 41 bit 时间戳（毫秒级，可用约 69 年）<br>
+    &nbsp;&nbsp;├─ 10 bit 机器 ID（最多支持 1024 台机器/进程）<br>
+    &nbsp;&nbsp;└─ 12 bit 序列号（同一毫秒内可生成 4096 个不同 ID）
+  </div>
+  <p>
+    生成逻辑：取当前毫秒时间戳，拼上预先分配好的机器 ID，再拼上同一毫秒内的自增序列号，三段拼接成一个 64 位整数。
+    因为时间戳在高位，<strong>整体上 ID 随时间单调递增</strong>，对聚簇索引友好；不同机器用不同的机器 ID，天然避免冲突，且完全不需要网络请求，本地计算即可。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>Snowflake 依赖<strong>系统时钟</strong>，如果服务器发生时钟回拨（NTP 校准、虚拟机迁移等），同一机器可能生成比之前更小甚至重复的 ID。生产级实现通常会检测时钟回拨并采取等待或抛异常等策略。另外机器 ID 的分配也需要一个注册/协调机制（比如借助 ZooKeeper 或配置中心），并非完全"零依赖"。
+  </div>
+
+  <h2>三种方案对比</h2>
+  <table>
+    <thead>
+      <tr><th>方案</th><th>有序性</th><th>是否依赖网络/中心节点</th><th>ID 长度</th><th>典型代表</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>UUID</td>
+        <td>无序</td>
+        <td>不依赖（本地生成）</td>
+        <td>128 位</td>
+        <td>JDK <code>UUID.randomUUID()</code></td>
+      </tr>
+      <tr>
+        <td>数据库号段模式</td>
+        <td>趋势递增</td>
+        <td>依赖号段服务/表（但按批次申请，频率低）</td>
+        <td>64 位（BIGINT）</td>
+        <td>美团 Leaf-segment、百度 UidGenerator</td>
+      </tr>
+      <tr>
+        <td>雪花算法</td>
+        <td>趋势递增</td>
+        <td>不依赖网络，但机器 ID 分配需要协调</td>
+        <td>64 位</td>
+        <td>Twitter Snowflake、美团 Leaf-snowflake</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"反正只要唯一就行，用 UUID 最简单最保险。" 唯一性只是分布式 ID 的最低要求，工程上更关心<strong>有序性</strong>——因为它直接影响 InnoDB 聚簇索引的插入性能（联系索引 Tab 讲过的页分裂问题）。这也是为什么业界主流方案都在朝"趋势递增"而不是"纯随机"设计。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"说说雪花算法的组成？会有什么问题？" 答出 41 位时间戳 + 10 位机器位 + 12 位序列号的结构，并点出时钟回拨这个核心陷阱，基本能拿到分。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>分库分表打破了单机自增主键的唯一性保证，ID 生成必须上升到应用层或独立服务解决。</li>
+    <li><strong>UUID</strong> 简单但无序，牺牲索引性能；<strong>号段模式</strong>趋势递增但依赖中心节点；<strong>雪花算法</strong>趋势递增且高性能，但要处理时钟回拨。</li>
+    <li>选型的核心权衡点：是否需要严格递增、是否能接受中心节点依赖、生成吞吐量要求多高。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-分库分表的路由策略.html" class="nav-btn">← 分库分表的路由策略</a>
+    <a href="./04-跨库Join与全局表.html" class="nav-btn next">跨库 Join 与全局表 →</a>
+  </div>
+
+</div>
+</body>
+</html>

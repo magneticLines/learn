@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Undo Log 与回滚 — 存储引擎内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 存储引擎内核 / Undo Log 与回滚
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">存储引擎内核</div>
+    <h1>Undo Log 与回滚</h1>
+    <p>Redo log 保证的是"已提交的修改不丢"，那"没提交的修改要能撤销"靠谁？答案是 undo log——它不仅是回滚的后悔药，更是 MVCC 能实现的地基。</p>
+  </div>
+
+  <!-- 是什么 -->
+  <h2>Undo Log 是什么：逻辑日志，记录"反操作"</h2>
+  <p>
+    Undo log 记录的是<strong>修改之前的旧版本数据</strong>，本质上是一种<strong>逻辑日志（logical log）</strong>：它不像 redo log 那样记录"页的哪个字节改成了什么"，而是记录"如果要撤销这次修改，应该执行什么样的反向操作"。
+  </p>
+  <ul>
+    <li><strong>INSERT 的 undo</strong>：记一条对应的 <code>DELETE</code>（只需要主键值，删除刚插入的这行即可撤销）。</li>
+    <li><strong>DELETE 的 undo</strong>：记一条对应的 <code>INSERT</code>（把整行数据记下来，回滚时重新插回去）。实际上 InnoDB 对 DELETE 采用"delete mark"先打删除标记，真正的物理删除交给后台 purge 线程。</li>
+    <li><strong>UPDATE 的 undo</strong>：记修改前的旧列值（如果改了主键，会被拆成 DELETE + INSERT 两步处理），回滚时用旧值覆盖回去。</li>
+  </ul>
+  <div class="callout info">
+    <strong>类比：</strong>undo log 像是编辑器里的"撤销栈"（Ctrl+Z 历史）。你敲一个字，撤销栈里就压入一条"删除刚才这个字"的记录；你删一个字，撤销栈里压入的是"把这个字加回来"。真正撤销时，不是恢复整个文件快照，而是按记录反着执行一遍。
+  </div>
+
+  <!-- 两大用途 -->
+  <h2>用途一：事务回滚（ROLLBACK）</h2>
+  <p>
+    这是最直觉的用途：事务执行过程中每一次修改都会先记一条 undo log。如果事务中途执行了 <code>ROLLBACK</code>，InnoDB 就沿着这个事务写下的 undo log 反向执行，把数据恢复到事务开始之前的状态。事务提交后，对应的 undo log 不再需要用于回滚，但不能立刻删除——原因见下一节。
+  </p>
+
+  <!-- 用途二 -->
+  <h2>用途二：MVCC 的版本链</h2>
+  <p>
+    这是 undo log 更"隐蔽"但同样关键的用途。InnoDB 每一行记录除了业务列，还有两个隐藏列：<code>trx_id</code>（最后一次修改该行的事务 ID）和 <code>roll_pointer</code>（指向这一行修改前的 undo log 记录）。多个事务先后修改同一行时，这些 undo log 记录会通过 <code>roll_pointer</code> 串成一条<strong>版本链</strong>，链表头是最新版本，往回追溯就是一次次修改前的旧版本。
+  </p>
+  <p>
+    当某个事务的 ReadView 判断"当前最新版本对我不可见"时，就沿着这条版本链往回找，直到找到一个对它可见的历史版本为止——这正是 MVCC 能够"读到旧快照"的物理实现基础。ReadView 如何判断可见性、什么是快照读，详见
+    <a href="../transaction/06-MVCC原理.html" style="color:#4ade80;">MVCC 原理</a>；这里只需要记住一点：<strong>版本链的载体就是 undo log</strong>。
+  </p>
+
+  <h3>例子：一行数据被连续 UPDATE 三次</h3>
+  <div class="tree">
+    当前行（trx_id=103，name='张三丙'）<br>
+    &nbsp;&nbsp;└─ roll_pointer → <span class="hi">undo(trx_id=102): name='张三乙'</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ roll_pointer → <span class="hi">undo(trx_id=101): name='张三'</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ roll_pointer → NULL（该行最初插入时没有更早版本）
+  </div>
+  <p>
+    如果事务 101 还没提交时事务 102 就已经修改过这行，那么某个开启较早、ReadView 里 102/103 都不可见的事务，读到"当前行"后会发现 trx_id=103 对它不可见，于是顺着 roll_pointer 找到 undo(102)，再判断还是不可见，继续往前找到 undo(101)，如果这个版本对它可见就返回这份数据——整个过程完全不阻塞其他事务的写入。
+  </p>
+
+  <!-- 对比 redo vs undo -->
+  <h2>Redo Log vs Undo Log</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>Redo Log</th><th>Undo Log</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>日志类型</td>
+        <td>物理日志——记录"某页某偏移改成了什么"</td>
+        <td>逻辑日志——记录"要撤销这次修改该做什么反操作"</td>
+      </tr>
+      <tr>
+        <td>核心用途</td>
+        <td>崩溃后恢复（前滚已提交但未刷盘的修改）</td>
+        <td>事务回滚 + MVCC 多版本读</td>
+      </tr>
+      <tr>
+        <td>存储方式</td>
+        <td>固定大小的 redo log 文件组，<strong>循环覆盖写</strong>（write-ahead log）</td>
+        <td>存放在 undo tablespace 的 undo segment 中，<strong>不是循环覆盖</strong>，由独立的 purge 线程按需清理</td>
+      </tr>
+      <tr>
+        <td>生命周期</td>
+        <td>刷盘且对应脏页落盘后即可覆盖</td>
+        <td>要等到没有任何活跃事务的 ReadView 还需要读到这个版本，才能被 purge 回收</td>
+      </tr>
+      <tr>
+        <td>与 WAL 关系</td>
+        <td>WAL 机制的核心角色，见
+          <a href="./03-RedoLog与WAL机制.html" style="color:#4ade80;">Redo Log 与 WAL 机制</a>
+        </td>
+        <td>不直接参与 WAL，但自身修改也需要写 redo log 保护（undo 页本身也是页，也可能因崩溃丢失）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见坑 -->
+  <h2>常见误区与生产陷阱</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"undo log 只是用来回滚的，提交了就该删。"
+    这是最常见的误解。实际上事务一旦涉及 MVCC 读，undo log 就必须保留到"没有任何事务可能还需要读这个版本"为止。如果系统里有一个开了很久没提交/没结束的长事务，它的 ReadView 会让很多本该被清理的旧版本一直保留在版本链上，导致 undo log 不断膨胀（俗称 "undo log 堆积"），严重时会撑爆 undo tablespace 磁盘空间，也会拖慢 purge 和查询（版本链变长，扫描更多历史版本）。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"MVCC 是怎么实现多版本读的？" 标准答案要点：每行有隐藏的 <code>trx_id</code> 和 <code>roll_pointer</code>，<code>roll_pointer</code> 指向 undo log 中该行的旧版本，多次修改形成版本链；ReadView 结合当前活跃事务列表判断某个版本对本事务是否可见，不可见就沿版本链继续往前找。这道题本质上考的就是"undo log 如何支撑 MVCC"。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>undo log 是"反操作"的逻辑日志</strong>，与 redo log 记录页级物理修改的方式完全不同，二者互补而非替代。</li>
+    <li><strong>两大用途缺一不可</strong>：回滚保证事务原子性（呼应 <a href="../transaction/01-事务的ACID特性.html" style="color:#4ade80;">ACID 特性</a> 中的 A），版本链支撑 MVCC 实现非阻塞的一致性读。</li>
+    <li><strong>长事务是 undo log 膨胀的元凶</strong>，生产环境要监控事务运行时长，避免"一个事务拖垮整个实例的 purge 效率"。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-RedoLog与WAL机制.html" class="nav-btn">← Redo Log 与 WAL 机制</a>
+    <a href="./05-ChangeBuffer.html" class="nav-btn next">Change Buffer →</a>
+  </div>
+
+</div>
+</body>
+</html>

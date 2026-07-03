@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>页结构与记录存储格式 — 索引与执行计划</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #7c4a10; }
+  .nav-btn.next { color: #38bdf8; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../database-roadmap.html">数据库 路线图</a> / 索引与执行计划 / 页结构与记录存储格式
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">索引与执行计划</div>
+    <h1>页结构与记录存储格式</h1>
+    <p>在讲 B+ 树之前，必须先搞清楚 InnoDB 存数据的"最小砖块"长什么样——因为 B+ 树的每一个节点，本质上就是一个页。理解页结构，是理解索引一切设计的地基。</p>
+  </div>
+
+  <!-- 为什么按页读写 -->
+  <h2>为什么按页读写，而不是按行？</h2>
+  <p>
+    磁盘是机械设备（即使是 SSD，也有类似的最小访问粒度），一次 I/O 的时间成本主要花在"寻址"上，真正传输数据反而很快。
+    如果每次只读一行记录，那访问 100 行数据就要触发 100 次昂贵的磁盘 I/O；但如果一次性读入一大块连续区域（一页），
+    大概率会顺带把"相邻"的其他行也读进内存，后续访问这些行时就直接命中内存，不用再打磁盘。
+  </p>
+  <p>
+    InnoDB 正是基于这个原理，把磁盘和内存之间数据交换的<strong>最小单位</strong>设计成了<strong>页（Page）</strong>，默认大小 <code>16KB</code>
+   （由参数 <code>innodb_page_size</code> 控制）。不管你只想读一行，还是要读一万行，InnoDB 都是整页整页地往 Buffer Pool 里搬。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>这就像网购不会因为你只买一支笔就单独发一个快递，快递公司（磁盘）总是按"箱子"（页）为单位调度——把一箱子东西放的仓库离你近一点（Buffer Pool 缓存整页），比每次单独跑一趟顺丰次日达（单行 I/O）划算得多。
+  </div>
+  <p>
+    这也是为什么后面要讲的 <strong>B+ 树索引</strong>和 <strong>Buffer Pool 缓存机制</strong>都以"页"为基本操作单位——它们都是在"按页读写"这个硬件现实之上搭建的软件抽象。
+  </p>
+
+  <!-- 页的组成 -->
+  <h2>InnoDB 数据页的七个组成部分</h2>
+  <p>一个 16KB 的页并不是简单地把行记录平铺塞满，而是划分成七个功能区域：</p>
+
+  <div class="tree">
+    <span class="hi">InnoDB Page（16KB）</span><br>
+    &nbsp;&nbsp;├─ File Header（38 字节：页号、上一页/下一页指针、页类型 ...）<br>
+    &nbsp;&nbsp;├─ Page Header（56 字节：本页记录数、空闲空间起始位置 ...）<br>
+    &nbsp;&nbsp;├─ Infimum + Supremum（两条虚拟记录，代表"最小/最大"边界）<br>
+    &nbsp;&nbsp;├─ <span class="hi">User Records（真正存放行记录的区域）</span><br>
+    &nbsp;&nbsp;├─ Free Space（尚未使用的空闲空间，用链表管理已删除记录留下的空洞）<br>
+    &nbsp;&nbsp;├─ Page Directory（记录指针的稀疏索引，加速页内二分查找）<br>
+    &nbsp;&nbsp;└─ File Trailer（8 字节：校验和，用于检测页是否写入完整/损坏）
+  </div>
+
+  <p>
+    几个关键点值得展开：
+  </p>
+  <ul>
+    <li><strong>File Header 里的双向指针</strong>：每个页都记录着"上一页"和"下一页"的页号，这让同一层的所有数据页天然构成一个<strong>双向链表</strong>——这正是 B+ 树叶子节点能够高效支持范围查询、区间遍历的物理基础，下一篇会详细展开。</li>
+    <li><strong>Infimum / Supremum</strong> 是两条固定存在的伪记录，分别表示"比本页任何真实记录都小"和"都大"，作为页内记录链表的头尾哨兵，简化边界判断逻辑。</li>
+    <li><strong>Page Directory</strong> 把 User Records 中的记录按分组建立稀疏索引（每组 4~8 条记录一个槽位），页内查找先用二分法定位到大致的槽，再顺着单向链表逐条比较——避免了从第一条记录开始线性扫描整页。</li>
+  </ul>
+
+  <!-- 行记录格式 -->
+  <h2>COMPACT 行记录格式：一行数据是怎么存的</h2>
+  <p>
+    页里的 User Records 区域，实际存的就是一条条行记录。MySQL 8.0 默认使用 <code>COMPACT</code>（或其派生的 <code>DYNAMIC</code>）行格式，
+    每条记录物理上由三部分组成：
+  </p>
+
+  <div class="tree">
+    <span class="hi">一条 COMPACT 记录</span><br>
+    &nbsp;&nbsp;├─ 变长字段长度列表（倒序存储，仅统计 VARCHAR / TEXT 等变长列）<br>
+    &nbsp;&nbsp;├─ NULL 值列表（bitmap，1 bit 标记一个可为 NULL 的列是否为 NULL）<br>
+    &nbsp;&nbsp;├─ 记录头信息（5 字节：删除标记、记录类型、下一条记录相对偏移 ...）<br>
+    &nbsp;&nbsp;└─ 真实数据（各列的值，包括隐藏列 row_id / trx_id / roll_pointer）
+  </div>
+
+  <h3>为什么变长字段长度列表要"倒序"存储？</h3>
+  <p>
+    记录头信息里有一个指向"下一条记录"的相对偏移量，读取记录时是从记录头开始向后读真实数据的。而变长字段长度列表被存放在记录头的<strong>前面</strong>，
+    且是逆序排列（即先存最后一个变长列的长度，再存倒数第二个……）。这样设计是因为 CPU <strong>从记录头向低地址方向读取变长长度列表</strong>时，
+    读到的顺序恰好和列的定义顺序一致，读取和寻址逻辑更简单、CPU 缓存友好，不需要额外跳转。
+  </p>
+
+  <h3>NULL 值列表为什么用 bitmap</h3>
+  <p>
+    假设一张表有 8 个可为 NULL 的列，NULL 值列表只需要 <strong>1 个字节（8 bit）</strong>就能表达"每一列是否为 NULL"，
+    而不是像某些天真的实现那样每列用一个标志字节（那样要花 8 个字节）。位图（bitmap）是一种极致的空间压缩手段：用一个 bit 表达一个布尔状态，
+    在动辄百万行的表上，这种"抠字节"的设计能显著节省整体存储空间——毕竟省下来的空间意味着一页能装更多行，间接减少了树的高度和 I/O 次数。
+  </p>
+
+  <!-- 代码示例 -->
+  <h2>一个例子：拆解一条记录的存储</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>schema.sql</span><span>MySQL 8.0</span></div>
+    <pre><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="fn">user</span> (
+  <span class="var">id</span> <span class="ty">INT</span> <span class="kw">UNSIGNED</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,
+  <span class="var">name</span> <span class="ty">VARCHAR</span>(<span class="num">20</span>) <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="com">-- 变长列，会进长度列表</span>
+  <span class="var">age</span> <span class="ty">TINYINT</span> <span class="kw">NULL</span>,                <span class="com">-- 定长列，但可为 NULL，占 NULL 位图 1 bit</span>
+  <span class="var">bio</span> <span class="ty">TEXT</span> <span class="kw">NULL</span>                  <span class="com">-- 变长列 + 可为 NULL</span>
+);
+
+<span class="com">-- 插入一行：age 为 NULL，bio 未提供（也是 NULL）</span>
+<span class="kw">INSERT</span> <span class="kw">INTO</span> <span class="fn">user</span>(<span class="var">id</span>, <span class="var">name</span>) <span class="kw">VALUES</span> (<span class="num">1</span>, <span class="str">'Tom'</span>);</pre>
+  </div>
+  <p>
+    这条记录在磁盘上大致是：变长长度列表记 <code>name=3</code>（'Tom' 占 3 字节，bio 为 NULL 不记入变长列表）；
+    NULL 值列表用 2 bit 标记 <code>age=NULL, bio=NULL</code>；记录头 5 字节；真实数据区只存 <code>id</code> 和 <code>name</code> 的值
+    （加上 InnoDB 自动追加的隐藏列 <code>row_id</code>、<code>trx_id</code>、<code>roll_pointer</code>，用于聚簇索引和 MVCC，会在后续文章展开）。
+    可以看到，<strong>NULL 值不占用真实数据空间</strong>，这也是 InnoDB 存储层面对 NULL 的一种优化。
+  </p>
+
+  <!-- 陷阱 -->
+  <h2>常见陷阱</h2>
+  <div class="callout warn">
+    <strong>陷阱一：建表时可变长字段（VARCHAR/TEXT）过多。</strong>
+    每多一个变长列，就要在变长字段长度列表里多记一份长度信息，而且变长列的存在会让 InnoDB 无法用简单的"列偏移量数组"直接定位某一列
+    （定长列可以，变长列必须先扫过前面所有变长列的长度才能算出偏移）。过多变长列不仅增加解析开销，还容易导致行长度逼近甚至超过页大小的
+    一半，从而引发下面的"行溢出"。
+  </div>
+  <div class="callout warn">
+    <strong>陷阱二：行溢出（Row Overflow）。</strong>
+    InnoDB 要求一个页至少能存放 <strong>2 条记录</strong>（否则 B+ 树就退化成链表，失去树形结构的意义）。
+    如果一行数据（比如塞了一个几十 KB 的大 <code>TEXT</code>/<code>BLOB</code>）撑爆了这个限制，InnoDB 会把这一列的内容转移到额外分配的
+    <strong>溢出页（Overflow Page）</strong>中，原记录处只保留一个指向溢出页的指针（20 字节）。这意味着访问这一行会触发额外的 I/O
+    ——大字段应尽量拆表存放，或用外部存储（如对象存储）+ 数据库只存 URL 的方式规避。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"MySQL 一行最大能存多少数据？为什么单行长度有 65535 字节的限制？" 这个限制其实是 MySQL Server 层对
+    "单行所有列定义长度之和"的静态检查上限，与页大小无关；而"行溢出"讨论的是运行时数据实际写入超过页容量后的处理方式，二者是不同层面的问题，
+    面试时容易被绕进去，回答时要分清楚。
+  </div>
+
+  <!-- 总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>页是磁盘 I/O 的最小单位</strong>：一次 I/O 顺带读入相邻数据，摊薄随机访问的寻址成本，是 Buffer Pool、B+ 树等一切上层设计的物理基础。</li>
+    <li><strong>页内七大区域各司其职</strong>：File Header 的双向指针串联页与页，Page Directory 加速页内查找，File Trailer 保证写入完整性。</li>
+    <li><strong>COMPACT 行格式用变长列表 + NULL 位图做极致的空间压缩</strong>，直接影响一页能装多少行，进而影响 B+ 树的高度——这是下一篇的核心话题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../sql/11-NULL的三值逻辑陷阱.html" class="nav-btn">← NULL 的三值逻辑陷阱</a>
+    <a href="./02-B+树索引的原理.html" class="nav-btn next">B+ 树索引的原理 →</a>
+  </div>
+
+</div>
+</body>
+</html>
