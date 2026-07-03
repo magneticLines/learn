@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>G1 收集器 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / G1 收集器
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>G1 收集器(Garbage First)</h1>
+    <p>CMS 的问题根源在于它仍然困在"新生代/老年代物理连续内存"这个传统框架里。G1 的做法是：干脆把这个框架本身推翻重来。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    G1（Garbage First）最大的创新，是抛弃了"新生代、老年代各自占据一块连续物理内存"的传统设计，把整个堆划分成多个<strong>大小相等的独立区域（Region）</strong>，
+    每个 Region 都可以根据需要灵活扮演 Eden、Survivor 或 Old 的角色。G1 依然遵循分代收集理论，只是<strong>分代不再体现为物理隔离，而是逻辑上的角色标记</strong>。
+  </p>
+
+  <div class="tree">
+    <span class="hi">传统收集器的堆布局</span>（物理连续）<br>
+    [ 　　新生代（Eden+2 Survivor）　　 ][ 　　　　　老年代　　　　　 ]<br>
+    <br>
+    <span class="hi">G1 的堆布局</span>（逻辑分区，Region 化）<br>
+    [E][O][S][E][O][O][H][E][S][O][E][O][H][E][O][S] ...<br>
+    &nbsp;&nbsp;E=Eden　S=Survivor　O=Old　H=Humongous（专门存放超大对象的特殊 Region）<br>
+    &nbsp;&nbsp;→ 每个 Region 独立管理，角色可以随每次 GC 动态调整
+  </div>
+
+  <h2>"Garbage First"名字的由来</h2>
+  <p>
+    因为 Region 众多且相互独立，G1 可以对每个 Region 的"回收价值"（回收后能腾出多少空间 ÷ 回收这个 Region 需要花费的时间）做单独统计，
+    并维护一份<strong>优先级列表</strong>。每次收集时，G1 优先挑选那些<strong>垃圾最多、回收收益最高</strong>的 Region 下手，用最少的收集代价换取最多的空间——这正是"Garbage First"（垃圾优先）这个名字的来源。
+  </p>
+
+  <div class="callout info">
+    这也是为什么 G1 不需要像 CMS 那样对整个老年代做一次完整收集——它可以只挑几个垃圾最多的 Region 来收集，回收效果好、耗时又可控，这是它能实现"停顿时间可预测"的关键机制之一。
+  </div>
+
+  <h2>停顿时间可预测模型</h2>
+  <p>
+    G1 支持设置一个期望的停顿时间目标（<code>-XX:MaxGCPauseMillis</code>，默认 200ms）。它会根据历史收集数据，预测每个 Region 的平均回收耗时，
+    在停顿时间预算内，尽量多地挑选高价值 Region 进行回收，而不是像早期收集器那样"要收就必须收完整个新生代/老年代"。
+  </p>
+
+  <h2>跨 Region 引用问题：记忆集 + 卡表</h2>
+  <p>
+    Region 化之后，一个新问题出现了：某个 Region 里的对象可能被其他任意 Region 中的对象引用（不再局限于"老年代引用新生代"这一种情况）。
+    如果每次收集一个 Region 都要扫描整个堆找引用，Region 化带来的优势就荡然无存了。
+  </p>
+  <p>
+    G1 给每个 Region 维护了一个<strong>记忆集（Remembered Set）</strong>，记录"哪些其他 Region 中的对象引用了我";
+    具体实现上依赖<strong>卡表（Card Table）</strong>——把内存划分成一个个固定大小的"卡片（Card）"，只要某张卡片内有跨 Region 的引用变化，就把这张卡标记为"脏"。
+    这样收集某个 Region 时，只需要扫描它的记忆集里记录的少量脏卡，而不必扫描整个堆，大幅提升了扫描效率。
+  </p>
+
+  <h2>G1 与 CMS 对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>CMS</th><th>G1</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>内存布局</td>
+        <td>传统物理分代（新生代/老年代连续内存）</td>
+        <td>Region 化，逻辑分代</td>
+      </tr>
+      <tr>
+        <td>回收算法</td>
+        <td>标记-清除（会产生碎片）</td>
+        <td>整体是标记-整理，局部（Region 间）是标记-复制，不产生碎片</td>
+      </tr>
+      <tr>
+        <td>停顿目标</td>
+        <td>无法主动设定，只能被动接受</td>
+        <td>可设置期望停顿时间目标，停顿时间可预测</td>
+      </tr>
+      <tr>
+        <td>回收范围</td>
+        <td>必须处理整个老年代</td>
+        <td>按 Region 价值排序，挑性价比最高的部分回收</td>
+      </tr>
+      <tr>
+        <td>最坏情况</td>
+        <td>碎片过多退化为 Serial Old，停顿暴涨</td>
+        <td>没有类似的整体退化风险（但 Region 数量、堆大小设置不当仍可能影响效果）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"G1 相比 CMS 的核心改进是什么？" 记住一句话：<strong>用 Region 化的内存布局，把"必须整体处理老年代"变成"按需挑选高价值区域处理"</strong>，
+    从而同时解决了 CMS 的碎片问题（局部用标记-整理/复制）和停顿时间不可控问题（可预测停顿模型）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>G1 抛弃物理分代，改用 Region 化 + 逻辑角色标记，让内存管理更灵活。</li>
+    <li>"Garbage First"体现在：维护 Region 回收价值的优先级列表，优先回收性价比最高的 Region。</li>
+    <li>记忆集 + 卡表解决了 Region 化之后的跨区域引用扫描效率问题，是支撑"只回收部分 Region"这一策略的基础设施。</li>
+    <li>G1 是"停顿时间可预测"模型的代表，可以设置期望停顿时间目标，这是它能取代 CMS 成为 JDK 9+ 默认收集器的核心原因。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./10-CMS收集器及其问题.html" class="nav-btn">← CMS 收集器及其问题</a>
+    <a href="./12-ZGC与Shenandoah低延迟收集器.html" class="nav-btn next">ZGC / Shenandoah 低延迟收集器 →</a>
+  </div>
+
+</div>
+</body>
+</html>

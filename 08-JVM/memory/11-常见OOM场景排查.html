@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>常见 OOM 场景排查(堆/栈/元空间/直接内存) — JVM 内存区域</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 内存区域与溢出 / 常见 OOM 场景排查(堆/栈/元空间/直接内存)
+  </div>
+
+  <div class="hero">
+    <div class="tag">内存区域与溢出</div>
+    <h1>常见 OOM 场景排查(堆 / 栈 / 元空间 / 直接内存)</h1>
+    <p>把前面十篇讲过的内存区域串起来，看看它们各自"爆掉"时长什么样，以及排查该往哪个方向想。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    不同内存区域溢出时，异常信息里会带上明确的区域标识（这是 JDK 特意设计的，方便定位问题）。记住这几个关键字，看到异常信息第一时间就能判断问题出在哪个区域，而不用瞎猜。
+  </p>
+
+  <h2>场景一：堆溢出 — <code>Java heap space</code></h2>
+  <p>
+    最常见的一种。典型成因是<strong>内存泄漏</strong>：一部分对象本该被回收，却因为被某个长生命周期的引用（比如 <code>static</code> 集合、未关闭的连接、缓存没有淘汰策略）一直持有，导致垃圾收集器无法回收，堆越占越多。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>典型内存泄漏模式</span></div>
+    <pre><span class="com">// 反例：静态集合只增不减，本质是把对象的生命周期"意外"延长到了和应用一样长</span>
+<span class="kw">public class</span> <span class="ty">UserCache</span> <span class="punct">{</span>
+    <span class="kw">private static final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">User</span><span class="punct">&gt;</span> <span class="var">CACHE</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public static void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">String</span> <span class="var">id</span><span class="punct">,</span> <span class="ty">User</span> <span class="var">user</span><span class="punct">) {</span>
+        <span class="var">CACHE</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">id</span><span class="punct">,</span> <span class="var">user</span><span class="punct">);</span>  <span class="com">// 只 put，从不 remove/过期淘汰</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>
+    <strong>排查方向：</strong>用 <code>jmap -dump</code> 或添加 <code>-XX:+HeapDumpOnOutOfMemoryError</code> 让 OOM 发生时自动生成堆转储文件，再用 <strong>MAT（Memory Analyzer Tool）</strong>等工具分析，找到<strong>支配树（Dominator Tree）</strong>里占用内存最大、且不该继续存活的对象，顺藤摸瓜找到持有它的引用链。
+  </p>
+
+  <h2>场景二：元空间溢出 — <code>Metaspace</code></h2>
+  <p>
+    呼应第 5 篇讲过的方法区演变：元空间存的是类的元信息，典型成因是<strong>动态生成类过多</strong>——比如大量使用 CGLIB 动态代理但没有复用（每次都生成新的代理类）、频繁的类加载器泄漏（自定义 ClassLoader 加载完没释放，导致它加载的类也无法被卸载）。
+  </p>
+  <div class="callout warn">
+    <strong>常见坑：</strong>如果应用支持"热部署""插件热加载"，每次重新加载都创建一个新的 <code>ClassLoader</code> 却没有正确销毁旧的，旧 ClassLoader 及其加载的所有类会一直驻留在元空间里，多次重复热部署后必然 OOM。
+  </div>
+
+  <h2>场景三：直接内存溢出 — <code>Direct buffer memory</code></h2>
+  <p>
+    直接内存不属于堆内存，但也受物理机总内存限制。典型成因是 NIO 中通过 <code>ByteBuffer.allocateDirect()</code> 分配的堆外内存使用不当——比如没有及时释放，或者分配的直接内存总量超过了 <code>-XX:MaxDirectMemorySize</code> 的限制。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>直接内存溢出示意</span></div>
+    <pre><span class="kw">for</span> <span class="punct">(;;) {</span>
+    <span class="ty">ByteBuffer</span><span class="punct">.</span><span class="fn">allocateDirect</span><span class="punct">(</span><span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">);</span>  <span class="com">// 不断分配堆外内存，没有释放</span>
+<span class="punct">}</span>
+<span class="com">// 抛出：java.lang.OutOfMemoryError: Direct buffer memory</span></pre>
+  </div>
+  <p>
+    <strong>排查方向：</strong>这类 OOM 发生时，用常规的堆转储分析工具往往看不到明显异常（因为对象本身在堆里很小，只是持有一个指向堆外内存的引用），需要专门关注 NIO 相关代码是否正确调用释放逻辑，或检查是否有第三方库内部使用了直接内存但没有妥善管理。
+  </p>
+
+  <h2>三种场景一览</h2>
+  <table>
+    <thead>
+      <tr><th>OOM 类型</th><th>关键字</th><th>典型成因</th><th>排查工具/方向</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>堆溢出</strong></td>
+        <td><code>Java heap space</code></td>
+        <td>对象一直被引用无法回收（内存泄漏），常见于集合类无限增长</td>
+        <td><code>jmap</code> + MAT 分析堆转储，找支配树里的"大对象"和引用链</td>
+      </tr>
+      <tr>
+        <td><strong>元空间溢出</strong></td>
+        <td><code>Metaspace</code></td>
+        <td>动态生成类过多，或类加载器泄漏导致类无法卸载</td>
+        <td>检查是否有热部署/动态代理场景未正确复用或释放 ClassLoader</td>
+      </tr>
+      <tr>
+        <td><strong>直接内存溢出</strong></td>
+        <td><code>Direct buffer memory</code></td>
+        <td>NIO <code>ByteBuffer.allocateDirect()</code> 分配后未释放</td>
+        <td>审查 NIO 相关代码的释放逻辑，关注第三方库堆外内存使用</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>通用排查思路总结</h2>
+  <ol>
+    <li><strong>看异常信息的关键字</strong>，先确定是哪个区域溢出（heap / Metaspace / Direct buffer memory / unable to create new native thread 等）。</li>
+    <li><strong>复现并加参数留证据</strong>：生产环境提前加上 <code>-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=xxx</code>，OOM 发生时自动落盘堆转储文件，避免"重启一次问题消失，什么证据都没留下"。</li>
+    <li><strong>用工具分析而不是猜</strong>：MAT、JProfiler、Arthas 等工具能直接告诉你占用最多内存的对象类型和引用链，比凭经验瞎猜效率高得多——这类工具的具体使用，留给后面"性能监控与调优"Tab 详细展开。</li>
+    <li><strong>区分"参数不够"和"代码有问题"</strong>：简单粗暴地调大 <code>-Xmx</code>/<code>-XX:MaxMetaspaceSize</code> 有时能临时缓解，但如果根因是内存泄漏，调大参数只是让 OOM 发生得晚一点，问题迟早还会复现。
+  </ol>
+
+  <div class="callout tip">
+    <strong>贯穿全篇的核心心法：</strong>OOM 排查的本质，就是把"某个区域内存不够用了"这个笼统的报错，通过工具和方法论，一步步缩小范围到"具体是哪些对象、被谁持有、为什么没被回收"。前面十篇讲的每个内存区域的作用和边界，就是让你在看到 OOM 时能第一时间做出正确判断的知识基础。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>三类高频 OOM：</strong>堆溢出（对象泄漏）、元空间溢出（类泄漏）、直接内存溢出（堆外内存泄漏），各自有清晰的异常关键字标识。</li>
+    <li><strong>排查靠工具不靠猜：</strong>堆转储 + MAT 分析是定位内存泄漏最可靠的手段。</li>
+    <li><strong>治本而非治标：</strong>调大内存参数只能延缓问题，找到并修复引用链上的泄漏点才是根本解法。</li>
+    <li>至此"内存区域与溢出"这一组的十一篇内容已经形成闭环：从五大内存区域的划分，到对象创建/布局/访问的底层机制，再到两类典型错误的辨析与排查——这些都是后面"垃圾收集"Tab 展开各类收集算法和收集器的地基。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./10-StackOverflowError与OutOfMemoryError辨析.html" class="nav-btn">← StackOverflowError 与 OutOfMemoryError 辨析</a>
+    <a href="../gc/01-引用计数法vs可达性分析.html" class="nav-btn next">下一篇:引用计数法 vs 可达性分析 →</a>
+  </div>
+
+</div>
+</body>
+</html>

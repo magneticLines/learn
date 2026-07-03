@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ZGC / Shenandoah 低延迟收集器(进阶) — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / ZGC / Shenandoah 低延迟收集器(进阶)
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>ZGC / Shenandoah 低延迟收集器(进阶)</h1>
+    <p>G1 把停顿时间做到了"可预测"，但预测的目标值通常还是几十到几百毫秒。如果业务要求停顿时间必须是毫秒级、且堆有几百 GB 呢？这是 ZGC 和 Shenandoah 要回答的问题，这里只做了解性介绍。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    ZGC 和 Shenandoah 这两款更新一代的收集器，共同追求的目标是把<strong>停顿时间压缩到毫秒级以内，且不随堆大小增长而线性增长</strong>
+    （G1 的停顿时间在堆非常大时仍会受一定影响，而 ZGC 号称在几百 GB 到 TB 级别的堆上依然能保持毫秒级停顿）。
+    实现思路是把原本必须 STW 才能做的<strong>标记、转移（对象移动）、整理</strong>等阶段，都想办法改造成能与用户线程<strong>并发执行</strong>。
+  </p>
+
+  <h2>核心手段：更激进的并发技术</h2>
+  <ul>
+    <li>
+      <strong>染色指针（Colored Pointers，ZGC）：</strong>把对象引用指针中的一些空闲比特位利用起来，直接在指针上标记对象的分代年龄、是否被移动过等状态，
+      这样收集器在并发转移对象时，用户线程即使读到"旧地址"的指针，也能通过指针上的标记信息识别出对象已经搬家，从而做相应处理，无需暂停用户线程等待所有引用更新完毕。
+    </li>
+    <li>
+      <strong>读屏障（Read Barrier）：</strong>在用户线程读取对象引用时插入一小段额外逻辑，用来检测该引用指向的对象是否需要"修正"（比如对象正在被并发转移），
+      从而保证用户线程读到的始终是正确、最新的对象状态，而不需要整体停顿去等待所有引用更新完成。
+    </li>
+    <li>
+      Shenandoah 走的是类似但独立的技术路线（连接矩阵 / Brooks 转发指针 + 读写屏障），同样是为了让"对象移动"这个曾经必须 STW 的操作变成可以和用户线程并发进行。
+    </li>
+  </ul>
+
+  <div class="callout info">
+    这里不深入这些技术的具体实现细节（染色指针如何编码、读屏障插桩的具体位置等），了解它们存在的原因和大致思路即可——它们都是为了打破"移动对象就必须暂停整个世界"这个传统假设。
+  </div>
+
+  <h2>与前面收集器的定位对比</h2>
+  <table>
+    <thead>
+      <tr><th>收集器</th><th>停顿时间目标</th><th>核心手段</th><th>定位</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>CMS</td>
+        <td>数百毫秒级，且不可预测</td>
+        <td>并发标记 + 并发清除（不整理，不移动对象）</td>
+        <td>第一代并发收集器，已被淘汰</td>
+      </tr>
+      <tr>
+        <td>G1</td>
+        <td>可设定目标（默认 200ms），基本可预测</td>
+        <td>Region 化 + 优先回收高价值区域</td>
+        <td>兼顾吞吐量与停顿时间的均衡方案，现阶段默认收集器</td>
+      </tr>
+      <tr>
+        <td><strong>ZGC / Shenandoah</strong></td>
+        <td><strong>毫秒级</strong>，且不随堆大小线性增长</td>
+        <td>染色指针 / 读屏障等技术让标记、转移、整理全程并发</td>
+        <td>超大堆、超低延迟场景的下一代方案</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试认知层面：</strong>不需要深挖 ZGC/Shenandoah 的实现细节，但要知道它们代表的发展方向：<strong>"停顿时间不再随堆大小线性增长"</strong>。
+    这句话本身就是一个很好的面试加分项——能说明你理解 GC 技术演进的主线不是"发明更多算法"，而是"想办法让原本必须 STW 的操作变成可以并发执行"。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>ZGC / Shenandoah 代表 GC 技术的下一个发展阶段：把标记、转移、整理都做成并发操作，追求毫秒级停顿。</li>
+    <li>核心手段是染色指针、读屏障等更激进的技术，让用户线程和 GC 线程可以在对象被移动的过程中安全地并发工作。</li>
+    <li>它们的意义在于打破"堆越大、停顿越长"的固有认知，让停顿时间与堆大小脱钩。</li>
+    <li>作为学习者，理解这组收集器解决的问题和大方向即可，不必在这个阶段深入其内部实现细节。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./11-G1收集器.html" class="nav-btn">← G1 收集器</a>
+    <a href="./13-对象优先在Eden分配.html" class="nav-btn next">对象优先在 Eden 分配 →</a>
+  </div>
+
+</div>
+</body>
+</html>

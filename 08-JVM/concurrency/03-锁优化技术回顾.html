@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>锁优化技术回顾(承接 02-并发) — JVM 并发基础回顾</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 并发基础回顾 / 锁优化技术回顾(承接 02-并发)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">并发基础回顾</div>
+    <h1>锁优化技术回顾(承接 02-并发)</h1>
+    <p>不重讲锁分类和锁膨胀的完整过程，只补一个"锁状态存在哪儿"的连接点——把锁优化和对象内存布局串起来。作为 08-JVM 模块的收尾篇。</p>
+  </div>
+
+  <!-- 1. 回顾 -->
+  <h2>1. 先接上：02-并发模块已经讲过什么</h2>
+  <p>
+    <a href="../../02-并发/advanced/01-锁的分类总览.html">02-并发/advanced/01-锁的分类总览</a> 已经把锁按四个维度（悲观/乐观、公平/非公平、可重入/不可重入、独占/共享）梳理清楚，
+    并专门提到了 <code>synchronized</code> 的锁升级路径。这里不重复完整原理，只用一张表钉住核心结论：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>锁状态</th><th>触发条件</th><th>核心手段</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>偏向锁</td>
+        <td>长期只有一个线程访问该锁对象</td>
+        <td>不做真正的同步，仅在对象头记录持有线程 ID</td>
+      </tr>
+      <tr>
+        <td>轻量级锁</td>
+        <td>有竞争，但线程交替执行、不长时间持有</td>
+        <td>CAS 自旋，避免陷入内核态互斥量</td>
+      </tr>
+      <tr>
+        <td>重量级锁</td>
+        <td>竞争激烈、自旋失败次数过多</td>
+        <td>操作系统互斥量（mutex），线程阻塞挂起</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    锁膨胀方向是单向的：<strong>无锁 → 偏向锁 → 轻量级锁 → 重量级锁</strong>，一旦升级不会再降级（偏向锁可以被"撤销"重置，但整体升级趋势不可逆）。
+  </p>
+
+  <!-- 2. 新连接点 -->
+  <h2>2. JVM 视角的新连接点：锁状态存在对象头的 Mark Word 里</h2>
+  <p>
+    02-并发模块讲锁升级时，关注点在"竞争激烈程度"这条业务/调度线索上；而 08-JVM 模块的 memory 组第 8 篇「对象头与 Mark Word」讲的是另一件事——
+    Java 对象在堆内存里的布局，其中对象头（Object Header）包含一部分叫 <strong>Mark Word</strong> 的区域。
+  </p>
+  <p>
+    把这两条线索接起来就会发现：<strong>偏向锁、轻量级锁、重量级锁这几个"锁状态"，本质上就是 Mark Word 里几个比特位在不同阶段被改写成的不同编码。</strong>
+    锁膨胀不是发生在某个抽象的"锁对象"里，而是实实在在地发生在被加锁对象的对象头这几十个比特上——
+    偏向锁模式下 Mark Word 存的是线程 ID，轻量级锁模式下存的是指向线程栈中锁记录（Lock Record）的指针，重量级锁模式下存的是指向操作系统互斥量（Monitor）的指针。
+  </p>
+
+  <div class="callout tip">
+    <strong>融会贯通的意义：</strong>如果只学过 02-并发模块，"锁升级"停留在一个抽象的状态机故事；只学过 08-JVM 的 memory 组，Mark Word 只是内存布局里的一段比特。
+    把两者接起来，才会真正理解——为什么"给一个对象加锁"这件事，是在直接修改这个对象自己的内存数据，而不是外部某个独立的锁资源。这正是学完整个 JVM 模块之后应该具备的能力。
+  </div>
+
+  <!-- 3. 模块收尾 -->
+  <h2>3. 08-JVM 模块回顾：一段代码到虚拟机里跑起来的完整链路</h2>
+  <p>
+    到这里，08-JVM 模块的全部内容已经走完一遍。回头看这条学习路径，其实就是在完整回答"一段 Java 代码从写下到跑在虚拟机里"这一件事：
+    从 <strong>JVM 全景</strong>建立整体地图 → <strong>内存区域与溢出</strong>搞清楚代码运行时数据放在哪里、会在哪里爆掉 →
+    <strong>垃圾收集</strong>解决堆上的对象什么时候该被回收 → <strong>性能监控与调优</strong>学会用工具观察和优化前面这套内存/GC 系统的真实表现 →
+    <strong>类加载机制</strong>搞清楚 <code>.class</code> 文件是怎么被读进虚拟机、变成可用的类的 → <strong>字节码执行引擎</strong>搞清楚字节码指令具体是怎么被解释/编译执行的 →
+    <strong>编译与优化</strong>补上 JIT 如何把热点代码编译成机器码、又做了哪些优化 → 最后这一组<strong>并发基础回顾</strong>，把 02-并发模块的知识接到 JVM 视角上，串成一张完整的网。
+  </p>
+
+  <!-- 小结 -->
+  <h2>小结</h2>
+  <ul>
+    <li>锁分类与锁升级的完整原理见 02-并发/advanced 目录，本篇不重复。</li>
+    <li>偏向锁/轻量级锁/重量级锁的状态编码，实际存储在对象头的 Mark Word 里——锁优化技术和对象内存布局是同一件事的两个视角。</li>
+    <li>08-JVM 模块的学习路径是一条完整链路：JVM 全景 → 内存区域与溢出 → 垃圾收集 → 性能监控与调优 → 类加载机制 → 字节码执行引擎 → 编译与优化 → 并发基础回顾。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-线程实现与协程简介.html" class="nav-btn">← 线程实现与协程简介</a>
+    <a href="../jvm-roadmap.html" class="nav-btn next">回到路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

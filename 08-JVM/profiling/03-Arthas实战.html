@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Arthas 实战 — 性能监控与调优</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 性能监控与调优 / Arthas 实战
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">性能监控与调优</div>
+    <h1>Arthas 实战</h1>
+    <p>生产环境不能停机、不能重启，但线上问题必须马上定位——Arthas 是国内 Java 团队排查线上问题的事实标准工具。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚：痛点 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>Arthas</strong> 是阿里巴巴开源的 Java 诊断工具，核心能力是<strong>在不重启进程、不修改一行源码的情况下，实时观测一个正在运行的方法的入参、返回值、异常，甚至动态替换它的字节码</strong>。
+    它解决的核心痛点是：传统排查方式需要"加日志 → 重新打包 → 重新部署 → 等待复现"，一套流程走下来可能几十分钟甚至几小时，而且很多线上问题（比如依赖特定的并发时序、特定用户的脏数据）根本无法在测试环境稳定复现。
+  </p>
+
+  <div class="callout warn">
+    <strong>反例（传统方式）：</strong>线上某个接口偶尔返回错误的订单金额，你的第一反应可能是在 <code>calcAmount()</code> 里加一行 <code>log.info(...)</code>，然后走完整套 CI/CD 流程重新发布——等日志真正打出来，可能已经过了 20 分钟，而且如果问题是间歇性的，你还不一定能等到它再次复现。
+  </div>
+
+  <!-- 2. 原理 -->
+  <h2>它是怎么做到"不重启不改代码"的？</h2>
+  <p>
+    Arthas 依赖 JDK 提供的 <strong>Instrumentation API</strong>（<code>java.lang.instrument</code> 包，Attach 机制的延伸）：它以 Agent 的形式动态 attach 到目标 JVM 进程，然后通过 <code>retransformClasses()</code> 对指定的类做<strong>字节码增强</strong>——在目标方法的入口和出口"织入"一段监控逻辑（比如记录参数、返回值），执行完再把结果输出到你的 Arthas 控制台，全程<strong>目标类的原始逻辑一行没变</strong>。
+  </p>
+  <div class="tree">
+    <span class="hi">① Attach</span>：Arthas 通过 Attach API 挂载到目标 JVM，加载自己的 Agent<br>
+    &nbsp;&nbsp;→ 与 jmap/jstack 用的是同一套 Attach 机制，只是 Arthas 常驻在里面持续交互<br>
+    <br>
+    <span class="hi">② 字节码增强（retransform）</span>：对目标类做 <span class="hi">ASM 字节码改写</span><br>
+    &nbsp;&nbsp;在方法入口插入"记录参数"逻辑，出口插入"记录返回值/异常"逻辑<br>
+    &nbsp;&nbsp;→ 原方法的业务逻辑本身<span class="hi">完全不动</span>，只是被"包了一层"<br>
+    <br>
+    <span class="hi">③ 数据回传</span>：增强后的代码执行时把捕获的数据通过 Arthas 内建的 Web/Telnet 通道<br>
+    &nbsp;&nbsp;实时推送到你的终端<br>
+    <br>
+    <span class="hi">④ 命令结束后自动"卸妆"</span>：命令退出时 Arthas 会把类还原回原始字节码<br>
+    &nbsp;&nbsp;→ 不会给正常运行留下永久性的性能负担
+  </div>
+
+  <!-- 3. 实战案例 -->
+  <h2>实战：用 watch 排查一个返回异常值的方法</h2>
+  <p>假设线上偶尔出现订单金额计算错误，先启动 Arthas 并 attach 到目标进程：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端 — 启动并 attach</span></div>
+    <pre><span class="com"># 下载并启动 arthas-boot.jar，会自动列出本机 Java 进程供选择（原理同 jps）</span>
+<span class="var">$</span> java -jar arthas-boot.jar
+* [1]: 12580  com.supernovacompanies.ccc.CccApplication
+请输入序号选择要监控的进程: 1
+Attach 成功</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Arthas 控制台 — watch 观测方法入参/返回值</span></div>
+    <pre>$ watch com.supernovacompanies.ccc.service.OrderService calcAmount <span class="str">"{params, returnObj, throwExp}"</span> -x 2
+
+method=com.supernovacompanies.ccc.service.OrderService.calcAmount location=AtExit
+ts=2026-07-02 14:30:12; [cost=<span class="num">1.2</span>ms] result=@ArrayList[
+    @Object[][
+        @OrderDTO[itemId=<span class="str">'item-001'</span>, discountRate=<span class="num">-0.2</span>],   <span class="com">// 发现！折扣率是负数</span>
+    ],
+    @BigDecimal[<span class="num">-19.80</span>],                             <span class="com">// 返回了负金额，这就是 bug 根源</span>
+    null,
+]</pre>
+  </div>
+
+  <p>
+    <code>watch</code> 命令的三个核心参数：<code>类名 + 方法名</code> 定位目标方法；<code>表达式</code>（<code>params</code>/<code>returnObj</code>/<code>throwExp</code>）决定观测入参、返回值还是异常；<code>-x</code> 控制对象展开的深度。
+    整个过程<strong>没有重启进程，没有改一行代码</strong>——两分钟就定位到问题是上游传入了负的折扣率，比"加日志重新发布"快了一个数量级。
+  </p>
+
+  <!-- 4. 常用命令速查 -->
+  <h2>常用命令速查</h2>
+  <table>
+    <thead>
+      <tr><th>命令</th><th>作用</th><th>典型场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>dashboard</code></td>
+        <td>类似 top，实时展示线程/内存/GC 概览</td>
+        <td>刚 attach 上去，先看一眼整体健康状况</td>
+      </tr>
+      <tr>
+        <td><code>watch</code></td>
+        <td>观测方法的入参、返回值、异常</td>
+        <td>方法返回值不符合预期，想知道具体是什么数据触发的</td>
+      </tr>
+      <tr>
+        <td><code>trace</code></td>
+        <td>追踪方法内部调用链路，展示每一步耗时</td>
+        <td>接口响应慢，想知道具体卡在调用链的哪一步（哪次 RPC/SQL）</td>
+      </tr>
+      <tr>
+        <td><code>stack</code></td>
+        <td>打印方法被调用时的调用栈</td>
+        <td>方法被意外调用，想知道是谁在什么路径下调的它</td>
+      </tr>
+      <tr>
+        <td><code>sc</code> / <code>sm</code></td>
+        <td>查看已加载的类信息 / 类中的方法信息</td>
+        <td>确认线上运行的到底是哪个版本的类（多版本 jar 冲突排查）</td>
+      </tr>
+      <tr>
+        <td><code>classloader</code></td>
+        <td>查看类加载器树、某个类是被哪个 ClassLoader 加载的</td>
+        <td>排查 <code>ClassNotFoundException</code> / 类加载器隔离导致的诡异问题</td>
+      </tr>
+      <tr>
+        <td><code>jad</code></td>
+        <td>反编译已加载的类，还原成 Java 源码</td>
+        <td>线上代码和本地代码疑似不一致，直接反编译对比</td>
+      </tr>
+      <tr>
+        <td><code>redefine</code></td>
+        <td>用新的字节码热替换某个类，不重启生效</td>
+        <td>紧急修复一个已定位的小 bug，来不及走完整发布流程（谨慎使用）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>坑：</strong><code>trace</code>/<code>watch</code> 本质上是在目标方法上插桩，如果作用范围太大（比如对一个高频调用的方法加 <code>trace</code>，且没有加表达式过滤条件），会显著增加目标方法的开销，甚至拖慢整个服务——生产环境务必加过滤条件（如 <code>watch ... 'params[0].id==123'</code>），排查完立刻用 <code>stop</code> 结束命令，避免观测逻辑常驻。
+  </div>
+  <div class="callout warn">
+    <code>redefine</code> 只能替换方法体，<strong>不能新增/删除字段和方法签名</strong>（JVM 字节码热替换的固有限制），也不能跨越已经在执行栈上的旧代码——它更适合"临时打个补丁应急"，而不是常规发布手段，正式修复仍要走代码库和正常发布流程。
+  </div>
+
+  <!-- 5. 总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>Arthas 用<strong>字节码增强</strong>解决了"生产环境不能停机改代码，但必须实时诊断"这个根本矛盾。</li>
+    <li>它和 jmap/jstack 一样基于 <strong>Attach 机制</strong>，但走得更远——不只是拍一次快照，而是持续动态地插入观测逻辑。</li>
+    <li><code>watch</code>/<code>trace</code> 是日常排查用得最多的两个命令，分别对应"看数据对不对"和"看时间花在哪"。</li>
+    <li>正因为效率碾压传统"加日志重新部署"的方式，Arthas 已经成为国内 Java 团队线上问题排查的事实标准工具，几乎是必备技能。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-JConsole与VisualVM.html" class="nav-btn">← JConsole 与 VisualVM</a>
+    <a href="./04-内存泄漏排查思路.html" class="nav-btn next">内存泄漏排查思路 →</a>
+  </div>
+
+</div>
+</body>
+</html>

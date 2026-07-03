@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>长期存活对象进入老年代(年龄阈值) — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / 长期存活对象进入老年代(年龄阈值)
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>长期存活对象进入老年代(年龄阈值)</h1>
+    <p>大对象走"绿色通道"直接进老年代，那普通大小、但活得比较久的对象呢？虚拟机给每个对象都记了一本"账"，专门用来判断它到底该不该"退休"到老年代。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    虚拟机为每个对象定义了一个<strong>对象分代年龄（Age）</strong>计数器。对象在 Eden 区出生，如果第一次 Minor GC 后仍然存活，
+    并且能被 Survivor 区容纳，就会被移动到 Survivor 区，年龄记为 1。此后对象在 Survivor 区中<strong>每熬过一次 Minor GC，年龄就加 1</strong>，
+    当年龄达到一定阈值（默认 <strong>15</strong>），就会被晋升到老年代。
+  </p>
+
+  <h2>呼应 memory 组：年龄记在哪里？</h2>
+  <p>
+    memory 组讲过对象头（Object Header）里的 <strong>Mark Word</strong>，它是一块复用度很高的存储空间，在不同场景下承担不同职责
+    （比如存储哈希码、锁状态信息等）。<strong>分代年龄正是记录在 Mark Word 里的一个字段</strong>（HotSpot 中占 4 bit，所以最大值是 15，
+    这也是为什么 <code>-XX:MaxTenuringThreshold</code> 的默认值和上限恰好是 15 的直接原因）。
+  </p>
+
+  <div class="tree">
+    <span class="hi">对象一生的年龄增长轨迹</span><br>
+    Eden 区创建，age = 0<br>
+    &nbsp;&nbsp;→ 第 1 次 Minor GC 存活，移入 Survivor，age = 1<br>
+    &nbsp;&nbsp;→ 第 2 次 Minor GC 存活，仍在 Survivor，age = 2<br>
+    &nbsp;&nbsp;→ ...... 每熬过一次 Minor GC，age += 1<br>
+    &nbsp;&nbsp;→ age 达到 <code>-XX:MaxTenuringThreshold</code>（默认 15）<br>
+    &nbsp;&nbsp;→ <span class="hi">晋升到老年代</span>
+  </div>
+
+  <h2>这正是"强分代假说"的具体实现</h2>
+  <p>
+    07 篇讲过强分代假说：<strong>熬过越多次垃圾收集的对象，越难以消亡</strong>。年龄阈值机制就是这个假说在工程上的直接落地——
+    虚拟机用一个简单的计数器，把"这个对象活了多久"这个统计信号，转化成"该不该把它挪到老年代"这个具体决策。
+    年龄越大，说明这个对象已经反复被证明"暂时死不了"，与其让它继续留在新生代反复被标记-复制搬来搬去，不如直接放进老年代一劳永逸。
+  </p>
+
+  <h2>可调节参数</h2>
+  <table>
+    <thead>
+      <tr><th>参数</th><th>作用</th><th>调优含义</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>-XX:MaxTenuringThreshold</code></td>
+        <td>设置对象晋升老年代的年龄阈值，默认 15（受 Mark Word 中 4 bit 字段限制，最大只能设到 15）</td>
+        <td>调小它 → 对象更快晋升老年代，减少 Survivor 区复制次数，但可能让老年代过早被"半生不熟"的对象填满</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>动态年龄判定（补充机制）：</strong>除了固定阈值，HotSpot 还有一条动态规则：如果 Survivor 空间中<strong>相同年龄所有对象大小的总和</strong>
+    超过了 Survivor 空间的一半，年龄大于等于该年龄的对象就可以直接进入老年代，<strong>不需要等到达到 <code>MaxTenuringThreshold</code></strong>。
+    这是一种更灵活的补充策略，避免"必须凑够 15 岁"这种僵化规则在某些负载模式下导致 Survivor 区提前溢出。
+  </div>
+
+  <div class="callout warn">
+    <strong>面试高频：</strong>"对象晋升老年代的条件有哪些？" 别只答"年龄达到阈值"这一条，完整答案应包括：① 年龄达到 <code>MaxTenuringThreshold</code>；
+    ② 动态年龄判定满足条件；③ 大对象直接晋升（上一篇讲的规则）；④ 下一篇要讲的空间分配担保机制导致的提前晋升。这四条共同构成了对象进入老年代的完整路径。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>对象分代年龄记录在 Mark Word 中，每熬过一次 Minor GC 加 1，达到阈值（默认 15）后晋升老年代。</li>
+    <li>年龄阈值机制是"强分代假说"（活得越久越难死）在工程实现上的直接体现，用简单的计数器把统计规律转化为可执行的分配决策。</li>
+    <li><code>-XX:MaxTenuringThreshold</code> 是唯一可调节该行为的参数，但受限于 Mark Word 字段位宽，最大只能设为 15。</li>
+    <li>除固定阈值外，还有动态年龄判定这条补充规则，两者共同决定对象何时"退休"进入老年代。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./14-大对象直接进老年代.html" class="nav-btn">← 大对象直接进老年代</a>
+    <a href="./16-空间分配担保机制.html" class="nav-btn next">空间分配担保机制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

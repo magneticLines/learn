@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>标记-清除算法 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / 标记-清除算法
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>标记-清除算法(Mark-Sweep)</h1>
+    <p>知道了"哪些对象是垃圾"之后，下一个问题是"怎么把它们清理掉"——标记-清除是最古老、最基础的答案，也是后面所有算法要解决的问题的起点。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    标记-清除算法分两个阶段：<strong>标记（Mark）</strong>——从 GC Roots 出发标记出所有需要回收的对象；
+    <strong>清除（Sweep）</strong>——统一回收所有被标记的对象所占用的内存。
+    它是概念上最直接的实现，1960 年 Lisp 语言的垃圾收集器就采用了这个思路，是后续几乎所有收集算法的基础。
+  </p>
+
+  <div class="tree">
+    回收前内存布局：<br>
+    <span class="hi">[A: 存活]</span> [B: 垃圾] <span class="hi">[C: 存活]</span> [D: 垃圾] [E: 垃圾] <span class="hi">[F: 存活]</span><br>
+    <br>
+    <span class="hi">① 标记阶段</span>：从 GC Roots 出发做可达性分析，标记出 B、D、E 为垃圾<br>
+    <span class="hi">② 清除阶段</span>：把 B、D、E 占用的内存直接释放<br>
+    <br>
+    回收后内存布局：<br>
+    <span class="hi">[A: 存活]</span> [ 空闲 ] <span class="hi">[C: 存活]</span> [ 空闲 ][ 空闲 ] <span class="hi">[F: 存活]</span><br>
+    &nbsp;&nbsp;→ 存活对象原地不动，但空闲空间被切成了好几段<span class="hi">不连续</span>的碎片
+  </div>
+
+  <h2>两个缺点——正是它们催生了后续算法</h2>
+
+  <h3>缺点一：执行效率不稳定</h3>
+  <p>
+    标记和清除这两个过程，执行时间都随对象数量的增长而增长：对象越多，需要遍历、标记、清除的工作量就越大。
+    如果堆中存在大量对象且其中大部分需要被回收，效率会明显下降。
+  </p>
+
+  <h3>缺点二：内存空间的碎片化问题</h3>
+  <p>
+    标记-清除后，存活对象保持原地不动，被清除的对象留下的是一段段<strong>不连续</strong>的内存空间。
+    这些碎片单独看都不大，但加起来可能不少。当程序运行过程中需要分配一个较大的对象、找不到足够长的<strong>连续</strong>内存时，
+    即使碎片空间加起来的总容量足够，也会因为"没有连续空间"而提前触发一次垃圾收集，这是很不划算的。
+  </p>
+
+  <div class="callout warn">
+    <strong>面试高频：</strong>"标记-清除算法有什么缺点？"——一定要答出<strong>两点</strong>：效率不稳定 + 内存碎片化。
+    很多人只记住了碎片化，漏掉效率问题；反过来只记效率、漏掉碎片化的也不少。这两个缺点分别指向了两条不同的优化路线——正是本组后面要讲的标记-复制（解决碎片化，用空间换效率）和标记-整理（解决碎片化，不浪费空间但要移动对象）。
+  </div>
+
+  <h2>两个缺点如何催生后续两种算法</h2>
+  <table>
+    <thead>
+      <tr><th>缺点</th><th>解决思路</th><th>对应算法</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>内存碎片化，大对象分配困难</td>
+        <td>把内存分两块，每次只用一块，用完直接整体清空，天然没有碎片</td>
+        <td>标记-复制算法（下一篇）</td>
+      </tr>
+      <tr>
+        <td>碎片化 + 不想浪费一半空间</td>
+        <td>标记后让存活对象整体向一端移动，边界外内存直接清理，不留碎片也不浪费空间</td>
+        <td>标记-整理算法（下下篇）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>标记-清除是最基础的垃圾收集算法：先标记不可达对象，再统一清除，是后续算法的思想起点。</li>
+    <li>两大缺点——效率随对象数量增长而下降、清除后产生大量不连续内存碎片——是理解本组后续内容的关键伏笔。</li>
+    <li>内存碎片化的后果不只是"浪费空间"，更严重的是可能因为凑不出连续空间而提前触发 GC，拖累整体吞吐量。</li>
+    <li>标记-复制、标记-整理都是针对标记-清除的缺点做出的权衡取舍，没有绝对的"更优算法"，只有更适合某种对象存活率场景的算法。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-finalize方法的角色与陷阱.html" class="nav-btn">← finalize() 方法的角色与陷阱</a>
+    <a href="./05-标记复制算法.html" class="nav-btn next">标记-复制算法 →</a>
+  </div>
+
+</div>
+</body>
+</html>

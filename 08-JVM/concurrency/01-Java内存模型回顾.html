@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Java 内存模型回顾(承接 02-并发) — JVM 并发基础回顾</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 并发基础回顾 / Java 内存模型回顾(承接 02-并发)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">并发基础回顾</div>
+    <h1>Java 内存模型回顾(承接 02-并发)</h1>
+    <p>不重讲一遍原理，只用一张表接上 02-并发模块已经讲透的结论，再补一个 JVM 规范视角的新连接点。</p>
+  </div>
+
+  <!-- 1. 回顾结论 -->
+  <h2>1. 先接上：02-并发模块已经讲过什么</h2>
+  <p>
+    <a href="../../02-并发/basics/02-volatile与可见性.html">02-并发/basics/02-volatile与可见性</a> 已经从 CPU 缓存、指令重排序的角度讲清楚了可见性问题的根源，
+    并给出了 <code>volatile</code> 的两大语义；<a href="../../02-并发/basics/03-happens-before初识.html">02-并发/basics/03-happens-before初识</a> 则建立了 happens-before 规则这套判断"一个写操作对另一个读操作是否可见"的形式化工具。
+    这两篇加起来，已经覆盖了 JMM（Java Memory Model）绝大部分的实用知识。这里不重复展开，只用一张表把核心结论钉住：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>结论</th><th>一句话</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>主内存 / 工作内存</td>
+        <td>JMM 抽象出"每个线程有自己的工作内存副本，共享变量存在主内存"这一模型，解释可见性问题的来源</td>
+      </tr>
+      <tr>
+        <td>happens-before</td>
+        <td>先行发生原则：program order、volatile 变量、锁、线程 start/join 等规则共同定义"何时保证可见"</td>
+      </tr>
+      <tr>
+        <td>volatile</td>
+        <td>提供可见性 + 禁止重排序，但不提供原子性</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 2. 新视角 -->
+  <h2>2. JVM 规范视角补充：JMM 是"规范"，不是"内存区域"</h2>
+  <p>
+    02-并发模块更多是从"怎么用、会踩什么坑"的实战角度讲 JMM，这里补一个常被忽略、也是《深入理解 Java 虚拟机》第 12 章反复强调的定位问题：
+    <strong>JMM 本身不是一块真实存在的内存区域</strong>（不要和堆、栈、方法区这些运行时数据区混为一谈），
+    它是 Java 语言规范定义的一套<strong>抽象协议</strong>，规定了"什么情况下一个线程对共享变量的写操作，对另一个线程的读操作是可见的"。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误解澄清：</strong>不少初学者以为 JMM 是类似"堆内存""栈内存"那样的物理分区，认为存在一个叫"内存模型"的存储区。
+    实际上 JMM 完全是<strong>语义层面</strong>的约定——它描述的是变量的读写规则，而不是数据存放的物理位置。真正存放数据的仍然是主内存（可以理解为堆）和寄存器/CPU 缓存。
+  </div>
+
+  <p>
+    JMM 存在的根本原因是<strong>屏蔽硬件差异</strong>：不同 CPU 架构的内存模型和指令重排序规则并不相同——
+    x86 是相对较强的内存模型（TSO，Total Store Order），而 ARM/PowerPC 属于弱内存模型，允许更激进的重排序。
+    如果 Java 程序员要直接面对这些差异，同一段并发代码在 x86 上能跑对、在 ARM 上就可能出错，"一次编写，到处运行"直接破功。
+  </p>
+
+  <div class="tree">
+    <span class="hi">硬件层</span>：x86（较强）/ ARM、PowerPC（较弱）—— 缓存一致性协议(MESI 等)、重排序规则各不相同<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;↓ JVM 通过插入不同的内存屏障指令（LOCK、dmb 等）填平差异<br>
+    <span class="hi">JMM 层</span>：统一的 happens-before 规则 —— Java 程序员只需要面对这一套规范<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;↓<br>
+    <span class="hi">程序员</span>：只要遵循 JMM，写出的并发代码在任意平台上语义一致
+  </div>
+
+  <p>
+    换句话说，JMM 扮演的角色和 JVM 本身很像——JVM 把"一次编写到处运行"的承诺落到执行层面，
+    JMM 则把这个承诺延伸到并发语义层面：程序员不需要关心底层 CPU 缓存一致性协议的细节，只需要遵循 JMM 这一套统一规则。
+  </p>
+
+  <!-- 小结 -->
+  <h2>小结</h2>
+  <ul>
+    <li>JMM 的核心结论（主内存/工作内存抽象、happens-before 规则）已在 02-并发模块讲透，本篇不重复。</li>
+    <li>JMM 是 Java 语言规范定义的抽象协议，不是一块真实的内存区域——这是最容易被误解的一点。</li>
+    <li>JMM 存在的意义是屏蔽 x86/ARM 等不同硬件内存模型和重排序规则的差异，让并发代码具备跨平台一致性。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../compile/07-方法内联.html" class="nav-btn">← 方法内联</a>
+    <a href="./02-线程实现与协程简介.html" class="nav-btn next">线程实现与协程简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

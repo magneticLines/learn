@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StackOverflowError 与 OutOfMemoryError 辨析 — JVM 内存区域</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 内存区域与溢出 / StackOverflowError 与 OutOfMemoryError 辨析
+  </div>
+
+  <div class="hero">
+    <div class="tag">内存区域与溢出</div>
+    <h1>StackOverflowError 与 OutOfMemoryError 辨析</h1>
+    <p>两个新手最容易混淆的错误，本质区别只有一句话：一个是"深度"问题，一个是"总量"问题。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>StackOverflowError（SOE）</strong>：线程请求的<strong>栈深度</strong>超过了虚拟机所允许的最大深度，典型触发场景是<strong>没有终止条件的递归调用</strong>。<br>
+    <strong>OutOfMemoryError（OOM）</strong>：某个内存区域（堆、方法区/元空间、直接内存等）已经<strong>没有足够空间</strong>容纳新的数据，而且这个区域还能继续扩展（否则会先抛别的错误）。
+  </p>
+
+  <div class="callout info">
+    <strong>本质区别一句话记住：</strong>SOE 是"想要的深度超过了允许的深度"（哪怕总内存很充裕，栈也可能溢出）；OOM 是"想要的空间超过了能给的总量"。两者都属于 <code>java.lang.Error</code> 而不是 <code>Exception</code>，含义是：这是虚拟机层面的严重问题，通常不建议、也很难通过 <code>try-catch</code> 优雅恢复。
+  </div>
+
+  <h2>反例：没有终止条件的递归</h2>
+  <p>
+    这是呼应 <strong>00-Java基础模块</strong>讲过的递归概念——递归本质上就是不断地方法自己调用自己，每调用一层就压入一个新栈帧。如果忘记写终止条件（或者终止条件永远不满足），栈帧会无限压入，直到耗尽虚拟机分配给这个线程的栈空间。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StackOverflowDemo.java（反例）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">StackOverflowDemo</span> <span class="punct">{</span>
+
+    <span class="kw">private int</span> <span class="var">depth</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">recurse</span><span class="punct">() {</span>
+        <span class="var">depth</span><span class="punct">++;</span>
+        <span class="fn">recurse</span><span class="punct">();</span>  <span class="com">// 没有任何终止条件，无限递归下去</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="kw">new</span> <span class="ty">StackOverflowDemo</span><span class="punct">().</span><span class="fn">recurse</span><span class="punct">();</span>
+        <span class="com">// 抛出：java.lang.StackOverflowError</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    每调用一次 <code>recurse()</code>，就有一个新栈帧压入虚拟机栈，栈帧越压越多，最终超过 <code>-Xss</code> 参数设置的单线程栈容量上限，抛出 <code>StackOverflowError</code>。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>"栈溢出是因为内存不够"——不完全准确。栈溢出是<strong>深度</strong>超限，即使机器物理内存非常充裕，只要单个线程分配的栈空间用尽（受 <code>-Xss</code> 限制），一样会抛 SOE。反而是加大 <code>-Xss</code> 能一定程度缓解（允许更深的递归），但这只是"续命"，真正的问题永远是代码逻辑（缺少终止条件、非尾递归转循环等）。
+  </div>
+
+  <h2>OutOfMemoryError：想要的空间要不到了</h2>
+  <p>
+    与 SOE 不同，OOM 是某个内存区域<strong>总量</strong>不够用了。比如堆里一直有对象被引用、无法被回收，持续增长最终撑满堆空间：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>HeapOOMDemo.java（反例 — 集合无限增长导致内存泄漏）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">HeapOOMDemo</span> <span class="punct">{</span>
+
+    <span class="kw">static</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="kw">byte</span><span class="punct">[]&gt;</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>  <span class="com">// static，永远不会被回收</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">) {</span>
+            <span class="var">cache</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="kw">new</span> <span class="kw">byte</span><span class="punct">[</span><span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">]);</span>  <span class="com">// 不断往静态集合塞数据，永不释放</span>
+        <span class="punct">}</span>
+        <span class="com">// 抛出：java.lang.OutOfMemoryError: Java heap space</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>两者对比一览</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>StackOverflowError</th><th>OutOfMemoryError</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>本质</strong></td>
+        <td>请求的栈"深度"超过限制</td>
+        <td>请求的内存"总量"超过限制</td>
+      </tr>
+      <tr>
+        <td><strong>发生区域</strong></td>
+        <td>虚拟机栈 / 本地方法栈</td>
+        <td>堆、方法区/元空间、直接内存等</td>
+      </tr>
+      <tr>
+        <td><strong>典型触发场景</strong></td>
+        <td>无终止条件（或条件写错）的递归调用</td>
+        <td>内存泄漏（对象一直被引用回收不掉）、动态生成类过多、直接内存分配未释放</td>
+      </tr>
+      <tr>
+        <td><strong>能否靠调参数根治</strong></td>
+        <td>加大 <code>-Xss</code> 只能延缓，根治要靠改代码逻辑</td>
+        <td>加大 <code>-Xmx</code> 等参数同样只能延缓，根治要找到内存泄漏点或不合理占用</td>
+      </tr>
+      <tr>
+        <td><strong>排查方向</strong></td>
+        <td>看异常堆栈里是否有大量重复的方法调用链（一眼能看出递归没收敛）</td>
+        <td>需要用 <code>jmap</code>/<code>MAT</code> 等工具分析堆转储（heap dump），找到占用最多、无法被回收的对象</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"栈溢出会不会引发 OOM，反过来呢？"——理论上如果虚拟机实现允许栈动态扩展且没有明确上限，扩展栈时可能因为申请不到内存而抛出 OOM 而不是 SOE（规范里也提到了这种可能性）；但在 HotSpot 默认配置下，两者边界通常是清晰分开的：栈深度超限就是 SOE，其他区域总量不够就是 OOM。能提到这一层"规范留了口子，但 HotSpot 实践中边界分明"，说明理解足够细致。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>SOE 是深度问题：</strong>典型元凶是失控的递归，排查看异常堆栈的重复模式。</li>
+    <li><strong>OOM 是总量问题：</strong>典型元凶是内存泄漏、动态类过多、本地内存未释放，排查需要堆转储分析工具。</li>
+    <li>两者都是 <code>Error</code> 级别，代表虚拟机层面的严重问题，不应该用 <code>try-catch</code> 当作业务逻辑的一部分去"兜底掩盖"，而应该找到并修复根因。</li>
+    <li>下一篇会具体展开几种常见 OOM 场景（堆/元空间/直接内存）的成因和排查思路，是这一篇"总量问题"的落地延伸。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./09-对象访问定位.html" class="nav-btn">← 对象访问定位(句柄 vs 直接指针)</a>
+    <a href="./11-常见OOM场景排查.html" class="nav-btn next">常见 OOM 场景排查(堆/栈/元空间/直接内存) →</a>
+  </div>
+
+</div>
+</body>
+</html>

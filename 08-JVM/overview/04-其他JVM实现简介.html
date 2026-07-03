@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>其他 JVM 实现简介（进阶） — JVM 全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f89820; }
+  p code, li code { color: #f89820; }
+  h2 { color: #f89820; border-left-color: #f89820; }
+  .hero .tag { color: #f89820; border-color: #7c4a10; }
+  .nav-btn.next { color: #f89820; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / JVM 全景 / 其他 JVM 实现简介（进阶）
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">JVM 全景</div>
+    <h1>其他 JVM 实现简介（进阶）</h1>
+    <p>HotSpot 是绝对主流，但不是唯一选择。了解一下其他实现存在的理由，能帮你理解"JVM 规范"和"某个具体实现"之间到底能有多大差异。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>为什么会有多个 JVM 实现</h2>
+  <p>
+    既然规范只是规范，任何厂商都可以按规范做一份自己的实现，并在<strong>启动速度、峰值性能、内存占用</strong>这三个天然存在张力的目标之间做出不同取舍。
+    HotSpot 选择的是"通用场景下的均衡"——兼顾这三者，适合绝大多数长期运行的服务端应用；但在一些特化场景下（比如 Serverless 冷启动、嵌入式设备内存受限），
+    HotSpot 的均衡策略未必是最优解，于是就有了针对特定场景做取舍的其他实现。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像汽车领域除了主流家用轿车，还有专门为赛道优化的跑车、专门为省油优化的混动车——同样是"能开的车"，但设计目标完全不同。JVM 领域也是如此，HotSpot 是"最均衡的家用轿车"，其他实现则是各自领域的"专用车型"。
+  </div>
+
+  <!-- GraalVM -->
+  <h2>GraalVM：AOT 编译与原生镜像</h2>
+  <p>
+    GraalVM 是 Oracle 推出的一套高性能运行时，最大的亮点是支持 <strong>AOT（Ahead-Of-Time，提前编译）</strong>：通过 <code>native-image</code> 工具，
+    可以把 Java 程序连同它依赖的类库<strong>在构建阶段就直接编译成一份不依赖 JVM 的本地可执行文件</strong>（Native Image）。
+  </p>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>传统 HotSpot（JIT，运行时编译）</th><th>GraalVM Native Image（AOT，构建时编译）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>启动速度</strong></td>
+        <td>秒级（需要类加载、JIT 预热）</td>
+        <td>毫秒级（构建时已编译好，无需再解释/编译）</td>
+      </tr>
+      <tr>
+        <td><strong>内存占用</strong></td>
+        <td>较高（JVM 本身、JIT 编译器都占内存）</td>
+        <td>较低（无需内置 JVM 运行时）</td>
+      </tr>
+      <tr>
+        <td><strong>峰值性能</strong></td>
+        <td>热点代码经过运行时反复优化，长时间运行后往往更快</td>
+        <td>构建时按静态分析优化，缺少运行时动态反馈，长期峰值性能通常不如 JIT</td>
+      </tr>
+      <tr>
+        <td><strong>典型场景</strong></td>
+        <td>长期运行的服务端应用（如常驻的 Spring Boot 服务）</td>
+        <td>Serverless / 云原生 / CLI 工具（对冷启动时间极敏感的场景）</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    简单说：<strong>HotSpot 用"运行时观察 + 动态优化"换取长期峰值性能，GraalVM Native Image 用"构建时提前定型"换取极致的启动速度和更低的内存占用</strong>——这正是前面说的"没有免费午餐"，只是取舍方向不同。
+  </p>
+
+  <!-- OpenJ9 -->
+  <h2>Eclipse OpenJ9：内存友好型实现</h2>
+  <p>
+    OpenJ9 源自 IBM 的商用 JVM（原名 J9），后来捐献给 Eclipse 基金会开源。它的设计目标之一是<strong>更低的内存占用和更快的启动速度</strong>，
+    在类加载、内存管理上做了不同于 HotSpot 的优化（比如共享类缓存、更紧凑的对象表示），常用于容器化、内存受限的部署环境（比如同一台宿主机上要塞下大量小内存容器实例）。
+  </p>
+
+  <!-- 常见坑 -->
+  <div class="callout warn">
+    <strong>需要注意：</strong>不同 JVM 实现之间，很多 <code>-XX</code> 调优参数、垃圾回收器实现细节、甚至部分工具（如 <code>jstack</code>/<code>jmap</code> 的行为）并不完全通用。从 HotSpot 迁移到 GraalVM 或 OpenJ9 时，不能简单照搬调优经验，需要重新验证。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>面试中被问到"了解过 GraalVM 吗"，通常考察的不是细节，而是你是否理解<strong>"AOT 和 JIT 是两种不同的编译时机权衡"</strong>——AOT 牺牲运行时动态优化换启动速度，JIT 反过来。能说清楚这个权衡，比背具体命令更重要。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>JVM 规范是"接口"，各实现是"实现类"：</strong>HotSpot、GraalVM、OpenJ9 都遵循同一份 Java 虚拟机规范，但内部实现策略可以差异巨大。</li>
+    <li><strong>没有"最好的" JVM，只有"最适合场景的" JVM：</strong>长期运行的服务端优先看重峰值性能（HotSpot 更合适），Serverless/CLI 优先看重启动速度（GraalVM Native Image 更合适）。</li>
+    <li><strong>本模块后续内容以 HotSpot 为主线：</strong>因为它是最主流、书籍与面试题覆盖最广的实现，其他实现了解其存在和取舍即可，不需要深入。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-HotSpotVM的地位与历史.html" class="nav-btn">← HotSpot VM 的地位与历史</a>
+    <a href="../memory/01-程序计数器.html" class="nav-btn next">下一篇:程序计数器 →</a>
+  </div>
+
+</div>
+</body>
+</html>

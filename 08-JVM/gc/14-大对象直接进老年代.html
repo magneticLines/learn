@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>大对象直接进老年代 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / 大对象直接进老年代
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>大对象直接进老年代</h1>
+    <p>如果一个又长又大的字符串或数组，先在 Eden 出生，再被反复复制到 Survivor、又复制回来，你会立刻感觉到这个流程有多不划算。虚拟机也这么想，所以给大对象开了"绿色通道"。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    需要<strong>大量连续内存空间</strong>的对象（典型的比如很长的字符串、元素很多的大数组）会<strong>直接分配到老年代</strong>，
+    绕过新生代的 Eden 和 Survivor 区。这样做的目的是<strong>避免在 Eden 和两个 Survivor 区之间发生大量的内存复制</strong>。
+  </p>
+
+  <h2>为什么大对象不适合走标记-复制这条路</h2>
+  <p>
+    回忆 05 篇讲过的标记-复制算法：每次 Minor GC，存活对象都要被整体复制到另一块 Survivor 区。如果一个大对象恰好在这次 GC 中存活下来，
+    就要经历一次"大块内存搬家"，这个复制操作本身的开销和对象大小成正比。更糟的是，如果这个大对象连续扛过多次 Minor GC 还没死，
+    就要被反复复制很多次——每一次都是一笔不小的性能开销。
+  </p>
+
+  <div class="tree">
+    <span class="hi">如果让大对象走默认流程（反例思路）</span><br>
+    大对象在 Eden 创建 → Minor GC → 复制到 Survivor A（一次大块复制）<br>
+    　→ 又一次 Minor GC → 复制到 Survivor B（又一次大块复制）<br>
+    　→ ... 每次 GC 都要重复这个昂贵的复制过程<br>
+    <br>
+    <span class="hi">大对象直接进老年代（实际策略）</span><br>
+    大对象创建时直接判定为"大对象" → <span class="hi">跳过 Eden/Survivor，直接分配到老年代</span><br>
+    　→ 老年代用标记-清除/整理算法，本来就不做这种频繁的整体复制，避免了无谓的搬家开销
+  </div>
+
+  <h2>控制阈值：-XX:PretenureSizeThreshold</h2>
+  <p>
+    可以通过参数 <code>-XX:PretenureSizeThreshold</code> 设置一个字节数阈值，超过这个大小的对象会被直接判定为"大对象"，绕过新生代直接进入老年代分配
+    （注意：该参数只对 Serial 和 ParNew 两款收集器有效，Parallel Scavenge 等收集器一般不认这个参数，而是有自己的判断逻辑）。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区/坑点：</strong>大对象直接进老年代虽然避免了复制开销，但也带来了新的风险——如果程序频繁创建大对象（比如反复解析大 XML、拼接超长字符串），
+    老年代空间会被迅速消耗，提前触发 Major GC/Full GC，而老年代的收集通常比新生代慢得多、停顿更长。这也是《深入理解 Java 虚拟机》里提醒的一条经典调优建议：<strong>尽量避免在代码中创建过多"朝生夕灭"的大对象</strong>，比如避免在循环体内反复拼接长字符串（应使用 <code>StringBuilder</code>）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>大对象（如长字符串、大数组）直接分配到老年代，是为了避免标记-复制算法对大对象反复搬家造成的高昂复制开销。</li>
+    <li>这条规则和上一篇"对象优先在 Eden 分配"是互补关系——绝大多数对象走默认规则，只有超过阈值的大对象才走这条"绿色通道"。</li>
+    <li><code>-XX:PretenureSizeThreshold</code> 是控制这个阈值的参数，但只对部分收集器（Serial/ParNew）生效。</li>
+    <li>反复创建大对象会加速老年代空间消耗、提前触发代价更高的 Full GC，这是编码阶段就应该规避的性能隐患。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./13-对象优先在Eden分配.html" class="nav-btn">← 对象优先在 Eden 分配</a>
+    <a href="./15-长期存活对象进入老年代.html" class="nav-btn next">长期存活对象进入老年代(年龄阈值) →</a>
+  </div>
+
+</div>
+</body>
+</html>

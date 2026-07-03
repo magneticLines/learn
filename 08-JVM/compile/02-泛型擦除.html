@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>泛型擦除 — 编译与优化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #831843; }
+  .nav-btn.next { color: #f472b6; border-color: #831843; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 编译与优化 / 泛型擦除
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">编译与优化</div>
+    <h1>泛型擦除</h1>
+    <p>List&lt;String&gt; 和 List&lt;Integer&gt; 在字节码里其实是同一个类型——Java 的泛型只是编译器变的一场"戏法"。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    Java 泛型是一种<strong>编译期的语法糖</strong>：<code>&lt;T&gt;</code> 这样的参数化类型信息，只存在于源码和编译阶段。
+    javac 编译时会把所有泛型类型参数<strong>擦除（Type Erasure）</strong>成它的<strong>限定类型</strong>（没写 <code>extends</code> 就擦成 <code>Object</code>），
+    字节码层面根本不存在"参数化类型"这回事，<code>List&lt;String&gt;</code> 和 <code>List&lt;Integer&gt;</code> 编译后是<strong>完全相同的 <code>List</code> 类型</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>泛型就像点餐单上写的"儿童套餐（限12岁以下）"——这行字只是给收银员（编译器）看的提示，帮它在下单时把关；厨房（JVM）拿到的永远是同一张"套餐"制作单，根本不知道、也不关心谁点的。
+  </div>
+
+  <!-- 2. 反例/验证 -->
+  <h2>验证：反射看 Class 对象是否相同</h2>
+  <p>如果泛型信息真的保留到了运行时，<code>List&lt;String&gt;</code> 和 <code>List&lt;Integer&gt;</code> 的 <code>Class</code> 对象应该不同。实际运行一下：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>GenericErasureDemo.java</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span>  <span class="var">strList</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">intList</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">strList</span><span class="punct">.</span><span class="fn">getClass</span><span class="punct">()</span> <span class="punct">==</span> <span class="var">intList</span><span class="punct">.</span><span class="fn">getClass</span><span class="punct">());</span>
+<span class="com">// 输出: true —— 运行时它们是同一个 java.util.ArrayList 类型</span>
+<span class="com">// 泛型参数 <String>/<Integer> 编译后早已被擦除，运行时根本不存在</span></pre>
+  </div>
+
+  <p>再看编译器如何靠"偷偷插入强转"来保证类型安全：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>源码（有糖）vs 擦除后（编译器视角）</span></div>
+    <pre><span class="com">// 源码写法</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>
+<span class="ty">String</span> <span class="var">s</span> <span class="punct">=</span> <span class="var">list</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>   <span class="com">// 看起来不需要强转</span>
+
+<span class="com">// 擦除后字节码层面等价于</span>
+<span class="ty">List</span> <span class="var">list</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">();</span>  <span class="com">// 泛型参数没了</span>
+<span class="var">list</span><span class="punct">.</span><span class="fn">add</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>
+<span class="ty">String</span> <span class="var">s</span> <span class="punct">=</span> <span class="punct">(</span><span class="ty">String</span><span class="punct">)</span> <span class="var">list</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>  <span class="com">// 编译器悄悄插入了强制类型转换</span></pre>
+  </div>
+
+  <p>这个"偷偷插入的强转"就是泛型类型安全的真相：<strong>编译期做类型检查 + 插入强转，运行期该干嘛干嘛，类型信息早已不在。</strong></p>
+
+  <!-- 3. 为什么不能这样写 -->
+  <h2>为什么泛型有这些"反直觉"的限制？</h2>
+  <p>一旦理解了擦除，下面几条 Java 泛型的"怪规则"就都能讲通——它们的根源都是<strong>运行时压根没有 T 这个类型</strong>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>三个编译不通过的例子</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Box</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="punct">{</span>
+
+    <span class="com">// ① 不能 new T[]，因为擦除后 T 变成 Object，
+    //    new Object[] 无法安全地转型回 T[]（数组是协变且带运行时类型检查的）</span>
+    <span class="ty">T</span><span class="punct">[]</span> <span class="var">arr</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">T</span><span class="punct">[</span><span class="num">10</span><span class="punct">];</span>  <span class="com">// 编译错误</span>
+
+    <span class="com">// ② 不能对泛型类型做 instanceof，因为运行时根本没有 List<String> 这个类型
+    //    只有 List，判断 "是不是 List<String>" 这个问题在运行时是无意义的</span>
+    <span class="kw">void</span> <span class="fn">check</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">o</span> <span class="kw">instanceof</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;)</span> <span class="punct">{</span> <span class="punct">}</span>  <span class="com">// 编译错误</span>
+    <span class="punct">}</span>
+
+    <span class="com">// ③ 不能重载两个擦除后签名相同的泛型方法
+    //    List<String> 和 List<Integer> 擦除后都是 List，方法签名完全一样 → 冲突</span>
+    <span class="kw">void</span> <span class="fn">process</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">) {</span> <span class="punct">}</span>
+    <span class="kw">void</span> <span class="fn">process</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">list</span><span class="punct">) {</span> <span class="punct">}</span>  <span class="com">// 编译错误：erasure 后签名冲突</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 4. 原理走一遍 -->
+  <h2>擦除规则走一遍</h2>
+  <div class="tree">
+    <span class="hi">无界类型参数 &lt;T&gt;</span><br>
+    &nbsp;&nbsp;擦除为 <span class="hi">Object</span><br>
+    &nbsp;&nbsp;例：class Box&lt;T&gt; → class Box { Object value; }<br>
+    <br>
+    <span class="hi">有界类型参数 &lt;T extends Comparable&gt;</span><br>
+    &nbsp;&nbsp;擦除为<span class="hi">限定的上界类型</span> Comparable<br>
+    &nbsp;&nbsp;例：class Box&lt;T extends Number&gt; → class Box { Number value; }<br>
+    <br>
+    <span class="hi">泛型方法调用处</span><br>
+    &nbsp;&nbsp;编译器插入 <span class="hi">强制类型转换</span>，保证取值时类型安全<br>
+    &nbsp;&nbsp;这也是为什么泛型被称为"编译器的类型检查语法糖"
+  </div>
+
+  <!-- 5. 对比表格 C# -->
+  <h2>对比：Java 擦除式泛型 vs C# 具体化泛型</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>Java（类型擦除）</th><th>C#（Reified Generics，真泛型）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>运行时类型信息</strong></td>
+        <td>擦除，<code>List&lt;String&gt;</code> 和 <code>List&lt;Integer&gt;</code> 运行时是同一类型</td>
+        <td>保留，<code>List&lt;string&gt;</code> 和 <code>List&lt;int&gt;</code> 运行时是不同的具体类型</td>
+      </tr>
+      <tr>
+        <td><strong>数组 / instanceof</strong></td>
+        <td>不能 <code>new T[]</code>，不能对参数化类型 <code>instanceof</code></td>
+        <td>可以，因为类型信息在运行时依然存在</td>
+      </tr>
+      <tr>
+        <td><strong>值类型（如 int）泛型</strong></td>
+        <td>只能用包装类型 <code>Integer</code>，触发自动装箱（下一节详解）</td>
+        <td>可为值类型生成专用的特化版本，避免装箱开销</td>
+      </tr>
+      <tr>
+        <td><strong>兼容性代价</strong></td>
+        <td>擦除是为了兼容 JDK 1.5 之前编译的字节码（向后兼容优先）</td>
+        <td>CLR 从设计上就支持泛型具体化，无历史包袱</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>为什么 Java 选择擦除式泛型？</strong>历史原因：泛型是 JDK 5 才引入的，此前已经有大量 <code>ArrayList</code>、<code>HashMap</code> 之类的非泛型代码和字节码。用类型擦除可以让泛型代码编译后与老代码保持二进制兼容（“伪泛型”），代价就是牺牲了运行时的类型信息。
+  </div>
+
+  <!-- 6. 常见坑 -->
+  <h2>面试高频 / 常见坑</h2>
+  <div class="callout warn">
+    <strong>坑：</strong>用反射拿到的 <code>List</code> 可以被强行塞入类型不符的元素——<code>((List) list).add(123)</code> 能绕过编译器检查，往 <code>List&lt;String&gt;</code> 里塞进一个 <code>Integer</code>，等到后面 <code>get()</code> 取出时才会在插入的强转处抛 <code>ClassCastException</code>。这说明泛型的类型安全<strong>只是编译期承诺</strong>，运行时没有真正的边界保护。
+  </div>
+
+  <!-- 7. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>泛型是编译期语法糖：</strong>字节码里没有参数化类型，<code>List&lt;String&gt;</code> 和 <code>List&lt;Integer&gt;</code> 运行时完全相同。</li>
+    <li><strong>擦除规则：</strong>无界类型参数擦成 <code>Object</code>，有界类型参数擦成其限定的上界类型；调用处编译器插入强转保证类型安全。</li>
+    <li><strong>反直觉限制的根源：</strong><code>new T[]</code>、泛型 <code>instanceof</code>、擦除后签名冲突的重载，全部源自"运行时没有 T"这一事实。</li>
+    <li><strong>对比 C#：</strong>Java 为了兼容老字节码选择了擦除式泛型，C# 从设计之初就支持真正的具体化泛型，各有取舍。</li>
+    <li>下一节讲另一个和泛型紧密相关的语法糖——自动装拆箱，以及它带来的性能与 <code>==</code> 比较陷阱。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-javac做了什么语法糖解糖.html" class="nav-btn">← javac 做了什么(语法糖解糖)</a>
+    <a href="./03-自动装拆箱陷阱.html" class="nav-btn next">自动装拆箱陷阱 →</a>
+  </div>
+
+</div>
+</body>
+</html>

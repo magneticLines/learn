@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>双亲委派模型 — 类加载机制</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 类加载机制 / 双亲委派模型
+  </div>
+
+  <div class="hero">
+    <div class="tag">类加载机制</div>
+    <h1>双亲委派模型</h1>
+    <p>一个类加载请求，为什么总是先往上交给"爹"，而不是自己先动手——理解 JVM 类加载器之间的层级协作关系。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>双亲委派模型规定：一个类加载器收到加载请求时，不会自己先尝试加载，而是把请求委托给父加载器去做，逐级向上，直到最顶层；只有当父加载器反馈"自己无法完成这个加载"（在它的搜索范围内没有找到这个类）时，子加载器才会尝试自己去加载。</strong>
+    注意名字里的"双亲"其实是历史翻译习惯，本质是<strong>单一父加载器</strong>的层级关系（parent，不是 biological 意义的"双亲"），并不是有两个平级的父加载器。
+  </p>
+
+  <h2>类加载器的层级关系</h2>
+  <div class="tree">
+    <span class="hi">启动类加载器（Bootstrap ClassLoader）</span><br>
+    &nbsp;&nbsp;C++ 实现，是虚拟机自身的一部分，没有对应的 Java 对象<br>
+    &nbsp;&nbsp;负责加载 &lt;JAVA_HOME&gt;/lib 下的核心类库（java.lang.* 等）<br>
+    &nbsp;&nbsp;↑<br>
+    <span class="hi">扩展 / 平台类加载器（Extension / Platform ClassLoader）</span><br>
+    &nbsp;&nbsp;JDK 9 之前叫 Extension ClassLoader，负责 &lt;JAVA_HOME&gt;/lib/ext<br>
+    &nbsp;&nbsp;JDK 9 引入模块化后改名为 Platform ClassLoader<br>
+    &nbsp;&nbsp;↑<br>
+    <span class="hi">应用类加载器（Application ClassLoader）</span><br>
+    &nbsp;&nbsp;负责加载 classpath 上用户自己写的类，是 getSystemClassLoader() 返回的加载器<br>
+    &nbsp;&nbsp;绝大多数 Java 程序默认都由它加载<br>
+    &nbsp;&nbsp;↑<br>
+    <span class="hi">用户自定义类加载器（可选）</span><br>
+    &nbsp;&nbsp;继承 ClassLoader 自己实现，比如 Tomcat 的 WebAppClassLoader
+  </div>
+
+  <h2>原理走一遍：委派的工作过程</h2>
+  <p>假设应用类加载器收到一个"请加载 <code>com.example.Foo</code>"的请求：</p>
+
+  <div class="tree">
+    <span class="hi">① 应用类加载器收到请求</span><br>
+    &nbsp;&nbsp;不自己找，先委托给上一级：平台类加载器<br>
+    <br>
+    <span class="hi">② 平台类加载器收到请求</span><br>
+    &nbsp;&nbsp;不自己找，继续委托给上一级：启动类加载器<br>
+    <br>
+    <span class="hi">③ 启动类加载器收到请求（已到顶层，无法再向上）</span><br>
+    &nbsp;&nbsp;在自己的搜索范围（&lt;JAVA_HOME&gt;/lib）里查找 com.example.Foo<br>
+    &nbsp;&nbsp;找不到 → 向下反馈"我加载不了"<br>
+    <br>
+    <span class="hi">④ 平台类加载器收到"启动类加载器加载不了"的反馈</span><br>
+    &nbsp;&nbsp;在自己的搜索范围（&lt;JAVA_HOME&gt;/lib/ext）里查找<br>
+    &nbsp;&nbsp;找不到 → 继续向下反馈<br>
+    <br>
+    <span class="hi">⑤ 应用类加载器收到反馈，轮到自己尝试</span><br>
+    &nbsp;&nbsp;在 classpath 里找到了 com.example.Foo.class<br>
+    &nbsp;&nbsp;→ 由应用类加载器亲自完成加载
+  </div>
+
+  <div class="callout info">
+    <strong>关键点：</strong>只有当所有祖先加载器都明确表示"我范围内没有"，请求才会真正下沉回最初发起请求的那个加载器自己动手。这是一个"向上问一圈，问不到才轮到自己"的过程，而不是"谁离得近谁先试"。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>委派方向永远向上：</strong>子加载器先问父加载器，父加载器优先级最高，只有父加载器明确"找不到"才轮到子加载器自己找。</li>
+    <li><strong>层级是 Bootstrap → Extension/Platform → Application → 自定义：</strong>越往上加载的类越"基础"，越往下加载的类越贴近具体业务代码。</li>
+    <li><strong>这不是一个"性能优化"设计，而是一个"安全和一致性"设计：</strong>具体解决了什么问题，下一篇详细展开。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-类初始化的触发时机.html" class="nav-btn">← 类初始化的触发时机</a>
+    <a href="./06-为什么要有双亲委派.html" class="nav-btn next">为什么要有双亲委派(安全与避免重复加载) →</a>
+  </div>
+
+</div>
+</body>
+</html>

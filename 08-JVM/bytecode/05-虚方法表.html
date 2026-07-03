@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>虚方法表(进阶) — 字节码执行引擎</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 字节码执行引擎 / 虚方法表(进阶)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">字节码执行引擎</div>
+    <h1>虚方法表(进阶)</h1>
+    <p>上一篇讲动态分派要"沿继承链逐层向上找方法"——如果每次调用都真的这么查一遍，性能会很难看。HotSpot 用一张提前算好的表，把这件事的开销降到了极致。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    为了避免动态分派时每次方法调用都要在类的方法元数据中重新搜索一遍（效率低），HotSpot 虚拟机为每个类维护了一张<strong>虚方法表（Virtual Method Table，vtable）</strong>，
+    表中按<strong>固定索引</strong>存放各个方法的实际入口地址。调用虚方法时，只需要根据对象的实际类型找到对应的方法表，
+    再按固定的索引位置直接取出方法地址即可，不需要再做一次沿继承链的名字查找。这是一种典型的<strong>用空间换时间</strong>的优化思路。
+  </p>
+
+  <!-- 2. 构建规则 -->
+  <h2>vtable 是怎么构建的：继承与覆盖</h2>
+  <p>
+    子类的 vtable 并不是从零重新生成的，而是<strong>在父类 vtable 的基础上扩展 / 覆盖</strong>得到的：
+  </p>
+  <ul>
+    <li>如果子类<strong>没有重写</strong>父类的某个方法，子类 vtable 中对应位置的方法入口地址和父类<strong>完全一致</strong>——都指向父类的实现。</li>
+    <li>如果子类<strong>重写</strong>了父类的某个方法，子类 vtable 中对应位置的地址会被<strong>替换</strong>成子类自己的实现入口。</li>
+    <li>子类新增的方法，会在 vtable 末尾追加新的索引位。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Base.java / Derived.java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Base</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">foo</span><span class="punct">() {</span> <span class="com">/* Base 的实现 */</span> <span class="punct">}</span>
+    <span class="kw">void</span> <span class="fn">bar</span><span class="punct">() {</span> <span class="com">/* Base 的实现 */</span> <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">class</span> <span class="ty">Derived</span> <span class="kw">extends</span> <span class="ty">Base</span> <span class="punct">{</span>
+    <span class="ann">@Override</span>
+    <span class="kw">void</span> <span class="fn">bar</span><span class="punct">() {</span> <span class="com">/* 重写了 bar，foo 没有重写 */</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="tree">
+    <span class="hi">Base 的 vtable</span><br>
+    &nbsp;&nbsp;index 0: Base.equals()<br>
+    &nbsp;&nbsp;index 1: Base.hashCode()<br>
+    &nbsp;&nbsp;index 2: <span class="hi">Base.foo()</span>&nbsp;&nbsp;← Base 自己的实现<br>
+    &nbsp;&nbsp;index 3: Base.bar()<br>
+    <br>
+    <span class="hi">Derived 的 vtable</span>（未重写 foo，重写了 bar）<br>
+    &nbsp;&nbsp;index 0: Base.equals()&nbsp;&nbsp;（继承，未变）<br>
+    &nbsp;&nbsp;index 1: Base.hashCode()（继承，未变）<br>
+    &nbsp;&nbsp;index 2: <span class="hi">Base.foo()</span>&nbsp;&nbsp;← 没重写，仍指向 Base 的实现<br>
+    &nbsp;&nbsp;index 3: <span class="hi">Derived.bar()</span> ← 重写了，替换成子类自己的实现
+  </div>
+
+  <div class="callout info">
+    <strong>关键规则：</strong>父类和子类中"同一个方法"在 vtable 里的<strong>索引位置永远相同</strong>。这是整套机制成立的前提——正因为索引位置在继承链上是稳定的，
+    虚拟机才能做到"不管对象的实际类型是 Base 还是 Derived，只要按同一个索引去查表，就能拿到该类型下 foo 正确的实现"。
+  </div>
+
+  <!-- 3. 调用过程 -->
+  <h2>原理走一遍：invokevirtual 结合 vtable 的调用过程</h2>
+  <div class="tree">
+    <span class="hi">① 定位实际类型</span><br>
+    &nbsp;&nbsp;通过对象头找到对象的实际类型（方法区中的类元数据指针）<br>
+    <br>
+    <span class="hi">② 定位 vtable</span><br>
+    &nbsp;&nbsp;找到该实际类型对应的虚方法表<br>
+    <br>
+    <span class="hi">③ 按固定索引取方法地址</span><br>
+    &nbsp;&nbsp;编译期已经确定了方法名在 vtable 中的索引位置，直接按索引取出入口地址<br>
+    <br>
+    <span class="hi">④ 跳转执行</span><br>
+    &nbsp;&nbsp;无需再按名字/描述符做任何字符串匹配式的查找
+  </div>
+  <p>
+    对比朴素的"沿继承链逐层查找方法"，vtable 把原本 O(继承深度) 的查找开销压缩成了 <strong>O(1) 的数组索引访问</strong>——
+    这正是"提前算好、重复利用"的空间换时间套路：把本该每次调用都要做的搜索工作，提前挪到类加载阶段一次性算好。
+  </p>
+
+  <!-- 4. 对比表 -->
+  <h2>有 vtable vs 无 vtable（朴素动态分派）</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>朴素动态分派（无 vtable）</th><th>HotSpot 实际做法（有 vtable）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>每次调用的开销</td>
+        <td>沿继承链逐层比对方法名 + 描述符，最坏情况 O(继承深度)</td>
+        <td>按固定索引直接取地址，O(1)</td>
+      </tr>
+      <tr>
+        <td>额外空间成本</td>
+        <td>无</td>
+        <td>每个类多维护一张方法入口表</td>
+      </tr>
+      <tr>
+        <td>表的生成时机</td>
+        <td>不需要提前生成</td>
+        <td>类加载（准备/初始化前后）阶段生成一次</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. 常见坑 -->
+  <h2>常见坑 &amp; 面试高频考点</h2>
+
+  <div class="callout warn">
+    <strong>坑：把 vtable 当成"动态分派的定义"。</strong>
+    vtable 只是 HotSpot 对动态分派这件事做的<strong>实现优化</strong>，动态分派的语义（运行期按实际类型确定调用哪个方法）即使没有 vtable，用朴素的逐层查找也一样成立，只是效率差很多。面试时如果只回答"动态分派就是虚方法表"，是把手段和目的搞反了。
+  </div>
+
+  <div class="callout tip">
+    <strong>进阶延伸：接口方法调用的 itable。</strong>接口方法调用（<code>invokeinterface</code>）不能像 vtable 一样用固定单一索引，因为一个类可能同时实现多个互不相关的接口，方法在不同接口里的排列顺序无法统一编号。
+    HotSpot 为此设计了<strong>接口方法表（itable）</strong>：先按接口类型定位到对应的 itable，再在这张表内按方法索引取地址，原理与 vtable 类似但多了一层"先找接口"的过程，因此接口方法调用理论上比普通虚方法调用略慢，这也是早期 Java 性能调优文章常提到的一个细节点。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>vtable 是"用空间换时间"的经典范例：把本该每次调用都要做的方法查找，提前搬到类加载阶段做一次。</li>
+    <li>子类 vtable 在父类基础上扩展 / 覆盖得到，同一方法在继承链上索引位置保持不变，是按索引查表能够生效的前提。</li>
+    <li>vtable 只是动态分派的一种高效实现手段，不是动态分派本身的定义。</li>
+    <li>接口方法调用因为多继承的复杂性，需要额外的 itable 机制来配合，是 vtable 思路的进一步延伸。</li>
+    <li>至此，从局部变量表/操作数栈、动态链接，到解析调用与分派调用、静态/动态分派、再到 vtable 优化，字节码执行引擎"方法怎么被调用"的完整链路就串起来了——下一篇转向 javac 编译期做了哪些"语法糖"，看看源码到字节码之间还发生了什么。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-静态分派与动态分派.html" class="nav-btn">← 静态分派与动态分派(重载 vs 重写)</a>
+    <a href="../compile/01-javac做了什么语法糖解糖.html" class="nav-btn next">下一篇:javac 做了什么(语法糖解糖) →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Parallel Scavenge / Parallel Old — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / Parallel Scavenge / Parallel Old
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>Parallel Scavenge / Parallel Old</h1>
+    <p>ParNew 追求的是"停顿更短"，但如果你的场景根本不关心某一次停顿有多长，只关心程序跑一整天能干多少活呢？这就是 Parallel 系列收集器要解决的问题。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>Parallel Scavenge</strong>（新生代，标记-复制）和 <strong>Parallel Old</strong>（老年代，标记-整理）都是并行收集器，
+    但设计目标和 ParNew 有本质区别：ParNew 的目标是<strong>配合老年代收集器缩短停顿时间</strong>，而 Parallel Scavenge 的目标是达到一个<strong>可控制的吞吐量</strong>——
+    也就是说，它关心的不是"这一次停顿多久"，而是"长时间运行下来，用户代码到底能拿到多少 CPU 时间"。
+  </p>
+
+  <div class="callout info">
+    <strong>吞吐量（Throughput）</strong> = 用户代码运行时间 ÷ （用户代码运行时间 + 垃圾收集时间）。
+    比如虚拟机总共运行了 100 分钟，垃圾收集耗时 1 分钟，吞吐量就是 99/100 = 99%。吞吐量优先，意味着愿意接受单次停顿更长，以换取总体上 GC 占用的时间比例更低。
+  </div>
+
+  <h2>两个关键参数：把"控制权"交给使用者</h2>
+  <p>Parallel Scavenge 最大的特色是提供了两个非常直接的调节参数，不需要理解收集器内部细节，只需要按业务需求"许愿"：</p>
+
+  <table>
+    <thead>
+      <tr><th>参数</th><th>作用</th><th>取舍</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>-XX:MaxGCPauseMillis</code></td>
+        <td>设置垃圾收集时最大的停顿时间（毫秒）</td>
+        <td>调小它 → 收集器会尽量缩短单次停顿（比如缩小新生代），但会导致收集更频繁，牺牲吞吐量</td>
+      </tr>
+      <tr>
+        <td><code>-XX:GCTimeRatio</code></td>
+        <td>设置垃圾收集时间占总时间的比例（值越大，容许的 GC 时间占比越小）</td>
+        <td>调大它 → 追求更高吞吐量，但可能导致单次停顿变长</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>这两个参数本质上是同一个跷跷板的两端——停顿时间和吞吐量不可能同时最优，Parallel Scavenge 允许你根据业务场景明确表态"我更看重哪一头"。</p>
+
+  <h2>Parallel Old：Parallel Scavenge 的老年代搭档</h2>
+  <p>
+    在 Parallel Old 出现之前（JDK 5 之前），如果新生代用 Parallel Scavenge，老年代却只能选择 Serial Old（单线程），
+    这会拖累整体吞吐量——新生代并行收集得很快，但老年代收集时全程单线程 STW，反而成为瓶颈。
+    JDK 6 引入的 Parallel Old 使用<strong>多线程 + 标记-整理算法</strong>，与 Parallel Scavenge 搭配后，才真正实现了"吞吐量优先"从新生代到老年代的完整闭环。
+  </p>
+
+  <div class="tree">
+    <span class="hi">吞吐量优先收集组合</span><br>
+    新生代：Parallel Scavenge（多线程，标记-复制）<br>
+    老年代：Parallel Old（多线程，标记-整理）<br>
+    → 两者都追求最大化 CPU 利用率，适合<span class="hi">后台批处理、报表运算、无需太多用户交互</span>的服务
+  </div>
+
+  <h2>ParNew vs Parallel Scavenge 对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>ParNew</th><th>Parallel Scavenge</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>设计目标</td>
+        <td>配合老年代收集器，缩短停顿时间</td>
+        <td>达到可控的吞吐量目标</td>
+      </tr>
+      <tr>
+        <td>核心参数</td>
+        <td>无自适应调节机制</td>
+        <td><code>MaxGCPauseMillis</code> / <code>GCTimeRatio</code>，支持自适应调节策略（<code>-XX:+UseAdaptiveSizePolicy</code>）</td>
+      </tr>
+      <tr>
+        <td>常见搭档</td>
+        <td>CMS（老年代）</td>
+        <td>Parallel Old（老年代）</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>需要和用户交互、追求响应速度的应用</td>
+        <td>后台运算类任务，追求单位时间内完成更多工作</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"停顿时间和吞吐量为什么不能兼得？" 因为缩短停顿的常见手段（比如减小新生代空间、更频繁地收集）会增加 GC 触发次数，
+    从总时间占比看反而拉低了吞吐量；反过来追求高吞吐量往往意味着让内存空间更大、收集更少发生，但每次收集处理的对象更多，单次停顿必然更长。这正是"没有免费午餐"在 GC 领域的体现。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>Parallel Scavenge / Parallel Old 是"吞吐量优先"收集器的代表，目标是最大化 CPU 利用率，而不是最小化单次停顿。</li>
+    <li><code>MaxGCPauseMillis</code> 和 <code>GCTimeRatio</code> 让使用者可以直接声明自己更看重停顿时间还是吞吐量，收集器会据此自适应调节新生代大小等参数。</li>
+    <li>停顿时间和吞吐量是一个此消彼长的跷跷板，理解这一点比记住具体参数名更重要。</li>
+    <li>这类收集器适合后台批处理、离线运算等不需要频繁用户交互的服务，而不适合对响应延迟敏感的在线服务（那是 CMS/G1 的战场）。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./08-SerialParNew收集器.html" class="nav-btn">← Serial / ParNew 收集器</a>
+    <a href="./10-CMS收集器及其问题.html" class="nav-btn next">CMS 收集器及其问题 →</a>
+  </div>
+
+</div>
+</body>
+</html>

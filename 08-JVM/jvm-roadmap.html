@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JVM 路线图</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", monospace;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 40px 20px 80px;
+      font-size: 14px;
+    }
+
+    .page { max-width: 640px; margin: 0 auto; }
+
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 20px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+
+    h1 {
+      font-size: 1.3rem;
+      color: #94a3b8;
+      font-weight: 400;
+      letter-spacing: 0.05em;
+      margin-bottom: 18px;
+    }
+    h1 span { color: #e2e8f0; font-weight: 700; }
+    h1 small { font-size: 0.72rem; color: #2d3148; margin-left: 10px; }
+
+    /* ── 骨架书 banner ── */
+    .book {
+      background: #13151f;
+      border: 1px solid #2d3148;
+      border-left: 3px solid #f89820;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 26px;
+    }
+    .book .book-tag {
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
+      color: #f89820; text-transform: uppercase;
+    }
+    .book h2 { font-size: 0.98rem; color: #f1f5f9; margin: 5px 0 6px; font-weight: 600; }
+    .book p { font-size: 0.82rem; color: #94a3b8; line-height: 1.7; }
+    .book p b { color: #cbd5e1; }
+
+    /* ── Tab 栏 ── */
+    .tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid #1e2030; flex-wrap: wrap; }
+    .tab-btn {
+      padding: 8px 14px; border: none; background: none; color: #475569;
+      font-size: 0.82rem; font-family: inherit; cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: #94a3b8; }
+    .tab-btn.active-overview     { color: #f89820; border-bottom-color: #f89820; }
+    .tab-btn.active-memory       { color: #38bdf8; border-bottom-color: #38bdf8; }
+    .tab-btn.active-gc           { color: #4ade80; border-bottom-color: #4ade80; }
+    .tab-btn.active-profiling    { color: #fbbf24; border-bottom-color: #fbbf24; }
+    .tab-btn.active-classloading { color: #a78bfa; border-bottom-color: #a78bfa; }
+    .tab-btn.active-bytecode     { color: #22d3ee; border-bottom-color: #22d3ee; }
+    .tab-btn.active-compile      { color: #f472b6; border-bottom-color: #f472b6; }
+    .tab-btn.active-concurrency  { color: #f87171; border-bottom-color: #f87171; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .part-src { font-size: 0.7rem; color: #475569; margin: 0 0 10px; }
+
+    /* ── 树形 ── */
+    ul { list-style: none; padding-left: 0; }
+    li { position: relative; }
+    .group > .node {
+      color: #475569; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.12em; padding: 10px 0 4px 0; display: block;
+    }
+    .group > ul {
+      padding-left: 16px; border-left: 1px solid #1e2030;
+      margin-left: 4px; margin-bottom: 2px;
+    }
+    .group > ul > li { padding: 3px 0; }
+    .group > ul > li::before { content: '─ '; color: #1e2030; }
+
+    a.leaf {
+      color: #cbd5e1; text-decoration: none;
+      border-bottom: 1px dashed #2d3148;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .panel-overview     a.leaf:hover { color: #f89820; border-bottom-color: #f89820; }
+    .panel-memory       a.leaf:hover { color: #38bdf8; border-bottom-color: #38bdf8; }
+    .panel-gc           a.leaf:hover { color: #4ade80; border-bottom-color: #4ade80; }
+    .panel-profiling    a.leaf:hover { color: #fbbf24; border-bottom-color: #fbbf24; }
+    .panel-classloading a.leaf:hover { color: #a78bfa; border-bottom-color: #a78bfa; }
+    .panel-bytecode     a.leaf:hover { color: #22d3ee; border-bottom-color: #22d3ee; }
+    .panel-compile      a.leaf:hover { color: #f472b6; border-bottom-color: #f472b6; }
+    .panel-concurrency  a.leaf:hover { color: #f87171; border-bottom-color: #f87171; }
+
+    span.leaf { color: #2d3148; cursor: default; }
+
+    .tag-core { font-size: 0.58rem; color: #f89820; border: 1px solid #7c4a10; border-radius: 3px; padding: 0 3px; margin-left: 5px; vertical-align: middle; }
+    .adv { font-size: 0.58rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 3px; padding: 0 3px; margin-left: 5px; vertical-align: middle; }
+    .ch  { font-size: 0.6rem; color: #475569; margin-left: 6px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb"><a href="../index.html">← 总目录</a></div>
+
+  <h1>/ <span>JVM</span> 路线图 <small>有链接 = 已有学习文件 · 灰色 = 待学</small></h1>
+
+  <div class="book">
+    <div class="book-tag">📖 骨架书</div>
+    <h2>《深入理解 Java 虚拟机：JVM 高级特性与最佳实践》第 3 版 — 周志明</h2>
+    <p>Java 后端面试的"硬核区"，也是 Java 生态的地基。全书五大部分:<b>走近 Java</b>(技术体系与虚拟机家族)→
+       <b>自动内存管理</b>(内存区域/垃圾收集/性能监控调优)→ <b>虚拟机执行子系统</b>(类文件结构/类加载机制/字节码执行引擎)→
+       <b>程序编译与代码优化</b>(前端/后端编译优化)→ <b>高效并发</b>(JMM/线程/锁优化)。
+       本路线图按前四部分组织成 7 个 Tab；第五部分"高效并发"与 02-并发 模块高度重叠(JMM、happens-before、锁优化那边已经讲透)，
+       这里只用一个轻量的"承接"Tab 做桥接，不重复展开。</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn" id="btn-overview"     onclick="switchTab('overview')">JVM 全景</button>
+    <button class="tab-btn" id="btn-memory"       onclick="switchTab('memory')">内存区域与溢出</button>
+    <button class="tab-btn" id="btn-gc"           onclick="switchTab('gc')">垃圾收集</button>
+    <button class="tab-btn" id="btn-profiling"    onclick="switchTab('profiling')">性能监控与调优</button>
+    <button class="tab-btn" id="btn-classloading" onclick="switchTab('classloading')">类加载机制</button>
+    <button class="tab-btn" id="btn-bytecode"     onclick="switchTab('bytecode')">字节码执行引擎</button>
+    <button class="tab-btn" id="btn-compile"      onclick="switchTab('compile')">编译与优化</button>
+    <button class="tab-btn" id="btn-concurrency"  onclick="switchTab('concurrency')">并发基础回顾</button>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       JVM 全景
+  ══════════════════════════════════════ -->
+  <div class="tab-panel panel-overview" id="panel-overview">
+    <p class="part-src">来源:第 1 章 走近 Java</p>
+    <ul>
+
+      <li class="group">
+        <span class="node">Java 技术体系</span>
+        <ul>
+          <li><a class="leaf" href="./overview/01-JDK与JRE与JVM三者关系.html">JDK / JRE / JVM 三者关系<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./overview/02-字节码与一次编写到处运行.html">字节码与"一次编写、到处运行"</a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">虚拟机家族</span>
+        <ul>
+          <li><a class="leaf" href="./overview/03-HotSpotVM的地位与历史.html">HotSpot VM 的地位与历史</a></li>
+          <li><a class="leaf" href="./overview/04-其他JVM实现简介.html">其他 JVM 实现简介(GraalVM 等)<span class="adv">进阶</span></a></li>
+        </ul>
+      </li>
+
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       内存区域与溢出
+  ══════════════════════════════════════ -->
+  <div class="tab-panel panel-memory" id="panel-memory">
+    <p class="part-src">来源:第 2 章 Java 内存区域与内存溢出异常</p>
+    <ul>
+
+      <li class="group">
+        <span class="node">运行时数据区域</span>
+        <ul>
+          <li><a class="leaf" href="./memory/01-程序计数器.html">程序计数器<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./memory/02-Java虚拟机栈与栈帧.html">Java 虚拟机栈与栈帧</a></li>
+          <li><a class="leaf" href="./memory/03-本地方法栈.html">本地方法栈</a></li>
+          <li><a class="leaf" href="./memory/04-堆Heap对象分配的主战场.html">堆(Heap)——对象分配的主战场<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./memory/05-方法区与元空间的演变.html">方法区 / 元空间的演变(永久代 → Metaspace)</a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">对象探秘</span>
+        <ul>
+          <li><a class="leaf" href="./memory/06-对象的创建过程.html">对象的创建过程<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./memory/07-对象的内存布局.html">对象的内存布局</a></li>
+          <li><a class="leaf" href="./memory/08-对象头与MarkWord.html">对象头与 Mark Word<span class="adv">进阶</span></a></li>
+          <li><a class="leaf" href="./memory/09-对象访问定位.html">对象访问定位(句柄 vs 直接指针)</a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">内存溢出实战</span>
+        <ul>
+          <li><a class="leaf" href="./memory/10-StackOverflowError与OutOfMemoryError辨析.html">StackOverflowError 与 OutOfMemoryError 辨析<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./memory/11-常见OOM场景排查.html">常见 OOM 场景排查(堆 / 栈 / 元空间 / 直接内存)</a></li>
+        </ul>
+      </li>
+
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       垃圾收集
+  ══════════════════════════════════════ -->
+  <div class="tab-panel panel-gc" id="panel-gc">
+    <p class="part-src">来源:第 3 章 垃圾收集器与内存分配策略</p>
+    <ul>
+
+      <li class="group">
+        <span class="node">对象存活判定</span>
+        <ul>
+          <li><a class="leaf" href="./gc/01-引用计数法vs可达性分析.html">引用计数法 vs 可达性分析<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./gc/02-四种引用类型.html">四种引用类型(强 / 软 / 弱 / 虚)</a></li>
+          <li><a class="leaf" href="./gc/03-finalize方法的角色与陷阱.html">finalize() 方法的角色与陷阱</a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">垃圾收集算法</span>
+        <ul>
+          <li><a class="leaf" href="./gc/04-标记清除算法.html">标记-清除算法</a></li>
+          <li><a class="leaf" href="./gc/05-标记复制算法.html">标记-复制算法</a></li>
+          <li><a class="leaf" href="./gc/06-标记整理算法.html">标记-整理算法</a></li>
+          <li><a class="leaf" href="./gc/07-分代收集理论.html">分代收集理论<span class="tag-core">核心</span></a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">经典垃圾收集器</span>
+        <ul>
+          <li><a class="leaf" href="./gc/08-SerialParNew收集器.html">Serial / ParNew 收集器</a></li>
+          <li><a class="leaf" href="./gc/09-ParallelScavenge与ParallelOld.html">Parallel Scavenge / Parallel Old</a></li>
+          <li><a class="leaf" href="./gc/10-CMS收集器及其问题.html">CMS 收集器及其问题</a></li>
+          <li><a class="leaf" href="./gc/11-G1收集器.html">G1 收集器<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./gc/12-ZGC与Shenandoah低延迟收集器.html">ZGC / Shenandoah 低延迟收集器<span class="adv">进阶</span></a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">内存分配与回收策略</span>
+        <ul>
+          <li><a class="leaf" href="./gc/13-对象优先在Eden分配.html">对象优先在 Eden 分配</a></li>
+          <li><a class="leaf" href="./gc/14-大对象直接进老年代.html">大对象直接进老年代</a></li>
+          <li><a class="leaf" href="./gc/15-长期存活对象进入老年代.html">长期存活对象进入老年代(年龄阈值)</a></li>
+          <li><a class="leaf" href="./gc/16-空间分配担保机制.html">空间分配担保机制</a></li>
+        </ul>
+      </li>
+
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       性能监控与调优
+  ══════════════════════════════════════ -->
+  <div class="tab-panel panel-profiling" id="panel-profiling">
+    <p class="part-src">来源:第 4 章 虚拟机性能监控、故障处理工具 · 第 5 章 调优案例分析与实战</p>
+    <ul>
+
+      <li class="group">
+        <span class="node">命令行工具</span>
+        <ul>
+          <li><a class="leaf" href="./profiling/01-jps-jstat-jmap-jstack速查.html">jps / jstat / jmap / jstack 速查<span class="tag-core">核心</span></a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">可视化工具</span>
+        <ul>
+          <li><a class="leaf" href="./profiling/02-JConsole与VisualVM.html">JConsole 与 VisualVM</a></li>
+          <li><a class="leaf" href="./profiling/03-Arthas实战.html">Arthas 实战<span class="tag-core">核心</span></a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">调优实战</span>
+        <ul>
+          <li><a class="leaf" href="./profiling/04-内存泄漏排查思路.html">内存泄漏排查思路<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./profiling/05-CPU飙高排查思路.html">CPU 飙高排查思路</a></li>
+          <li><a class="leaf" href="./profiling/06-GC日志分析与常用调优参数.html">GC 日志分析与常用调优参数</a></li>
+        </ul>
+      </li>
+
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       类加载机制
+  ══════════════════════════════════════ -->
+  <div class="tab-panel panel-classloading" id="panel-classloading">
+    <p class="part-src">来源:第 6 章 类文件结构 · 第 7 章 虚拟机类加载机制</p>
+    <ul>
+
+      <li class="group">
+        <span class="node">类文件结构</span>
+        <ul>
+          <li><a class="leaf" href="./classloading/01-Class文件的组成.html">Class 文件的组成<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./classloading/02-字节码指令集简介.html">字节码指令集简介</a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">类加载过程</span>
+        <ul>
+          <li><a class="leaf" href="./classloading/03-类加载五阶段.html">加载-验证-准备-解析-初始化五阶段<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./classloading/04-类初始化的触发时机.html">类初始化的触发时机</a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">类加载器</span>
+        <ul>
+          <li><a class="leaf" href="./classloading/05-双亲委派模型.html">双亲委派模型<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./classloading/06-为什么要有双亲委派.html">为什么要有双亲委派(安全与避免重复加载)</a></li>
+          <li><a class="leaf" href="./classloading/07-打破双亲委派的场景.html">打破双亲委派的场景(SPI / 热部署)<span class="adv">进阶</span></a></li>
+        </ul>
+      </li>
+
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       字节码执行引擎
+  ══════════════════════════════════════ -->
+  <div class="tab-panel panel-bytecode" id="panel-bytecode">
+    <p class="part-src">来源:第 8 章 虚拟机字节码执行引擎</p>
+    <ul>
+
+      <li class="group">
+        <span class="node">运行时栈帧结构</span>
+        <ul>
+          <li><a class="leaf" href="./bytecode/01-局部变量表与操作数栈.html">局部变量表与操作数栈</a></li>
+          <li><a class="leaf" href="./bytecode/02-动态链接.html">动态链接</a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">方法调用</span>
+        <ul>
+          <li><a class="leaf" href="./bytecode/03-解析调用vs分派调用.html">解析调用 vs 分派调用</a></li>
+          <li><a class="leaf" href="./bytecode/04-静态分派与动态分派.html">静态分派与动态分派(重载 vs 重写)<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./bytecode/05-虚方法表.html">虚方法表<span class="adv">进阶</span></a></li>
+        </ul>
+      </li>
+
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       编译与优化
+  ══════════════════════════════════════ -->
+  <div class="tab-panel panel-compile" id="panel-compile">
+    <p class="part-src">来源:第 10 章 前端编译与优化 · 第 11 章 后端编译与优化</p>
+    <ul>
+
+      <li class="group">
+        <span class="node">前端编译优化</span>
+        <ul>
+          <li><a class="leaf" href="./compile/01-javac做了什么语法糖解糖.html">javac 做了什么(语法糖解糖)<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./compile/02-泛型擦除.html">泛型擦除</a></li>
+          <li><a class="leaf" href="./compile/03-自动装拆箱陷阱.html">自动装拆箱陷阱</a></li>
+        </ul>
+      </li>
+
+      <li class="group">
+        <span class="node">后端编译优化(JIT)</span>
+        <ul>
+          <li><a class="leaf" href="./compile/04-解释执行vs编译执行.html">解释执行 vs 编译执行<span class="tag-core">核心</span></a></li>
+          <li><a class="leaf" href="./compile/05-热点探测与JIT编译.html">热点探测与 JIT 编译</a></li>
+          <li><a class="leaf" href="./compile/06-逃逸分析与栈上分配.html">逃逸分析与栈上分配<span class="adv">进阶</span></a></li>
+          <li><a class="leaf" href="./compile/07-方法内联.html">方法内联<span class="adv">进阶</span></a></li>
+        </ul>
+      </li>
+
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       并发基础回顾
+  ══════════════════════════════════════ -->
+  <div class="tab-panel panel-concurrency" id="panel-concurrency">
+    <p class="part-src">来源:第 12 章 Java 内存模型与线程 · 第 13 章 线程安全与锁优化(与 02-并发 模块呼应，不重复展开)</p>
+    <ul>
+
+      <li class="group">
+        <span class="node">承接 02-并发</span>
+        <ul>
+          <li><a class="leaf" href="./concurrency/01-Java内存模型回顾.html">Java 内存模型回顾(承接 02-并发)</a></li>
+          <li><a class="leaf" href="./concurrency/02-线程实现与协程简介.html">线程实现与协程简介</a></li>
+          <li><a class="leaf" href="./concurrency/03-锁优化技术回顾.html">锁优化技术回顾(承接 02-并发)</a></li>
+        </ul>
+      </li>
+
+    </ul>
+  </div>
+
+</div>
+<script>
+  function switchTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove(
+      'active-overview','active-memory','active-gc','active-profiling',
+      'active-classloading','active-bytecode','active-compile','active-concurrency'
+    ));
+    document.getElementById('panel-' + name).classList.add('active');
+    document.getElementById('btn-'   + name).classList.add('active-' + name);
+  }
+  switchTab('overview');
+</script>
+</body>
+</html>

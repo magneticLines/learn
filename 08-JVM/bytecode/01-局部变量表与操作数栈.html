@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>局部变量表与操作数栈 — 字节码执行引擎</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 字节码执行引擎 / 局部变量表与操作数栈
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">字节码执行引擎</div>
+    <h1>局部变量表与操作数栈</h1>
+    <p>栈帧不是一个黑盒——它内部由两块具体的存储结构支撑方法执行：一块放变量，一块做计算。理解这两块结构，才算真正理解"字节码是怎么跑起来的"。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>局部变量表（Local Variable Table）</strong>是方法运行时私有的一块存储空间，存放方法参数和方法体内定义的局部变量。
+    <strong>操作数栈（Operand Stack）</strong>是一个后入先出（LIFO）的栈，字节码指令通过对它做<strong>入栈 / 出栈</strong>操作来完成实际的计算。
+    这两块结构都位于方法对应的<strong>栈帧（Stack Frame）</strong>之中，随着方法调用而创建，随方法结束而销毁。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>局部变量表像是工作台上摆放整齐、按编号取用的原料格子；操作数栈则是台面中央那块"正在加工"的空地——原料从格子里被取出放到台面上（入栈），加工完的半成品再放回格子（出栈存储）。所有计算都必须先把数据搬到这块空地上才能进行。
+  </div>
+
+  <!-- 2. 局部变量表：slot -->
+  <h2>局部变量表：以 Slot 为单位</h2>
+  <p>
+    局部变量表以<strong>变量槽（Variable Slot）</strong>为最小单位。32 位以内的数据类型（<code>int</code>、<code>float</code>、<code>reference</code>、<code>returnAddress</code> 等）占用 <strong>1 个 slot</strong>；
+    64 位的 <code>long</code> 和 <code>double</code> 占用 <strong>2 个连续 slot</strong>。
+  </p>
+  <p>
+    实例方法的 slot 0 固定存放 <code>this</code>（对当前实例的隐式引用），之后依次是方法参数，再之后才是方法体内声明的局部变量；<code>static</code> 方法没有 <code>this</code>，参数直接从 slot 0 开始排。
+  </p>
+
+  <!-- 3. 例子：字节码走一遍 -->
+  <h2>原理走一遍：一个加法方法的字节码</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>Calc.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Calc</span> <span class="punct">{</span>
+    <span class="kw">public int</span> <span class="fn">calc</span><span class="punct">(</span><span class="ty">int</span> <span class="var">a</span><span class="punct">,</span> <span class="ty">int</span> <span class="var">b</span><span class="punct">) {</span>
+        <span class="kw">int</span> <span class="var">c</span> <span class="punct">=</span> <span class="var">a</span> <span class="punct">+</span> <span class="var">b</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="var">c</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>用 <code>javap -c</code> 反编译后，局部变量表分配是 <strong>slot0=this，slot1=a，slot2=b，slot3=c</strong>；对应的字节码大致如下：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>javap -c 反编译结果（简化）</span></div>
+    <pre><span class="num">0</span><span class="punct">:</span> iload_1        <span class="com">// 把 slot1(a) 的值压入操作数栈</span>
+<span class="num">1</span><span class="punct">:</span> iload_2        <span class="com">// 把 slot2(b) 的值压入操作数栈</span>
+<span class="num">2</span><span class="punct">:</span> iadd           <span class="com">// 弹出栈顶两个数，相加，结果压回栈顶</span>
+<span class="num">3</span><span class="punct">:</span> istore_3       <span class="com">// 弹出栈顶结果，存入 slot3(c)</span>
+<span class="num">4</span><span class="punct">:</span> iload_3        <span class="com">// 把 slot3(c) 的值压入操作数栈</span>
+<span class="num">5</span><span class="punct">:</span> ireturn        <span class="com">// 弹出栈顶值作为方法返回值</span></pre>
+  </div>
+
+  <p>操作数栈的变化过程（栈底在左，栈顶在右）：</p>
+  <div class="tree">
+    <span class="hi">iload_1</span>&nbsp;&nbsp;→ 操作数栈: [a]<br>
+    <span class="hi">iload_2</span>&nbsp;&nbsp;→ 操作数栈: [a, b]<br>
+    <span class="hi">iadd</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ 弹出 a、b，压入 a+b → 操作数栈: [a+b]<br>
+    <span class="hi">istore_3</span> → 弹出栈顶存入 slot3(c) → 操作数栈: []<br>
+    <span class="hi">iload_3</span>&nbsp;&nbsp;→ 操作数栈: [c]<br>
+    <span class="hi">ireturn</span>&nbsp;&nbsp;→ 弹出 c 作为返回值 → 操作数栈: []
+  </div>
+  <p>这就是"字节码本质上是一套以栈为核心的指令集"最直观的体现——几乎所有计算指令都遵循"从操作数栈取数据、算完再压回去"的模式。</p>
+
+  <!-- 4. 对比 -->
+  <h2>局部变量表 vs 操作数栈</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>局部变量表</th><th>操作数栈</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>存取方式</td>
+        <td>按索引（slot 编号）随机存取，如 <code>iload_1</code></td>
+        <td>只能操作栈顶，先入后出</td>
+      </tr>
+      <tr>
+        <td>用途</td>
+        <td>保存方法参数、局部变量的"当前值"</td>
+        <td>作为指令执行过程中的临时工作区</td>
+      </tr>
+      <tr>
+        <td>大小确定时机</td>
+        <td>编译期确定，写入 Code 属性的 <code>max_locals</code></td>
+        <td>编译期确定，写入 Code 属性的 <code>max_stack</code></td>
+      </tr>
+      <tr>
+        <td>是否包含 this</td>
+        <td>实例方法的 slot0 是 this</td>
+        <td>无此概念</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. 坑 -->
+  <h2>常见坑 &amp; 面试高频考点</h2>
+
+  <div class="callout warn">
+    <strong>坑 1：栈帧所需内存在编译期就已经固定。</strong>
+    <code>max_locals</code> 和 <code>max_stack</code> 是 javac 编译时静态计算好、写死在 Class 文件 Code 属性里的，虚拟机据此一次性分配栈帧空间，运行期不会因为"这次调用变量多一点"就动态扩容。这一点和 Java 对象在堆上运行时动态分配形成鲜明对比。
+  </div>
+
+  <p><strong>坑 2：long / double 的 slot 索引会"跳号"。</strong> 一旦方法里出现了 <code>long</code> 或 <code>double</code> 类型的参数/变量，后续变量的 slot 编号会跳过一位，手工分析字节码时很容易数错索引。</p>
+
+  <p><strong>坑 3：局部变量没有默认值。</strong> 成员变量（字段）在对象创建时会被赋予默认值（如 <code>int</code> 默认 0），但局部变量表中的 slot 不会自动清零或赋默认值——如果代码路径上存在"声明了但没赋值就使用"的情况，会在编译期就被 javac 拒绝，这是字节码校验（Verifier）阶段保证运行安全的体现之一。</p>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>局部变量表</strong>负责"存"：按 slot 索引存放方法参数和局部变量，编译期确定大小。</li>
+    <li><strong>操作数栈</strong>负责"算"：一切运算都是"弹出操作数 → 计算 → 压回结果"的循环。</li>
+    <li>字节码指令的本质就是围绕这两块结构做"取数、算数、存数"，理解这个模型就理解了字节码执行的基本节奏。</li>
+    <li>栈帧里其实还有第三块重要结构——指向运行时常量池的方法引用，它是下一篇"动态链接"的主角。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../classloading/07-打破双亲委派的场景.html" class="nav-btn">← 打破双亲委派的场景</a>
+    <a href="./02-动态链接.html" class="nav-btn next">动态链接 →</a>
+  </div>
+
+</div>
+</body>
+</html>

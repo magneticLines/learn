@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>本地方法栈 — JVM 内存区域</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 内存区域与溢出 / 本地方法栈
+  </div>
+
+  <div class="hero">
+    <div class="tag">内存区域与溢出</div>
+    <h1>本地方法栈</h1>
+    <p>Java 虚拟机栈服务 Java 方法，本地方法栈服务的是那些"跳出 Java 世界"直接调用 C/C++ 代码的方法。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>本地方法栈（Native Method Stack）</strong>的作用与虚拟机栈非常相似，区别在于：虚拟机栈为虚拟机执行 <strong>Java 方法（字节码）</strong>服务，
+    而本地方法栈为虚拟机使用到的 <strong>native 方法</strong>服务——这些方法不是用 Java 写的，而是通过 <strong>JNI（Java Native Interface）</strong>调用的 C/C++ 等本地代码。
+  </p>
+
+  <div class="callout info">
+    <strong>什么时候会用到 native 方法？</strong>比如 <code>Object.hashCode()</code>、<code>System.arraycopy()</code>、文件 IO、线程的底层调度等，很多 JDK 核心能力最终都要下沉到操作系统层面，这一层交接就是靠 native 方法完成的。
+  </div>
+
+  <h2>为什么 HotSpot 把它和虚拟机栈合并了？</h2>
+  <p>
+    《Java 虚拟机规范》对本地方法栈中方法使用的语言、使用方式与数据结构并没有强制规定，虚拟机可以自由实现。
+    <strong>HotSpot 虚拟机直接选择把本地方法栈和 Java 虚拟机栈合二为一</strong>——也就是说在 HotSpot 里，你不需要把它当成一个完全独立的内存区域来理解，它们在实现层面共用一套栈机制。
+  </p>
+  <p>
+    这也是为什么《深入理解 Java 虚拟机》里对本地方法栈只是简要带过：它更多是规范上的一个"占位概念"，具体实现取决于虚拟机厂商。理解到"native 方法调用也需要一个栈来管理调用帧"这个层面即可，不需要深入展开。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>服务对象不同：</strong>虚拟机栈服务 Java 方法，本地方法栈服务 native 方法。</li>
+    <li><strong>规范不强制实现方式：</strong>虚拟机厂商可以自由决定如何实现，HotSpot 选择与虚拟机栈合并。</li>
+    <li>和虚拟机栈一样，本地方法栈也会因为深度过大抛 <code>StackOverflowError</code>，因为申请不到足够内存也可能抛 <code>OutOfMemoryError</code>——这一点在 HotSpot 里体现为和虚拟机栈共用的限制。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-Java虚拟机栈与栈帧.html" class="nav-btn">← Java 虚拟机栈与栈帧</a>
+    <a href="./04-堆Heap对象分配的主战场.html" class="nav-btn next">堆(Heap)——对象分配的主战场 →</a>
+  </div>
+
+</div>
+</body>
+</html>

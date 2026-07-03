@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分代收集理论 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / 分代收集理论
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>分代收集理论(Generational Collection)</h1>
+    <p>前面三篇讲了三种算法，各有取舍，谁都不是万能药。分代收集理论要解决的问题是：能不能针对不同"性格"的对象，各自用最适合它的算法？答案是可以，而且这正是现代 JVM 几乎所有收集器的设计基石。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    分代收集理论建立在两个经过大量实证观察得出的<strong>经验假说</strong>之上：
+  </p>
+  <ul>
+    <li><strong>弱分代假说（Weak Generational Hypothesis）：</strong>绝大多数对象都是<strong>朝生夕灭</strong>的——刚创建不久就变得不可达。</li>
+    <li><strong>强分代假说（Strong Generational Hypothesis）：</strong><strong>熬过越多次垃圾收集的对象，就越难以消亡。</strong>一个对象活得越久，它继续存活下去的概率就越高。</li>
+  </ul>
+  <p>
+    这两个假说不是理论推导出来的，而是对真实 Java 程序做大量统计后得出的规律。既然大多数对象"朝生夕灭"、少数对象"历久弥坚"，
+    那么把内存按对象"年龄"划分成不同的区域，让新对象和老对象分开处理，各自用最匹配它们存活率特征的算法，收益就会远大于"一刀切"用同一种算法处理所有对象。
+  </p>
+
+  <h2>把 memory 组学过的堆分区 和 04/05/06 篇的三种算法串起来</h2>
+  <div class="tree">
+    <span class="hi">Java 堆</span><br>
+    ├── <span class="hi">新生代（Young Generation）</span>　占比小，对象<strong>朝生夕灭</strong>（弱分代假说）<br>
+    │　　├── Eden　　　　　新对象优先在这里分配<br>
+    │　　├── Survivor From<br>
+    │　　└── Survivor To<br>
+    │　　→ <strong>存活率低</strong>，复制少量存活对象代价很小<br>
+    │　　→ 采用 <span class="hi">标记-复制算法</span>（05 篇），高效且不产生碎片<br>
+    │<br>
+    └── <span class="hi">老年代（Old Generation）</span>　占比大，装的是<strong>扛过多次 GC 的老对象</strong>（强分代假说）<br>
+    　　　→ <strong>存活率高</strong>，如果用标记-复制，绝大多数对象都要复制，代价过高<br>
+    　　　→ 采用 <span class="hi">标记-清除</span> 或 <span class="hi">标记-整理算法</span>（04 / 06 篇），不做无谓的复制
+  </div>
+
+  <p>
+    新生代对象活不过一次 Minor GC 是常态，所以标记-复制算法"复制少数存活对象、清空整块内存"的特点被最大化利用；
+    老年代对象已经证明了自己的"生命力"，标记-复制的复制代价太不划算，所以选用标记-清除（不移动，牺牲空间换效率，如 CMS）或标记-整理（移动，换取无碎片，如 Parallel Old）。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么要分代？" 标准答案不是背"新生代用复制、老年代用整理"这个结论，而是要讲清楚<strong>因果链</strong>：
+    弱/强分代假说 → 不同代对象存活率差异巨大 → 存活率低的适合标记-复制（代价和存活对象数成正比）、存活率高的适合标记-清除/整理（避免大量复制）→ 因此产生了分代这一综合方案。记住"为什么"，比记住"是什么"更容易在面试中讲清楚。
+  </div>
+
+  <h2>分代之后新出现的问题：跨代引用</h2>
+  <p>
+    分代收集把堆拆成了多个区域，但对象之间的引用关系并不会因为分区而消失——老年代对象完全可能引用新生代对象（比如一个长期存活的缓存对象引用了刚创建的临时数据）。
+    这带来一个新问题：<strong>只对新生代做 Minor GC 时，要不要把整个老年代也扫一遍，才能确认新生代对象是否可达？</strong>
+    如果每次 Minor GC 都要扫描整个老年代找 GC Roots，分代带来的效率优势就会被这个开销抵消。
+  </p>
+  <div class="callout info">
+    这个问题由<strong>记忆集（Remembered Set）和卡表（Card Table）</strong>技术解决——本质是在新生代之外维护一份"哪些老年代区域可能存在跨代引用"的记录，
+    Minor GC 时只需要扫描这份记录涉及的少量区域，而不用扫描整个老年代。这里先点到为止，后面讲 G1 收集器时会具体展开卡表的实现细节。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>分代收集理论建立在弱分代假说（大多数对象朝生夕灭）和强分代假说（活得越久越难死）这两个经验规律之上。</li>
+    <li>正是这两个假说，驱动了"新生代用标记-复制、老年代用标记-清除/整理"这个组合方案——本质是让算法的取舍去匹配对象的真实存活率特征。</li>
+    <li>分代不是免费的：拆分内存区域后引入了跨代引用问题，靠记忆集+卡表技术把扫描范围从"整个老年代"收窄到"少量可能存在跨代引用的区域"。</li>
+    <li>理解了这一篇，后面 Serial/ParNew（新生代）、CMS/Parallel Old（老年代）、G1（打破物理分代边界）等具体收集器的设计动机就都有了统一的解释框架。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-标记整理算法.html" class="nav-btn">← 标记-整理算法</a>
+    <a href="./08-SerialParNew收集器.html" class="nav-btn next">Serial / ParNew 收集器 →</a>
+  </div>
+
+</div>
+</body>
+</html>

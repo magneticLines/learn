@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>线程实现与协程简介 — JVM 并发基础回顾</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+    .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .tree { font-family: "Fira Code", Consolas, monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+    /* 主题色补丁 */
+    .tree .hi { color: #f87171; }
+    p code, li code { color: #f87171; }
+    h2 { color: #f87171; border-left-color: #f87171; }
+    .hero .tag { color: #f87171; border-color: #7f1d1d; }
+    .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 并发基础回顾 / 线程实现与协程简介
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">并发基础回顾</div>
+    <h1>线程实现与协程简介</h1>
+    <p>接上"进程 vs 线程"的结论，从虚拟机实现的角度补一句"Java 线程到底是怎么落地的"，再前瞻性认识一下协程与虚拟线程。</p>
+  </div>
+
+  <!-- 1. 回顾 -->
+  <h2>1. 先接上：02-并发模块已经讲过什么</h2>
+  <p>
+    <a href="../../02-并发/basics/05-进程vs线程.html">02-并发/basics/05-进程vs线程</a> 已经从操作系统资源模型的角度讲清楚了进程与线程的本质区别，
+    也提到了 HotSpot 采用 1:1 模型（Java 线程直接映射到 OS 内核线程）。本篇不重复这部分内容，只做两件事：
+    补一点"虚拟机层面为什么是 1:1"的实现视角，然后引出协程这个更前沿的话题。
+  </p>
+
+  <!-- 2. 线程实现模型 -->
+  <h2>2. 线程实现模型：1:1 / 1:N / M:N</h2>
+  <p>
+    《深入理解 Java 虚拟机》第 12 章从虚拟机实现的角度，把线程实现方式归纳为三种模型，Java 线程在主流虚拟机（HotSpot）上采用的正是最简单直接的<strong>一对一模型（1:1）</strong>：
+    每一个 Java 线程都直接映射为一条操作系统原生线程，线程的创建、销毁、调度全部委托给操作系统内核完成。
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>模型</th><th>说明</th><th>代表</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1:1（内核线程模型）</td>
+        <td>一个用户线程对应一个内核线程，由 OS 直接调度</td>
+        <td>HotSpot 的 <code>java.lang.Thread</code>（平台线程）</td>
+      </tr>
+      <tr>
+        <td>1:N（用户线程模型）</td>
+        <td>多个用户线程映射到一个内核线程，调度、切换全部在用户态完成，内核完全不知道线程的存在</td>
+        <td>早期部分语言运行时（历史方案，现代主流虚拟机已很少使用）</td>
+      </tr>
+      <tr>
+        <td>M:N（混合模型）</td>
+        <td>用户线程与内核线程数量不对等，通过少量内核线程复用调度多个用户线程</td>
+        <td>Go 的 goroutine、Java 19+ 虚拟线程</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>为什么 HotSpot 选 1:1 而不是 1:N？</strong>
+    1:N 模型下，一旦某个用户线程发起阻塞式系统调用，整个进程内所有映射在同一内核线程上的用户线程都会被一起阻塞，无法真正利用多核。
+    1:1 模型把这个问题交给操作系统内核解决，实现简单、可靠，代价是线程创建和上下文切换的开销都由内核承担（这也是后面协程要解决的问题）。
+  </div>
+
+  <!-- 3. 协程 -->
+  <h2>3. 协程：比线程更轻量的用户态调度单元</h2>
+  <p>
+    协程（Coroutine）本质上是 1:N / M:N 模型的现代复兴：它是运行在用户态、由程序自身（而非操作系统内核）调度的执行单元。
+    因为协程的创建和切换不需要陷入内核态、不需要保存/恢复完整的寄存器组和内核栈，所以成本比操作系统线程低一到两个数量级——
+    创建几十万个协程是常见操作，而创建几十万个 OS 线程几乎必然把系统压垮。
+  </p>
+
+  <!-- 4. 虚拟线程 -->
+  <h2>4. Java 19+ 虚拟线程：M:N 模型的现代实现</h2>
+  <p>
+    JDK 21 正式发布（19/20 预览）的<strong>虚拟线程（Virtual Thread，JEP 444）</strong>，正是 M:N 模型在 Java 生态里的落地：
+    大量虚拟线程复用少量操作系统"载体线程"（Carrier Thread），当虚拟线程执行阻塞式 I/O 时，JVM 会自动把它从载体线程上"卸下"，
+    让载体线程去执行其他虚拟线程，等 I/O 就绪后再把它"挂回"某个载体线程继续执行。
+  </p>
+
+  <div class="callout tip">
+    <strong>虚拟线程解决的问题，和响应式编程是同一个问题：</strong>
+    07-Spring 模块的 reactive 组讲过，响应式编程（如 WebFlux）用少量线程通过事件循环 + 回调链的方式处理海量并发请求，换来了高吞吐，
+    但代价是编程模型变得复杂（链式操作符、上下文丢失、调试困难）。虚拟线程提供了另一条更平滑的路径：
+    程序员依然按<strong>同步阻塞</strong>的直观方式写代码（该 <code>while</code> 就 <code>while</code>，该 <code>xxx.get()</code> 就 <code>xxx.get()</code>），
+    却能在 I/O 密集场景下获得接近异步非阻塞的吞吐量——复杂度被下沉到了 JVM 内部，而不是转嫁给业务代码。
+  </div>
+
+  <p>
+    这是一个前瞻性了解的内容，不需要在这里深入实践；只需要建立一个认知坐标：线程池调优、响应式编程、虚拟线程，
+    本质上都是在同一个问题（如何用有限的系统资源处理海量并发 I/O）上给出的不同答案，各自代价不同。
+  </p>
+
+  <!-- 小结 -->
+  <h2>小结</h2>
+  <ul>
+    <li>Java 线程在主流虚拟机上是 1:1 模型，直接映射到 OS 原生线程；历史上还存在 1:N 和 M:N 模型。</li>
+    <li>协程是比 OS 线程更轻量的用户态调度单元，创建和切换成本远低于线程。</li>
+    <li>Java 19+ 虚拟线程是 M:N 模型的现代实现，用同步阻塞的编程方式获得接近异步非阻塞的吞吐量，是响应式编程之外的另一条路径。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-Java内存模型回顾.html" class="nav-btn">← Java 内存模型回顾</a>
+    <a href="./03-锁优化技术回顾.html" class="nav-btn next">锁优化技术回顾 →</a>
+  </div>
+
+</div>
+</body>
+</html>

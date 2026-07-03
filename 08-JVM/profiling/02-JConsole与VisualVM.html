@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JConsole 与 VisualVM — 性能监控与调优</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 性能监控与调优 / JConsole 与 VisualVM
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">性能监控与调优</div>
+    <h1>JConsole 与 VisualVM</h1>
+    <p>上一篇的命令行工具只能拍"单次快照"，而图形化工具能画出一条连续的趋势曲线——很多问题（比如内存缓慢泄漏）只有看趋势才能发现。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    JConsole 和 VisualVM 都是基于 <strong>JMX（Java Management Extensions）</strong> 的图形化监控工具：JVM 内部本来就把内存、线程、类加载、GC 等运行时数据以 <strong>MBean（Managed Bean）</strong> 的形式暴露出来，这两个工具本质上是给这些 MBean 数据画了一层可视化界面，让你能<strong>持续观察趋势</strong>，而不是像 jstat/jmap 那样只能看某一个时间点的快照。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>jstat 像是拿体温计量一次体温，告诉你"现在是 38.5 度"；JConsole/VisualVM 像是戴上一块能画出体温曲线的手环，让你看到"过去两小时体温是怎么一步步升上来的"——趋势往往比单点数据更能定位问题根因。
+  </div>
+
+  <!-- 2. JConsole -->
+  <h2>JConsole：JDK 自带的轻量选择</h2>
+  <p>
+    JConsole 是 JDK 自带的图形化监控工具，位于 <code>$JAVA_HOME/bin/jconsole</code>，不需要额外安装。它能实时展示：
+  </p>
+  <ul>
+    <li><strong>内存（Memory）</strong>：堆内存、各分代（Eden/Survivor/OldGen/Metaspace）的使用趋势曲线，可以手动触发一次 GC 观察效果。</li>
+    <li><strong>线程（Threads）</strong>：线程数量趋势、线程列表及其堆栈，支持检测死锁（Detect Deadlock 按钮）。</li>
+    <li><strong>类（Classes）</strong>：已加载类的数量趋势——如果这个数字持续走高不回落，往往意味着有类加载器泄漏（常见于频繁热部署或动态代理滥用的场景）。</li>
+    <li><strong>MBean</strong>：可以查看和调用任意暴露出来的 MBean 属性/操作，包括应用自己注册的自定义 MBean。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端 — 启动 JConsole 并连接本地/远程进程</span></div>
+    <pre><span class="com"># 本地：直接启动后在弹窗里选择本机运行的 Java 进程即可</span>
+<span class="var">$</span> jconsole
+
+<span class="com"># 远程：目标 JVM 启动时需要开启 JMX 远程端口（生产环境务必配鉴权，避免暴露管理接口）</span>
+<span class="var">$</span> java -Dcom.sun.management.jmxremote.port=9999 \
+     -Dcom.sun.management.jmxremote.authenticate=false \
+     -Dcom.sun.management.jmxremote.ssl=false \
+     -jar app.jar
+
+<span class="com"># 在 JConsole 里选择"远程进程"，填 ip:port 即可连接</span></pre>
+  </div>
+
+  <!-- 3. VisualVM -->
+  <h2>VisualVM：功能更全面的一站式工具</h2>
+  <p>
+    VisualVM 曾经内置在 JDK 6~8 中（<code>jvisualvm</code>），JDK 9 之后独立成开源项目单独下载。相比 JConsole，它的优势在于：
+  </p>
+  <ul>
+    <li><strong>插件生态</strong>：Visual GC 插件能可视化各分代大小和 GC 事件的时间线，比 JConsole 的内存图更细致。</li>
+    <li><strong>堆转储分析</strong>：可以直接在界面里触发 <code>jmap -dump</code> 并打开分析——按类分组统计实例数量、大小，甚至能看某个对象的 GC Roots 引用链，省去了单独装 MAT 的步骤（复杂场景仍推荐专业的 MAT，见本组第 4 篇）。</li>
+    <li><strong>Profiler（性能分析）</strong>：内置 CPU 和内存 Profiler，支持<strong>采样（Sampling）</strong>和<strong>插桩（Instrumentation）</strong>两种模式——采样开销小但精度略低，插桩精度高但会显著拖慢目标程序，一般先用采样定位到可疑方法，再对局部用插桩精确分析。</li>
+    <li><strong>线程 Dump 可视化</strong>：把 jstack 的纯文本堆栈渲染成带颜色的时间线，一眼能看出哪些线程长期处于 BLOCKED/WAITING。</li>
+  </ul>
+
+  <div class="callout tip">
+    连接一个运行中的进程非常直接：打开 VisualVM，左侧 "Local" 节点下会自动列出本机所有 Java 进程（原理和 jps 一样，都是读 <code>hsperfdata</code>），双击即可打开监控面板；远程进程同样依赖 JMX，连接方式和 JConsole 一致。
+  </div>
+
+  <!-- 4. 对比表格 -->
+  <h2>工具选型对比</h2>
+  <table>
+    <thead>
+      <tr><th>工具</th><th>形态</th><th>优势场景</th><th>局限</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>jstat</code> / <code>jmap</code> / <code>jstack</code></td>
+        <td>命令行，单次快照</td>
+        <td>脚本化、自动化监控告警；无图形界面的服务器/容器环境</td>
+        <td>只能看某一时刻的数据，无法直观看趋势</td>
+      </tr>
+      <tr>
+        <td>JConsole</td>
+        <td>图形化，JDK 自带</td>
+        <td>快速查看内存/线程趋势，检测死锁，轻量无需额外安装</td>
+        <td>功能较基础，没有堆转储分析和 Profiling 能力</td>
+      </tr>
+      <tr>
+        <td>VisualVM</td>
+        <td>图形化，独立安装</td>
+        <td>一站式：趋势图 + 堆转储分析 + CPU/内存 Profiling + 插件扩展</td>
+        <td>功能全但相对重，深度堆分析仍不如专业的 MAT</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>坑：</strong>无论 JConsole 还是 VisualVM，只要开启了远程 JMX 端口且未配置鉴权，就相当于给了任何能访问该端口的人"读取甚至操作 JVM 内部状态"的权限——生产环境上这是一个真实存在的安全隐患，务必配置 <code>authenticate=true</code> 和密码文件，或者只在内网/跳板机环境下开放。
+  </div>
+
+  <!-- 5. 总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>JConsole/VisualVM 的数据来源是 JMX MBean，本质是把 JVM 已经暴露的运行时数据可视化，而不是发明了新的观测手段。</li>
+    <li>它们最大的价值是<strong>趋势观察</strong>：内存缓慢泄漏、线程数缓慢增长这类问题，单次快照很难发现，图形化趋势图一眼可见。</li>
+    <li>VisualVM 功能更全，适合作为日常开发调优的主力工具；JConsole 更轻量，适合快速看一眼。</li>
+    <li>但两者都是"侵入式连接"（需要建立 JMX 连接、可能触发额外开销），生产环境实时诊断的首选仍是下一篇要讲的 Arthas。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-jps-jstat-jmap-jstack速查.html" class="nav-btn">← jps / jstat / jmap / jstack 速查</a>
+    <a href="./03-Arthas实战.html" class="nav-btn next">Arthas 实战 →</a>
+  </div>
+
+</div>
+</body>
+</html>

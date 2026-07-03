@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Serial / ParNew 收集器 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / Serial / ParNew 收集器
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>Serial / ParNew 收集器</h1>
+    <p>理论讲完了，从这一篇开始看 HotSpot 真实提供的收集器实现。Serial 是最古老的一个——它简单到近乎"原始"，却也因此成为理解一切后续收集器的最佳起点。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>Serial</strong> 是最古老、最简单的新生代收集器：<strong>单线程</strong>工作，进行垃圾收集时必须暂停所有其他用户线程（Stop The World），
+    直到它收集结束。<strong>ParNew</strong> 是 Serial 的多线程并行版本——底层算法（标记-复制）完全一样，唯一区别是用<strong>多条 GC 线程</strong>同时进行收集工作，从而缩短停顿时间。
+  </p>
+
+  <h2>Serial：单线程为什么还能存在</h2>
+  <p>
+    "单线程还要 STW"听起来像是缺点，但 Serial 恰恰是 Client 模式下（内存较小、CPU 核心数少的场景）表现最好的收集器之一，原因是：
+  </p>
+  <ul>
+    <li><strong>没有线程交互开销：</strong>多线程收集需要线程创建、切换、同步等额外开销，在单核或双核环境下这些开销反而可能超过并行带来的收益。</li>
+    <li><strong>简单高效：</strong>没有线程管理的复杂度，专心做一件事，在小内存场景下停顿时间本身也很短。</li>
+  </ul>
+
+  <div class="tree">
+    <span class="hi">Serial 收集器工作流程</span><br>
+    用户线程运行中 ...<br>
+    &nbsp;&nbsp;→ Eden 区满，触发 Minor GC<br>
+    &nbsp;&nbsp;→ <span class="hi">Stop The World</span>：所有用户线程暂停<br>
+    &nbsp;&nbsp;→ 单条 GC 线程执行标记-复制算法<br>
+    &nbsp;&nbsp;→ 收集完成，恢复用户线程<br>
+    （老年代对应 Serial Old，采用标记-整理算法，同样单线程 + STW）
+  </div>
+
+  <h2>ParNew：把"单线程"换成"多线程"</h2>
+  <p>
+    ParNew 除了收集时使用多条线程之外，其余行为（收集算法、Stop The World、对象分配规则等）与 Serial 完全一致，某种意义上可以把它理解成"Serial 的多线程翻版"。
+    在多核 CPU 环境下，ParNew 能利用多核并行的优势，比 Serial 更快地完成一次收集，从而缩短停顿时间。
+  </p>
+
+  <div class="tree">
+    <span class="hi">ParNew 收集器工作流程</span><br>
+    用户线程运行中 ...<br>
+    &nbsp;&nbsp;→ Eden 区满，触发 Minor GC<br>
+    &nbsp;&nbsp;→ <span class="hi">Stop The World</span>：所有用户线程暂停<br>
+    &nbsp;&nbsp;→ <span class="hi">多条</span> GC 线程并行执行标记-复制算法<br>
+    &nbsp;&nbsp;→ 收集完成，恢复用户线程<br>
+    → 停顿窗口仍然存在（依然是 STW），但停顿<span class="hi">时长通常更短</span>
+  </div>
+
+  <div class="callout warn">
+    <strong>关键概念辨析（面试高频）：并行（Parallel）≠ 并发（Concurrent）</strong>
+    <ul style="margin-top:6px;">
+      <li><strong>并行（Parallel）：</strong>特指多条<strong>垃圾收集线程</strong>之间同时工作，但用户线程仍然处于暂停状态。ParNew、Parallel Scavenge、Parallel Old 都是"并行"收集器。</li>
+      <li><strong>并发（Concurrent）：</strong>特指<strong>垃圾收集线程和用户线程</strong>同时工作（用户程序在继续运行，收集程序在另一个 CPU 上同步执行）。CMS、G1 部分阶段属于"并发"。</li>
+    </ul>
+    这个区分是理解下一篇 CMS 收集器"为什么特殊"的前提——CMS 是第一款真正做到收集线程与用户线程基本同时工作的收集器。
+  </div>
+
+  <h2>Serial / ParNew 对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>Serial</th><th>ParNew</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>工作线程数</td>
+        <td>单线程</td>
+        <td>多线程（并行）</td>
+      </tr>
+      <tr>
+        <td>回收算法</td>
+        <td>标记-复制（新生代）</td>
+        <td>标记-复制（新生代），与 Serial 相同</td>
+      </tr>
+      <tr>
+        <td>是否 STW</td>
+        <td>是</td>
+        <td>是</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>单核/低核数环境、内存较小的 Client 模式</td>
+        <td>多核环境，且常与 CMS 搭配作为其新生代收集器</td>
+      </tr>
+      <tr>
+        <td>能否搭配 CMS</td>
+        <td>不能（CMS 只能与 ParNew 或 Serial 配合，实际几乎只用 ParNew）</td>
+        <td>能，长期是 CMS 官方推荐的新生代搭档</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Serial 收集器为什么现在还没被淘汰？" 因为在<strong>单核 CPU</strong>或者<strong>内存很小</strong>的场景下（比如某些嵌入式/客户端应用），多线程带来的线程切换开销可能比省下的收集时间还多，此时简单的单线程 Serial 反而是最优解。这提醒我们：没有绝对过时的算法/收集器，只有不匹配的应用场景。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>Serial 是最简单的新生代收集器，单线程 + STW，适合核数少、内存小的场景，是理解其他收集器的基准线。</li>
+    <li>ParNew 是 Serial 的并行版本，算法不变，只是用多条 GC 线程同时工作以缩短停顿时间。</li>
+    <li>必须分清"并行"（多条 GC 线程同时干活，用户线程仍暂停）和"并发"（GC 线程和用户线程同时干活）这两个概念，这是后面理解 CMS/G1 的前提。</li>
+    <li>ParNew 长期是 CMS 收集器唯一广泛使用的新生代搭档，理解它是理解 CMS 组合工作模式的基础。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./07-分代收集理论.html" class="nav-btn">← 分代收集理论</a>
+    <a href="./09-ParallelScavenge与ParallelOld.html" class="nav-btn next">Parallel Scavenge / Parallel Old →</a>
+  </div>
+
+</div>
+</body>
+</html>

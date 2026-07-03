@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CPU 飙高排查思路 — 性能监控与调优</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 性能监控与调优 / CPU 飙高排查思路
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">性能监控与调优</div>
+    <h1>CPU 飙高排查思路</h1>
+    <p>"top 找进程 → top -Hp 找线程 → 转十六进制 → jstack 对号入座"，四步串联，是 Java 圈里排查 CPU 飙高最通用的套路。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    CPU 飙高的本质是<strong>某个（或某几个）线程在疯狂执行代码而不是在等待</strong>（等锁、等 IO 都不占 CPU）。排查思路就是层层缩小范围：先从<strong>全部进程</strong>里找到 CPU 高的那个 Java 进程，再从<strong>进程内所有线程</strong>里找到 CPU 高的那几个线程，最后用 <code>jstack</code> 把这个线程 ID 对应到<strong>具体在执行哪一行代码</strong>。
+  </p>
+  <div class="callout info">
+    这条排查链之所以能走通，关键在于 Linux 下<strong>操作系统的线程和 JVM 的线程是一一对应的</strong>（Java 线程模型基于原生线程实现，一个 Java 线程对应一个内核级 <code>LWP</code>（轻量级进程）——所以 <code>top -H</code> 看到的线程 tid，和 <code>jstack</code> 输出里的 <code>nid</code>（native id）指向的是同一个操作系统线程，两者才能对上号。
+  </div>
+
+  <!-- 2. 完整流程 -->
+  <h2>完整排查流程</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端 — 完整命令串联</span></div>
+    <pre><span class="com"># ① top 找到 CPU 占用最高的 Java 进程 pid</span>
+<span class="var">$</span> top
+  PID  USER  %CPU  %MEM  COMMAND
+<span class="num">12580</span> app   <span class="num">385</span>.0  <span class="num">12</span>.3  java
+<span class="com">#                    ↑ 注意：多核机器上超过 100% 是正常的（385% 约等于占满近 4 个核）</span>
+
+<span class="com"># ② top -Hp pid：在这个进程内部，按线程维度看 CPU 占用</span>
+<span class="var">$</span> top -Hp 12580
+  PID  USER  %CPU  %MEM  COMMAND
+<span class="num">12699</span> app   <span class="num">98</span>.5  <span class="num">12</span>.3  java   <span class="com"># 这个线程 tid=12699，几乎跑满一个核，重点嫌疑对象</span>
+<span class="num">12700</span> app   <span class="num">2</span>.1   <span class="num">12</span>.3  java
+
+<span class="com"># ③ 把线程 id 转成十六进制（jstack 输出的 nid 是十六进制）</span>
+<span class="var">$</span> printf <span class="str">"%x\n"</span> 12699
+<span class="num">319b</span>
+
+<span class="com"># ④ jstack 导出全部线程栈，用十六进制 nid 定位到具体线程</span>
+<span class="var">$</span> jstack 12580 | grep <span class="str">"nid=0x319b"</span> -A 20
+<span class="str">"pool-3-thread-7"</span> #52 prio=5 os_prio=0 tid=0x... nid=0x319b <span class="ty">runnable</span> [0x...]
+   java.lang.Thread.State: <span class="ty">RUNNABLE</span>
+	at com.supernovacompanies.ccc.util.RetryHelper.retryLoop(RetryHelper.java:88)
+	at com.supernovacompanies.ccc.service.SyncService.pull(SyncService.java:34)
+	<span class="com"># 定位到：RetryHelper.retryLoop 在第 88 行死循环空转</span></pre>
+  </div>
+
+  <p>看到 <code>nid=0x319b</code> 且线程状态是 <code>RUNNABLE</code>，堆栈稳定停在同一段业务代码（多采几次样确认不是正常的短暂计算），就可以断定：<strong>问题代码就是 <code>RetryHelper.retryLoop</code> 第 88 行附近</strong>，接下来直接去看这段逻辑是不是缺少退出条件、或者重试间隔为 0 导致死循环空转。</p>
+
+  <div class="callout tip">
+    实战中更快的方式是用 Arthas 的 <code>thread -n 3</code> 命令——它会自动帮你完成"找 CPU 最高的几个线程 + 打印堆栈"这一整套动作，不用再手动 <code>top -Hp</code> + <code>printf</code> 转换，一条命令搞定。
+  </div>
+
+  <!-- 3. 排查中的干扰项 -->
+  <h2>排查时要排除的干扰项</h2>
+  <table>
+    <thead>
+      <tr><th>现象</th><th>容易误判为</th><th>如何区分</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>大量线程状态是 <code>BLOCKED</code></td>
+        <td>CPU 飙高</td>
+        <td><code>BLOCKED</code>（等锁）不占 CPU，反而是<strong>吞吐下降</strong>的表现；CPU 飙高对应的是 <code>RUNNABLE</code> 且真的在跑代码的线程</td>
+      </tr>
+      <tr>
+        <td>频繁 Full GC 导致 CPU 高</td>
+        <td>业务代码死循环</td>
+        <td>用 <code>jstack</code> 或 <code>top -Hp</code> 定位到高 CPU 线程后，如果线程名类似 <code>GC Thread</code>/<code>G1 Young RemSet Sampling</code>，说明是垃圾收集器本身在忙，需要回头看 GC 日志（见本组第 6 篇）而不是业务代码</td>
+      </tr>
+      <tr>
+        <td>短暂的 CPU 毛刺（几秒后自愈）</td>
+        <td>持续性问题</td>
+        <td>正常的批处理任务、JIT 编译预热都会造成短暂 CPU 高，只有<strong>持续不降</strong>才需要认真排查</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>坑：</strong>容器化环境（Docker/K8s）里，容器内看到的 pid 和宿主机看到的 pid 不是一回事——如果在宿主机上 <code>top</code> 看到的 pid 是宿主机命名空间下的编号，需要用 <code>docker top &lt;container&gt;</code> 或者直接进入容器网络/PID 命名空间执行 jstack，否则会出现"pid 对不上"或者"attach 失败"的问题。
+  </div>
+
+  <!-- 4. 总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>整套排查依赖一个前提：<strong>Java 线程和操作系统线程一一对应</strong>，才能把 <code>top -Hp</code> 的 tid 和 <code>jstack</code> 的 nid 对上号。</li>
+    <li>四步口诀：<strong>top 找进程 → top -Hp 找线程 → printf 转十六进制 → jstack 对号入座</strong>，是最基础也最通用的排查手段，脱离任何图形化工具也能在纯命令行的服务器上完成。</li>
+    <li>排查前先排除干扰项：区分是业务代码死循环，还是 GC 线程本身在忙，还是短暂的正常毛刺。</li>
+    <li>Arthas 的 <code>thread -n N</code> 命令把这一整套流程自动化了，日常排查优先用它，纯命令行流程作为兜底和原理理解的基础。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-内存泄漏排查思路.html" class="nav-btn">← 内存泄漏排查思路</a>
+    <a href="./06-GC日志分析与常用调优参数.html" class="nav-btn next">GC 日志分析与常用调优参数 →</a>
+  </div>
+
+</div>
+</body>
+</html>

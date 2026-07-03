@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>逃逸分析与栈上分配(进阶) — 编译与优化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #831843; }
+  .nav-btn.next { color: #f472b6; border-color: #831843; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 编译与优化 / 逃逸分析与栈上分配(进阶)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">编译与优化</div>
+    <h1>逃逸分析与栈上分配(进阶)</h1>
+    <p>memory 组讲过"堆是对象分配的主战场"——但如果编译器能证明一个对象"走不出"这个方法，它完全可以不劳烦堆和 GC。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>逃逸分析（Escape Analysis）</strong>是一种编译期优化技术：JIT 编译器分析一个对象的<strong>作用域</strong>，
+    判断它是否会"逃逸"出当前方法——比如被 <code>return</code> 返回、被赋值给成员变量/静态变量、被传给其他线程访问。
+    如果编译器能确定<strong>这个对象绝对不会逃逸</strong>，就可以大胆做几种"堆分配"之外的激进优化，而不用担心破坏程序语义。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>你在自己家厨房（方法内部）用完即扔的一次性筷子（局部对象），只要这双筷子全程没有被带出家门（没有逃逸），根本不需要交给市政垃圾车（GC）统一处理——你完全可以厨房内部自行处理掉，甚至压根不用真的"造"出一双筷子实体，直接用手抓（标量替换）。
+  </div>
+
+  <!-- 2. 不逃逸的例子 -->
+  <h2>例子：一个不逃逸的局部对象</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>EscapeAnalysisDemo.java</span></div>
+    <pre><span class="kw">public</span> <span class="kw">int</span> <span class="fn">calcDistance</span><span class="punct">(</span><span class="kw">int</span> <span class="var">x1</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">y1</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">x2</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">y2</span><span class="punct">) {</span>
+    <span class="com">// Point 对象只在方法内部被创建、使用，用完就没人再引用它了
+    // 它既没有被 return 出去，也没有赋值给字段或静态变量，也没有传给其他线程
+    // → 编译器可以确定它"不逃逸"</span>
+    <span class="ty">Point</span> <span class="var">p</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Point</span><span class="punct">(</span><span class="var">x1</span><span class="punct">,</span> <span class="var">y1</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="ty">Math</span><span class="punct">.</span><span class="fn">abs</span><span class="punct">(</span><span class="var">p</span><span class="punct">.</span><span class="var">x</span> <span class="punct">-</span> <span class="var">x2</span><span class="punct">)</span> <span class="punct">+</span> <span class="ty">Math</span><span class="punct">.</span><span class="fn">abs</span><span class="punct">(</span><span class="var">p</span><span class="punct">.</span><span class="var">y</span> <span class="punct">-</span> <span class="var">y2</span><span class="punct">);</span>
+<span class="punct">}</span>
+
+<span class="com">// 反例：如果把 p 返回出去，或赋给一个字段，它就"逃逸"了，无法再做下面的优化</span>
+<span class="kw">private</span> <span class="ty">Point</span> <span class="var">cachedPoint</span><span class="punct">;</span>
+<span class="kw">public</span> <span class="ty">Point</span> <span class="fn">calcAndCache</span><span class="punct">(</span><span class="kw">int</span> <span class="var">x</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">y</span><span class="punct">) {</span>
+    <span class="ty">Point</span> <span class="var">p</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Point</span><span class="punct">(</span><span class="var">x</span><span class="punct">,</span> <span class="var">y</span><span class="punct">);</span>
+    <span class="kw">this</span><span class="punct">.</span><span class="var">cachedPoint</span> <span class="punct">=</span> <span class="var">p</span><span class="punct">;</span>  <span class="com">// 赋值给成员变量 → 逃逸了，必须老老实实在堆上分配</span>
+    <span class="kw">return</span> <span class="var">p</span><span class="punct">;</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 3. 三种优化手段 -->
+  <h2>不逃逸之后能做哪三件事</h2>
+  <p>一旦编译器确认对象不逃逸，就打开了三扇优化的门：</p>
+
+  <div class="tree">
+    <span class="hi">① 栈上分配（Stack Allocation）</span><br>
+    &nbsp;&nbsp;把原本要在堆上分配的对象，直接分配在<span class="hi">当前方法的栈帧</span>里<br>
+    &nbsp;&nbsp;方法执行完、栈帧弹出，对象随之自动销毁，<span class="hi">完全不需要 GC 介入</span><br>
+    &nbsp;&nbsp;→ 减轻堆的分配压力和 GC 的回收压力，这是对 memory 组"堆是分配主战场"结论的一个重要例外<br>
+    <br>
+    <span class="hi">② 标量替换（Scalar Replacement）</span><br>
+    &nbsp;&nbsp;把对象"打散"成它内部的基本类型字段（标量），直接以局部变量的形式存在<br>
+    &nbsp;&nbsp;→ 连对象本身都<span class="hi">不创建</span>了，字段直接存在栈帧的局部变量表/寄存器里<br>
+    &nbsp;&nbsp;例：Point p 拆成两个独立的 int 变量 p_x、p_y，对象头开销都省了<br>
+    <br>
+    <span class="hi">③ 锁消除（Lock Elimination）</span><br>
+    &nbsp;&nbsp;如果确定某个对象只会被<span class="hi">当前一个线程</span>访问，那么它身上的 synchronized 同步操作是多余的<br>
+    &nbsp;&nbsp;→ 编译器直接把这把锁的加锁/解锁指令<span class="hi">消除掉</span>，节省同步开销<br>
+    &nbsp;&nbsp;呼应 02-并发模块讲过的锁优化：这是锁优化家族里"发生在编译期"的一种手段
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>锁消除的经典场景：StringBuffer 局部变量</span></div>
+    <pre><span class="kw">public</span> <span class="ty">String</span> <span class="fn">concat</span><span class="punct">(</span><span class="ty">String</span> <span class="var">a</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">b</span><span class="punct">) {</span>
+    <span class="com">// StringBuffer 的 append 方法内部有 synchronized，
+    // 但 sb 只是一个局部变量，不可能被其他线程访问到
+    // 逃逸分析确定 sb 不逃逸 → JIT 直接消除掉 append() 内部的加锁操作</span>
+    <span class="ty">StringBuffer</span> <span class="var">sb</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">StringBuffer</span><span class="punct">();</span>
+    <span class="var">sb</span><span class="punct">.</span><span class="fn">append</span><span class="punct">(</span><span class="var">a</span><span class="punct">).</span><span class="fn">append</span><span class="punct">(</span><span class="var">b</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="var">sb</span><span class="punct">.</span><span class="fn">toString</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 4. 对比表 -->
+  <h2>对比：常规堆分配 vs 逃逸分析优化后</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>常规情况（对象逃逸）</th><th>逃逸分析优化后（对象不逃逸）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>分配位置</strong></td>
+        <td>堆（Heap），由垃圾收集器统一管理</td>
+        <td>栈帧内部，甚至直接拆解为局部变量/寄存器</td>
+      </tr>
+      <tr>
+        <td><strong>回收方式</strong></td>
+        <td>依赖 GC 扫描回收，增加 GC 停顿和吞吐压力</td>
+        <td>随栈帧出栈自动销毁，零 GC 参与</td>
+      </tr>
+      <tr>
+        <td><strong>同步锁</strong></td>
+        <td>synchronized 正常加锁/解锁</td>
+        <td>如果只被单线程访问，锁可被直接消除</td>
+      </tr>
+      <tr>
+        <td><strong>触发条件</strong></td>
+        <td>-</td>
+        <td>需要 JIT 编译介入(方法必须先被判定为热点，见上一节)，解释执行阶段不会做这个分析</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. 常见坑 -->
+  <h2>常见误区 / 面试高频</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"逃逸分析已经很成熟，所以 Java 对象创建不用担心性能"——这是过度乐观的说法。逃逸分析只在对象<strong>被 JIT 编译到的热点方法</strong>里、且能<strong>静态确定不逃逸</strong>时才生效；一旦对象被存进集合、被多线程共享、或者方法本身太复杂导致编译器无法准确分析（分析本身也有成本，过于复杂的方法可能直接放弃分析），这些优化统统不会发生，对象依然老老实实地进堆。<strong>不能把逃逸分析当成"不用关心对象创建性能"的免死金牌</strong>，只是它在合适场景下能提供意外的加成。
+  </div>
+
+  <!-- 6. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>逃逸分析：</strong>判断对象作用域是否会跑出方法，是栈上分配、标量替换、锁消除这三种优化共同的前提条件。</li>
+    <li><strong>栈上分配：</strong>不逃逸的对象可以分配在栈帧内，随方法返回自动销毁，减轻堆和 GC 的压力，是"堆是分配主战场"这一结论的重要例外。</li>
+    <li><strong>标量替换：</strong>更进一步——对象都不用创建了，直接把字段打散成局部变量存放，连栈上分配的开销都省了。</li>
+    <li><strong>锁消除：</strong>确定只被单线程访问的对象，其 synchronized 同步操作会被直接消除，呼应 02-并发模块讲过的锁优化技术。</li>
+    <li>这几种优化都发生在 JIT 编译阶段，而且只对已经被判定为"热点"的代码生效——下一节讲的方法内联，则是这些优化能够生效的重要前提之一(内联把调用方和被调用方的代码合并，逃逸分析才能看到更完整的对象生命周期)。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-热点探测与JIT编译.html" class="nav-btn">← 热点探测与 JIT 编译</a>
+    <a href="./07-方法内联.html" class="nav-btn next">方法内联(进阶) →</a>
+  </div>
+
+</div>
+</body>
+</html>

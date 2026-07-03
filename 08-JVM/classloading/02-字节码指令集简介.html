@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>字节码指令集简介 — 类加载机制</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 类加载机制 / 字节码指令集简介
+  </div>
+
+  <div class="hero">
+    <div class="tag">类加载机制</div>
+    <h1>字节码指令集简介</h1>
+    <p>方法表里那段真正会被执行的二进制——字节码，本质上是一套基于"操作数栈"的指令集架构。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>字节码指令由一个字节的操作码（opcode）+ 紧随其后的若干操作数组成。</strong>
+    "一个字节"意味着理论上最多只能有 256 条指令（实际已用了约 200 个），这是早期设计者在"指令丰富度"和"文件紧凑度"之间做的权衡——牺牲一部分表达力，换来更小的 Class 文件体积和更简单的解释执行逻辑。
+  </p>
+
+  <h2>动手看一眼：javap -c 反编译</h2>
+  <p>写一个最简单的加法方法，编译后用 <code>javap -c</code> 查看它对应的字节码：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Add.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Add</span> <span class="punct">{</span>
+    <span class="kw">public</span> <span class="kw">int</span> <span class="fn">add</span><span class="punct">(</span><span class="kw">int</span> <span class="var">a</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">b</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">a</span> <span class="punct">+</span> <span class="var">b</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>命令行：javac Add.java && javap -c Add</span></div>
+    <pre><span class="com">public int add(int, int);</span>
+    <span class="com">Code:</span>
+       0: iload_1        <span class="com">// 把局部变量表 1 号槽位(参数 a)的 int 值压入操作数栈</span>
+       1: iload_2        <span class="com">// 把局部变量表 2 号槽位(参数 b)的 int 值压入操作数栈</span>
+       2: iadd           <span class="com">// 弹出栈顶两个 int，相加，结果压回栈顶</span>
+       3: ireturn        <span class="com">// 弹出栈顶 int 作为方法返回值</span></pre>
+  </div>
+
+  <p>
+    <code>iload_1</code>、<code>iload_2</code>、<code>iadd</code>、<code>ireturn</code> 就是四条字节码指令。每一条指令名字前缀的 <code>i</code> 都表示"操作的是 int 类型"——这是字节码指令的一个设计特点：很多指令按数据类型区分（<code>i</code> 表示 int、<code>l</code> 表示 long、<code>f</code> 表示 float、<code>d</code> 表示 double、<code>a</code> 表示引用类型），这样虚拟机执行时不需要额外判断类型，指令本身就自带了类型信息。
+  </p>
+
+  <h2>核心认知：基于操作数栈，而不是基于寄存器</h2>
+  <p>
+    日常接触的 x86、ARM 等物理 CPU 大多是<strong>基于寄存器</strong>的架构：运算前先要把数据加载到几个命名寄存器（如 <code>eax</code>、<code>ebx</code>）里，指令直接对寄存器操作。
+    而 JVM 字节码是<strong>基于操作数栈</strong>的架构：没有寄存器的概念，所有运算都是"从栈里弹出数据、算完再压回栈"，上面 <code>iadd</code> 那一步就是典型例子。
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th>基于操作数栈（JVM 字节码）</th><th>基于寄存器（x86/ARM 等物理 CPU）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>指令如何取数据</td>
+        <td>隐式从栈顶弹出/压入</td>
+        <td>显式指定某个寄存器</td>
+      </tr>
+      <tr>
+        <td>指令长度</td>
+        <td>更短更紧凑（不需要编码寄存器编号）</td>
+        <td>需要额外字节编码操作的是哪个寄存器</td>
+      </tr>
+      <tr>
+        <td>可移植性</td>
+        <td>不依赖具体硬件的寄存器数量和命名，天然跨平台</td>
+        <td>强依赖具体 CPU 架构的寄存器模型</td>
+      </tr>
+      <tr>
+        <td>执行效率</td>
+        <td>频繁的栈操作，解释执行相对慢（HotSpot 用 JIT 把热点代码编译为寄存器架构的机器码来弥补）</td>
+        <td>直接操作寄存器，速度更快</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>为什么 JVM 选择栈架构：</strong>核心还是为了"跨平台"。如果字节码里直接编码"用哪个寄存器"，就必须和某种具体 CPU 的寄存器数量、命名方式绑定，"一次编写，到处运行"就无从谈起。用操作数栈这种与硬件无关的抽象模型，才能让同一份字节码在 x86、ARM 上都能正确解释执行。
+  </div>
+
+  <div class="callout tip">
+    <strong>了解即可，不需要记指令：</strong>实际开发中几乎不需要手写或死记字节码指令，理解"字节码是操作码+操作数、基于操作数栈"这个原理即可。真正需要关注操作数栈细节的场景是下一模块要讲的《局部变量表与操作数栈》，那里会讲栈帧的具体结构。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>字节码 = opcode + operand：</strong>一个字节的操作码决定"做什么"，后面的操作数补充"对谁做"。</li>
+    <li><strong>可以用 javap -c 直接观察：</strong>这是排查"为什么这段代码性能异常""编译器到底做了什么优化"最直接的手段之一。</li>
+    <li><strong>基于操作数栈，不是寄存器：</strong>这是字节码天生跨平台的关键设计，代价是解释执行效率不如直接操作寄存器，JIT 编译正是为了弥补这个代价。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-Class文件的组成.html" class="nav-btn">← Class 文件的组成</a>
+    <a href="./03-类加载五阶段.html" class="nav-btn next">加载-验证-准备-解析-初始化五阶段 →</a>
+  </div>
+
+</div>
+</body>
+</html>

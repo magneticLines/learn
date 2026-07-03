@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>标记-整理算法 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / 标记-整理算法
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>标记-整理算法(Mark-Compact)</h1>
+    <p>标记-复制解决了碎片问题，但要浪费一半内存——如果对象存活率很高（比如老年代），复制的代价会大到无法接受。有没有办法既不留碎片、又不浪费空间？</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    标记阶段和标记-清除完全一样，从 GC Roots 出发标记出所有存活对象。区别在后续处理：不是直接清除垃圾，而是让<strong>所有存活对象都向内存空间的一端移动</strong>，
+    然后直接清理掉边界以外的内存。这样既消灭了碎片，又不需要像标记-复制那样预留一半空间作为"备用区"。
+  </p>
+
+  <div class="tree">
+    回收前：<br>
+    <span class="hi">[A: 存活]</span> [B: 垃圾] <span class="hi">[C: 存活]</span> [D: 垃圾] [E: 垃圾] <span class="hi">[F: 存活]</span><br>
+    <br>
+    <span class="hi">① 标记</span>：标记出 B、D、E 为垃圾（与标记-清除相同）<br>
+    <span class="hi">② 整理</span>：把存活对象 A、C、F 向左端整体移动，紧凑排列<br>
+    <span class="hi">③ 清理</span>：边界之后的内存直接整体释放<br>
+    <br>
+    回收后：<br>
+    <span class="hi">[A: 存活][C: 存活][F: 存活]</span>[　　　　空闲　　　　]<br>
+    &nbsp;&nbsp;→ 没有碎片，也没有浪费一半空间，但对象搬家的<span class="hi">代价转嫁到了移动过程本身</span>
+  </div>
+
+  <h2>代价：移动对象不是免费的</h2>
+  <p>
+    整理阶段需要把对象在内存中搬家，这意味着：① 所有指向这些对象的引用都要同步更新为新地址；② 移动过程必须<strong>全程暂停用户线程（Stop The World）</strong>，
+    不能出现"用户线程在读旧地址、GC 线程正在写新地址"这种数据不一致的情况。相比之下，标记-清除完全不移动对象，没有这个负担，但代价是碎片化。
+  </p>
+
+  <h2>老年代要面对的核心权衡：移动 vs 不移动</h2>
+  <p>
+    老年代对象的特点是<strong>存活率高</strong>（能活到老年代说明已经扛过了很多轮 GC）。如果对老年代采用标记-复制算法，每次收集都要复制绝大多数对象，代价极高，完全不划算。
+    所以老年代收集器只在标记-清除和标记-整理之间选择：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>方案</th><th>优点</th><th>缺点</th><th>典型收集器</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>标记-清除</strong>（不移动）</td>
+        <td>没有移动对象的停顿开销，适合追求低延迟的场景</td>
+        <td>产生内存碎片，可能导致大对象分配失败而提前触发 GC</td>
+        <td>CMS</td>
+      </tr>
+      <tr>
+        <td><strong>标记-整理</strong>（移动）</td>
+        <td>内存规整无碎片，空间利用率高，分配效率高（可用指针碰撞）</td>
+        <td>移动对象需要全程 STW，停顿时间相对更长</td>
+        <td>Serial Old、Parallel Old</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"标记-整理和标记-清除的区别？为什么老年代不用标记-复制？"
+    答案要点：① 标记-整理多了一步"移动对象"，解决了碎片化但需要 STW；② 老年代对象存活率高，标记-复制的复制成本和存活对象数量成正比，存活率越高代价越大，完全不划算，因此老年代普遍在标记-清除和标记-整理之间选择，而不是标记-复制。
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>不要认为"标记-整理一定比标记-清除更好"。是否移动对象本质是一个<strong>吞吐量 vs 停顿时间</strong>的权衡：不移动（标记-清除）停顿更短但有碎片风险；移动（标记-整理）没有碎片但停顿更长。这也是为什么 CMS 选择了不移动的标记-清除（牺牲空间换低延迟），而 Parallel Old 选择了标记-整理（牺牲停顿换吞吐量和空间利用率）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>标记-整理在标记阶段和标记-清除相同，区别是让存活对象整体移动到一端，然后清理边界外内存，兼顾了"无碎片"和"不浪费空间"。</li>
+    <li>代价是对象移动需要全程 STW，且所有引用都要同步更新，停顿开销比不移动的方案更大。</li>
+    <li>"移动 vs 不移动"是老年代收集器要面对的核心权衡——老年代存活率高决定了它不适合用标记-复制，只能在标记-清除（不移动，但有碎片）和标记-整理（移动，但无碎片）之间取舍。</li>
+    <li>三种基础算法（标记-清除、标记-复制、标记-整理）没有绝对优劣，它们的取舍差异正是下一篇"分代收集理论"要解决的问题——针对不同存活率的对象用不同算法。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-标记复制算法.html" class="nav-btn">← 标记-复制算法</a>
+    <a href="./07-分代收集理论.html" class="nav-btn next">分代收集理论 →</a>
+  </div>
+
+</div>
+</body>
+</html>

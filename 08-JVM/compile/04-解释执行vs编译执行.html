@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>解释执行 vs 编译执行 — 编译与优化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #831843; }
+  .nav-btn.next { color: #f472b6; border-color: #831843; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 编译与优化 / 解释执行 vs 编译执行
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">编译与优化</div>
+    <h1>解释执行 vs 编译执行</h1>
+    <p>Java 常被说成"半编译半解释"的语言——为什么 HotSpot 不干脆全部编译成机器码一次搞定？答案是：启动速度和峰值性能不可兼得，所以它两个都要。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <code>javac</code> 编译出的字节码（<code>.class</code>）并不能被 CPU 直接执行，它还要经过一层转换才能变成真正的机器指令，这一步有两种做法：
+    <strong>解释执行</strong>（Interpreter 逐条读取字节码指令，边读边翻译成机器码并立即执行，翻译过程不会被缓存）
+    vs
+    <strong>编译执行</strong>（即时编译器 JIT，Just-In-Time Compiler 把整个方法一次性编译成机器码并缓存起来，下次调用直接跑缓存的机器码，不用重新翻译）。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>解释执行像"同声传译"——说一句翻一句，现场就能开始，但每次都要重新翻译，遇到重复的话依然要重翻一遍；编译执行像"先把整篇发言稿翻译成文档打印出来"——准备阶段（翻译+印刷）比较慢，但发言稿会被反复宣读时，后面每一次宣读都是直接照着译文念，速度飞快。
+  </div>
+
+  <!-- 2. 对比两种方式的代价 -->
+  <h2>两种方式各自的取舍</h2>
+
+  <table>
+    <thead>
+      <tr><th></th><th>解释执行（Interpreter）</th><th>编译执行（JIT Compiler）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>启动速度</strong></td>
+        <td>快，字节码加载后立即可以逐条解释运行，不需要等待</td>
+        <td>慢，编译整个方法成机器码需要时间，方法越复杂编译越久</td>
+      </tr>
+      <tr>
+        <td><strong>执行速度</strong></td>
+        <td>慢，每次执行到同一条指令都要重新"翻译"一次，没有累积优化</td>
+        <td>快，编译后的机器码直接被 CPU 执行，且 JIT 会做大量深度优化（下两节详解）</td>
+      </tr>
+      <tr>
+        <td><strong>内存 / CPU 占用</strong></td>
+        <td>较低，不需要额外的编译过程和机器码缓存空间</td>
+        <td>较高，编译本身消耗 CPU，编译结果需要额外内存缓存（Code Cache）</td>
+      </tr>
+      <tr>
+        <td><strong>适合场景</strong></td>
+        <td>只执行一两次的代码（如启动阶段的初始化代码），编译代价不值得付出</td>
+        <td>被反复执行的"热点代码"（如循环体、高频调用方法），一次编译长期受益</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 3. HotSpot 混合模式 -->
+  <h2>HotSpot 的选择：解释器 + 编译器共存</h2>
+  <p>
+    如果只用解释执行，长期运行的服务端程序（比如跑几天的后端服务）峰值性能会一直很差；如果只用编译执行，
+    每次启动一个 Java 程序都要先花大量时间把所有方法编译成机器码才能开始运行，简单脚本、命令行小工具的启动体验会非常糟糕。
+    <strong>HotSpot 采用的是"解释器和编译器搭配工作"的混合模式</strong>——这也正是 overview 组讲过的 "HotSpot" 这个名字的由来：它会持续监控程序运行过程中的"热点（Hot Spot）"，发现某段代码被频繁执行，就用编译器把它编译成机器码替换掉解释执行的部分。
+  </p>
+
+  <div class="tree">
+    <span class="hi">① 程序启动</span><br>
+    &nbsp;&nbsp;字节码加载 → 解释器立即逐条解释执行 → 程序快速跑起来，无需等待编译<br>
+    <br>
+    <span class="hi">② 后台监控（Profiling）</span><br>
+    &nbsp;&nbsp;虚拟机在解释执行的同时，用计数器统计每个方法/循环体的执行频率<br>
+    &nbsp;&nbsp;→ 发现某段代码是<span class="hi">热点代码</span>（下一节详细讲阈值判定规则）<br>
+    <br>
+    <span class="hi">③ JIT 编译介入</span><br>
+    &nbsp;&nbsp;后台线程异步把热点方法编译成本地机器码，编译期间解释器继续照常工作（不阻塞）<br>
+    &nbsp;&nbsp;编译完成后，后续调用<span class="hi">直接切换到编译后的机器码</span>执行<br>
+    <br>
+    <span class="hi">结果：兼顾启动速度与峰值性能</span><br>
+    &nbsp;&nbsp;冷代码：解释执行，付出的编译成本为 0<br>
+    &nbsp;&nbsp;热代码：编译执行，用一次编译换来长期的高速运行
+  </div>
+
+  <div class="callout tip">
+    这也是为什么 Java 服务端程序常常有"预热（Warm-up）"现象——刚启动时响应慢，跑一段时间后性能才逐渐提升到稳定水平，就是因为 JIT 还没来得及把热点代码编译完成，程序还在用解释执行"顶着"。生产环境做压测/发布前预热，就是刻意提前触发这个编译过程。
+  </div>
+
+  <!-- 4. 与 C/C++ 静态编译型语言的对比 -->
+  <h2>对比：静态编译型语言 vs Java 混合模式</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>C/C++（静态编译，AOT）</th><th>Java（解释 + JIT 混合）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>编译时机</strong></td>
+        <td>部署前一次性编译成目标平台机器码</td>
+        <td>先编译成与平台无关的字节码，运行时按需再编译成本地机器码</td>
+      </tr>
+      <tr>
+        <td><strong>跨平台性</strong></td>
+        <td>编译产物和平台强绑定，换平台要重新编译</td>
+        <td>字节码"一次编译，到处运行"（呼应 overview 组讲过的跨平台特性），JIT 编译在目标机器本地完成</td>
+      </tr>
+      <tr>
+        <td><strong>运行时优化空间</strong></td>
+        <td>编译时对运行时的实际数据分布一无所知，优化基于静态假设</td>
+        <td>JIT 可以利用运行时的真实 profiling 数据做更激进的优化（如内联、逃逸分析），见后续两节</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. 常见坑/知识点 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"Java 是解释型语言，所以比 C++ 慢"——这是一个过时的刻板印象。现代 HotSpot 虚拟机对热点代码采用 JIT 编译，长期运行的服务端场景下热点代码的执行效率可以接近甚至持平静态编译语言。真正的性能差距，主要体现在<strong>启动阶段的预热成本</strong>和<strong>某些无法被 JIT 覆盖到的冷路径代码</strong>上，而不是"Java 天生就慢"。
+  </div>
+
+  <!-- 6. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>解释执行：</strong>逐条翻译字节码并立即执行，启动快、无编译成本，但重复执行时没有累积收益。</li>
+    <li><strong>编译执行（JIT）：</strong>把方法整体编译成机器码缓存复用，编译本身有代价，但长期高频调用时收益巨大。</li>
+    <li><strong>HotSpot 的核心设计：</strong>解释器负责快速启动 + 兜底执行冷代码，JIT 编译器负责把探测到的热点代码编译成高效机器码，两者协同、互补短板。</li>
+    <li>下一节具体讲虚拟机是怎么"探测"出哪段代码是热点的——计数器方案和分层编译。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-自动装拆箱陷阱.html" class="nav-btn">← 自动装拆箱陷阱</a>
+    <a href="./05-热点探测与JIT编译.html" class="nav-btn next">热点探测与 JIT 编译 →</a>
+  </div>
+
+</div>
+</body>
+</html>

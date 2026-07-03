@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>程序计数器 — JVM 内存区域</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 内存区域与溢出 / 程序计数器
+  </div>
+
+  <div class="hero">
+    <div class="tag">内存区域与溢出</div>
+    <h1>程序计数器</h1>
+    <p>JVM 里最小、最不起眼，却是唯一一个"永远不会 OOM"的内存区域——它只做一件事：记住当前线程执行到哪一行字节码。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>程序计数器（Program Counter Register）</strong>可以看作是当前线程所执行的字节码的<strong>行号指示器</strong>。
+    字节码解释器工作时，就是通过改变这个计数器的值来选取下一条需要执行的字节码指令，分支、循环、跳转、异常处理、线程恢复等都依赖它。
+  </p>
+
+  <div class="callout info">
+    <strong>类比：</strong>看书时夹在书页里的书签。你随时可能被打断（比如接电话），但书签帮你记住"我看到第几页第几行了"，回来继续看时不用从头找。CPU 在多个线程间切换执行，也需要这样一个"书签"。
+  </div>
+
+  <h2>为什么必须是"线程私有"的？</h2>
+  <p>
+    这要联系到 <strong>02-并发模块</strong> 讲过的线程调度：现代操作系统通过时间片轮转让多个线程"并发"共享 CPU，某个线程执行到一半会被挂起，CPU 切去执行另一个线程，之后再切回来继续执行。
+  </p>
+  <p>
+    如果所有线程共用一个程序计数器，线程 A 执行到字节码第 10 行时被挂起，线程 B 上来执行把计数器改成了第 3 行，等线程 A 恢复时就完全不知道自己刚才执行到哪了。
+    所以 <strong>JVM 规定每个线程都拥有一个独立的、互不干扰的程序计数器</strong>——这是它"天生线程安全"的原因，不需要加锁，因为根本不存在共享。
+  </p>
+
+  <div class="tree">
+    <span class="hi">线程 A</span>  PC = 10  <span class="com">// A 执行到第 10 条字节码时被挂起</span><br>
+    <span class="hi">线程 B</span>  PC = 3   <span class="com">// CPU 切到 B，B 有自己独立的 PC，互不影响</span><br>
+    <span class="hi">线程 A</span>  PC = 10  <span class="com">// CPU 切回 A，A 从自己 PC 记录的位置 10 继续执行</span>
+  </div>
+
+  <p>
+    这也正是<strong>线程封闭（Thread Confinement）</strong>思想最原始的体现：数据天然只属于一个线程，从设计上就杜绝了竞争，而不是靠锁去"事后补救"。
+  </p>
+
+  <h2>为什么它是唯一没有规定 OutOfMemoryError 的区域？</h2>
+  <p>
+    《Java 虚拟机规范》中，程序计数器是<strong>唯一一个没有规定任何 OutOfMemoryError 情况</strong>的内存区域。原因很简单：
+  </p>
+  <ul>
+    <li>它占用的内存空间<strong>极小</strong>——本质上就是一个指针大小的寄存器（在概念模型里，物理机上可能直接用 CPU 寄存器实现）。</li>
+    <li>它的大小是<strong>固定不变</strong>的，不会随着程序运行动态增长，所以不存在"内存不够用"的情况。</li>
+  </ul>
+
+  <h3>一个容易忽略的细节：执行 Native 方法时 PC 是什么值？</h3>
+  <p>
+    如果线程正在执行的是一个 Java 方法，PC 记录的是正在执行的字节码指令地址；如果执行的是 <code>native</code> 方法，PC 值为<strong>空（Undefined）</strong>——因为 native 方法交由本地方法栈执行，不涉及字节码。
+  </p>
+
+  <div class="callout warn">
+    <strong>面试高频坑：</strong>很多人会把"程序计数器不会 OOM"错误地泛化成"这个区域没有内存限制"。准确说法是：它<strong>不会因为内存不足抛 OOM</strong>，但这不代表它没有内存占用——只是占用小到规范认为不必单独规定异常情况。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>作用：</strong>记录当前线程执行到哪一条字节码指令，是实现分支、循环、异常处理、线程恢复的基础。</li>
+    <li><strong>线程私有：</strong>每个线程独立拥有一份，天然线程安全，不需要同步机制，是"线程封闭"思想的典型体现。</li>
+    <li><strong>唯一不会 OOM 的区域：</strong>因为占用内存极小且固定，规范中不为它定义 OutOfMemoryError 场景。</li>
+    <li>它虽然不起眼，但理解它是理解后面"虚拟机栈线程私有""方法调用如何恢复执行现场"的基础。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../overview/04-其他JVM实现简介.html" class="nav-btn">← 其他 JVM 实现简介</a>
+    <a href="./02-Java虚拟机栈与栈帧.html" class="nav-btn next">Java 虚拟机栈与栈帧 →</a>
+  </div>
+
+</div>
+</body>
+</html>

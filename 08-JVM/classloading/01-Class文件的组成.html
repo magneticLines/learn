@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Class 文件的组成 — 类加载机制</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 类加载机制 / Class 文件的组成
+  </div>
+
+  <div class="hero">
+    <div class="tag">类加载机制</div>
+    <h1>Class 文件的组成</h1>
+    <p>一份严格定义的二进制格式规范——这才是 Java "一次编写，到处运行"背后真正的技术基石。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>Class 文件是一组以 8 个字节为基础单位的二进制流，各个数据项目严格按照顺序紧凑排列，中间没有任何分隔符。</strong>
+    它不是"Java 语言"的产物，而是"Java 虚拟机"的输入——只要一种语言的编译器能产出符合这份规范的字节流，这种语言就能跑在 JVM 上。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>Class 文件就像国际标准的集装箱尺寸。只要货物（不同语言的源码）被打包成这个标准尺寸的箱子，港口的吊车（JVM）就能识别、装卸、运输，完全不关心箱子里装的是什么牌子的货。这也是 Kotlin、Scala、Groovy、Clojure 都能和 Java 无缝互操作、共享同一套类库的根本原因。
+  </div>
+
+  <h2>为什么必须是"严格定义"的格式</h2>
+  <p>
+    如果没有统一规范，每种语言的编译器就要自己定义一套"怎么描述一个类"的方式，虚拟机就得为每种语言单独写一套解释执行逻辑——这和"一次编写，到处运行"的初衷完全背道而驰。
+    Java 虚拟机规范把 Class 文件的格式钉死成一份不依赖任何语言的"中间语言"定义：只要编译产物满足这份规范，JVM 就能执行它，至于源码是 <code>.java</code> 还是 <code>.kt</code>，JVM 根本不关心。
+  </p>
+
+  <h2>原理走一遍：Class 文件的主要组成</h2>
+  <p>用 <code>javap -v</code> 或 <code>hexdump</code> 打开任意一个 <code>.class</code> 文件，会看到严格按下面顺序排列的数据结构：</p>
+
+  <div class="tree">
+    <span class="hi">① 魔数（Magic Number）</span><br>
+    &nbsp;&nbsp;固定 4 字节：<code>0xCAFEBABE</code><br>
+    &nbsp;&nbsp;→ 虚拟机加载时先校验这 4 个字节，不是这个值直接拒绝，快速识别"这不是一个合法的 Class 文件"<br>
+    <br>
+    <span class="hi">② 版本号（Minor / Major Version）</span><br>
+    &nbsp;&nbsp;次版本号 2 字节 + 主版本号 2 字节<br>
+    &nbsp;&nbsp;→ 决定这个 Class 文件能被哪个版本以上的 JVM 执行（"版本不兼容"报错就来自这里）<br>
+    <br>
+    <span class="hi">③ 常量池（Constant Pool）</span><br>
+    &nbsp;&nbsp;Class 文件中信息量最大的区域<br>
+    &nbsp;&nbsp;存放字面量（文本字符串、final 常量值）和符号引用（类名、字段名、方法名的引用，还未定位到内存地址）<br>
+    <br>
+    <span class="hi">④ 访问标志（Access Flags）</span><br>
+    &nbsp;&nbsp;标识这个类是 public / final / abstract / interface 等<br>
+    <br>
+    <span class="hi">⑤ 类索引 / 父类索引 / 接口索引集合</span><br>
+    &nbsp;&nbsp;确定这个类的继承关系——它是谁、继承自谁、实现了哪些接口<br>
+    <br>
+    <span class="hi">⑥ 字段表（Fields）</span><br>
+    &nbsp;&nbsp;描述类中声明的所有变量（不包括方法内的局部变量）<br>
+    <br>
+    <span class="hi">⑦ 方法表（Methods）</span><br>
+    &nbsp;&nbsp;描述类中所有方法，包括方法的字节码指令（真正要执行的逻辑就藏在这里）<br>
+    <br>
+    <span class="hi">⑧ 属性表（Attributes）</span><br>
+    &nbsp;&nbsp;附加信息集合，比如方法的 Code 属性（字节码本体）、行号表、异常表等
+  </div>
+
+  <div class="callout tip">
+    <strong>不需要死记硬背字节偏移：</strong>面试和实际开发中，重点不是"第几个字节是什么"，而是理解"Class 文件是一份跨语言、跨平台的中间格式契约"——这份契约把"编译器"和"虚拟机"彻底解耦了。
+  </div>
+
+  <h2>建立联系：为什么这是多语言互操作的基础</h2>
+  <p>
+    正因为 Class 文件格式统一，Kotlin 编译器（<code>kotlinc</code>）、Scala 编译器（<code>scalac</code>）产出的 <code>.class</code> 文件和 <code>javac</code> 产出的长得一模一样——同样的魔数、同样的常量池结构、同样的方法表。
+    这意味着一个 Kotlin 项目可以直接 <code>import</code> 一个 Java 类库，反过来也一样；它们最终都被同一个类加载器加载、同一个虚拟机执行。后面会讲到的类加载五阶段、双亲委派，都是建立在"输入是标准 Class 文件"这个前提之上的。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>解耦编译器和虚拟机：</strong>Class 文件是两者之间的"契约"，编译器只管产出合规字节流，虚拟机只管执行合规字节流。</li>
+    <li><strong>支持多语言：</strong>任何语言只要有编译器能产出合规的 Class 文件，就能运行在 JVM 上并与 Java 生态互通。</li>
+    <li><strong>魔数是第一道防线：</strong>虚拟机加载类文件的第一件事就是校验魔数，这是类加载"验证阶段"的起点（下一篇字节码指令集之后会讲到）。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../profiling/06-GC日志分析与常用调优参数.html" class="nav-btn">← GC 日志分析与常用调优参数</a>
+    <a href="./02-字节码指令集简介.html" class="nav-btn next">字节码指令集简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>字节码与"一次编写、到处运行" — JVM 全景</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f89820; }
+  p code, li code { color: #f89820; }
+  h2 { color: #f89820; border-left-color: #f89820; }
+  .hero .tag { color: #f89820; border-color: #7c4a10; }
+  .nav-btn.next { color: #f89820; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / JVM 全景 / 字节码与"一次编写、到处运行"
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">JVM 全景</div>
+    <h1>字节码与"一次编写、到处运行"</h1>
+    <p>C/C++ 编译出来的可执行文件换个操作系统就跑不了，Java 却可以"编译一次，到处运行"——秘密就在 .class 文件这一层与硬件、操作系统无关的"中间语言"。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    Java 源码不会被直接编译成某个 CPU 认识的机器码，而是先由 <code>javac</code> 编译成<strong>字节码（Bytecode，.class 文件）</strong>——
+    这是一种与具体硬件架构、操作系统完全无关的"中间指令集"。运行时，由<strong>安装在目标机器上的那个 JVM</strong> 去解释或编译执行这份字节码。
+    只要某个平台有对应的 JVM 实现，同一份 .class 文件就能原样跑起来，这就是 <strong>"Write Once, Run Anywhere"</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>字节码就像一份"通用说明书"（比如乐高积木的图纸），不管你在中国工厂还是德国工厂组装，图纸都是同一份；真正动手把图纸变成实物的，是各地工厂里那位"翻译工人"（JVM）——工人不同、组装出来的最终产品的运行速度可能有差异，但按图施工的结果是一致的。
+  </div>
+
+  <!-- 编译执行链路 -->
+  <h2>从源码到运行：链路走一遍</h2>
+  <div class="tree">
+    <span class="hi">① 编写</span>：Hello.java（人类可读的 Java 源码）<br>
+    &nbsp;&nbsp;↓ javac 编译（与平台无关，只做一次）<br>
+    <span class="hi">② 字节码</span>：Hello.class（与平台无关的中间指令，8 位字节为单位）<br>
+    &nbsp;&nbsp;↓ 分发到任意装有 JVM 的机器（Windows / Linux / macOS ...）<br>
+    <span class="hi">③ 类加载</span>：目标机器上的 JVM 把 .class 读入内存，校验、准备、解析<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">④ 执行引擎</span>：解释器逐条解释字节码，或由 JIT 编译成本地机器码<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">⑤ 机器码</span>：真正被 CPU 执行的指令（因平台而异，但对开发者透明）
+  </div>
+  <p>
+    关键点在于：<strong>①②两步只做一次，③④⑤这三步在每台目标机器上各自独立发生</strong>。开发者只需要维护 ②（.class 文件），完全不用关心目标机器是 x86 还是 ARM、是 Windows 还是 Linux。
+  </p>
+
+  <!-- 与传统编译型语言对比 -->
+  <h2>与 C/C++ 这类"直接编译"语言的对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>C/C++（直接编译为机器码）</th><th>Java（编译为字节码 + JVM 执行）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>编译产物</strong></td>
+        <td>特定平台的可执行文件（.exe / ELF）</td>
+        <td>与平台无关的 .class 字节码</td>
+      </tr>
+      <tr>
+        <td><strong>跨平台方式</strong></td>
+        <td>必须为每个目标平台重新编译一份</td>
+        <td>编译一次，任何有 JVM 的平台直接运行</td>
+      </tr>
+      <tr>
+        <td><strong>执行方式</strong></td>
+        <td>CPU 直接执行机器码，没有中间层</td>
+        <td>多一层：解释执行 / JIT 编译成机器码再执行</td>
+      </tr>
+      <tr>
+        <td><strong>运行时性能</strong></td>
+        <td>启动即满速，无预热成本</td>
+        <td>解释执行较慢，需要 JIT "预热"热点代码后才接近本地代码速度</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 代价与弥补 -->
+  <h2>代价：多一层转换，靠 JIT 弥补</h2>
+  <p>
+    "中间层"设计解决了跨平台分发的问题，但天下没有免费的午餐——字节码毕竟不是机器码，多了一层解释/编译的开销，直觉上会比"源码直接编译成机器码"的语言（如 C/C++）慢。
+  </p>
+  <p>
+    JVM 的解决方案不是"放弃中间层"，而是在执行引擎里引入 <strong>JIT（Just-In-Time）即时编译器</strong>：程序刚启动时先用解释器逐条解释字节码（启动快，但单条执行慢），
+    JVM 同时在后台监控哪些代码被<strong>反复执行</strong>（称为"热点代码"），一旦达到阈值就把这部分字节码编译成本地机器码并缓存起来，之后直接跑机器码，速度就能追平甚至局部超过静态编译语言。
+    这也是为什么下一个 Tab（编译与优化）会专门讲 HotSpot 的这套"热点探测 + 分层编译"机制——这里先埋个伏笔。
+  </p>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"Java 是解释型语言，所以天生比编译型语言慢，没法优化。"
+    这个说法只在"完全不用 JIT、纯解释执行"的早期 JVM（如 Sun Classic VM）上成立。现代 HotSpot VM 默认采用<strong>解释器 + JIT 混合执行</strong>，热点代码的执行效率可以逼近甚至匹敌 C/C++。"Java 慢"更多是历史刻板印象，真实场景要看具体的代码路径是否被 JIT 覆盖到。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"字节码为什么能跨平台？" 回答要点：字节码本身不含任何操作系统 / CPU 架构相关的指令，它是 JVM 规范定义的一套抽象指令集；真正"翻译"成本地机器指令的工作，交给了各平台上那个已经适配好的 JVM 实现去做，开发者的产物（.class）本身不需要改动。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>字节码是跨平台的关键抽象：</strong>它把"和谁编译"与"在哪运行"彻底解耦。</li>
+    <li><strong>代价是多一层转换：</strong>字节码不是机器码，执行前需要解释或编译，这是"跨平台"必须付出的性能代价。</li>
+    <li><strong>JIT 是弥补代价的核心手段：</strong>只优化真正被高频执行的代码，而不是无差别编译全部代码，这个思路会在下一 Tab 详细展开，也是 HotSpot 名字的由来（下一篇讲）。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-JDK与JRE与JVM三者关系.html" class="nav-btn">← JDK / JRE / JVM 三者关系</a>
+    <a href="./03-HotSpotVM的地位与历史.html" class="nav-btn next">HotSpot VM 的地位与历史 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>四种引用类型(强 / 软 / 弱 / 虚) — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / 四种引用类型(强 / 软 / 弱 / 虚)
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>四种引用类型(强 / 软 / 弱 / 虚)</h1>
+    <p>可达性分析告诉我们"能不能找到这个对象"，但真实世界还需要更细腻的控制——有些对象想留久一点（做缓存），有些对象希望"能用就用，不能用就丢"。这就是引用类型要解决的问题。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    JDK 1.2 之后，Java 把引用分为四种强度依次减弱的类型：<strong>强引用</strong>永不回收、<strong>软引用</strong>内存不够才回收、
+    <strong>弱引用</strong>见到 GC 就回收、<strong>虚引用</strong>形同虚设，只用来收一个"对象要没了"的通知。
+    这套分级设计的本质是：<strong>把"对象该不该被回收"这个决策权，从虚拟机独占，部分开放给应用程序自己控制。</strong>
+  </p>
+
+  <h2>逐个拆解</h2>
+
+  <h3>强引用（Strong Reference）—— 默认状态</h3>
+  <p>
+    平时写的 <code>Object obj = new Object();</code> 就是强引用。只要强引用还在，垃圾收集器<strong>永远不会</strong>回收这个对象，
+    哪怕内存已经不足、即将抛出 <code>OutOfMemoryError</code>，也不会为了腾内存而牺牲强引用对象。
+  </p>
+
+  <h3>软引用（SoftReference）—— 内存告急才牺牲</h3>
+  <p>用来描述一些还有用但非必须的对象。系统内存<strong>足够</strong>时不会回收，只有在即将发生内存溢出前，才会把这些对象列入回收范围。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>SoftReference 用法（做缓存的经典场景）</span></div>
+    <pre><span class="ty">SoftReference</span><span class="punct">&lt;</span><span class="ty">byte</span><span class="punct">[]&gt;</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">SoftReference</span><span class="punct">&lt;&gt;(</span><span class="kw">new</span> <span class="ty">byte</span><span class="punct">[</span><span class="num">10</span> <span class="punct">*</span> <span class="num">1024</span> <span class="punct">*</span> <span class="num">1024</span><span class="punct">]);</span>
+
+<span class="com">// 内存充足时，get() 一直能拿到对象</span>
+<span class="ty">byte</span><span class="punct">[]</span> <span class="var">data</span> <span class="punct">=</span> <span class="var">cache</span><span class="punct">.</span><span class="fn">get</span><span class="punct">();</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">data</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">) {</span>
+    <span class="com">// 内存不足时对象已被回收，get() 返回 null，需要重新加载</span>
+    <span class="var">data</span> <span class="punct">=</span> <span class="fn">reloadFromDisk</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>弱引用（WeakReference）—— 逢 GC 必死</h3>
+  <p>比软引用更弱：只能存活到下一次垃圾收集发生之前。<strong>不管当前内存是否充足</strong>，只要 GC 发生，弱引用关联的对象就会被回收。</p>
+  <div class="callout tip">
+    <strong>呼应 ThreadLocal：</strong>Java 里 <code>ThreadLocalMap</code> 的 <code>Entry</code> 内部对 <code>ThreadLocal</code> 本身用的就是<strong>弱引用</strong>作为 key。
+    这样设计是为了防止内存泄漏：一旦外部不再持有 ThreadLocal 的强引用，下次 GC 就能把它回收，key 变成 <code>null</code>。
+    但要注意——这只解决了 key 的泄漏，<strong>value 依然是强引用，如果不手动调用 <code>remove()</code>，value 会随线程存活而一直挂在那里，尤其在线程池场景下极易造成内存泄漏</strong>，这是高频面试坑点。
+  </div>
+
+  <h3>虚引用（PhantomReference）—— 只为收一个通知</h3>
+  <p>
+    虚引用是最弱的一种关系，一个对象是否有虚引用的存在，完全不影响它的生存时间，也<strong>无法通过虚引用获取一个对象实例</strong>
+    （<code>get()</code> 永远返回 <code>null</code>）。它唯一的作用是：在这个对象被收集器回收时，收到一个系统通知（通过关联的 <code>ReferenceQueue</code>）。
+  </p>
+
+  <h2>四种引用对比</h2>
+  <table>
+    <thead>
+      <tr><th>引用类型</th><th>回收时机</th><th>get() 能否取到对象</th><th>典型应用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>强引用</strong></td>
+        <td>永不回收（除非置为 <code>null</code> 且不可达）</td>
+        <td>能</td>
+        <td>日常业务对象，默认引用方式</td>
+      </tr>
+      <tr>
+        <td><strong>软引用</strong></td>
+        <td>内存<strong>不足</strong>时才回收</td>
+        <td>回收前能</td>
+        <td>内存敏感的缓存（如图片缓存、二级缓存）</td>
+      </tr>
+      <tr>
+        <td><strong>弱引用</strong></td>
+        <td>下次 GC 时<strong>无条件</strong>回收</td>
+        <td>回收前能</td>
+        <td><code>ThreadLocalMap</code> 的 key、<code>WeakHashMap</code>、监听器注册防泄漏</td>
+      </tr>
+      <tr>
+        <td><strong>虚引用</strong></td>
+        <td>不影响存活时间，回收时才收到通知</td>
+        <td>永远不能（<code>get()</code> 恒为 <code>null</code>）</td>
+        <td>跟踪对象被回收的活动，如 <code>Cleaner</code> 替代 <code>finalize()</code> 做资源清理</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多人以为"软引用 = 缓存的银弹"，直接用 <code>SoftReference</code> 包一层就万事大吉。
+    但软引用的回收策略完全由 JVM 内部堆内存状况决定，不受你控制，缓存命中率会很不稳定。生产环境做本地缓存更常用 Caffeine、Guava Cache 这类有明确淘汰策略（LRU/LFU/超时）的方案，软引用更多是一种"最后兜底防 OOM"的手段，而不是主力缓存策略。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>四种引用类型本质是给"对象的生存意愿"分级，把回收决策权部分让渡给应用程序。</li>
+    <li>强引用永生，软引用扛到内存告急，弱引用扛不过下一次 GC，虚引用毫无生存意愿只求一个回收通知。</li>
+    <li>弱引用是理解 <code>ThreadLocal</code> 内存泄漏问题的关键——key 会被回收，但 value 需要手动 <code>remove()</code>。</li>
+    <li>虚引用配合 <code>ReferenceQueue</code>，是现代 Java（<code>java.lang.ref.Cleaner</code>）替代 <code>finalize()</code> 做资源清理的基础设施。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-引用计数法vs可达性分析.html" class="nav-btn">← 引用计数法 vs 可达性分析</a>
+    <a href="./03-finalize方法的角色与陷阱.html" class="nav-btn next">finalize() 方法的角色与陷阱 →</a>
+  </div>
+
+</div>
+</body>
+</html>

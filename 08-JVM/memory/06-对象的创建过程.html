@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>对象的创建过程 — JVM 内存区域</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 内存区域与溢出 / 对象的创建过程
+  </div>
+
+  <div class="hero">
+    <div class="tag">内存区域与溢出</div>
+    <h1>对象的创建过程</h1>
+    <p><code>new</code> 一个对象看起来只是一行代码，虚拟机在背后其实要走完一整套严谨流程。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    执行 <code>new User()</code> 这样一条字节码指令时，虚拟机要依次完成：<strong>类加载检查 → 分配内存 → 处理并发安全 → 初始化零值 → 设置对象头 → 执行构造方法</strong>，
+    只有全部走完，一个"完整可用"的对象才真正诞生。
+  </p>
+
+  <h2>完整流程走一遍</h2>
+
+  <div class="tree">
+    <span class="hi">① 类加载检查</span><br>
+    &nbsp;&nbsp;虚拟机遇到 new 指令时，先检查这个类是否已被加载、解析、初始化过<br>
+    &nbsp;&nbsp;没有 → 先走类加载过程（呼应"类加载机制"Tab：加载→验证→准备→解析→初始化）<br>
+    <br>
+    <span class="hi">② 分配内存</span><br>
+    &nbsp;&nbsp;类加载完成后，对象所需内存大小已经确定<br>
+    &nbsp;&nbsp;从堆中划分出一块对应大小的内存，两种分配方式：<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;· <span class="hi">指针碰撞</span>（Bump the Pointer）：堆内存规整（用过的在一边，空闲的在另一边，中间一个指针），分配就是指针往空闲方向挪一段距离<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;· <span class="hi">空闲列表</span>（Free List）：堆内存不规整（用过和空闲的交错），虚拟机需要维护一张列表记录哪些块可用<br>
+    &nbsp;&nbsp;采用哪种方式取决于所用垃圾收集器是否带压缩整理功能<br>
+    <br>
+    <span class="hi">③ 处理并发分配安全问题</span><br>
+    &nbsp;&nbsp;多线程同时 new 对象，如果都直接挪同一个指针，会有竞态条件<br>
+    &nbsp;&nbsp;方案一：对分配内存空间的动作做同步（CAS + 失败重试）<br>
+    &nbsp;&nbsp;方案二（HotSpot 默认）：<span class="hi">TLAB（Thread Local Allocation Buffer，本地线程分配缓冲）</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;每个线程在 Eden 区预先分配一小块专属内存，分配对象时优先在自己的 TLAB 里分，不用每次都和别的线程抢锁<br>
+    <br>
+    <span class="hi">④ 初始化零值</span><br>
+    &nbsp;&nbsp;虚拟机将分配到的内存空间（除对象头外）全部初始化为零值（int 为 0，引用为 null...）<br>
+    &nbsp;&nbsp;保证对象的实例字段在 Java 代码中不赋初值也能直接使用，程序能访问到这些字段的类型对应的零值<br>
+    <br>
+    <span class="hi">⑤ 设置对象头</span><br>
+    &nbsp;&nbsp;设置对象是哪个类的实例、如何找到类的元数据信息、对象的哈希码、GC 分代年龄等信息<br>
+    &nbsp;&nbsp;这些信息存放在<span class="hi">对象头（Object Header）</span>中（下一篇会详细展开）<br>
+    <br>
+    <span class="hi">⑥ 执行 &lt;init&gt;（构造方法）</span><br>
+    &nbsp;&nbsp;到这一步，从虚拟机视角看，一个新对象已经产生<br>
+    &nbsp;&nbsp;但从 Java 程序视角看，"对象创建"才刚刚开始——接下来执行构造方法，按照程序员的意图对字段赋值<br>
+    &nbsp;&nbsp;这一步完成后，才是一个<span class="hi">真正可用</span>的对象
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频坑：</strong>"字段初始化为 0 和构造方法里赋值，是同一步吗？"——不是。第 ④ 步的"零值初始化"是虚拟机层面的安全兜底，保证内存不会有脏数据；第 ⑥ 步执行构造方法才是按 Java 语义真正赋予业务含义的值。这也是为什么 <code>int i;</code> 不赋值默认是 <code>0</code> 而不是随机值——这是虚拟机保证的，不是"侥幸"。
+  </div>
+
+  <h2>为什么需要 TLAB？——呼应线程封闭思想</h2>
+  <p>
+    这一点直接联系到 <strong>02-并发模块</strong> 讲过的"用线程封闭规避竞争"思路：如果每次分配内存都要给多个线程共享的分配指针加锁，堆内存分配会成为高并发场景下的严重瓶颈——毕竟对象创建是 Java 程序里发生频率最高的操作之一。
+  </p>
+  <p>
+    TLAB 的思路是：与其每次都加锁争抢，不如干脆<strong>提前给每个线程划一块只属于自己的"私有仓库"</strong>（在 Eden 区里划出一小块），线程在自己的仓库里分配对象完全不需要同步。只有当 TLAB 用完需要重新申请一块新的时，才需要短暂地做一次同步。
+  </p>
+
+  <div class="callout warn">
+    <strong>注意边界：</strong>TLAB 解决的是"多线程并发分配对象"的效率问题，不是让对象本身线程安全。对象一旦创建完毕，如果被多个线程共享持有，依然需要靠锁、不可变、原子类等手段保证并发安全——这是两个不同层面的问题，不要混为一谈。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>六个步骤：</strong>类加载检查 → 分配内存 → 并发安全处理（TLAB）→ 零值初始化 → 设置对象头 → 执行构造方法。</li>
+    <li><strong>指针碰撞 vs 空闲列表：</strong>取决于堆是否规整，而堆是否规整又取决于所用垃圾收集器有没有压缩整理能力，这是内存分配和垃圾收集算法之间的一处重要联动。</li>
+    <li><strong>TLAB 是"线程封闭"思想在内存分配上的落地：</strong>用空间换时间，避免高频对象分配场景下的锁竞争。</li>
+    <li>理解这个流程后，下一篇讲对象内存布局（对象头/实例数据/对齐填充）就会顺理成章——第 ⑤ 步"设置对象头"正是衔接点。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-方法区与元空间的演变.html" class="nav-btn">← 方法区/元空间的演变(永久代 → Metaspace)</a>
+    <a href="./07-对象的内存布局.html" class="nav-btn next">对象的内存布局 →</a>
+  </div>
+
+</div>
+</body>
+</html>

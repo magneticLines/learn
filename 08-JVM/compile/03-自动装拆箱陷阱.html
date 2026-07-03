@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>自动装拆箱陷阱 — 编译与优化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #831843; }
+  .nav-btn.next { color: #f472b6; border-color: #831843; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 编译与优化 / 自动装拆箱陷阱
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">编译与优化</div>
+    <h1>自动装拆箱陷阱</h1>
+    <p>Integer a = 100 看起来是赋值，其实是编译器悄悄帮你调用了 Integer.valueOf(100) —— 这颗"糖"吃多了会咬人。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    自动装箱（Autoboxing）/自动拆箱（Unboxing）本质是编译器提供的语法糖：在需要把<strong>基本类型</strong>和<strong>包装类型</strong>互相转换的地方，
+    javac 会自动插入 <code>Integer.valueOf(int)</code>（装箱）或 <code>Integer.intValue()</code>（拆箱）的调用。
+    这呼应 00-Java基础模块讲过的包装类——包装类的存在是为了让基本类型也能像对象一样被泛型、集合框架使用，而自动装拆箱就是让这层转换变得"无感"的语法糖。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>你往自动贩卖机（<code>List&lt;Integer&gt;</code>）投硬币（<code>int</code>），机器内部其实先把硬币装进一个塑料袋（<code>Integer</code> 对象）才能放进货道——因为货道（泛型容器）设计上只认"打包好的商品"，不认散装硬币。这个"装袋"动作就是自动装箱，你感觉不到，但它确实发生了，而且每次都要新造一个袋子（大多数情况下）。
+  </div>
+
+  <!-- 2. 反例：循环性能陷阱 -->
+  <h2>反例：循环里对 Integer 做累加</h2>
+  <p>下面这段代码"看起来"和用 <code>int</code> 累加没什么区别，但性能相差巨大：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BoxingLoop.java（反例 — 隐藏的性能陷阱）</span></div>
+    <pre><span class="ty">Integer</span> <span class="var">sum</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>          <span class="com">// 包装类型</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">1_000_000</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+    <span class="var">sum</span> <span class="punct">+=</span> <span class="var">i</span><span class="punct">;</span>       <span class="com">// 编译器实际展开为下面这行</span>
+<span class="punct">}</span>
+
+<span class="com">// 编译器真正生成的等价代码：</span>
+<span class="com">// sum = Integer.valueOf(sum.intValue() + i);</span>
+<span class="com">// 每次循环：拆箱(intValue) → int 相加 → 装箱(valueOf) 生成一个新的 Integer 对象</span>
+<span class="com">// 100 万次循环 ≈ 产生近 100 万个临时 Integer 对象，全部要靠 GC 回收</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>PrimitiveLoop.java（正例 — 用基本类型）</span></div>
+    <pre><span class="kw">int</span> <span class="var">sum</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>             <span class="com">// 基本类型，栈上存储，没有对象、没有 GC 压力</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="kw">int</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">1_000_000</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+    <span class="var">sum</span> <span class="punct">+=</span> <span class="var">i</span><span class="punct">;</span>       <span class="com">// 纯粹的整数加法指令，没有任何装拆箱</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>这呼应 memory 组讲过的"堆是对象分配的主战场"——反例每轮循环都在堆上新建一个 <code>Integer</code> 对象（大多数值超出缓存范围），大循环下会产生大量短命对象，显著增加 GC 压力；而基本类型 <code>int</code> 直接是栈帧里的一个局部变量槽，没有对象头开销，也不需要 GC 介入。</p>
+
+  <div class="callout warn">
+    <strong>面试高频：</strong>"为什么不要在大循环里用包装类型做累加？" —— 标准答案就是这里：每次 <code>+=</code> 都会触发一次拆箱 + 装箱，产生大量临时对象，性能远低于基本类型。这是 Java 面试和阿里代码规范都明确提到的坑。
+  </div>
+
+  <!-- 3. 反例二：缓存池导致 == 诡异 -->
+  <h2>反例二：Integer 缓存池与 == 比较</h2>
+  <p>为了减少小整数频繁装箱造成的对象浪费，<code>Integer.valueOf()</code> 内部维护了一个 <strong>-128 ~ 127</strong> 的缓存池，这个范围内的值会复用缓存对象而不是新建。这带来一个经典的"部分相等"诡异现象：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>IntegerCachePitfall.java</span></div>
+    <pre><span class="ty">Integer</span> <span class="var">a</span> <span class="punct">=</span> <span class="num">100</span><span class="punct">;</span>
+<span class="ty">Integer</span> <span class="var">b</span> <span class="punct">=</span> <span class="num">100</span><span class="punct">;</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">a</span> <span class="punct">==</span> <span class="var">b</span><span class="punct">);</span>   <span class="com">// true！100 在 -128~127 缓存范围内，a、b 指向同一个缓存对象</span>
+
+<span class="ty">Integer</span> <span class="var">c</span> <span class="punct">=</span> <span class="num">200</span><span class="punct">;</span>
+<span class="ty">Integer</span> <span class="var">d</span> <span class="punct">=</span> <span class="num">200</span><span class="punct">;</span>
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">c</span> <span class="punct">==</span> <span class="var">d</span><span class="punct">);</span>   <span class="com">// false！200 超出缓存范围，每次 valueOf 都 new 了一个新对象</span>
+
+<span class="com">// Integer.valueOf 源码简化示意：</span>
+<span class="kw">public static</span> <span class="ty">Integer</span> <span class="fn">valueOf</span><span class="punct">(</span><span class="kw">int</span> <span class="var">i</span><span class="punct">) {</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">i</span> <span class="punct">&gt;=</span> <span class="ty">IntegerCache</span><span class="punct">.</span><span class="var">low</span> <span class="punct">&amp;&amp;</span> <span class="var">i</span> <span class="punct">&lt;=</span> <span class="ty">IntegerCache</span><span class="punct">.</span><span class="var">high</span><span class="punct">)</span>
+        <span class="kw">return</span> <span class="ty">IntegerCache</span><span class="punct">.</span><span class="var">cache</span><span class="punct">[</span><span class="var">i</span> <span class="punct">+</span> <span class="punct">(-</span><span class="ty">IntegerCache</span><span class="punct">.</span><span class="var">low</span><span class="punct">)];</span>  <span class="com">// 命中缓存，返回同一对象</span>
+    <span class="kw">return</span> <span class="kw">new</span> <span class="ty">Integer</span><span class="punct">(</span><span class="var">i</span><span class="punct">);</span>  <span class="com">// 未命中，new 一个新对象</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>字面量赋值 <code>Integer a = 100</code> 走的是 <code>valueOf()</code>（享受缓存），而 <code>new Integer(100)</code> 永远新建对象，即便 JDK 9+ 已标记该构造器为过时，老代码里依然常见。<strong>比较包装类型的值永远应该用 <code>.equals()</code> 而不是 <code>==</code></strong>，这是 Java 面试最高频的坑之一，没有例外。
+  </div>
+
+  <!-- 4. 原理走一遍 -->
+  <h2>装拆箱触发的场景走一遍</h2>
+  <div class="tree">
+    <span class="hi">① 赋值 / 传参场景</span><br>
+    &nbsp;&nbsp;基本类型 → 包装类型：编译器插入 XXX.valueOf(x) → <span class="hi">装箱</span><br>
+    &nbsp;&nbsp;包装类型 → 基本类型：编译器插入 x.xxxValue() → <span class="hi">拆箱</span><br>
+    <br>
+    <span class="hi">② 运算场景（+ - * / 比较等）</span><br>
+    &nbsp;&nbsp;包装类型参与运算前会先拆箱成基本类型，算完如需赋回包装类型再装箱<br>
+    &nbsp;&nbsp;→ Integer a += 1 展开为 a = Integer.valueOf(a.intValue() + 1)<br>
+    <br>
+    <span class="hi">③ 集合 / 泛型场景</span><br>
+    &nbsp;&nbsp;泛型擦除后只能存 Object，基本类型无法直接放入 → 必须先装箱<br>
+    &nbsp;&nbsp;List&lt;Integer&gt; list; list.add(1) → list.add(Integer.valueOf(1))
+  </div>
+
+  <!-- 5. 对比表 -->
+  <h2>基本类型 vs 包装类型 对比</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>基本类型（int）</th><th>包装类型（Integer）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>存储位置</strong></td>
+        <td>栈帧局部变量表/操作数栈，无对象头开销</td>
+        <td>堆上的对象（缓存范围内复用缓存对象）</td>
+      </tr>
+      <tr>
+        <td><strong>默认值</strong></td>
+        <td>0（不能为 null）</td>
+        <td>null（拆箱 null 会抛 NullPointerException）</td>
+      </tr>
+      <tr>
+        <td><strong>能否用于泛型</strong></td>
+        <td>不能，泛型擦除后只认引用类型</td>
+        <td>可以，这是包装类型存在的核心原因之一</td>
+      </tr>
+      <tr>
+        <td><strong>比较方式</strong></td>
+        <td><code>==</code> 直接比较数值</td>
+        <td>应用 <code>.equals()</code>；<code>==</code> 比较的是引用，受缓存池影响</td>
+      </tr>
+      <tr>
+        <td><strong>适用场景</strong></td>
+        <td>高频计算、大数组、大循环等追求性能的场景</td>
+        <td>集合元素、泛型参数、需要表达"空值"语义的字段</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 6. 常见坑 -->
+  <h2>常见坑 / 面试高频</h2>
+  <div class="callout warn">
+    <strong>坑：拆箱 null 引发 NPE。</strong>
+    <code>Integer count = map.get(key); int result = count + 1;</code> —— 如果 <code>map.get(key)</code> 返回 <code>null</code>（key 不存在），<code>count + 1</code> 会触发拆箱 <code>count.intValue()</code>，对 <code>null</code> 调用方法直接抛 <code>NullPointerException</code>。这是"业务代码里最隐蔽的 NPE 来源"之一，因为源码里根本看不到 <code>.intValue()</code> 这个调用。
+  </div>
+
+  <!-- 7. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>装拆箱是编译器插入调用的语法糖：</strong>装箱对应 <code>valueOf()</code>，拆箱对应 <code>xxxValue()</code>，字节码里看不到"自动"二字。</li>
+    <li><strong>大循环慎用包装类型：</strong>频繁装拆箱会产生大量临时对象，增加 GC 压力，追求性能时应使用基本类型。</li>
+    <li><strong>缓存池是把双刃剑：</strong>-128~127 的 <code>Integer</code> 缓存减少了小整数的对象创建，但也让 <code>==</code> 比较的结果变得"看数值大小"，比较包装类型永远用 <code>.equals()</code>。</li>
+    <li><strong>拆箱 null 会 NPE：</strong>这是隐藏最深的坑，源码里看不到任何异常线索，排查时要留意包装类型参与运算的地方。</li>
+    <li>前端编译优化到此结束，下一节进入后端编译优化(JIT)，先讲字节码到底是"解释执行"还是"编译执行"。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-泛型擦除.html" class="nav-btn">← 泛型擦除</a>
+    <a href="./04-解释执行vs编译执行.html" class="nav-btn next">解释执行 vs 编译执行 →</a>
+  </div>
+
+</div>
+</body>
+</html>

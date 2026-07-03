@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>为什么要有双亲委派(安全与避免重复加载) — 类加载机制</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 类加载机制 / 为什么要有双亲委派(安全与避免重复加载)
+  </div>
+
+  <div class="hero">
+    <div class="tag">类加载机制</div>
+    <h1>为什么要有双亲委派(安全与避免重复加载)</h1>
+    <p>上一篇讲了双亲委派"怎么委派"，这一篇讲清楚它到底解决了什么真实的工程问题——不是为了好看，而是为了安全和一致性。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>双亲委派解决两个核心问题：一是安全性——防止核心类库被用户自定义的同名类冒充或篡改；二是一致性——避免同一个类被不同加载器重复加载多份，导致类型判断出问题。</strong>
+    这两个问题都不是"理论上的担忧"，而是没有双亲委派时会实打实发生的工程事故。
+  </p>
+
+  <h2>问题一：安全性——防止核心类库被冒充</h2>
+  <p>设想一下，如果没有双亲委派，任何加载器都可以"抢先"加载自己写的类：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>恶意示例：自己写一个 java.lang.String</span></div>
+    <pre><span class="com">// 把这个文件放在 java.lang 包下，编译进自己的 classpath</span>
+<span class="kw">package</span> <span class="var">java.lang</span><span class="punct">;</span>
+
+<span class="kw">public class</span> <span class="ty">String</span> <span class="punct">{</span>
+    <span class="com">// 伪装成 java.lang.String，但内部逻辑被篡改</span>
+    <span class="com">// 比如在这里偷偷把用户密码上传到远程服务器</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    如果没有委派机制，应用类加载器在 classpath 里找到了这个"假的" <code>java.lang.String</code>，就会直接加载它，用户程序里所有 <code>new String(...)</code> 都会变成这个被篡改的实现——这是极其危险的攻击面。
+  </p>
+  <p>
+    有了双亲委派，应用类加载器收到"加载 <code>java.lang.String</code>"的请求后，<strong>永远先向上委派</strong>，一路问到启动类加载器；启动类加载器在 <code>&lt;JAVA_HOME&gt;/lib</code> 里已经能找到官方的 <code>java.lang.String</code>，直接返回这个官方版本。应用类加载器自己写的那个假类<strong>根本没有机会被加载</strong>——因为请求在启动类加载器那一层就已经被满足了，不会再下沉到应用类加载器。
+  </p>
+  <div class="callout tip">
+    <strong>这被称为"沙箱安全机制"：</strong>核心类库（java.lang、java.util 等）永远只能由最顶层的启动类加载器加载，任何用户代码试图伪造同名类都会被这套委派机制自动挡在外面，用户完全不需要手写任何校验逻辑。
+  </div>
+
+  <h2>问题二：一致性——避免同一个类被重复加载</h2>
+  <p>
+    JVM 判断"两个类是否是同一个类型"，不只看类的全限定名，还要看<strong>加载它的类加载器是不是同一个</strong>。如果同一个类被两个不同的类加载器分别加载了一份，JVM 会认为这是<strong>两个完全不同的类型</strong>，即便类名、包名、字节码内容完全一样。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：同一个类被两个加载器加载，类型比较炸了</span></div>
+    <pre><span class="com">// 假设 MyClassLoader 是一个自定义加载器，且没有遵守双亲委派</span>
+<span class="com">// 它自己重新实现了 findClass()，去 classpath 上重新加载了 ArrayList</span>
+
+<span class="ty">ClassLoader</span> <span class="var">loader1</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">MyClassLoader</span><span class="punct">();</span>
+<span class="ty">ClassLoader</span> <span class="var">loader2</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">MyClassLoader</span><span class="punct">();</span>
+
+<span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="var">clazz1</span> <span class="punct">=</span> <span class="var">loader1</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="str">"com.example.Foo"</span><span class="punct">);</span>
+<span class="ty">Class</span><span class="punct">&lt;?&gt;</span> <span class="var">clazz2</span> <span class="punct">=</span> <span class="var">loader2</span><span class="punct">.</span><span class="fn">loadClass</span><span class="punct">(</span><span class="str">"com.example.Foo"</span><span class="punct">);</span>
+
+<span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">clazz1</span> <span class="punct">==</span> <span class="var">clazz2</span><span class="punct">);</span>              <span class="com">// false！明明是同一份字节码</span>
+
+<span class="ty">Object</span> <span class="var">obj</span> <span class="punct">=</span> <span class="var">clazz2</span><span class="punct">.</span><span class="fn">getDeclaredConstructor</span><span class="punct">().</span><span class="fn">newInstance</span><span class="punct">();</span>
+<span class="kw">boolean</span> <span class="var">isInstance</span> <span class="punct">=</span> <span class="var">clazz1</span><span class="punct">.</span><span class="fn">isInstance</span><span class="punct">(</span><span class="var">obj</span><span class="punct">);</span>  <span class="com">// false！instanceof 判断也会失败</span>
+<span class="com">// 甚至把这个对象强转成 com.example.Foo 类型都会抛 ClassCastException</span>
+<span class="com">// "两个看起来一模一样的类，在 JVM 眼里是完全不同的两个类型"</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>面试高频坑：</strong>"两个 <code>equals()</code> 看起来一样的类为什么 <code>instanceof</code> 判断失败？"——十有八九是类加载器不一致导致的。这类问题在 Web 容器（Tomcat 给每个应用用独立的类加载器）、模块化框架、热部署场景里经常出现，也是排查"明明依赖版本对得上却报 ClassCastException / NoSuchMethodError"这类诡异问题的重要方向。
+  </div>
+
+  <p>
+    双亲委派通过"核心类库永远只由固定的顶层加载器加载一次"，从根源上保证了同一个类在整个虚拟机里<strong>只会被加载一份</strong>，任何加载器请求加载它时，最终都会拿到同一份由启动类加载器缓存好的 <code>Class</code> 对象，天然避免了"同名不同类"的问题。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>安全性：</strong>核心类库固定由顶层加载器加载，用户自定义的同名类没有机会替换/污染基础类库，构成"沙箱安全机制"。</li>
+    <li><strong>一致性：</strong>类型相等性判断依赖"类全限定名 + 加载它的类加载器"这个二元组，委派机制保证核心类型只有唯一一份，避免"同名不同类"的诡异 bug。</li>
+    <li><strong>这不是绝对不可打破的铁律：</strong>下一篇会讲 SPI 机制等场景如何合理地"打破"双亲委派的方向，以及这么做为什么依然是安全的。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-双亲委派模型.html" class="nav-btn">← 双亲委派模型</a>
+    <a href="./07-打破双亲委派的场景.html" class="nav-btn next">打破双亲委派的场景(SPI / 热部署)(进阶) →</a>
+  </div>
+
+</div>
+</body>
+</html>

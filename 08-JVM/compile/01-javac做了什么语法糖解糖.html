@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>javac 做了什么(语法糖解糖) — 编译与优化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #831843; }
+  .nav-btn.next { color: #f472b6; border-color: #831843; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 编译与优化 / javac 做了什么(语法糖解糖)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">编译与优化</div>
+    <h1>javac 做了什么(语法糖解糖)</h1>
+    <p>javac 不只是把 Java 代码"翻译"成字节码，它还要先把各种为程序员而生的"甜味剂"还原成最朴素的写法——这个过程叫解语法糖。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>语法糖（Syntactic Sugar）</strong>是编程语言提供的一种"更甜"的写法——它不增加语言的表达能力，只是让某些常见模式写起来更简洁、更符合直觉。
+    <strong>javac 编译期会把所有语法糖"解糖（Desugar）"还原成最基础的语言结构，字节码里根本不存在语法糖这回事。</strong>
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>点单时说"老三样"，服务员心里立刻翻译成"一个煎饼、一碗豆浆、一根油条"分别下单。你说的是"糖"，厨房收到的永远是最原始的菜单项——JVM 就是那个只认"原始菜单"的厨房，它从没见过 for-each、没见过字符串 switch，这些都在 javac 这层就被拆解掉了。
+  </div>
+
+  <!-- 2. for-each 解糖 -->
+  <h2>例子一：增强 for 循环 → 迭代器 while 循环</h2>
+  <p>我们写 for-each 遍历一个 <code>List</code>，看起来是全新的语法：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>源码（有糖）</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">names</span> <span class="punct">=</span> <span class="fn">getNames</span><span class="punct">();</span>
+<span class="kw">for</span> <span class="punct">(</span><span class="ty">String</span> <span class="var">name</span> <span class="punct">:</span> <span class="var">names</span><span class="punct">) {</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>但反编译（<code>javap</code>）或看 javac 生成的语法树就会发现，它被还原成了迭代器写法：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>解糖后（javac 编译期还原）</span></div>
+    <pre><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">names</span> <span class="punct">=</span> <span class="fn">getNames</span><span class="punct">();</span>
+<span class="ty">Iterator</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">it</span> <span class="punct">=</span> <span class="var">names</span><span class="punct">.</span><span class="fn">iterator</span><span class="punct">();</span>
+<span class="kw">while</span> <span class="punct">(</span><span class="var">it</span><span class="punct">.</span><span class="fn">hasNext</span><span class="punct">()) {</span>
+    <span class="ty">String</span> <span class="var">name</span> <span class="punct">=</span> <span class="var">it</span><span class="punct">.</span><span class="fn">next</span><span class="punct">();</span>
+    <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">name</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>如果遍历的是数组而不是 <code>Iterable</code>，for-each 会被解糖成<strong>下标循环</strong>而不是迭代器（数组没有 <code>iterator()</code> 方法）。所以 for-each 对数组和集合的解糖结果并不一样，但字节码层面都是最朴素的循环结构。
+  </div>
+
+  <!-- 3. 字符串 switch 解糖 -->
+  <h2>例子二：字符串 switch → hashCode + equals 判断链</h2>
+  <p>Java 7 引入的字符串 <code>switch</code>，字节码指令集里根本没有"按字符串跳转"这种指令（<code>tableswitch</code>/<code>lookupswitch</code> 只支持 int），所以 javac 必须把它转换成先比 <code>hashCode()</code> 再比 <code>equals()</code> 的判断链。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>源码（有糖）</span></div>
+    <pre><span class="kw">switch</span> <span class="punct">(</span><span class="var">status</span><span class="punct">) {</span>
+    <span class="kw">case</span> <span class="str">"OK"</span><span class="punct">:</span>      <span class="fn">handleOk</span><span class="punct">();</span>      <span class="kw">break</span><span class="punct">;</span>
+    <span class="kw">case</span> <span class="str">"FAILED"</span><span class="punct">:</span>  <span class="fn">handleFailed</span><span class="punct">();</span>  <span class="kw">break</span><span class="punct">;</span>
+    <span class="kw">default</span><span class="punct">:</span>          <span class="fn">handleUnknown</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>解糖后思路（先按 hashCode 分支，再用 equals 精确匹配防哈希碰撞）</span></div>
+    <pre><span class="kw">int</span> <span class="var">hash</span> <span class="punct">=</span> <span class="var">status</span><span class="punct">.</span><span class="fn">hashCode</span><span class="punct">();</span>
+<span class="kw">int</span> <span class="var">branch</span> <span class="punct">=</span> <span class="punct">-</span><span class="num">1</span><span class="punct">;</span>
+<span class="kw">switch</span> <span class="punct">(</span><span class="var">hash</span><span class="punct">) {</span>                     <span class="com">// 这里才是真正的 int switch（合法字节码指令）</span>
+    <span class="kw">case</span> <span class="num">2543</span><span class="punct">:</span>   <span class="com">// "OK".hashCode()</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">status</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="str">"OK"</span><span class="punct">))</span> <span class="var">branch</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="kw">break</span><span class="punct">;</span>
+    <span class="kw">case</span> <span class="num">-1268779017</span><span class="punct">:</span> <span class="com">// "FAILED".hashCode()</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">status</span><span class="punct">.</span><span class="fn">equals</span><span class="punct">(</span><span class="str">"FAILED"</span><span class="punct">))</span> <span class="var">branch</span> <span class="punct">=</span> <span class="num">1</span><span class="punct">;</span> <span class="kw">break</span><span class="punct">;</span>
+<span class="punct">}</span>
+<span class="kw">switch</span> <span class="punct">(</span><span class="var">branch</span><span class="punct">) {</span>                 <span class="com">// 再按分支号执行真正的业务逻辑</span>
+    <span class="kw">case</span> <span class="num">0</span><span class="punct">:</span> <span class="fn">handleOk</span><span class="punct">();</span>      <span class="kw">break</span><span class="punct">;</span>
+    <span class="kw">case</span> <span class="num">1</span><span class="punct">:</span> <span class="fn">handleFailed</span><span class="punct">();</span>  <span class="kw">break</span><span class="punct">;</span>
+    <span class="kw">default</span><span class="punct">:</span> <span class="fn">handleUnknown</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>为什么要多套一层 <code>equals</code> 判断？因为不同字符串可能<strong>哈希碰撞</strong>——只比 <code>hashCode</code> 不够安全，必须用 <code>equals</code> 做二次精确校验。这也是面试里常问的"字符串 switch 底层原理"的标准答案。</p>
+
+  <!-- 4. try-with-resources 解糖 -->
+  <h2>例子三：try-with-resources → try-finally + close()</h2>
+  <p>Java 7 的 try-with-resources 让资源关闭变得优雅，但字节码层面它只是被展开成了 try-finally：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>源码（有糖）</span></div>
+    <pre><span class="kw">try</span> <span class="punct">(</span><span class="ty">InputStream</span> <span class="var">in</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="str">"a.txt"</span><span class="punct">)) {</span>
+    <span class="var">in</span><span class="punct">.</span><span class="fn">read</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>解糖后（简化示意，真实字节码还会处理 close() 抛异常时的 suppressed 逻辑）</span></div>
+    <pre><span class="ty">InputStream</span> <span class="var">in</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">FileInputStream</span><span class="punct">(</span><span class="str">"a.txt"</span><span class="punct">);</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="var">in</span><span class="punct">.</span><span class="fn">read</span><span class="punct">();</span>
+<span class="punct">} </span><span class="kw">finally</span> <span class="punct">{</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">in</span> <span class="punct">!=</span> <span class="kw">null</span><span class="punct">) {</span>
+        <span class="var">in</span><span class="punct">.</span><span class="fn">close</span><span class="punct">();</span>   <span class="com">// 无论 try 块是否抛异常，都保证被调用</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>其他常见的语法糖还包括：泛型（下一节详细讲）、自动装拆箱（下下节详细讲）、变长参数（解糖成数组）、内部类（解糖成独立的 <code>Outer$Inner.class</code> 并生成合成的桥接字段/方法）、Lombok 的 <code>@Data</code>（这是<strong>注解处理器 + 字节码生成</strong>，原理不同但效果类似）。</p>
+
+  <!-- 5. 原理走一遍 -->
+  <h2>解糖发生在编译流程的哪个阶段？</h2>
+  <div class="tree">
+    <span class="hi">① 词法分析 + 语法分析</span><br>
+    &nbsp;&nbsp;源码字符流 → Token 流 → 抽象语法树 <span class="hi">AST</span><br>
+    <br>
+    <span class="hi">② 语义分析</span><br>
+    &nbsp;&nbsp;标注检查(变量是否声明)、类型检查、<span class="hi">解语法糖(Desugar)</span> 在此阶段完成<br>
+    &nbsp;&nbsp;for-each → 迭代器循环；字符串 switch → hashCode 判断链；泛型 → 类型擦除<br>
+    <br>
+    <span class="hi">③ 字节码生成</span><br>
+    &nbsp;&nbsp;遍历"解糖后"的语法树，生成 .class 文件里的字节码指令<br>
+    &nbsp;&nbsp;→ 生成的字节码里<span class="hi">已经完全没有语法糖的痕迹</span>
+  </div>
+
+  <div class="callout tip">
+    这就是为什么"语法糖只存在于源码层面"——javap 反编译字节码时你永远看不到 for-each、字符串 switch 这些写法，只能看到最基础的循环、跳转、方法调用指令。字节码是 JVM 唯一认识的语言，它不需要"甜"，只需要"准确"。
+  </div>
+
+  <!-- 6. 常见坑 -->
+  <h2>常见坑 / 面试高频</h2>
+  <div class="callout warn">
+    <strong>坑：</strong>在 for-each 循环里对集合做增删（<code>list.remove()</code>），会抛 <code>ConcurrentModificationException</code>。原因就在解糖结果里——迭代器的 <code>modCount</code> 校验机制发现集合结构被外部修改了，而不是通过迭代器自身的 <code>remove()</code> 修改的。理解了 for-each 的解糖过程，这个"经典坑"就不再神秘。
+  </div>
+
+  <!-- 7. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>语法糖只存在于源码和编译期：</strong>它不增加 JVM 的能力，只是让程序员写得更爽，编译后一律还原成最基础的形式。</li>
+    <li><strong>理解解糖有助于排查"诡异"问题：</strong>比如 for-each 的 <code>ConcurrentModificationException</code>、字符串 switch 的哈希碰撞风险，本质都源自解糖后的真实代码结构。</li>
+    <li><strong>javac 的编译流程：</strong>词法/语法分析 → 语义分析(含解语法糖) → 字节码生成，解糖发生在语义分析阶段，早于字节码生成。</li>
+    <li>下一节继续讲泛型这颗最重要的"糖"——它是如何被彻底擦除的。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../bytecode/05-虚方法表.html" class="nav-btn">← 虚方法表</a>
+    <a href="./02-泛型擦除.html" class="nav-btn next">泛型擦除 →</a>
+  </div>
+
+</div>
+</body>
+</html>

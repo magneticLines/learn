@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>加载-验证-准备-解析-初始化五阶段 — 类加载机制</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 类加载机制 / 加载-验证-准备-解析-初始化五阶段
+  </div>
+
+  <div class="hero">
+    <div class="tag">类加载机制</div>
+    <h1>加载-验证-准备-解析-初始化五阶段</h1>
+    <p>一个 .class 文件从磁盘上的二进制流，变成内存里可以 new 实例、可以调用方法的"活的类型"，中间到底发生了什么。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>类加载过程分为加载、验证、准备、解析、初始化五个阶段（还有使用、卸载，但那是加载"之后"的事）。</strong>
+    这五个阶段并非彼此独立、严格按顺序"做完一个再做下一个"——它们通常是交叉进行的（比如解析阶段在某些情况下可以在初始化之后才发生，这叫"动态绑定"/晚期绑定），但<strong>开始的顺序是固定的</strong>：加载必须最先开始，初始化必须最后开始。
+  </p>
+
+  <h2>原理走一遍：五个阶段各自做了什么</h2>
+
+  <div class="tree">
+    <span class="hi">① 加载（Loading）</span><br>
+    &nbsp;&nbsp;通过类的全限定名获取这个类的二进制字节流（可以来自 jar 包、网络、动态生成）<br>
+    &nbsp;&nbsp;将字节流代表的静态存储结构转化为方法区的运行时数据结构<br>
+    &nbsp;&nbsp;在内存中生成一个代表这个类的 <span class="hi">java.lang.Class</span> 对象，作为方法区数据的访问入口<br>
+    <br>
+    <span class="hi">② 验证（Verification）</span><br>
+    &nbsp;&nbsp;文件格式校验：魔数、版本号是否合法<br>
+    &nbsp;&nbsp;元数据校验：这个类是否有父类、是否继承了 final 类等语义合法性<br>
+    &nbsp;&nbsp;字节码校验：方法体的字节码指令语义是否合法（比如跳转指令是否指向方法体外）<br>
+    &nbsp;&nbsp;符号引用校验：常量池里描述的类/方法/字段是否真实存在、访问权限是否够<br>
+    &nbsp;&nbsp;→ 目的只有一个：确保这份字节流不会危害虚拟机自身的安全<br>
+    <br>
+    <span class="hi">③ 准备（Preparation）</span><br>
+    &nbsp;&nbsp;为类变量（即 static 修饰的字段）在方法区分配内存<br>
+    &nbsp;&nbsp;将这些类变量设置为该数据类型的<span class="hi">零值</span>（int 是 0，boolean 是 false，引用类型是 null）<br>
+    &nbsp;&nbsp;⚠️ 注意：这里赋的是零值，<strong>不是代码里写的初始值</strong>——真实值要等到初始化阶段才会被赋上<br>
+    <br>
+    <span class="hi">④ 解析（Resolution）</span><br>
+    &nbsp;&nbsp;把常量池内的<span class="hi">符号引用</span>替换为<span class="hi">直接引用</span><br>
+    &nbsp;&nbsp;符号引用：用一组符号描述目标（比如全限定名字符串），还没有和具体内存地址关联<br>
+    &nbsp;&nbsp;直接引用：可以直接定位到目标在内存中的位置（指针/偏移量/句柄）<br>
+    <br>
+    <span class="hi">⑤ 初始化（Initialization）</span><br>
+    &nbsp;&nbsp;真正执行类构造器 <span class="hi">&lt;clinit&gt;()</span> 方法<br>
+    &nbsp;&nbsp;这个方法由编译器自动收集类中所有类变量的赋值动作和静态语句块（static {}）合并而成<br>
+    &nbsp;&nbsp;→ 类变量在这里才被赋上程序员指定的真实值，静态代码块也在这里执行
+  </div>
+
+  <h2>反直觉的核心：准备阶段的"零值" vs 初始化阶段的"真实值"</h2>
+  <p>这是新手最容易搞混的一点，看一个具体例子：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Config.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Config</span> <span class="punct">{</span>
+    <span class="kw">public static</span> <span class="kw">int</span> <span class="var">maxRetry</span> <span class="punct">=</span> <span class="num">3</span><span class="punct">;</span>  <span class="com">// 类变量，程序员指定的初始值是 3</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    JVM 处理 <code>maxRetry</code> 分两步：<strong>准备阶段</strong>先在方法区给它分配内存并置为零值 <code>0</code>（此时如果有别的代码提前读到它，看到的是 0，而不是 3）；
+    <strong>初始化阶段</strong>执行 <code>&lt;clinit&gt;</code> 方法时，才真正把 <code>3</code> 这个字面量赋给它。
+    这个"先归零、后赋值"的两步走设计，是为了让类加载的每个阶段职责单一：准备阶段只管"开辟空间、给个确定的默认状态"，不牵涉任何用户代码的执行；真正有业务含义的赋值和副作用（静态代码块里可能有 I/O、可能抛异常）全部收敛到初始化阶段，边界清晰、也便于虚拟机控制"什么时候才允许触发初始化"（下一篇讲触发时机）。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多人以为"static 变量在类加载时就被赋上了代码里写的值"，其实这中间隐藏了准备和初始化两个独立阶段。<code>static final</code> 修饰的编译期常量是个例外——它在<strong>准备阶段</strong>就会被直接赋上真实值（比如 <code>public static final int MAX = 100;</code>），因为编译器在编译期就把它的值内联进了常量池，不需要等到 <code>&lt;clinit&gt;</code> 执行。这个例外也是下一篇"类初始化触发时机"里"被动引用"现象的根源之一。
+  </div>
+
+  <h2>五阶段速查表</h2>
+  <table>
+    <thead>
+      <tr><th>阶段</th><th>核心动作</th><th>一句话记忆点</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>加载</td><td>字节流 → 方法区数据结构 + Class 对象</td><td>"把文件读进内存，生成入口"</td></tr>
+      <tr><td>验证</td><td>格式/元数据/字节码/符号引用四类校验</td><td>"防止非法字节码危害虚拟机"</td></tr>
+      <tr><td>准备</td><td>static 变量分配内存 + 置零值</td><td>"零值，不是代码里写的值"</td></tr>
+      <tr><td>解析</td><td>符号引用 → 直接引用</td><td>"从名字定位到内存地址"</td></tr>
+      <tr><td>初始化</td><td>执行 &lt;clinit&gt;，赋真实值、跑静态块</td><td>"真正的赋值和副作用发生在这里"</td></tr>
+    </tbody>
+  </table>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>五阶段职责单一：</strong>每个阶段只做一件事，虚拟机才能在各阶段之间精确控制"什么时候可以往下走"。</li>
+    <li><strong>零值 vs 真实值是关键分界线：</strong>准备阶段给的是"安全的默认状态"，初始化阶段才执行真正有业务含义、可能有副作用的代码。</li>
+    <li><strong>&lt;clinit&gt; 是理解静态初始化顺序、类初始化线程安全（单例的静态内部类写法）的钥匙：</strong>虚拟机会保证同一个类的 <code>&lt;clinit&gt;</code> 在多线程环境下只被正确加锁执行一次。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-字节码指令集简介.html" class="nav-btn">← 字节码指令集简介</a>
+    <a href="./04-类初始化的触发时机.html" class="nav-btn next">类初始化的触发时机 →</a>
+  </div>
+
+</div>
+</body>
+</html>

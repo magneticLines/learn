@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>打破双亲委派的场景(SPI / 热部署)(进阶) — 类加载机制</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 类加载机制 / 打破双亲委派的场景(SPI / 热部署)(进阶)
+  </div>
+
+  <div class="hero">
+    <div class="tag">类加载机制</div>
+    <h1>打破双亲委派的场景(SPI / 热部署)(进阶)</h1>
+    <p>双亲委派不是绝对不能碰的铁律——当核心类库需要反向调用第三方实现、或者容器需要做类隔离时，就必须有意打破它。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>双亲委派模型是一种约定俗成的最佳实践，而不是虚拟机规范强制要求的铁律。</strong>
+    当遇到"父加载器需要使用子加载器才能加载到的类"、或者"需要严格隔离不同模块的类"这类场景时，Java 通过一些巧妙的设计（线程上下文类加载器）或直接自定义类加载器的方式，主动打破了委派的方向或层级关系。
+  </p>
+
+  <h2>场景一：SPI 机制——最经典的"反向委派"</h2>
+  <p>
+    这一段直接呼应之前学过的 <strong>SPI 机制</strong>（<code>04-工程实战/notes/5解耦机制之Java的SPI机制.md</code>）。回忆一下 JDBC 的场景：
+  </p>
+  <ul>
+    <li><code>java.sql.Driver</code> 接口定义在 JDK 核心类库里，由<strong>启动类加载器</strong>加载。</li>
+    <li>具体的驱动实现类（比如 MySQL 的 <code>Driver</code> 实现）在第三方 jar 包里，只能由<strong>应用类加载器</strong>加载。</li>
+  </ul>
+  <p>
+    问题来了：<code>java.util.ServiceLoader</code>（乃至更早的 <code>DriverManager</code>）这些负责"发现并加载实现类"的代码，本身是 JDK 核心类库的一部分，由启动类加载器加载。
+    按照双亲委派的方向，<strong>父加载器（启动类加载器）根本不能主动去问子加载器（应用类加载器）"你有没有加载到什么类"</strong>——委派方向天生就是单向向上的，父加载器没有"向下"这个动作。
+    但 <code>ServiceLoader</code> 恰恰需要加载到 classpath 里第三方 jar 包提供的实现类，这些类只有应用类加载器的搜索范围能找到。
+  </p>
+
+  <div class="callout warn">
+    <strong>矛盾点：</strong>如果严格遵守双亲委派，启动类加载器"看不到"任何 classpath 上的第三方实现类，SPI 机制根本无法工作。
+  </div>
+
+  <h3>解决方案：线程上下文类加载器（Thread Context ClassLoader）</h3>
+  <p>
+    Java 给每个线程都绑定了一个"线程上下文类加载器"，默认情况下就是应用类加载器。核心类库里的代码（比如 <code>ServiceLoader.load()</code>）在需要加载具体实现类时，<strong>不使用加载自己的那个启动类加载器</strong>，而是主动获取"当前线程的上下文类加载器"来加载：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ServiceLoader 加载实现类时的典型做法（简化示意）</span></div>
+    <pre><span class="com">// ServiceLoader 这段代码本身运行在由 Bootstrap 加载的核心类库里</span>
+<span class="com">// 但它没有用自己所在类的类加载器，而是拿"当前线程"绑定的类加载器</span>
+<span class="ty">ClassLoader</span> <span class="var">cl</span> <span class="punct">=</span> <span class="ty">Thread</span><span class="punct">.</span><span class="fn">currentThread</span><span class="punct">().</span><span class="fn">getContextClassLoader</span><span class="punct">();</span>
+
+<span class="com">// 默认情况下这就是应用类加载器，能在 classpath 里找到第三方驱动实现</span>
+<span class="ty">ServiceLoader</span><span class="punct">&lt;</span><span class="ty">Driver</span><span class="punct">&gt;</span> <span class="var">loader</span> <span class="punct">=</span> <span class="ty">ServiceLoader</span><span class="punct">.</span><span class="fn">load</span><span class="punct">(</span><span class="ty">Driver</span><span class="punct">.</span><span class="kw">class</span><span class="punct">,</span> <span class="var">cl</span><span class="punct">);</span></pre>
+  </div>
+
+  <p>
+    这本质上是让"由 Bootstrap 加载的代码"<strong>反向借用</strong>了应用类加载器的加载能力，实现了"父加载器使用子加载器加载类"这个双亲委派原本不允许的方向——所以说 SPI 是打破双亲委派方向的典型场景。
+  </p>
+
+  <div class="callout info">
+    <strong>建立联系：</strong>结合之前学过的反射知识来看，<code>ServiceLoader</code> 内部读取 <code>META-INF/services/</code> 下的配置文件拿到实现类的全限定名字符串后，正是通过<strong>反射</strong>（<code>Class.forName(name, true, classLoader)</code> + 反射构造实例）把它变成一个真正可用的对象——这也解释了为什么 SPI、动态代理、依赖注入框架背后往往都离不开"类加载器 + 反射"这套组合拳。
+  </div>
+
+  <h2>场景二：模块化热部署——类隔离</h2>
+  <p>
+    另一类打破双亲委派的场景是需要<strong>类隔离</strong>而非共享：
+  </p>
+  <ul>
+    <li><strong>Tomcat：</strong>每个部署的 Web 应用都有自己独立的 <code>WebAppClassLoader</code>，不同应用即便用了同名但不同版本的类库（比如两个应用分别依赖 Jackson 的不同版本），也能互不干扰——这就要求每个 <code>WebAppClassLoader</code> 优先在自己的 <code>WEB-INF/lib</code> 里找类，而不是老老实实先向上委派给共享的应用类加载器。</li>
+    <li><strong>OSGi：</strong>模块化框架要支持"模块热插拔"（运行时动态安装/卸载/升级某个模块，不重启整个应用），每个模块（Bundle）都有自己的类加载器，模块之间的类加载关系是<strong>网状</strong>的（可以互相依赖），而不是双亲委派这种严格的树状父子关系。</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>了解即可：</strong>Tomcat、OSGi 这类容器级别的类加载器设计属于进阶内容，不需要记住实现细节，只需要理解"当业务场景需要类隔离/热插拔时，严格的双亲委派（一切共享、只能向上）反而成了限制，因此需要自定义加载器打破默认的委派关系"这个设计动机。
+  </div>
+
+  <h2>对比：遵守 vs 打破双亲委派</h2>
+  <table>
+    <thead>
+      <tr><th>场景</th><th>是否遵守双亲委派</th><th>原因</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>加载 java.lang.* 等核心类库</td>
+        <td>严格遵守</td>
+        <td>需要安全性和一致性，核心类型全局唯一</td>
+      </tr>
+      <tr>
+        <td>SPI（JDBC 驱动、日志门面等）</td>
+        <td>打破（反向借用子加载器）</td>
+        <td>父加载器里的代码需要使用只有子加载器能找到的第三方实现类</td>
+      </tr>
+      <tr>
+        <td>Tomcat 多应用类隔离</td>
+        <td>打破（优先自己找，而非先向上委派）</td>
+        <td>不同应用可能依赖同一个库的不同版本，必须互不干扰</td>
+      </tr>
+      <tr>
+        <td>OSGi 模块化热部署</td>
+        <td>打破（网状而非树状委派关系）</td>
+        <td>模块需要支持独立安装/卸载/升级，不能被单一委派链绑死</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>双亲委派是约定，不是虚拟机强制的规则：</strong>只要自定义 <code>ClassLoader</code> 时重写 <code>loadClass()</code>（而不只是 <code>findClass()</code>），就可以改变委派逻辑。</li>
+    <li><strong>SPI 是"反向委派"的典型场景：</strong>通过线程上下文类加载器，让核心类库的代码能反过来借用应用类加载器的能力，这是理解 JDBC、SLF4J、Spring Boot 自动配置等机制底层原理的关键一环。</li>
+    <li><strong>热部署/类隔离是"改变层级关系"的典型场景：</strong>Tomcat、OSGi 通过自定义类加载器实现兄弟或网状关系，而非严格的父子委派，代价是需要自己处理好"共享 vs 隔离"的边界。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-为什么要有双亲委派.html" class="nav-btn">← 为什么要有双亲委派(安全与避免重复加载)</a>
+    <a href="../bytecode/01-局部变量表与操作数栈.html" class="nav-btn next">下一篇:局部变量表与操作数栈 →</a>
+  </div>
+
+</div>
+</body>
+</html>

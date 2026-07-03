@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>空间分配担保机制 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / 空间分配担保机制
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>空间分配担保机制</h1>
+    <p>本组的最后一块拼图：新生代和老年代不是各自为战的，它们之间有一套"互保"机制，专门用来兜住"Minor GC 后 Survivor 区装不下存活对象"这种意外情况。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    在发生 Minor GC 之前，虚拟机会先检查<strong>老年代最大可用连续空间</strong>是否大于<strong>新生代所有对象的总空间</strong>。
+    如果这个条件成立，说明就算这次 Minor GC 后所有新生代对象都存活、全部要挪到老年代，老年代也装得下，那么这次 Minor GC 是<strong>安全的</strong>，可以放心执行。
+    如果不成立，则要进一步判断是否<strong>允许担保失败</strong>，来决定改成直接发起一次代价更高的 Full GC，还是冒险继续尝试 Minor GC。
+  </p>
+
+  <h2>这套机制到底在担保什么</h2>
+  <p>
+    回忆 05 篇讲的 Appel 式回收：新生代按 8:1:1 划分为 Eden、Survivor From、Survivor To，Minor GC 时把存活对象从 Eden 和 From 复制到 To。
+    但 Survivor 区默认只有新生代总容量的 10%，理论上完全可能出现<strong>某次 Minor GC 后存活对象的总大小超过了 Survivor（To）区容量</strong>的情况
+    （比如程序瞬间产生了大量长期存活的对象）。这时候多出来的存活对象<strong>没地方安放</strong>，唯一的出路是让它们直接晋升到老年代。
+    空间分配担保机制要保证的就是：<strong>当出现这种"Survivor 装不下"的意外情况时，老年代必须有足够空间接得住</strong>，不能出现"新生代腾出空间了，但存活对象却无处安放"的尴尬局面。
+  </p>
+
+  <div class="tree">
+    <span class="hi">Minor GC 发生前的检查流程</span><br>
+    检查：老年代最大可用连续空间 &gt; 新生代所有对象总空间？<br>
+    &nbsp;&nbsp;→ <span class="hi">是</span>：绝对安全，正常执行 Minor GC<br>
+    &nbsp;&nbsp;→ <span class="hi">否</span>：查看是否允许担保失败（<code>HandlePromotionFailure</code>，JDK 6 Update 24 后此参数已失效，默认视为允许）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;→ 允许：继续检查老年代最大可用连续空间是否大于<strong>历次晋升到老年代对象的平均大小</strong><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ 大于：<span class="hi">冒险执行 Minor GC</span>（有风险，但历史数据显示大概率能扛住）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ 小于/不允许：<span class="hi">改为直接执行一次 Full GC</span>，先腾出老年代空间再说
+  </div>
+
+  <div class="callout warn">
+    <strong>担保失败的后果：</strong>如果"冒险执行"的 Minor GC 过程中，存活对象总量真的超出了老年代剩余空间，会出现
+    <strong>Promotion Failed</strong>（晋升失败），这种情况下 JVM 不得不立刻发起一次 Full GC 来收拾残局，代价是<strong>一次 Minor GC 最终演变成了一次停顿时间更长的 Full GC</strong>，
+    这是生产环境排查"GC 停顿突然变长"问题时的一个经典线索。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"什么情况下对象会直接进入老年代？" 除了前两篇讲的"大对象"和"年龄达到阈值"，还应该补上第三种：<strong>Minor GC 时 Survivor 区空间不足以容纳全部存活对象，多出来的部分会直接分配到老年代</strong>——这正是空间分配担保机制存在的意义：它不是决定"谁该晋升"，而是提前检查"如果真的都要晋升，老年代兜不兜得住"。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>空间分配担保机制是新生代和老年代之间的一处协作保障：在 Minor GC 前预先检查老年代是否有能力兜住"最坏情况"下的晋升需求。</li>
+    <li>它要解决的核心问题是：Survivor 区默认只有新生代容量的 10%，一旦某次 GC 存活对象超出这个容量，多出来的对象必须能顺利晋升到老年代，而不是无处安放。</li>
+    <li>检查失败且不允许冒险时，虚拟机会直接改为执行一次 Full GC，这也是"Minor GC 变身 Full GC"这一现象在日志中出现的原因之一。</li>
+    <li>至此，本组把"判断死活 → 四种引用 → 三种基础算法 → 分代收集理论 → 具体收集器 → 对象分配与晋升规则"完整串联起来，构成了 JVM 垃圾收集的整体知识框架。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./15-长期存活对象进入老年代.html" class="nav-btn">← 长期存活对象进入老年代(年龄阈值)</a>
+    <a href="../profiling/01-jps-jstat-jmap-jstack速查.html" class="nav-btn next">下一篇:jps / jstat / jmap / jstack 速查 →</a>
+  </div>
+
+</div>
+</body>
+</html>

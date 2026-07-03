@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>内存泄漏排查思路 — 性能监控与调优</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 性能监控与调优 / 内存泄漏排查思路
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">性能监控与调优</div>
+    <h1>内存泄漏排查思路</h1>
+    <p>Java 有垃圾回收器，为什么还会"内存泄漏"？因为泄漏的从来不是内存本身，而是本该被回收的对象，被一条你没注意到的强引用链拽住了。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    C++ 里的内存泄漏是"忘了 <code>free</code>"；Java 里的内存泄漏是<strong>"该被回收的对象，因为存在一条从 GC Roots 出发、意外没有断开的强引用链，导致 GC 判断它'可达'，永远不会被回收"</strong>。
+    这就要回到前面 GC 模块讲过的可达性分析：只要一个对象能从 GC Roots 出发被追踪到，它就是"存活"的，哪怕业务逻辑上早就用不到它了。
+  </p>
+  <div class="callout info">
+    <strong>回顾四种引用类型：</strong>强引用（<code>Object o = new Object()</code>）——只要引用还在，GC 绝不回收，这也是内存泄漏的根源；软引用——内存不足时才回收，适合做缓存；弱引用——下一次 GC 必被回收，<code>WeakHashMap</code>/<code>ThreadLocal</code> 内部的 Entry 就用它；虚引用——只用来在对象被回收时收到通知。<strong>内存泄漏的本质，几乎都是"该用弱引用或该主动清理的地方，用了强引用又没清理"。</strong>
+  </div>
+
+  <!-- 2. 常见场景 -->
+  <h2>常见的四类"意外强引用"</h2>
+
+  <h3>场景 1：静态集合无限增长</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — static 缓存永不清理</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">UserCache</span> <span class="punct">{</span>
+    <span class="com">// static 字段生命周期和类一样长，几乎等同于 GC Root 直接持有</span>
+    <span class="kw">private static final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">Long</span><span class="punct">,</span> <span class="ty">User</span><span class="punct">&gt;</span> <span class="var">cache</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">HashMap</span><span class="punct">&lt;&gt;();</span>
+
+    <span class="kw">public static void</span> <span class="fn">put</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">id</span><span class="punct">,</span> <span class="ty">User</span> <span class="var">u</span><span class="punct">) {</span>
+        <span class="var">cache</span><span class="punct">.</span><span class="fn">put</span><span class="punct">(</span><span class="var">id</span><span class="punct">,</span> <span class="var">u</span><span class="punct">);</span>  <span class="com">// 只 put，从不 remove，越攒越多</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>正例应改用带淘汰策略的缓存（如 Caffeine 的 <code>maximumSize</code> + LRU），或者用 <code>WeakHashMap</code>/软引用让 GC 有机会介入回收。</p>
+
+  <h3>场景 2：监听器 / 回调忘记注销</h3>
+  <p>观察者模式里，被观察者持有一份监听器列表；如果监听器注册后从不注销，被观察者的生命周期比监听器所属对象更长时，监听器（连同它引用的外部对象）就会被永久拽住，无法回收。</p>
+
+  <h3>场景 3：ThreadLocal 未清理</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 线程池场景下 ThreadLocal 未 remove</span></div>
+    <pre><span class="kw">private static final</span> <span class="ty">ThreadLocal</span><span class="punct">&lt;</span><span class="ty">BigContext</span><span class="punct">&gt;</span> <span class="var">CTX</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ThreadLocal</span><span class="punct">&lt;&gt;();</span>
+
+<span class="kw">void</span> <span class="fn">handleRequest</span><span class="punct">() {</span>
+    <span class="var">CTX</span><span class="punct">.</span><span class="fn">set</span><span class="punct">(</span><span class="kw">new</span> <span class="ty">BigContext</span><span class="punct">(...));</span>
+    <span class="com">// ... 业务逻辑</span>
+    <span class="com">// 忘了 CTX.remove()！线程池里线程会被复用，Entry 永远挂在 Thread 上</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>
+    <code>ThreadLocalMap</code> 里的 Entry 的 key 是弱引用（指向 ThreadLocal 本身），但<strong>value 是强引用</strong>——线程池里线程是被复用的，如果不主动 <code>remove()</code>，key 被回收后 value 依然强引用挂在 <code>Thread</code> 对象上，永远不会释放，这是 <code>ThreadLocal</code> 内存泄漏最经典的成因。
+  </p>
+
+  <h3>场景 4：资源未关闭 / 内部类隐式持有外部引用</h3>
+  <p>非静态内部类、匿名内部类默认持有外层对象的引用（编译器自动生成的 <code>this$0</code> 字段）——如果这个内部类实例的生命周期比外层对象更长（比如作为 Handler 被扔进消息队列），外层对象就被间接强引用住，无法回收。</p>
+
+  <!-- 3. 排查流程 -->
+  <h2>典型排查流程</h2>
+  <div class="tree">
+    <span class="hi">① 观察现象</span>：监控显示老年代 <span class="hi">持续增长</span>，且 <span class="hi">Full GC 后回收不下来</span><br>
+    &nbsp;&nbsp;（用 jstat -gc 观察 OU 字段，或 GC 日志里 Full GC 前后堆大小几乎不变）<br>
+    <br>
+    <span class="hi">② 导出堆转储</span>：jmap -dump:format=b,file=heap.hprof pid<br>
+    &nbsp;&nbsp;（尽量在问题复现、内存已经明显偏高时导出，样本才有意义）<br>
+    <br>
+    <span class="hi">③ 用 MAT 打开 hprof 文件</span><br>
+    &nbsp;&nbsp;运行 <span class="hi">Leak Suspects</span> 报告，MAT 会自动分析并给出"可疑泄漏点"<br>
+    &nbsp;&nbsp;查看 <span class="hi">Dominator Tree（支配树）</span>：按 Retained Size 排序，找到占用内存最大的对象<br>
+    <br>
+    <span class="hi">④ 追溯 GC Roots 引用链</span>：右键目标对象 → Merge Shortest Paths to GC Roots<br>
+    &nbsp;&nbsp;（排除 weak/soft 引用路径，只看强引用链）<br>
+    &nbsp;&nbsp;→ 找到那条"意外的强引用"，比如某个 static Map、某个未清理的 ThreadLocal<br>
+    <br>
+    <span class="hi">⑤ 定位代码，修复</span>：加淘汰策略 / 注销监听器 / remove ThreadLocal / 用弱引用
+  </div>
+
+  <!-- 4. MAT 关键概念 -->
+  <h2>MAT 里的几个关键概念</h2>
+  <table>
+    <thead>
+      <tr><th>概念</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Shallow Size</strong></td>
+        <td>对象自身占用的内存大小，不包含它引用的其他对象（比如一个空的 <code>ArrayList</code> 对象本身很小）</td>
+      </tr>
+      <tr>
+        <td><strong>Retained Size</strong></td>
+        <td>如果这个对象被回收，能<strong>连带释放</strong>的总内存（自身 + 只能通过它才能访问到的所有对象）——排查泄漏时更应该看这个字段</td>
+      </tr>
+      <tr>
+        <td><strong>Dominator Tree（支配树）</strong></td>
+        <td>把对象引用图重新组织成"谁支配谁"的树形结构：如果到达对象 B 的所有路径都必须经过 A，那么 A "支配" B——按 Retained Size 排序这棵树，最容易找到"大对象"</td>
+      </tr>
+      <tr>
+        <td><strong>GC Roots</strong></td>
+        <td>可达性分析的起点：虚拟机栈的本地变量、方法区的静态引用、JNI 引用等——引用链能追溯到 GC Roots 说明对象存活，追不到说明该被回收</td>
+      </tr>
+      <tr>
+        <td><strong>Leak Suspects Report</strong></td>
+        <td>MAT 内置的自动化分析报告，基于经验规则（比如某个对象的 Retained Size 占堆总大小很大比例）自动给出可疑泄漏点，通常是排查的第一步</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>坑：</strong>不要看到内存高就立刻断定是"泄漏"。如果只是堆参数（<code>-Xmx</code>）设置偏小、业务量本来就需要更多内存，属于<strong>容量不足</strong>而非泄漏；区分标准是——多次 Full GC 之后老年代占用是否能回落到一个稳定的基线。如果每次都回落，只是正常的内存使用高峰；如果一次比一次高、永远回不去，才是真正的泄漏。
+  </div>
+
+  <!-- 5. 总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>Java 的"内存泄漏"本质是<strong>强引用链意外未断开</strong>，不是忘了释放内存，这和 C++ 的内存泄漏是两码事。</li>
+    <li>四种引用类型是理解和预防内存泄漏的理论基础：该用弱引用/软引用的地方用了强引用，就是泄漏的温床。</li>
+    <li>排查主线是：<strong>观察趋势（jstat）→ 拍快照（jmap）→ 分析支配树找大对象（MAT）→ 追 GC Roots 引用链 → 定位代码</strong>。</li>
+    <li>静态集合、监听器、ThreadLocal、内部类隐式引用是四个最高频的"背锅"场景，写代码时看到这几种模式要多留意生命周期问题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-Arthas实战.html" class="nav-btn">← Arthas 实战</a>
+    <a href="./05-CPU飙高排查思路.html" class="nav-btn next">CPU 飙高排查思路 →</a>
+  </div>
+
+</div>
+</body>
+</html>

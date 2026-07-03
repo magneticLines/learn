@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GC 日志分析与常用调优参数 — 性能监控与调优</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 性能监控与调优 / GC 日志分析与常用调优参数
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">性能监控与调优</div>
+    <h1>GC 日志分析与常用调优参数</h1>
+    <p>调优不是背参数表——是先从日志里看清楚瓶颈在哪，再有针对性地调整，前面几篇讲过的内存区域和收集器知识，都是为这一步做准备。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    GC 日志是 JVM 留下的"体检报告"，记录了每一次垃圾回收发生的时间、类型、回收前后各内存区域的大小、耗时。<strong>调优的正确顺序永远是"先看日志定位瓶颈，再针对性调参数"，而不是照抄一份参数表就上生产</strong>——同一套参数在不同的堆大小、不同的对象分配速率下，效果可能完全相反。
+  </p>
+
+  <!-- 2. 开启 GC 日志 -->
+  <h2>开启 GC 日志</h2>
+  <p>
+    JDK 9 之前用 <code>-XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:gc.log</code> 这类零散参数；JDK 9 引入了 <strong>统一日志框架（JEP 158 / JEP 271）</strong>，所有日志（不只是 GC）都通过统一的 <code>-Xlog</code> 语法开启，格式更规范、可控性更强。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端 — 开启 GC 日志（JDK 9+ 统一日志格式）</span></div>
+    <pre><span class="var">$</span> java -Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=5,filesize=100M \
+     -jar app.jar
+
+<span class="com"># 语法拆解：
+#   gc*           —— 输出 gc 相关的所有子标签（gc、gc+heap、gc+age 等），排查问题时信息越全越好
+#   file=gc.log   —— 输出到文件而不是控制台
+#   time,uptime,level,tags —— 每条日志附带的修饰信息：绝对时间、JVM 运行时长、日志级别、标签
+#   filecount=5,filesize=100M —— 滚动日志，最多 5 个文件，每个 100M，避免日志把磁盘写满</span></pre>
+  </div>
+
+  <!-- 3. 日志字段解读 -->
+  <h2>一段典型日志逐字段解读</h2>
+
+  <div class="code-block">
+    <div class="cb-header"><span>gc.log 片段（G1 收集器，JDK 9+ 格式）</span></div>
+    <pre>[<span class="num">12.345</span>s][info][gc,start] GC(<span class="num">42</span>) Pause Young (Normal) (G1 Evacuation Pause)
+[<span class="num">12.345</span>s][info][gc,heap] GC(<span class="num">42</span>) Eden regions: <span class="num">40</span>-&gt;<span class="num">0</span>(<span class="num">42</span>)
+[<span class="num">12.345</span>s][info][gc,heap] GC(<span class="num">42</span>) Survivor regions: <span class="num">4</span>-&gt;<span class="num">5</span>(<span class="num">6</span>)
+[<span class="num">12.345</span>s][info][gc,heap] GC(<span class="num">42</span>) Old regions: <span class="num">18</span>-&gt;<span class="num">19</span>(<span class="num">18</span>)
+[<span class="num">12.358</span>s][info][gc      ] GC(<span class="num">42</span>) Pause Young (Normal) (G1 Evacuation Pause) <span class="num">168</span>M-&gt;<span class="num">142</span>M(<span class="num">256</span>M) <span class="num">13</span>.421ms</pre>
+  </div>
+
+  <p>关键字段：</p>
+  <ul>
+    <li><code>[12.345s]</code>：距 JVM 启动的运行时长（uptime），用来判断问题是启动初期（可能是预热/编译问题）还是运行一段时间后才出现（更像是泄漏或负载问题）。</li>
+    <li><code>GC(42)</code>：第 42 次 GC 事件的编号，同一次 GC 的多条日志行共享这个编号，方便把 Eden/Survivor/Old 的变化关联起来看。</li>
+    <li><code>Pause Young (Normal) (G1 Evacuation Pause)</code>：本次 GC 的类型——一次年轻代的疏散暂停，对应前面 GC 模块讲过的 Minor GC；G1 特有的说法是 "Evacuation Pause"（把存活对象从一个 Region 疏散到另一个 Region）。</li>
+    <li><code>Eden regions: 40->0(42)</code>：Eden 区从占用 40 个 Region 回收到 0 个（说明年轻代对象大部分是垃圾，符合"朝生夕死"的假设），括号里的 42 是 Eden 区当前的总容量。</li>
+    <li><code>168M->142M(256M)</code>：整个堆从回收前 168M 降到回收后 142M，堆总容量 256M——这一行是判断"回收效果好不好"最直接的数据：如果回收后几乎没降，说明大部分对象都存活下来了，可能意味着晋升速度过快或者存在泄漏。</li>
+    <li><code>13.421ms</code>：本次 GC 的停顿耗时——这是用户能感知到的"卡顿时长"，也是调优最终要优化的核心指标。</li>
+  </ul>
+
+  <div class="callout info">
+    这些字段和前面内存模块讲的堆结构、GC 模块讲的分代收集理论是完全对应的：<code>Eden/Survivor/Old regions</code> 就是内存区域，<code>Pause Young</code> 就是 Minor GC，日志分析本质上是在"用数据验证内存模型和收集器理论在这台机器上具体是怎么运作的"。
+  </div>
+
+  <!-- 4. 常用调优参数速查表 -->
+  <h2>常用调优参数速查表</h2>
+  <table>
+    <thead>
+      <tr><th>参数</th><th>作用</th><th>调优要点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>-Xms</code> / <code>-Xmx</code></td>
+        <td>堆的初始大小 / 最大大小</td>
+        <td>生产环境建议两者设为相同值，避免堆动态扩容/收缩带来的额外停顿和抖动</td>
+      </tr>
+      <tr>
+        <td><code>-Xmn</code></td>
+        <td>新生代大小（Eden + 2×Survivor）</td>
+        <td>新生代太小会导致对象过早晋升到老年代，加重 Full GC 压力；太大则 Minor GC 单次耗时变长</td>
+      </tr>
+      <tr>
+        <td><code>-XX:SurvivorRatio</code></td>
+        <td>Eden 区和单个 Survivor 区的比例</td>
+        <td>默认 8（即 Eden:S0:S1 = 8:1:1），对象存活率高的场景可适当调小，避免 Survivor 装不下触发担保</td>
+      </tr>
+      <tr>
+        <td><code>-XX:MaxTenuringThreshold</code></td>
+        <td>对象在 Survivor 区熬过多少次 Minor GC 才晋升老年代</td>
+        <td>配合 <code>-XX:+PrintTenuringDistribution</code> 观察实际的年龄分布再调整，不要拍脑袋设值</td>
+      </tr>
+      <tr>
+        <td><code>-XX:+UseG1GC</code></td>
+        <td>指定使用 G1 收集器</td>
+        <td>JDK 9+ 默认收集器；大堆、追求可控停顿时间的场景首选</td>
+      </tr>
+      <tr>
+        <td><code>-XX:MaxGCPauseMillis</code></td>
+        <td>G1 的目标最大停顿时间（软目标，不是硬保证）</td>
+        <td>设得越小，G1 会越倾向于每次少回收一点、更频繁地回收，需要在停顿时长和吞吐之间权衡</td>
+      </tr>
+      <tr>
+        <td><code>-XX:+HeapDumpOnOutOfMemoryError</code></td>
+        <td>发生 OOM 时自动生成堆转储文件</td>
+        <td>生产环境强烈建议默认开启，配合 <code>-XX:HeapDumpPath</code> 指定路径，OOM 现场往往稍纵即逝，没有这个参数出问题后就什么都拿不到了</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>坑（也是面试高频）：</strong>不要迷信"网上抄来的一套参数"。比如把 <code>-Xmn</code> 设置得过大，看似减少了对象晋升、降低 Full GC 频率，但会导致每次 Minor GC 要扫描的存活对象变多，单次 Minor GC 停顿反而变长——调优永远是多个指标之间的权衡（吞吐量 vs 停顿时间 vs 内存占用），没有放之四海而皆准的参数组合，必须结合自己应用的对象分配速率、存活周期，通过日志反复验证。
+  </div>
+
+  <!-- 5. 调优方法论 -->
+  <h2>调优方法论：先分析，再调整</h2>
+  <div class="tree">
+    <span class="hi">① 明确目标</span>：是要降低单次停顿时间（延迟敏感型服务），还是提升吞吐量（离线批处理）？<br>
+    &nbsp;&nbsp;目标不同，调优方向可能完全相反<br>
+    <br>
+    <span class="hi">② 开启 GC 日志，观察一段时间</span>：Minor GC 频率、单次耗时；Full GC 是否频繁、是否耗时过长<br>
+    <br>
+    <span class="hi">③ 定位瓶颈是哪个区域</span>：新生代太小导致早晋升？老年代碎片导致 Full GC 变慢？<br>
+    &nbsp;&nbsp;元空间不够导致频繁触发类卸载扫描？<br>
+    <br>
+    <span class="hi">④ 针对性调整一个参数</span>：只改一个变量，改完重新观察日志对比效果<br>
+    &nbsp;&nbsp;（一次改多个参数，出了问题根本不知道是哪个参数导致的）<br>
+    <br>
+    <span class="hi">⑤ 压测验证，确认没有引入新问题后再上生产</span>
+  </div>
+
+  <p>
+    这也是为什么本模块把内存区域、垃圾收集器原理放在前面讲：<strong>不理解 Eden/Survivor/老年代怎么协作，不理解 G1 的 Region 和停顿模型，看到 GC 日志也只是一堆数字，无从下手调整</strong>。日志分析和调优参数，是把前面的理论知识落地成实际生产力的最后一步。
+  </p>
+
+  <!-- 6. 总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>GC 日志是判断调优是否有效的<strong>唯一客观依据</strong>，任何调优动作前后都要有日志数据支撑，不能凭感觉。</li>
+    <li>JDK 9+ 的统一日志框架用 <code>-Xlog:gc*</code> 一个入口就能控制所有 GC 相关日志的输出内容和格式，比老版本零散的 <code>-XX:+PrintGCDetails</code> 系列参数更规范。</li>
+    <li>调优参数速查表只是工具箱，真正的功夫在于"先分析瓶颈在哪，再决定用哪个参数、往哪个方向调"这套方法论。</li>
+    <li>本篇是整个"性能监控与调优"组的收尾：从 jps/jstat/jmap/jstack 的基础观测，到 JConsole/VisualVM 的可视化，到 Arthas 的生产级动态诊断，到内存泄漏和 CPU 飙高的专项排查思路，最终都会落到"看 GC 日志、调 JVM 参数"这个动作上。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-CPU飙高排查思路.html" class="nav-btn">← CPU 飙高排查思路</a>
+    <a href="../classloading/01-Class文件的组成.html" class="nav-btn next">下一篇:Class 文件的组成 →</a>
+  </div>
+
+</div>
+</body>
+</html>

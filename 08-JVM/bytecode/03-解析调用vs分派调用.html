@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>解析调用 vs 分派调用 — 字节码执行引擎</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 字节码执行引擎 / 解析调用 vs 分派调用
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">字节码执行引擎</div>
+    <h1>解析调用 vs 分派调用</h1>
+    <p>不是所有方法调用都需要"猜"——有些方法从编译那一刻起就已经注定了唯一的实现，有些方法则必须等到运行时才能知道到底调用的是谁。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    方法调用在字节码层面分两大类：<strong>解析调用（Resolution）</strong>——如果方法在编译期就能确定唯一的调用版本，且这个版本在运行期不可变，
+    虚拟机可以在<strong>类加载阶段</strong>就把符号引用直接解析为明确的调用入口；<strong>分派调用（Dispatch）</strong>——调用的目标方法要在运行期根据对象的实际类型才能确定，
+    这正是多态得以实现的基础，将在下一篇展开。
+  </p>
+
+  <!-- 2. 非虚方法 -->
+  <h2>非虚方法：解析调用的资格证</h2>
+  <p>
+    能被"解析调用"的方法有一个共同点：它们<strong>不具备多态性</strong>，不可能在运行期被子类重写出另一个版本，因此虚拟机在类加载时就能一次性把符号引用锁定为直接引用。
+    这类方法统称为<strong>非虚方法（Non-Virtual Method）</strong>。
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>方法类别</th><th>关键特征</th><th>对应字节码指令</th><th>为什么不可能被重写</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>静态方法</strong></td>
+        <td><code>static</code></td>
+        <td><code>invokestatic</code></td>
+        <td>属于类，不属于对象，没有"实际类型"的概念</td>
+      </tr>
+      <tr>
+        <td><strong>私有方法</strong></td>
+        <td><code>private</code></td>
+        <td><code>invokespecial</code></td>
+        <td>对子类不可见，子类无法声明同名方法来"覆盖"它</td>
+      </tr>
+      <tr>
+        <td><strong>实例构造器</strong></td>
+        <td><code>&lt;init&gt;</code></td>
+        <td><code>invokespecial</code></td>
+        <td>构造器本身不存在"重写"这个语义</td>
+      </tr>
+      <tr>
+        <td><strong>final 方法</strong></td>
+        <td><code>final</code></td>
+        <td><code>invokevirtual</code>（但目标唯一）</td>
+        <td>语法层面禁止子类重写，编译器会直接拒绝重写代码</td>
+      </tr>
+      <tr>
+        <td><strong>父类方法调用</strong></td>
+        <td><code>super.xxx()</code></td>
+        <td><code>invokespecial</code></td>
+        <td>显式指定了调用父类版本，不参与多态查找</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>注意 final 方法的特殊之处：</strong>final 方法在字节码层面仍然使用 <code>invokevirtual</code> 指令（和普通虚方法一样），
+    但因为语法上禁止被重写，虚拟机和 JIT 编译器知道它的目标版本是唯一的，因此可以把它当作非虚方法一样提前绑定甚至内联优化——这也是"非虚方法"这个概念比"invokestatic/invokespecial 调用的方法"范围略宽的原因。
+  </div>
+
+  <!-- 3. 原理走一遍 -->
+  <h2>原理走一遍：四条调用指令</h2>
+  <div class="tree">
+    <span class="hi">invokestatic</span>&nbsp;&nbsp; 调用静态方法 → 非虚方法 → 类加载阶段解析<br>
+    <span class="hi">invokespecial</span> 调用私有方法 / 构造器 / super 方法 → 非虚方法 → 类加载阶段解析<br>
+    <span class="hi">invokevirtual</span> 调用普通实例方法（含 final）→ 若 final 则等同非虚方法；否则是虚方法，需要动态分派<br>
+    <span class="hi">invokeinterface</span> 调用接口方法 → 典型虚方法，运行期确定实现类<br>
+    <span class="hi">invokedynamic</span> 调用动态生成的调用点（如 Lambda）→ 由调用点的引导方法在运行期决定目标
+  </div>
+  <p>
+    可以看到，<code>invokestatic</code> 和 <code>invokespecial</code> 是"解析调用"的专属指令——只要看到这两条指令，就能确定这次调用在类加载阶段已经被解析成了直接引用；
+    <code>invokevirtual</code> 和 <code>invokeinterface</code> 则是"分派调用"的主战场，具体调用哪个方法版本，要交给下一篇的静态分派 / 动态分派机制来决定。
+  </p>
+
+  <!-- 4. 常见坑 -->
+  <h2>常见坑 &amp; 面试高频考点</h2>
+
+  <div class="callout warn">
+    <strong>坑：把"解析"理解成"运行前会做的所有优化"。</strong>
+    这里的"解析"特指"符号引用 → 直接引用"这一步转换，只针对方法调用/字段访问等少数几类指令，不要和 JIT 编译、内联优化等其他运行期优化手段混为一谈。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"<code>invokespecial</code> 和 <code>invokevirtual</code> 的区别？" —— <code>invokespecial</code> 用于调用编译期就能确定唯一版本的方法（私有方法、构造器、super 调用），不经过运行时的多态查找；
+    <code>invokevirtual</code> 用于调用可能被重写的普通实例方法，运行时要根据接收者的实际类型去查找方法。这也解释了"为什么私有方法和构造器不能被重写、也不能构成多态"——它们从字节码指令层面就已经被排除在动态分派之外。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>方法调用先分两大类：能在类加载期锁定版本的走"解析调用"，需要运行期才能确定版本的走"分派调用"。</li>
+    <li>静态方法、私有方法、构造器、final 方法这几类"非虚方法"是解析调用的全部对象——它们的共同点是不可能被重写。</li>
+    <li>四条主要调用指令（invokestatic / invokespecial / invokevirtual / invokeinterface）天然映射着"是否需要分派"这条分界线。</li>
+    <li>分派调用正是 Java 多态的字节码实现基础，下一篇正式展开静态分派（重载）与动态分派（重写）。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-动态链接.html" class="nav-btn">← 动态链接</a>
+    <a href="./04-静态分派与动态分派.html" class="nav-btn next">静态分派与动态分派(重载 vs 重写) →</a>
+  </div>
+
+</div>
+</body>
+</html>

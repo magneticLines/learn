@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CMS 收集器及其问题 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / CMS 收集器及其问题
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>CMS 收集器及其问题</h1>
+    <p>前面所有收集器都要 Stop The World 才能干活。CMS 第一次让垃圾收集和用户线程"基本"同时运行——这在当年是革命性的，但它的三个先天缺陷也最终让它被 G1 取代。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>CMS（Concurrent Mark Sweep）</strong>是 HotSpot 第一款真正意义上的<strong>并发</strong>收集器——它能让垃圾收集线程与用户线程<strong>基本同时工作</strong>，
+    大幅缩短了老年代收集的停顿时间。它以<strong>获取最短回收停顿时间</strong>为目标，基于标记-清除算法实现，整个过程分四个阶段。
+  </p>
+
+  <h2>四个阶段：只有两处 STW</h2>
+
+  <div class="tree">
+    <span class="hi">① 初始标记（Initial Mark）</span> —— <span style="color:#fdba74">需要 STW</span><br>
+    &nbsp;&nbsp;只标记 GC Roots<strong>直接关联</strong>到的对象，速度很快，停顿时间极短<br>
+    <br>
+    <span class="hi">② 并发标记（Concurrent Mark）</span> —— <span class="hi">不需要 STW</span><br>
+    &nbsp;&nbsp;从①标记的对象出发，沿引用链向下遍历整个对象图，与用户线程<strong>并发</strong>执行<br>
+    &nbsp;&nbsp;这一步耗时最长，但因为不停顿用户线程，对响应时间影响很小<br>
+    <br>
+    <span class="hi">③ 重新标记（Remark）</span> —— <span style="color:#fdba74">需要 STW</span><br>
+    &nbsp;&nbsp;修正②阶段中，因为用户线程继续运行而导致标记结果发生变动的那部分记录<br>
+    &nbsp;&nbsp;停顿时间比初始标记稍长，但远比并发标记阶段短<br>
+    <br>
+    <span class="hi">④ 并发清除（Concurrent Sweep）</span> —— <span class="hi">不需要 STW</span><br>
+    &nbsp;&nbsp;清理掉标记为垃圾的对象，与用户线程并发执行
+  </div>
+
+  <p>四个阶段里，耗时最长的并发标记和并发清除都<strong>不需要停顿用户线程</strong>，只有初始标记和重新标记这两个耗时很短的阶段需要 STW，这就是 CMS 停顿时间大幅缩短的原因。</p>
+
+  <h2>三大问题——正是它们的存在，把 G1 推上了舞台</h2>
+
+  <table>
+    <thead>
+      <tr><th>问题</th><th>原因</th><th>后果</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>对 CPU 资源敏感</strong></td>
+        <td>并发阶段虽不停顿用户线程，但会占用一部分 CPU 资源和用户线程"抢时间片"</td>
+        <td>在 CPU 核心数较少的机器上，用户程序会明显感觉变慢，吞吐量下降</td>
+      </tr>
+      <tr>
+        <td><strong>无法处理浮动垃圾（Floating Garbage）</strong></td>
+        <td>并发清除阶段，用户线程仍在运行、仍在产生新的垃圾对象</td>
+        <td>这部分新垃圾这一轮来不及处理，只能留到下一次 GC，且必须预留足够空间容纳这些"浮动垃圾"和用户线程新分配的对象，否则会触发 <strong>Concurrent Mode Failure</strong></td>
+      </tr>
+      <tr>
+        <td><strong>基于标记-清除，产生内存碎片</strong></td>
+        <td>标记-清除算法本身不整理内存</td>
+        <td>碎片过多、无法分配大对象时，CMS 会退化为<strong>单线程的 Serial Old</strong> 进行一次带整理的 Full GC，停顿时间会瞬间暴涨</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>生产事故高发点：</strong>"Concurrent Mode Failure" 和 "退化为 Serial Old" 是 CMS 在生产环境最典型的两个事故场景。
+    前者是因为老年代预留空间不足以容纳并发清理期间产生的浮动垃圾，后者是碎片过多导致无法分配大对象。两者的共同后果都是：本该是"并发、低停顿"的 CMS，突然变成了一次长达数秒甚至更久的单线程 STW，这对在线服务是灾难性的。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"CMS 有什么缺点？为什么被 G1 取代？" 一定要答全三点：CPU 敏感、浮动垃圾无法即时处理、内存碎片导致的退化风险。
+    G1 之所以能取代 CMS，正是因为它用 Region 化的内存布局配合标记-整理思路，从设计上同时解决了"碎片"和"停顿时间不可预测"这两个问题（下一篇详细展开）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>CMS 是第一款真正的并发收集器，四阶段中只有初始标记和重新标记需要 STW，其余阶段与用户线程并发执行。</li>
+    <li>三大问题——CPU 资源敏感、浮动垃圾、内存碎片导致退化——共同构成了它被淘汰的原因，理解这三点是理解 G1 设计动机的前提。</li>
+    <li>"退化为 Serial Old"是 CMS 最致命的短板：本该低延迟的收集器，在最坏情况下停顿时间反而比简单收集器更长更不可控。</li>
+    <li>CMS 在 JDK 9 起被标记为弃用，JDK 14 正式移除，但它在 GC 发展史上的地位不可替代——它是"并发收集"思路第一次被验证可行的实现。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./09-ParallelScavenge与ParallelOld.html" class="nav-btn">← Parallel Scavenge / Parallel Old</a>
+    <a href="./11-G1收集器.html" class="nav-btn next">G1 收集器 →</a>
+  </div>
+
+</div>
+</body>
+</html>

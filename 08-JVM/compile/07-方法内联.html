@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>方法内联(进阶) — 编译与优化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #831843; }
+  .nav-btn.next { color: #f472b6; border-color: #831843; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 编译与优化 / 方法内联(进阶)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">编译与优化</div>
+    <h1>方法内联(进阶)</h1>
+    <p>"多写小方法，不用担心性能"这句建议背后的真相——JIT 会把这些小方法的方法体直接"抄"到调用处，调用本身的开销就此消失。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>方法内联（Method Inlining）</strong>是指编译器把被调用方法的方法体，直接<strong>展开、替换</strong>掉调用它的那条语句本身。
+    效果上相当于把 <code>a.foo()</code> 这行代码，替换成 <code>foo()</code> 方法体里的具体逻辑，调用这个动作从此消失。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>写文章时引用一句名言，你有两种做法——一种是写"详见附录第 3 条"（方法调用，读者要翻页去查，有跳转成本）；另一种是直接把那句话原文抄写到正文里（方法内联，读者一次读完，不用来回翻页）。方法内联就是编译器帮你做的"直接抄写"。
+  </div>
+
+  <!-- 2. 内联消除的开销 -->
+  <h2>内联消除了什么开销？</h2>
+  <p>一次方法调用，在没有内联的情况下，字节码层面要付出这些代价：</p>
+
+  <div class="tree">
+    <span class="hi">方法调用的真实成本</span><br>
+    &nbsp;&nbsp;① 创建新的<span class="hi">栈帧</span>，压入调用方栈<br>
+    &nbsp;&nbsp;② <span class="hi">传递参数</span>：把实参压入新栈帧的局部变量表<br>
+    &nbsp;&nbsp;③ 跳转到目标方法的字节码位置执行<br>
+    &nbsp;&nbsp;④ 执行完毕后，<span class="hi">弹出栈帧</span>，把返回值传回调用者，跳转回调用点之后继续执行<br>
+    <br>
+    <span class="hi">内联后</span><br>
+    &nbsp;&nbsp;上面 ①②③④ 全部消失，方法体的逻辑就地展开在调用处<br>
+    &nbsp;&nbsp;没有栈帧切换，没有参数搬运，没有跳转 —— 纯粹是"代码直接接上去"
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>InlineDemo.java</span></div>
+    <pre><span class="kw">private</span> <span class="kw">int</span> <span class="fn">square</span><span class="punct">(</span><span class="kw">int</span> <span class="var">x</span><span class="punct">) {</span>
+    <span class="kw">return</span> <span class="var">x</span> <span class="punct">*</span> <span class="var">x</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="kw">public</span> <span class="kw">int</span> <span class="fn">sumOfSquares</span><span class="punct">(</span><span class="kw">int</span> <span class="var">a</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">b</span><span class="punct">) {</span>
+    <span class="kw">return</span> <span class="fn">square</span><span class="punct">(</span><span class="var">a</span><span class="punct">)</span> <span class="punct">+</span> <span class="fn">square</span><span class="punct">(</span><span class="var">b</span><span class="punct">);</span>
+    <span class="com">// JIT 内联后，效果等价于：
+    // return (a * a) + (b * b);
+    // 两次方法调用的栈帧开销全部消失，square() 这个方法在机器码层面"隐身"了</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    更重要的是，内联不只省了调用开销本身——它还<strong>为进一步的优化打开了更大的代码窗口</strong>。
+    上一节讲的逃逸分析，如果 <code>square()</code> 内部创建了一个局部对象，只有把 <code>square()</code> 内联进 <code>sumOfSquares()</code> 之后，
+    编译器才能站在"合并后的这一大段代码"的全局视角，判断这个对象到底会不会真的逃逸出去——内联前，编译器只能孤立地看每个方法，看不到全貌。
+  </p>
+
+  <!-- 3. 为什么小方法/非虚方法更容易被内联 -->
+  <h2>为什么"小方法、private/final 方法更容易被内联"？</h2>
+
+  <h3>原因一：方法体大小限制</h3>
+  <p>
+    内联的本质是"代码复制"——如果被内联的方法体本身很庞大，直接展开到调用处会导致最终编译出的机器码体积膨胀（Code Bloat），
+    反而拖慢指令缓存命中率，得不偿失。所以 HotSpot 对可以被内联的方法体大小有阈值限制（如 <code>-XX:MaxInlineSize</code>，默认 35 字节码大小），
+    <strong>超过阈值的"大方法"会被判定为不值得内联</strong>，哪怕它调用非常频繁。
+  </p>
+
+  <h3>原因二：非虚方法/唯一实现更容易被安全内联</h3>
+  <p>
+    这才是更核心的原因，涉及上一组"字节码"里讲过的静态分派与动态分派：<code>private</code>、<code>final</code>、<code>static</code> 修饰的方法，
+    或者被 <code>invokestatic</code>/<code>invokespecial</code> 调用的方法，在编译期就能唯一确定"到底调用的是哪个方法实现"（非虚方法）。
+    <strong>编译器能 100% 确定目标，才敢把它的方法体直接展开替换掉调用处</strong>——这是安全内联的前提。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>虚方法内联的困境：多态带来的不确定性</span></div>
+    <pre><span class="kw">public</span> <span class="kw">void</span> <span class="fn">process</span><span class="punct">(</span><span class="ty">Animal</span> <span class="var">a</span><span class="punct">) {</span>
+    <span class="var">a</span><span class="punct">.</span><span class="fn">makeSound</span><span class="punct">();</span>   <span class="com">// makeSound() 是虚方法，运行时 a 可能是 Dog、Cat 或任意子类
+    // JIT 无法在编译期确定"到底该内联 Dog.makeSound() 还是 Cat.makeSound()"</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    对付这种"虚方法调用点"，C2 编译器会用<strong>内联缓存（Inline Cache）</strong>做一种赌博式优化：先记住最近一次实际调用的具体类型，
+    如果之后调用点<strong>持续都是同一个类型</strong>（单态/Monomorphic），就大胆按这个类型内联，并在方法入口加一个类型校验作为"逃生门"；
+    一旦类型校验失败（说明来了不同的子类实例），就退回普通的虚方法调用。这也是为什么"面向接口编程但调用点类型单一"的代码，JIT 优化效果反而更好。
+  </p>
+
+  <!-- 4. 对比表 -->
+  <h2>影响是否内联的关键因素</h2>
+  <table>
+    <thead>
+      <tr><th>因素</th><th>更容易被内联</th><th>更难被内联</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>方法修饰符</strong></td>
+        <td><code>private</code>/<code>final</code>/<code>static</code>（非虚方法，目标唯一确定）</td>
+        <td><code>public</code> 且被多态重写的方法（虚方法，目标不确定）</td>
+      </tr>
+      <tr>
+        <td><strong>方法体大小</strong></td>
+        <td>短小（不超过 <code>-XX:MaxInlineSize</code> 阈值，默认 35 字节码）</td>
+        <td>方法体过大，展开会导致代码膨胀，判定为不值得内联</td>
+      </tr>
+      <tr>
+        <td><strong>调用点的类型分布</strong></td>
+        <td>调用点长期只出现一种实际类型（单态调用），内联缓存命中率高</td>
+        <td>调用点频繁出现不同子类实例（多态调用），内联缓存反复失效</td>
+      </tr>
+      <tr>
+        <td><strong>是否是热点</strong></td>
+        <td>已经被判定为热点、进入 JIT 编译的方法（上上节内容）</td>
+        <td>只被解释执行的冷代码，不参与内联决策</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>面试高频：</strong>"为什么阿里巴巴 Java 开发手册建议方法体不要过长？"——除了可读性，还有一个底层原因：过长的方法更容易超过 JIT 的内联体积阈值，从而失去被内联优化的机会。把大方法拆分成职责单一的小方法，某种程度上反而更利于 JIT 优化。
+  </div>
+
+  <!-- 5. 收尾：优化手段串联 -->
+  <h2>收尾：JIT 优化手段是如何环环相扣的</h2>
+  <p>
+    Java 的"先解释执行、再逐步优化"是一个先天代价——相比静态编译语言，它注定要经历一段性能爬坡期。
+    但 HotSpot 用一整套环环相扣的优化手段，把这个代价压缩到了可以接受的范围：
+  </p>
+
+  <div class="tree">
+    <span class="hi">① 热点探测</span> → 用计数器找出真正值得投入编译成本的代码，避免把精力浪费在只跑一两次的冷代码上<br>
+    <span class="hi">② 分层编译</span> → C1 快速响应、C2 深度优化，兼顾编译速度与优化质量<br>
+    <span class="hi">③ 方法内联</span> → 消除调用开销，同时把多个方法的代码"拼"成一大段，为后续优化提供更大的分析窗口<br>
+    <span class="hi">④ 逃逸分析</span> → 站在内联后的全局视角，判断对象能否栈上分配/标量替换/锁消除<br>
+    <br>
+    <span class="hi">结果</span>：解释执行负责"快速启动、覆盖冷代码"，JIT 的这一整条优化链条负责"让热点代码逐步逼近甚至超越静态编译语言的执行效率"
+  </div>
+
+  <div class="callout tip">
+    这四步的顺序不是巧合：没有热点探测，编译器不知道该编译谁；没有方法内联，逃逸分析看到的永远是被人为割裂的一个个孤立方法，看不到对象真实的生命周期全貌。理解了这条链条，也就理解了"Java 程序为什么需要预热"、"为什么长期运行的服务性能会越来越好"这些现象背后的完整原理。
+  </div>
+
+  <!-- 6. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>方法内联：</strong>把被调用方法的方法体直接展开到调用处，消除栈帧创建、参数传递等调用开销。</li>
+    <li><strong>非虚方法更容易内联：</strong><code>private</code>/<code>final</code>/<code>static</code> 方法目标唯一确定，编译器可以放心内联；虚方法调用依赖内联缓存做"赌注式"优化，单态调用点效果最好。</li>
+    <li><strong>方法体大小是硬约束：</strong>过大的方法即使很热也可能因超过内联阈值而放弃内联，避免代码膨胀。</li>
+    <li><strong>内联是后续优化的基础：</strong>它把分散的方法拼接成更大的代码块，让逃逸分析等优化能看到更完整的对象生命周期。</li>
+    <li><strong>整个"编译与优化"小结：</strong>热点探测 → 分层编译 → 方法内联 → 逃逸分析，四步环环相扣，共同弥补了 Java "先解释执行再逐步优化"这一先天代价，兼顾了启动速度与长期运行的峰值性能。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./06-逃逸分析与栈上分配.html" class="nav-btn">← 逃逸分析与栈上分配(进阶)</a>
+    <a href="../concurrency/01-Java内存模型回顾.html" class="nav-btn next">下一篇:Java 内存模型回顾 →</a>
+  </div>
+
+</div>
+</body>
+</html>

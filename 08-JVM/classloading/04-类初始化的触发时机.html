@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>类初始化的触发时机 — 类加载机制</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #4c1d95; }
+  .nav-btn.next { color: #a78bfa; border-color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 类加载机制 / 类初始化的触发时机
+  </div>
+
+  <div class="hero">
+    <div class="tag">类加载机制</div>
+    <h1>类初始化的触发时机</h1>
+    <p>虚拟机规范严格列出了"必须初始化"的几种场景——除此之外的引用方式，即便看起来在"用"这个类，也不会触发它的初始化。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>Java 虚拟机规范严格规定了有且只有 6 种"主动引用"场景会触发类的初始化，除此之外的引用方式都是"被动引用"，不会触发初始化。</strong>
+    这个规定很重要，因为初始化阶段要执行 <code>&lt;clinit&gt;</code>（可能有静态代码块、可能有副作用），虚拟机必须精确控制"什么时候才允许触发"，不能一"碰到"这个类就无脑初始化。
+  </p>
+
+  <h2>6 种主动引用（会触发初始化）</h2>
+  <div class="tree">
+    <span class="hi">① 遇到 new / getstatic / putstatic / invokestatic 这 4 条字节码指令时</span><br>
+    &nbsp;&nbsp;对应 Java 代码：new 一个实例 / 读写类的静态字段（final 常量除外）/ 调用类的静态方法<br>
+    <br>
+    <span class="hi">② 使用 java.lang.reflect 包对类进行反射调用时</span><br>
+    &nbsp;&nbsp;如果类还没初始化，先触发它的初始化<br>
+    <br>
+    <span class="hi">③ 初始化一个类时，如果发现它的父类还没初始化，先触发父类初始化</span><br>
+    <br>
+    <span class="hi">④ 虚拟机启动时，用户指定的主类（包含 main 方法的类）会先被初始化</span><br>
+    <br>
+    <span class="hi">⑤ 使用 JDK 7 动态语言支持时，MethodHandle 解析结果为 REF_getStatic / REF_putStatic / REF_invokeStatic 的方法句柄，其对应的类没有初始化则触发初始化</span><br>
+    <br>
+    <span class="hi">⑥ 接口中定义了默认方法（JDK 8+），当这个接口的实现类初始化时，接口要在此之前被初始化</span>
+  </div>
+
+  <div class="callout info">
+    <strong>建立联系：</strong>反射（②）之所以会触发初始化，是因为 <code>Class.forName(name)</code> 默认参数就是"加载并初始化"；而 <code>Class.forName(name, false, loader)</code> 把 initialize 参数设为 false 就只加载不初始化——这正是理解反射底层行为、以及后面 SPI 机制里 <code>ServiceLoader</code> 为何要处理"类加载了但可能还没初始化"这类细节的基础。
+  </div>
+
+  <h2>反直觉的重点：被动引用（不会触发初始化）</h2>
+  <p>下面几种代码写法"看起来"在使用某个类，但虚拟机规范明确规定它们<strong>不属于主动引用</strong>，不会触发该类的初始化：</p>
+
+  <h3>反例 1：通过子类引用父类的静态字段，不会触发子类初始化</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>被动引用示例 1</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Parent</span> <span class="punct">{</span>
+    <span class="kw">static</span> <span class="punct">{</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"Parent 初始化"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="kw">public static int</span> <span class="var">value</span> <span class="punct">=</span> <span class="num">100</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="kw">class</span> <span class="ty">Child</span> <span class="kw">extends</span> <span class="ty">Parent</span> <span class="punct">{</span>
+    <span class="kw">static</span> <span class="punct">{</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"Child 初始化"</span><span class="punct">);</span>  <span class="com">// 不会执行</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">public class</span> <span class="ty">Test</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="ty">Child</span><span class="punct">.</span><span class="var">value</span><span class="punct">);</span>
+        <span class="com">// 输出只有 "Parent 初始化" 和 100，Child 的静态块不会执行</span>
+        <span class="com">// 因为 value 字段实际定义在 Parent 里，对静态字段的直接引用只会初始化定义它的那个类</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>反例 2：通过数组定义来引用类，不会触发该类初始化</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>被动引用示例 2</span></div>
+    <pre><span class="ty">Parent</span><span class="punct">[]</span> <span class="var">arr</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Parent</span><span class="punct">[</span><span class="num">10</span><span class="punct">];</span>
+<span class="com">// 这行代码只会触发一个由虚拟机自动生成的、继承自 Object 的数组类 [LParent; 的加载</span>
+<span class="com">// 不会触发 Parent 类本身的初始化——因为还没有真正 new 出任何一个 Parent 实例</span></pre>
+  </div>
+
+  <h3>反例 3：引用 static final 编译期常量，不会触发定义它的类初始化</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>被动引用示例 3</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Constants</span> <span class="punct">{</span>
+    <span class="kw">static</span> <span class="punct">{</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"Constants 初始化"</span><span class="punct">);</span>  <span class="com">// 不会执行</span>
+    <span class="punct">}</span>
+    <span class="kw">public static final</span> <span class="ty">String</span> <span class="var">VERSION</span> <span class="punct">=</span> <span class="str">"1.0"</span><span class="punct">;</span>  <span class="com">// 编译期常量</span>
+<span class="punct">}</span>
+
+<span class="kw">public class</span> <span class="ty">Test</span> <span class="punct">{</span>
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="ty">Constants</span><span class="punct">.</span><span class="var">VERSION</span><span class="punct">);</span>
+        <span class="com">// 只输出 "1.0"，Constants 的静态块永远不会执行</span>
+        <span class="com">// 因为 "1.0" 在编译期就已经存入了 Test 类自己的常量池，Test 和 Constants 类在运行期没有任何关联</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>面试高频坑：</strong>反例 3 是上一篇提到的"static final 编译期常量在准备阶段就直接赋真实值"这个规则的延伸——正因为常量在编译期已经被内联进调用方的常量池，调用方运行时压根不需要再去找 <code>Constants</code> 这个类要值，自然也就不会触发它的初始化。但如果把 <code>VERSION</code> 的值换成一个运行时才能确定的表达式（比如调用某个方法返回的结果），它就不再是"编译期常量"，会退化成一次真正的字段访问，从而触发初始化。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>只有 6 种场景触发初始化：</strong>其余所有"看起来在用类"的写法都是被动引用，规范这样设计是为了让"什么时候执行用户的静态代码"完全可预测、可控制。</li>
+    <li><strong>被动引用三连：</strong>子类引用父类静态字段、数组定义、引用编译期常量——这三个反例是面试和代码审查中最常考的"类初始化陷阱"。</li>
+    <li><strong>理解触发时机是理解双亲委派的前提：</strong>下一篇会讲"类加载器"如何配合"类初始化时机"，把加载请求逐级委派给父加载器。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-类加载五阶段.html" class="nav-btn">← 加载-验证-准备-解析-初始化五阶段</a>
+    <a href="./05-双亲委派模型.html" class="nav-btn next">双亲委派模型 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>静态分派与动态分派(重载 vs 重写) — 字节码执行引擎</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 字节码执行引擎 / 静态分派与动态分派(重载 vs 重写)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">字节码执行引擎</div>
+    <h1>静态分派与动态分派(重载 vs 重写)</h1>
+    <p>"重载和重写到底哪里不一样"是每个 Java 初学者都学过的规则，但从虚拟机层面看，两者其实分别对应两套完全不同的方法确定机制——一个在编译期拍板，一个在运行期才揭晓。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>重载（Overload）</strong>的实现基础是<strong>静态分派</strong>——依据的是变量的<strong>静态类型</strong>（编译期就确定的类型，即声明时写的类型），
+    在编译阶段就把调用哪个重载版本写死进字节码。
+    <strong>重写（Override）</strong>的实现基础是<strong>动态分派</strong>——依据的是变量的<strong>实际类型</strong>（运行期才知道，比如父类引用指向的子类实例），
+    必须等到程序真正跑起来才能确定调用的是谁。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>静态类型 vs 实际类型</span></div>
+    <pre><span class="ty">Human</span> <span class="var">man</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">Man</span><span class="punct">();</span>
+<span class="com">// Human 是 man 的"静态类型"——写在代码里，编译期就固定，永远不变</span>
+<span class="com">// Man   是 man 的"实际类型"——运行期才知道，同一个变量可以在不同时刻指向不同实际类型</span></pre>
+  </div>
+
+  <!-- 2. 静态分派：重载 -->
+  <h2>静态分派：编译器怎么给重载"消歧"</h2>
+  <p>
+    当一个方法名存在多个重载版本时，编译器要在<strong>编译期</strong>根据实参的静态类型，从候选版本中选出唯一一个写进字节码的调用指令里。
+    这个选择过程遵循一套优先级规则：
+  </p>
+  <ol>
+    <li><strong>精确类型匹配</strong>——参数类型与实参类型完全一致，最优先。</li>
+    <li><strong>基本类型自动转型（宽化转换）</strong>——如 <code>char → int → long → float → double</code>。</li>
+    <li><strong>自动装箱 / 拆箱</strong>——如 <code>int → Integer</code>。</li>
+    <li><strong>可变长参数（varargs）</strong>——优先级最低，只有前面都匹配不上才会考虑。</li>
+  </ol>
+
+  <!-- 3. 经典陷阱 -->
+  <h2>经典陷阱：重载消歧（面试高频难题）</h2>
+  <p>下面这段代码是《深入理解 Java 虚拟机》里的经典例子的变体，故意制造"传 null / 传字面量"时的歧义，考察对上面优先级规则的理解。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OverloadTrap.java（反例 — 传字面量的消歧陷阱）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OverloadTrap</span> <span class="punct">{</span>
+
+    <span class="kw">public static void</span> <span class="fn">f</span><span class="punct">(</span><span class="ty">Integer</span> <span class="var">i</span><span class="punct">) {</span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"Integer"</span><span class="punct">); }</span>
+    <span class="kw">public static void</span> <span class="fn">f</span><span class="punct">(</span><span class="kw">long</span> <span class="var">l</span><span class="punct">)    {</span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"long"</span><span class="punct">);    }</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="fn">f</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+        <span class="com">// 输出 "long"，不是 "Integer"！</span>
+        <span class="com">// 原因：int -> long 是"自动转型"，优先级高于 int -> Integer 的"自动装箱"</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OverloadTrap2.java（反例 — 传 null 的消歧陷阱）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OverloadTrap2</span> <span class="punct">{</span>
+
+    <span class="kw">public static void</span> <span class="fn">foo</span><span class="punct">(</span><span class="ty">String</span> <span class="var">s</span><span class="punct">)  {</span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"String"</span><span class="punct">);  }</span>
+    <span class="kw">public static void</span> <span class="fn">foo</span><span class="punct">(</span><span class="ty">Object</span> <span class="var">o</span><span class="punct">)  {</span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="str">"Object"</span><span class="punct">);  }</span>
+
+    <span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+        <span class="fn">foo</span><span class="punct">(</span><span class="kw">null</span><span class="punct">);</span>
+        <span class="com">// 输出 "String"：编译器在能匹配 null 的候选版本中，选参数类型"更精确"的那个</span>
+        <span class="com">// 如果同时存在 foo(String) 和 foo(StringBuilder)，两者之间没有父子关系可比较</span>
+        <span class="com">// 编译器无法判断谁更精确，直接报编译错误：reference to foo is ambiguous</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>规则小结：</strong>编译器选择重载版本时，永远优先选择<strong>不需要发生类型转换</strong>或<strong>转换幅度最小、层级最精确</strong>的版本。
+    自动转型（宽化）比自动装箱优先级高，装箱又比变长参数优先级高。传 <code>null</code> 时，编译器会在能接受 null 的候选中选类型继承关系上最精确（最具体的子类型）的那个，如果两个候选类型之间不存在父子关系，就会产生编译期歧义错误。
+  </div>
+
+  <!-- 4. 动态分派：重写 -->
+  <h2>动态分派：重写在虚拟机层面怎么做</h2>
+  <p>
+    重写方法调用使用 <code>invokevirtual</code> 指令，它在运行期执行时会按照固定的查找过程来确定真正调用哪个方法：
+  </p>
+  <div class="tree">
+    <span class="hi">① 找接收者的实际类型</span><br>
+    &nbsp;&nbsp;取操作数栈顶的对象引用，找到它所指向对象的实际类型 C<br>
+    <br>
+    <span class="hi">② 在 C 中查找匹配的方法</span><br>
+    &nbsp;&nbsp;如果在 C 中找到与常量池描述符、简单名都相符的方法，且通过访问权限校验<br>
+    &nbsp;&nbsp;→ 返回这个方法的直接引用，查找结束<br>
+    <br>
+    <span class="hi">③ 沿继承链向上找</span><br>
+    &nbsp;&nbsp;否则按继承关系从下往上，对 C 的各个父类依次重复第②步<br>
+    <br>
+    <span class="hi">④ 都没找到</span><br>
+    &nbsp;&nbsp;抛出 AbstractMethodError
+  </div>
+  <p>
+    关键在于第①步——<strong>接收者的实际类型只有运行到这行代码时才知道</strong>，所以同一条 <code>invokevirtual</code> 指令，
+    在程序不同的执行路径上（同一个父类引用指向不同子类实例）可能调用到完全不同的方法实现，这就是运行时多态的字节码本质。
+  </p>
+
+  <!-- 5. 对比表 -->
+  <h2>静态分派 vs 动态分派</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>静态分派（重载）</th><th>动态分派（重写）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>依据</td>
+        <td>变量的<strong>静态类型</strong></td>
+        <td>变量的<strong>实际类型</strong></td>
+      </tr>
+      <tr>
+        <td>确定时机</td>
+        <td>编译期</td>
+        <td>运行期</td>
+      </tr>
+      <tr>
+        <td>字节码体现</td>
+        <td>编译器在编译期就选定具体重载版本，写入常量池方法符号引用（方法描述符不同）</td>
+        <td>同一条 <code>invokevirtual</code> 指令，运行时才沿继承链查找实际类型对应的方法</td>
+      </tr>
+      <tr>
+        <td>是否具有运行时多态性</td>
+        <td>没有——很多资料称其为"编译时多态"，但本质上只是编译期的一次选择</td>
+        <td>有——这是狭义上真正的"运行时多态"</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"重载算不算多态？" —— 这是个有争议但有标准答案的问题：Java 语言规范意义上，重载依赖的是编译期静态类型，属于编译期行为，很多教材称之为"编译时多态"作为一种说法上的兼容，但更严谨的表述是——只有依赖动态分派的重写才是真正意义上的运行时多态；重载只是"同名方法在编译期被区分成了不同方法"。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>重载看的是"你声明的类型"（静态类型），重写看的是"对象实际长什么样"（实际类型）。</li>
+    <li>静态分派在编译期就把重载版本写死进字节码；动态分派把决定权留到运行期的 <code>invokevirtual</code> 查找过程。</li>
+    <li>传 null、传字面量、int/long/Integer 混合重载是重载消歧的三大面试高频坑，核心规则是"优先选不需要类型转换、转换幅度最小的版本"。</li>
+    <li>动态分派的查找过程（沿继承链逐层向上找）如果不做任何优化，每次调用都要重新走一遍——这正是下一篇"虚方法表"要解决的效率问题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-解析调用vs分派调用.html" class="nav-btn">← 解析调用 vs 分派调用</a>
+    <a href="./05-虚方法表.html" class="nav-btn next">虚方法表(进阶) →</a>
+  </div>
+
+</div>
+</body>
+</html>

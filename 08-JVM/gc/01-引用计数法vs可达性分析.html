@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>引用计数法 vs 可达性分析 — 垃圾收集</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 垃圾收集 / 引用计数法 vs 可达性分析
+  </div>
+
+  <div class="hero">
+    <div class="tag">垃圾收集</div>
+    <h1>引用计数法 vs 可达性分析</h1>
+    <p>垃圾收集要做的第一件事，不是"怎么回收"，而是"哪些对象已经死了"——这是整个 GC 体系的地基，地基选错了，后面的算法全部立不住。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    判断对象是否存活有两种主流思路：<strong>引用计数法</strong>（给每个对象挂一个计数器，谁引用我就 +1，引用失效就 -1，计数为 0 说明没人再用我了）和
+    <strong>可达性分析</strong>（从一批公认"肯定存活"的根对象出发，顺着引用关系向下搜索，搜不到的对象就是垃圾）。
+    Java 虚拟机选择了后者，原因很简单：引用计数法有一个无法自行解决的硬伤——<strong>循环引用</strong>。
+  </p>
+
+  <h2>反例：引用计数法搞不定循环引用</h2>
+  <p>设想两个对象互相持有对方的引用，而外部已经没有任何变量指向它们：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>循环引用示意（伪代码）</span></div>
+    <pre><span class="ty">ObjectA</span> <span class="var">a</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ObjectA</span><span class="punct">();</span>
+<span class="ty">ObjectB</span> <span class="var">b</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ObjectB</span><span class="punct">();</span>
+<span class="var">a</span><span class="punct">.</span><span class="var">instance</span> <span class="punct">=</span> <span class="var">b</span><span class="punct">;</span>  <span class="com">// a 引用 b，b 的计数器 = 1</span>
+<span class="var">b</span><span class="punct">.</span><span class="var">instance</span> <span class="punct">=</span> <span class="var">a</span><span class="punct">;</span>  <span class="com">// b 引用 a，a 的计数器 = 1</span>
+
+<span class="var">a</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>  <span class="com">// 外部不再持有 a，但 b.instance 还指着它 → a 计数器仍是 1</span>
+<span class="var">b</span> <span class="punct">=</span> <span class="kw">null</span><span class="punct">;</span>  <span class="com">// 外部不再持有 b，但 a.instance 还指着它 → b 计数器仍是 1</span>
+<span class="com">// 结果：a、b 互相“续命”，计数器永远不会归零，内存永远回收不了</span></pre>
+  </div>
+
+  <div class="callout warn">
+    这不是引用计数法“实现得不好”，而是这套思路本身的<strong>结构性缺陷</strong>：它只能感知局部的引用关系（我被谁引用了），
+    没法感知"这一整团对象是否已经和外部世界失联"。要解决循环引用，必须跳出局部计数，站在全局视角做一次可达性判断——这正是可达性分析的思路。
+  </div>
+
+  <h2>正例：可达性分析（Reachability Analysis）</h2>
+  <p>
+    可达性分析的核心思想是：把一批称为 <strong>GC Roots</strong> 的对象作为起始点，从这些节点开始向下搜索，
+    搜索走过的路径称为<strong>引用链（Reference Chain）</strong>。当一个对象到 GC Roots 之间没有任何引用链相连时，
+    就证明这个对象是不可用的，可以被回收。
+  </p>
+
+  <div class="tree">
+    <span class="hi">GC Roots</span>（虚拟机栈中的局部变量、静态变量……）<br>
+    &nbsp;&nbsp;├── 对象 A ── 对象 C <span class="hi">（可达，存活）</span><br>
+    &nbsp;&nbsp;└── 对象 B <span class="hi">（可达，存活）</span><br>
+    <br>
+    对象 D ── 对象 E<br>
+    &nbsp;&nbsp;（D、E 互相引用，但都没有任何路径连到 GC Roots）<br>
+    &nbsp;&nbsp;→ <span class="hi">不可达，即使互相引用也照样判死刑</span>
+  </div>
+
+  <p>可以看到，即使 D 和 E 互相引用（类似上面的循环引用场景），只要它们整体上够不着任何一个 GC Root，照样会被判定为垃圾——这正是可达性分析天然免疫循环引用问题的原因。</p>
+
+  <h3>哪些对象可以作为 GC Roots？</h3>
+  <ul>
+    <li><strong>虚拟机栈（栈帧中的本地变量表）</strong>引用的对象——比如方法里正在使用的局部变量。</li>
+    <li><strong>方法区中类静态属性</strong>引用的对象——比如 <code>static</code> 字段引用的实例。</li>
+    <li><strong>方法区中常量</strong>引用的对象——比如字符串常量池里的引用。</li>
+    <li><strong>本地方法栈（Native 方法）</strong>中 JNI 引用的对象。</li>
+    <li>Java 虚拟机内部的引用，如基本数据类型对应的 Class 对象、常驻的异常对象、系统类加载器。</li>
+    <li>所有被同步锁（<code>synchronized</code>）持有的对象。</li>
+  </ul>
+
+  <h2>两种方案对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>引用计数法</th><th>可达性分析</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>实现复杂度</td>
+        <td>简单，判定效率高（计数为 0 立刻可回收）</td>
+        <td>较复杂，需要一次全局搜索</td>
+      </tr>
+      <tr>
+        <td>循环引用</td>
+        <td><strong>无法解决</strong>（结构性缺陷）</td>
+        <td>天然免疫，不依赖局部计数</td>
+      </tr>
+      <tr>
+        <td>额外开销</td>
+        <td>每次引用赋值都要维护计数器，高频操作有性能损耗</td>
+        <td>分析时需要 STW（Stop The World）保证一致性快照，但赋值本身没有额外开销</td>
+      </tr>
+      <tr>
+        <td>代表实现</td>
+        <td>Python（配合分代回收 + 弱引用打破循环引用辅助解决）、早期 COM</td>
+        <td>HotSpot 等主流 JVM 实现</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Java 为什么不用引用计数法？"——标准答案要点两个：① 无法解决循环引用；② 维护计数器本身有性能开销（每次引用赋值都要加减操作，多线程下还要保证原子性）。
+    补充一句加分项：Python 其实用的就是引用计数法为主，但额外加了一个分代回收器专门去扫描、打破循环引用，说明这个问题不是无解，只是可达性分析对 Java 场景是更省心的方案。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>垃圾收集的前提是"判断对象存活"，这一步选错方案，后面所有算法都无从谈起。</li>
+    <li>引用计数法简单直观，但循环引用是结构性硬伤，无法在局部信息下自我解决。</li>
+    <li>可达性分析站在全局视角，从 GC Roots 出发做可达性搜索，天然规避了循环引用问题，是 HotSpot 等主流 JVM 的选择。</li>
+    <li>GC Roots 的范围（栈、静态属性、常量、JNI 引用等）要记住，是后面理解各种收集器工作过程的基础。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../memory/11-常见OOM场景排查.html" class="nav-btn">← 常见 OOM 场景排查</a>
+    <a href="./02-四种引用类型.html" class="nav-btn next">四种引用类型(强 / 软 / 弱 / 虚) →</a>
+  </div>
+
+</div>
+</body>
+</html>

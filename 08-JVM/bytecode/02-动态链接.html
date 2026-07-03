@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>动态链接 — 字节码执行引擎</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 字节码执行引擎 / 动态链接
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">字节码执行引擎</div>
+    <h1>动态链接</h1>
+    <p>字节码里的方法调用写的其实不是"地址"，而是一个"待翻译的名字"——栈帧里悄悄藏着一个引用，负责把这个名字翻译成真正能跳过去执行的入口地址。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    每个栈帧内部，除了上一篇讲的局部变量表和操作数栈，还持有一个<strong>指向运行时常量池中该栈帧所属方法的引用</strong>。
+    持有这个引用是为了支持方法调用过程中的<strong>动态链接（Dynamic Linking）</strong>——字节码里的方法调用指令一开始使用的是常量池中的<strong>符号引用</strong>，
+    需要在类加载的解析阶段或者运行期，把它转换为该方法在内存中的<strong>直接引用（实际入口地址）</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>符号引用就像通讯录里存的"张三"这个名字，直接引用则是"张三手机号 138xxxx"。字节码指令拿到的只是"名字"，真正打电话之前必须先查一次通讯录，把名字换成号码——这个"查号码"的动作就是链接。
+  </div>
+
+  <!-- 2. 联系前置知识 -->
+  <h2>承接前置概念：符号引用 vs 直接引用</h2>
+  <p>
+    这一对概念在类加载体系里第一次出现在"解析"阶段：Class 文件是纯文本描述式的，编译器不知道类被加载后各个方法、字段实际会落在内存的哪个位置，
+    所以只能先用<strong>符号引用</strong>（类的全限定名 + 方法名 + 方法描述符）占位，等到类加载或者第一次执行到该指令时，
+    虚拟机才把符号引用替换为可以直接定位到目标的<strong>直接引用</strong>（指针、偏移量或者句柄）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>A.java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">A</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">foo</span><span class="punct">() {</span>
+        <span class="fn">bar</span><span class="punct">();</span>   <span class="com">// 编译期只知道要调用"bar"，还不知道它的内存地址</span>
+    <span class="punct">}</span>
+    <span class="kw">void</span> <span class="fn">bar</span><span class="punct">() {}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    编译 <code>foo()</code> 时，<code>javac</code> 生成的字节码调用指令（如 <code>invokevirtual</code>）携带的操作数并不是地址，而是一个<strong>常量池索引</strong>，
+    指向一条 <code>CONSTANT_Methodref_info</code> 记录——里面写的是"类名 + 方法名 + 描述符"这样的符号信息。
+  </p>
+
+  <!-- 3. 原理走一遍 -->
+  <h2>原理走一遍：从符号引用到直接引用</h2>
+  <div class="tree">
+    <span class="hi">① 调用指令</span> invokevirtual #2<br>
+    &nbsp;&nbsp;操作数 #2 是运行时常量池的一个索引<br>
+    <br>
+    <span class="hi">② 符号引用</span>（CONSTANT_Methodref_info）<br>
+    &nbsp;&nbsp;记录着 "A" + "bar" + "()V"（类名 + 方法名 + 方法描述符）<br>
+    &nbsp;&nbsp;此时还不知道 bar() 实际在内存哪里<br>
+    <br>
+    <span class="hi">③ 解析 / 链接</span><br>
+    &nbsp;&nbsp;虚拟机在类加载解析阶段或运行期第一次执行到这条指令时<br>
+    &nbsp;&nbsp;去查找 A（或其实际类型）的方法元数据，定位到 bar() 的真实入口<br>
+    <br>
+    <span class="hi">④ 直接引用</span><br>
+    &nbsp;&nbsp;得到方法在内存中的入口地址 / 相对偏移量<br>
+    &nbsp;&nbsp;→ 后续调用可以直接跳转执行，不必重新查找
+  </div>
+
+  <p>
+    这里"什么时候转换"是关键区分点：如果目标方法在编译期就唯一确定（比如静态方法、私有方法、构造器、final 方法），
+    虚拟机可以在<strong>类加载阶段</strong>就把符号引用永久替换成直接引用，这称为<strong>静态解析</strong>；
+    如果目标方法要在运行期根据实际类型才能确定（比如被重写的虚方法），转换就必须推迟到<strong>每次调用时</strong>才做，这才是狭义上的"动态链接"。
+    下一篇会专门展开这两条路径的区别。
+  </p>
+
+  <!-- 4. 对比表 -->
+  <h2>符号引用 vs 直接引用</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>符号引用</th><th>直接引用</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>存在形式</td>
+        <td>类名、方法名、字段名、方法描述符等字面量文本</td>
+        <td>指针、相对偏移量或能定位目标的句柄</td>
+      </tr>
+      <tr>
+        <td>存在阶段</td>
+        <td>Class 文件编译期就已写死</td>
+        <td>类加载解析阶段或运行期动态生成</td>
+      </tr>
+      <tr>
+        <td>与内存布局的关系</td>
+        <td>与虚拟机内存布局无关，任何平台的 Class 文件都一样</td>
+        <td>与具体虚拟机实现、内存布局强相关</td>
+      </tr>
+      <tr>
+        <td>典型例子</td>
+        <td><code>CONSTANT_Methodref_info</code> 里的 "A.bar():V"</td>
+        <td>方法在方法区中的实际入口地址</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. 常见坑 -->
+  <h2>常见坑 &amp; 面试高频考点</h2>
+
+  <div class="callout warn">
+    <strong>坑：把"动态链接"等同于"每次调用都要重新查找"。</strong>
+    实际上 HotSpot 对方法调用做了缓存优化——常量池的 <code>CONSTANT_Methodref_info</code> 一旦解析成功，会把结果缓存起来（例如非虚方法直接内联缓存直接引用），
+    并不会在每一次执行到调用指令时都重新走一遍完整的查找流程。"动态"强调的是"确定时机在运行期"，而不是"每次都要重新算一遍"。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"符号引用和直接引用的区别？什么时候发生转换？" —— 记住关键判据："这个方法在编译期是否唯一确定、运行期是否可能变化"。能唯一确定的（非虚方法）类加载期就能转直接引用；不能唯一确定的（虚方法）必须留到运行期，这也正是下一篇"解析调用 vs 分派调用"要划分的两条路线。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>栈帧持有指向运行时常量池的方法引用，是方法调用能够"落地执行"的桥梁。</li>
+    <li>字节码里的调用指令天生使用符号引用，必须经过解析才能变成可执行的直接引用。</li>
+    <li>转换时机是区分"解析调用"和"分派调用"的核心分水岭——这正是下一篇要讲的内容。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-局部变量表与操作数栈.html" class="nav-btn">← 局部变量表与操作数栈</a>
+    <a href="./03-解析调用vs分派调用.html" class="nav-btn next">解析调用 vs 分派调用 →</a>
+  </div>
+
+</div>
+</body>
+</html>

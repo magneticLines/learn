@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>jps / jstat / jmap / jstack 速查 — 性能监控与调优</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 性能监控与调优 / jps / jstat / jmap / jstack 速查
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">性能监控与调优</div>
+    <h1>jps / jstat / jmap / jstack 速查</h1>
+    <p>排查问题前，先要"看得见"——这四个 JDK 自带命令行工具是最基础的观测手段，不装任何软件、随处可用。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    这四个工具分别回答四个问题：<strong>机器上跑着哪些 Java 进程（jps）</strong>、<strong>某个进程的运行时数据长什么样（jstat）</strong>、
+    <strong>某个进程的堆里都装了什么（jmap）</strong>、<strong>某个进程的线程都卡在哪（jstack）</strong>。
+    它们都在 JDK 的 <code>bin</code> 目录下，是 JDK Development Tools（JDT）的一部分，不需要额外安装，任何一台装了 JDK 的机器都能用——这也是为什么它们是生产排障的"第一梯队"工具。
+  </p>
+  <div class="callout info">
+    <strong>它们是怎么拿到这些信息的？</strong>JVM 启动时会在本地创建一块共享内存映射文件（Linux 下在 <code>/tmp/hsperfdata_&lt;user&gt;/&lt;pid&gt;</code>，Windows 下是匿名共享内存），里面持续写入进程基本信息和运行时计数器（PerfData）。jps/jstat 本质上就是在读这块共享内存，<strong>完全不需要 attach 进 JVM 内部</strong>，所以速度快、开销极低；而 jmap/jstack 需要通过 <strong>Attach API</strong> 真正连接到目标 JVM 内部，让它执行一次"自省"动作（导出堆或线程栈），开销相对更大。
+  </div>
+
+  <!-- 2. jps -->
+  <h2>jps：先找到 pid</h2>
+  <p><code>jps</code>（JVM Process Status）是这一组工具的入口——后面三个工具都需要指定 <code>pid</code>，而 <code>jps</code> 就是用来找 pid 的，效果类似 <code>ps -ef | grep java</code>，但它专门认 Java 进程，还能直接显示主类名。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端 — jps -l（显示完整主类名/jar 路径）</span></div>
+    <pre><span class="var">$</span> jps -l
+<span class="num">12580</span> com.supernovacompanies.ccc.CccApplication
+<span class="num">8842</span> org.apache.catalina.startup.Bootstrap
+<span class="num">15021</span> sun.tools.jps.Jps</pre>
+  </div>
+
+  <p>常用参数：<code>-l</code> 输出主类全限定名或 jar 包路径；<code>-v</code> 输出启动时的 JVM 参数（比如 <code>-Xmx</code> 配了多少，排查内存问题第一步就该看这个）；<code>-m</code> 输出传递给 main 方法的参数。</p>
+
+  <!-- 3. jstat -->
+  <h2>jstat：实时看运行时数据</h2>
+  <p>
+    <code>jstat</code>（JVM Statistics Monitoring）用来周期性采样 JVM 内部的运行时数据，最常用的场景是<strong>观察 GC 情况</strong>——这直接对应前面 GC 模块讲过的分代结构：新生代 Eden/Survivor、老年代、方法区（元空间）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端 — jstat -gc pid 1000（每 1 秒采样一次）</span></div>
+    <pre><span class="var">$</span> jstat -gc 12580 1000
+ S0C    S1C    S0U    S1U      EC       EU        OC         OU       MC     MU    YGC   YGCT   FGC   FGCT    GCT
+<span class="num">10240</span>.0 <span class="num">10240</span>.0  <span class="num">0</span>.0   <span class="num">9216</span>.0  <span class="num">81920</span>.0  <span class="num">40960</span>.0  <span class="num">204800</span>.0   <span class="num">52480</span>.5  <span class="num">21504</span>.0 <span class="num">20812</span>.3   <span class="num">42</span>    <span class="num">0.312</span>    <span class="num">2</span>     <span class="num">0.198</span>    <span class="num">0.510</span></pre>
+  </div>
+
+  <p>关键字段解读（单位 KB）：</p>
+  <ul>
+    <li><code>S0C / S1C / S0U / S1U</code>：两个 Survivor 区的容量（Capacity）和已用（Used）——正常情况下同一时刻只有一个 Survivor 在用，另一个应接近 0。</li>
+    <li><code>EC / EU</code>：Eden 区容量/已用——涨得最快的区域，涨满就触发 Minor GC。</li>
+    <li><code>OC / OU</code>：老年代容量/已用——持续走高且 Full GC 后降不下来，就是内存泄漏的信号（详见本组第 4 篇）。</li>
+    <li><code>MC / MU</code>：元空间（Metaspace）容量/已用——对应类元数据，动态生成大量类（如 CGLIB 代理滥用）会把它撑爆。</li>
+    <li><code>YGC / YGCT</code>：Young GC 次数 / 累计耗时（秒）；<code>FGC / FGCT</code>：Full GC 次数 / 累计耗时；<code>GCT</code>：GC 总耗时。</li>
+  </ul>
+  <div class="callout warn">
+    如果发现 <code>FGC</code> 数字在短时间内飞涨，或者 <code>FGCT</code> 单次耗时很长（说明用的还是 CMS/Parallel 这类会长时间 STW 的收集器），这就是需要立刻介入排查的信号——先用 jstat 定位"是不是 GC 的锅"，再决定用 jmap 还是 jstack 深入。
+  </div>
+
+  <!-- 4. jmap -->
+  <h2>jmap：拍一张堆快照</h2>
+  <p>
+    <code>jmap</code>（JVM Memory Map）用来导出堆转储快照（Heap Dump），生成的 <code>.hprof</code> 文件可以用 MAT、VisualVM 等工具离线分析——jstat 只能看到"各区用了多少"，而 jmap 能看到"堆里具体都装了哪些对象、有多少个、多大"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端 — 导出堆转储 / 查看对象直方图</span></div>
+    <pre><span class="com"># 导出完整堆快照到文件，供 MAT/VisualVM 离线分析</span>
+<span class="var">$</span> jmap -dump:format=b,file=heap.hprof 12580
+Dumping heap to heap.hprof ...
+Heap dump file created
+
+<span class="com"># 不落盘，直接在命令行看存活对象直方图（按占用空间倒序）</span>
+<span class="var">$</span> jmap -histo:live 12580 | head -5
+ num     #instances         #bytes  class name
+----------------------------------------------
+   1:       128340       20534400  [B                  <span class="com"># byte[]，常是缓存/序列化数据堆积</span>
+   2:        45210        7233600  com.alibaba.fastjson.JSONObject
+   3:        98123        3924920  java.lang.String</pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>坑：</strong><code>jmap -dump</code>（不带 <code>:live</code>）会导出堆上<strong>所有</strong>对象，包括本该被回收但还没被 GC 清理的垃圾；加上 <code>:live</code>（或 <code>-histo:live</code>）会先触发一次 <strong>Full GC</strong> 再统计存活对象——这意味着在生产环境上执行会造成一次明显的 STW 停顿，堆越大停顿越久（几十 GB 的堆可能停顿数十秒），务必避开业务高峰期，能用 Arthas 的非侵入式方式排查就优先用它（见本组第 3 篇）。
+  </div>
+
+  <!-- 5. jstack -->
+  <h2>jstack：拍一张线程快照</h2>
+  <p>
+    <code>jstack</code> 导出目标进程当前所有线程的调用栈（Thread Dump），是排查<strong>死锁、线程阻塞、CPU 飙高</strong>的核心工具——它能告诉你"每个线程这一刻正卡在代码的哪一行"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>终端 — jstack 输出片段</span></div>
+    <pre><span class="var">$</span> jstack 12580
+
+<span class="str">"http-nio-8080-exec-3"</span> #45 daemon prio=5 os_prio=0 tid=0x... nid=0x1a2b waiting on condition [0x...]
+   java.lang.Thread.State: <span class="ty">WAITING</span> (parking)
+	at sun.misc.Unsafe.park(Native Method)
+	at java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+	at ...OrderService.lambda$createOrder$0(OrderService.java:42)
+
+Found one Java-level deadlock:
+=============================
+"Thread-1":
+  waiting to lock monitor 0x... (object 0x...), which is held by "Thread-2"
+"Thread-2":
+  waiting to lock monitor 0x... (object 0x...), which is held by "Thread-1"</pre>
+  </div>
+
+  <p>jstack 会自动检测经典的 Java 级死锁并直接打印 <code>Found one Java-level deadlock</code>，连等待链都列出来了，不需要人工比对——这是它相比人工翻代码效率高得多的地方。</p>
+
+  <!-- 6. 速查表 -->
+  <h2>遇到什么问题，用什么工具</h2>
+  <table>
+    <thead>
+      <tr><th>现象 / 问题</th><th>该用的工具</th><th>为什么</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>不知道目标 Java 进程的 pid</td>
+        <td><code>jps -l</code></td>
+        <td>所有其他工具的前置步骤</td>
+      </tr>
+      <tr>
+        <td>怀疑 GC 太频繁 / 停顿太长</td>
+        <td><code>jstat -gc pid interval</code></td>
+        <td>轻量、可持续采样，先定性是不是 GC 问题</td>
+      </tr>
+      <tr>
+        <td>内存持续增长，想看是哪些对象在占用</td>
+        <td><code>jmap -histo:live</code> / <code>jmap -dump</code></td>
+        <td>拿到对象级别的快照，配合 MAT 分析引用链</td>
+      </tr>
+      <tr>
+        <td>接口卡死 / 怀疑死锁 / CPU 飙高定位代码行</td>
+        <td><code>jstack</code></td>
+        <td>看到每个线程当前的调用栈和状态</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"jmap/jstack 是怎么在不停止 JVM 的情况下拿到内部信息的？"——答案是 <strong>Attach 机制</strong>：这些工具通过 JDK 提供的 Attach API 向目标 JVM 发送一个信号（Linux 下是 <code>SIGQUIT</code> 类似机制），目标 JVM 收到后由内部的 Attach Listener 线程响应，执行相应操作（如导出线程栈），再把结果写到指定位置。这也是为什么工具版本和目标 JVM 版本差异过大时可能 attach 失败。
+  </div>
+
+  <!-- 7. 总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>jps</strong> 是入口：先拿到 pid，才能用后面三个工具。</li>
+    <li><strong>jstat</strong> 走的是"读共享内存"的轻量路径，适合高频、持续观察 GC 趋势，几乎零开销。</li>
+    <li><strong>jmap</strong> 走的是"attach + 自省"的重路径，能拿到对象级别的堆快照，但会有 STW 代价，生产环境要谨慎。</li>
+    <li><strong>jstack</strong> 同样走 attach 路径，是排查死锁/阻塞/CPU 飙高最直接的第一手资料。</li>
+    <li>它们是"单次快照"型工具，想要持续可视化观察，就需要下一篇的 JConsole / VisualVM。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../gc/16-空间分配担保机制.html" class="nav-btn">← 空间分配担保机制</a>
+    <a href="./02-JConsole与VisualVM.html" class="nav-btn next">JConsole 与 VisualVM →</a>
+  </div>
+
+</div>
+</body>
+</html>

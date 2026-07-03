@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>热点探测与 JIT 编译 — 编译与优化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #831843; }
+  .nav-btn.next { color: #f472b6; border-color: #831843; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../jvm-roadmap.html">JVM 路线图</a> / 编译与优化 / 热点探测与 JIT 编译
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">编译与优化</div>
+    <h1>热点探测与 JIT 编译</h1>
+    <p>上一节说 JIT 只编译"热点代码"——虚拟机怎么知道一段代码算不算热点？答案是给每个方法、每个循环装一个计数器。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    热点探测（Hot Spot Detection）就是虚拟机判断"这段代码值不值得花代价编译"的过程。
+    主流方案是<strong>基于计数器（Counter-Based）</strong>：给每个方法、每个循环体维护一个计数器，统计它被调用/循环的次数，
+    一旦超过预设阈值，就认为它是"热点代码"，触发 JIT 编译。这是 HotSpot 虚拟机名字里 "Hot Spot" 的真正来源——持续追踪代码中的"热点"。
+  </p>
+
+  <!-- 2. 两种计数器 -->
+  <h2>两种计数器：方法调用计数器 vs 回边计数器</h2>
+  <p>HotSpot 实际上维护了两类计数器，服务于两种不同的热点场景：</p>
+
+  <table>
+    <thead>
+      <tr><th></th><th>方法调用计数器<br>(Invocation Counter)</th><th>回边计数器<br>(Back Edge Counter)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>统计对象</strong></td>
+        <td>某个方法被调用的次数</td>
+        <td>方法体内循环体每次跳转回循环起始位置的次数（"回边"指字节码中控制流跳回前面的指令）</td>
+      </tr>
+      <tr>
+        <td><strong>触发场景</strong></td>
+        <td>一个方法被反复<strong>调用</strong>（比如被外层高频循环调用的小方法）</td>
+        <td>一个方法<strong>内部本身有大循环</strong>，方法可能只被调用一次，但循环体执行了几百万次</td>
+      </tr>
+      <tr>
+        <td><strong>触发后的编译方式</strong></td>
+        <td>标准编译（Standard Compilation）：等下次方法调用时，直接用编译好的机器码</td>
+        <td>栈上替换（OSR, On-Stack Replacement）：<strong>方法还没执行完就切换</strong>，让正在跑的这次循环立即切到编译后的代码继续执行</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>为什么需要 OSR（栈上替换）？</strong>典型场景是 <code>main</code> 方法里有一个死循环或超大循环——这个方法本身只被调用了一次（方法调用计数器永远不会超阈值），但循环体内部执行了几百万次。如果没有回边计数器 + OSR，这种代码就永远只能解释执行，白白错过 JIT 优化的巨大收益。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>典型触发 OSR 的场景</span></div>
+    <pre><span class="kw">public static void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">) {</span>
+    <span class="kw">long</span> <span class="var">sum</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+    <span class="com">// main 方法只调用了一次，但这个循环的"回边"会被执行一亿次
+    // 回边计数器很快超过阈值，触发 OSR：循环还在跑的时候就切换到编译后的机器码</span>
+    <span class="kw">for</span> <span class="punct">(</span><span class="kw">long</span> <span class="var">i</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span> <span class="var">i</span> <span class="punct">&lt;</span> <span class="num">100_000_000L</span><span class="punct">;</span> <span class="var">i</span><span class="punct">++) {</span>
+        <span class="var">sum</span> <span class="punct">+=</span> <span class="var">i</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 3. 分层编译 -->
+  <h2>分层编译（Tiered Compilation）：C1 + C2</h2>
+  <p>
+    只有一种编译器时会陷入两难：<strong>编译得快</strong>（优化少，机器码质量一般）还是<strong>编译得好</strong>（优化多，但编译本身耗时更长）？
+    HotSpot 的答案是"两个编译器分工"——现代 HotSpot 默认开启<strong>分层编译</strong>，让两种编译器接力工作：
+  </p>
+
+  <div class="tree">
+    <span class="hi">Level 0：解释执行</span><br>
+    &nbsp;&nbsp;程序刚启动，全部代码走解释器，收集基础的 profiling 数据<br>
+    <br>
+    <span class="hi">Level 1-3：C1 编译器（Client Compiler）</span><br>
+    &nbsp;&nbsp;做轻量级、编译速度快的优化（如简单方法内联、去除部分冗余）<br>
+    &nbsp;&nbsp;目标：<span class="hi">尽快把热点代码从"解释执行"提升到"能跑机器码"</span>，抢时间<br>
+    <br>
+    <span class="hi">Level 4：C2 编译器（Server Compiler）</span><br>
+    &nbsp;&nbsp;基于更长时间的 profiling 数据，做重量级、深度的优化<br>
+    &nbsp;&nbsp;逃逸分析、激进方法内联、循环展开等(下两节详细讲)<br>
+    &nbsp;&nbsp;目标：<span class="hi">榨干真正的超热点代码的峰值性能</span>，编译耗时更久也值得
+  </div>
+
+  <p>这种"C1 先顶上、C2 后续精修"的接力模式，让 HotSpot 既能快速响应刚变热的代码（不必等 C2 那么久的编译时间），又能对真正的核心热点代码做最彻底的优化，是"编译速度"与"优化质量"之间的又一次典型权衡（呼应上一节"解释执行 vs 编译执行"同样的启动速度/峰值性能权衡逻辑，只是发生在编译器内部的更细粒度上）。</p>
+
+  <div class="callout tip">
+    JDK 8 之后分层编译默认开启（<code>-XX:+TieredCompilation</code>）。可以用 <code>-XX:CompileThreshold</code> 查看/调整方法调用计数器的阈值（Client 模式默认 1500，Server 模式默认 10000），面试中常问"JIT 编译阈值"就是指这个参数。
+  </div>
+
+  <!-- 4. 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"方法加了 <code>final</code>/写得越短就一定会被 JIT 编译"——热点探测只看<strong>执行频率</strong>，和方法长短、是否 <code>final</code> 本身无关（那是下面"方法内联"要考虑的另一个维度）。一个只被调用几次的巨大方法不会被编译，一个被调用几十万次的短小方法一定会被编译，两者是独立的判断维度，不要混为一谈。
+  </div>
+
+  <!-- 5. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>基于计数器的热点探测：</strong>方法调用计数器统计方法被调次数，回边计数器统计循环执行次数，两者独立触发编译。</li>
+    <li><strong>栈上替换（OSR）：</strong>专门解决"方法调用次数少但内部循环巨大"的场景，让正在执行的循环直接切换到编译后的机器码。</li>
+    <li><strong>分层编译：</strong>C1 负责快速响应、轻量优化，C2 负责深度优化真正的超热点代码，两者接力兼顾编译速度与运行时性能。</li>
+    <li>下一节进入两个更"激进"的 JIT 优化手段——逃逸分析与栈上分配，看看编译器如何连"要不要在堆上创建对象"这件事都能优化掉。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-解释执行vs编译执行.html" class="nav-btn">← 解释执行 vs 编译执行</a>
+    <a href="./06-逃逸分析与栈上分配.html" class="nav-btn next">逃逸分析与栈上分配(进阶) →</a>
+  </div>
+
+</div>
+</body>
+</html>
