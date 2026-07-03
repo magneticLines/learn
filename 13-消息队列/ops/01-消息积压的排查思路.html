@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>消息积压的排查思路 — 消息队列</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / 运维与实战 / 消息积压的排查思路
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">运维与实战</div>
+    <h1>消息积压的排查思路</h1>
+    <p>线上最常见的 MQ 故障之一，也是面试高频的场景题：Topic 里堆了几百万条没被消费的消息，你该怎么一步步定位并解决？</p>
+  </div>
+
+  <!-- 什么是消息积压 -->
+  <h2>什么是消息积压</h2>
+  <p>
+    <strong>消息积压（Consumer Lag）</strong>指的是生产者写入消息的速度长期大于消费者处理消息的速度，导致未消费的消息越堆越多。
+    可以类比传送带上的流水线：<strong>前面的工人往传送带上放零件的速度，比后面工人组装零件的速度快</strong>，零件就会在传送带上越积越多，最终传送带被堆满，甚至影响到上游放置零件的节奏。
+  </p>
+  <p>
+    衡量积压程度的核心指标是 <strong>Lag</strong>：某个 Partition 的最新位移（Log End Offset）减去消费者已提交的消费位移（Consumer Offset），Lag 越大说明积压越严重。
+  </p>
+
+  <!-- 常见原因 -->
+  <h2>常见原因</h2>
+  <h3>1. 消费者处理逻辑太慢</h3>
+  <p>
+    消费逻辑里可能包含耗时的同步调用（比如同步调第三方接口、执行复杂计算、没有做批量优化的数据库操作），单条消息的处理耗时过长，自然跟不上生产速度。
+  </p>
+  <h3>2. 消费者数量少于 Partition 数量，并行度不够</h3>
+  <p>
+    Kafka 消费者组内，<strong>一个 Partition 同一时刻只能被组内一个消费者实例消费</strong>。如果 Topic 有 10 个 Partition，但只启动了 3 个消费者实例，就有 Partition 在"排队等某个消费者忙完再轮到自己"，没能把并行处理能力真正利用起来。
+  </p>
+  <h3>3. 下游依赖成为瓶颈</h3>
+  <p>
+    消费者处理消息经常需要写数据库、调缓存、发 HTTP 请求。如果<strong>下游数据库连接池打满、慢查询、外部接口限流</strong>，就会拖慢每条消息的处理时间，表现出来的现象仍然是"消费跟不上"，但根子并不在消费者自身的代码逻辑。
+  </p>
+
+  <!-- 排查思路 -->
+  <h2>排查思路（面试重点）</h2>
+  <ol>
+    <li>
+      <strong>先看 Lag 监控，定位是哪个 Topic / 哪些 Partition 在积压。</strong>
+      Kafka 自带 <code>kafka-consumer-groups.sh --describe</code> 命令可以查看每个消费者组、每个 Partition 的 Lag 情况，生产环境通常会接入 Kafka Manager、Burrow 或 Prometheus + Grafana 做持续监控和告警，而不是出问题了才手动查。
+    </li>
+    <li>
+      <strong>分析消费者的处理耗时，区分是"处理慢"还是"并行度不够"。</strong>
+      看单条消息的平均处理时间和消费者线程的 CPU/IO 使用情况：如果消费者本身很闲（CPU 低、等待多），大概率是并行度不足或者卡在下游调用上；如果消费者一直忙于计算，说明是代码逻辑本身效率的问题。
+    </li>
+    <li>
+      <strong>临时扩容消费者，或优化处理逻辑，快速止血。</strong>
+      如果是并行度不够，在不超过 Partition 数量的前提下增加消费者实例（超过 Partition 数的消费者会空闲，起不到作用）；如果是处理逻辑慢，可以考虑批量处理、异步化非核心步骤、增加缓存减少下游调用。
+    </li>
+    <li>
+      <strong>必要时创建新 Topic 做流量迁移，把积压和实时流量分开处理。</strong>
+      如果积压已经非常严重，直接原地加速消费可能会拖慢新消息的实时性。此时可以让消费者暂时切到一个新建的、专门"追赶积压"的临时 Topic 或临时消费者组，把新旧流量分离开，避免"旧消息没处理完、新消息又实时性要求高"两难。
+    </li>
+  </ol>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"生产环境出现消息积压，你会怎么排查？" 按上面的顺序回答：先监控定位、再分析耗时区分瓶颈类型、再对症扩容或优化、必要时做流量迁移。面试官通常想听到的是"有章法的排查步骤"，而不是上来就说"加机器"。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"消息积压了，直接加消费者实例数量就能解决。"
+    如果 Partition 数量本身就不够，加再多消费者实例也没用——多出来的消费者实例分不到 Partition，只能空闲等待。这也是为什么 Topic 的 Partition 数量要在设计初期就结合预期吞吐量、消费者扩展性一起规划，事后想临时加 Partition 还会打乱已有消息的 Key 分布规则（见下一篇顺序消息）。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>消息积压的本质是生产、消费速度不匹配：</strong>排查的第一步永远是先弄清楚"卡在哪一段"，而不是盲目加资源。</li>
+    <li><strong>Partition 数量决定了消费并行度的天花板：</strong>消费者数量超过 Partition 数没有意义。</li>
+    <li><strong>监控先行：</strong>Lag 指标要提前接入告警，而不是等业务方投诉"消息怎么这么久还没处理"才去查。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../reliable/03-消息幂等性与重复消费的处理.html" class="nav-btn">← 消息幂等性与重复消费的处理</a>
+    <a href="./02-顺序消息如何保证.html" class="nav-btn next">顺序消息如何保证 →</a>
+  </div>
+
+</div>
+</body>
+</html>

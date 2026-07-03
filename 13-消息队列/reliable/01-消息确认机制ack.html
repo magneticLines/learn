@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>消息确认机制 ack — 消息队列</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / 可靠性与语义保证 / 消息确认机制 ack
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">可靠性与语义保证</div>
+    <h1>消息确认机制 ack</h1>
+    <p>生产者把消息发出去之后，怎么知道它真的"安全落地"了？acks 参数就是这个问题的答案——它是 Kafka 留给你的一个"性能 vs 可靠性"调节旋钮。</p>
+  </div>
+
+  <!-- 为什么需要 ack -->
+  <h2>为什么需要确认机制</h2>
+  <p>
+    你往快递柜里塞了一件快递，转身就走，还是等系统显示"存件成功"再离开？如果不等确认就走，万一柜门没关好、包裹掉出来了，你根本不知道货丢了。
+    生产者发消息给 Broker 也是同样的道理：网络请求发出去，<strong>Broker 到底有没有稳稳当当地存下这条消息</strong>，生产者需要一个反馈信号——这就是 <strong>ack（acknowledgement，确认应答）</strong>。
+  </p>
+  <p>
+    Kafka 通过 <code>acks</code> 这个生产者参数，把"要不要等确认、等到什么程度才算数"这个决策权交给了你。它本质上是在<strong>吞吐量/延迟</strong>和<strong>数据可靠性</strong>之间做取舍。
+  </p>
+
+  <!-- acks=0 -->
+  <h2>acks=0：发了就不管，最快也最危险</h2>
+  <p>
+    生产者把消息丢到网络里之后<strong>立刻认为发送成功</strong>，根本不等待 Broker 的任何应答。这就像往一个不确定收不收件的信箱里投信，投完转身就走，从不检查信箱有没有真的收到。
+  </p>
+  <div class="callout warn">
+    <strong>风险：</strong>如果 Broker 当时正好宕机、网络抖动导致消息根本没到达，生产者完全不知情，这条消息就<strong>悄无声息地丢失</strong>了。吞吐量最高、延迟最低，但可靠性为零，只适合日志采集、埋点统计这类"丢一点无所谓"的场景。
+  </div>
+
+  <!-- acks=1 -->
+  <h2>acks=1：Leader 收到就算数，默认但有隐患</h2>
+  <p>
+    Leader 副本把消息成功写入本地日志后，就给生产者返回确认，<strong>不等待 Follower 副本同步</strong>。相当于快递员把包裹放进了"前台"，前台签收就算数，至于后面有没有转运到仓库，暂时不关心。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>如果 Leader 刚确认完就宕机，而 Follower 还没来得及把这条消息同步过去，新选举出来的 Leader 里就<strong>没有这条消息</strong>——它就这样丢了，但生产者却收到了"成功"的确认，业务层面完全不知道自己被骗了。这是 <code>acks=1</code> 最容易被忽视的隐患。
+  </div>
+
+  <!-- acks=all -->
+  <h2>acks=all（-1）：全体 ISR 确认，最稳但最慢</h2>
+  <p>
+    Leader 要等到 <strong>ISR（In-Sync Replicas，与 Leader 保持同步的副本集合）</strong>中的所有副本都成功写入这条消息后，才会给生产者返回确认。
+    这就像快递不仅要前台签收，还要等仓库、分拣中心都确认收到货，才会通知你"已妥投"——环节多了，耗时长了，但只要有一个副本还活着，数据就不会丢。
+  </p>
+  <div class="callout tip">
+    <strong>注意：</strong><code>acks=all</code> 并不是"所有副本"，而是"所有 ISR 副本"。如果 ISR 因为某些 Follower 掉队被缩小到只剩 Leader 自己，<code>acks=all</code> 退化成事实上的 <code>acks=1</code>。所以生产环境通常会搭配 <code>min.insync.replicas</code> 参数，强制要求 ISR 中至少有 N 个副本，否则生产者直接报错，而不是"假装安全"。
+  </div>
+
+  <!-- 对比表 -->
+  <h2>三种取值对比</h2>
+  <table>
+    <thead>
+      <tr><th>取值</th><th>确认条件</th><th>可靠性</th><th>延迟/吞吐</th><th>典型场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>acks=0</code></td>
+        <td>不等待任何确认</td>
+        <td>最低，可能丢消息</td>
+        <td>最快</td>
+        <td>日志采集、埋点统计</td>
+      </tr>
+      <tr>
+        <td><code>acks=1</code>（默认）</td>
+        <td>Leader 写入成功即确认</td>
+        <td>中等，Leader 故障切换瞬间可能丢消息</td>
+        <td>中等</td>
+        <td>一般业务消息</td>
+      </tr>
+      <tr>
+        <td><code>acks=all / -1</code></td>
+        <td>所有 ISR 副本都写入成功</td>
+        <td>最高，配合 <code>min.insync.replicas</code> 基本不丢</td>
+        <td>最慢</td>
+        <td>订单、支付等关键业务</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"只要设置了 <code>acks=all</code>，消息就绝对不会丢。"
+    这个理解不完整。<code>acks=all</code> 只保证"写入 ISR 中所有副本才算成功"，但如果生产者收到写入失败的响应后<strong>没有重试</strong>，或者重试次数用完仍然失败却被业务代码忽略了异常，消息照样会丢。<code>acks</code> 只是可靠性链条上的一环，还需要配合合理的重试策略（<code>retries</code>）和异常处理。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"acks 有哪几种取值，分别代表什么？" 记住核心区别点：<strong>0 不等确认、1 只等 Leader、all 等所有 ISR</strong>。追问"生产环境一般怎么配？" 答：关键业务用 <code>acks=all</code> + <code>min.insync.replicas=2</code>（至少两个副本同步成功才算数），牺牲一部分延迟换可靠性。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>ack 是可靠性的第一道开关：</strong>它决定了生产者"认为发送成功"的判定标准有多严格。</li>
+    <li><strong>没有绝对正确的取值，只有取舍：</strong>吞吐要求高就调低 acks，数据不能丢就调高 acks。</li>
+    <li><strong>acks 只解决"生产端要不要等确认"的问题：</strong>而"消息会不会重复、消费端怎么处理"是另一个层面的问题，下一篇讲的三种消息传递语义会把这条链路讲完整。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../kafka/04-消费者组与消费位移.html" class="nav-btn">← 消费者组与消费位移</a>
+    <a href="./02-三种消息传递语义.html" class="nav-btn next">三种消息传递语义 →</a>
+  </div>
+
+</div>
+</body>
+</html>

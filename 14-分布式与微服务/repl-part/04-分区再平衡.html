@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分区再平衡 — 分布式与微服务</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 复制与分区 / 分区再平衡
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">复制与分区</div>
+    <h1>分区再平衡</h1>
+    <p>集群规模一变（加机器扩容、机器故障下线），数据就得跟着挪窝——挪多挪少、挪得聪不聪明，直接决定了扩容是"丝滑加机器"还是"半夜挪数据挪到崩溃"。</p>
+  </div>
+
+  <!-- 问题引入 -->
+  <h2>什么是再平衡（Rebalancing）</h2>
+  <p>
+    <strong>再平衡</strong>指的是：当集群拓扑发生变化时（新增节点扩容、节点故障或主动下线），把数据/分区在节点之间重新分配的过程。
+    它是分区方案绕不开的问题——你不可能把分区策略设计成"只适用于固定数量的节点"，因为现实中集群规模一定会变。
+  </p>
+  <p>
+    再平衡的核心诉求只有一个：<strong>用最小的数据搬移代价，完成新的分配。</strong> 如果换一台机器就要搬走 90% 的数据，
+    那扩容这件事本身就会变成一场灾难——搬迁期间网络、磁盘 IO 被打满，集群对外服务能力反而下降，扩容"帮倒忙"。
+  </p>
+
+  <!-- 取模分区及其问题 -->
+  <h2>反例：取模分区（hash(key) mod N）</h2>
+  <p>
+    最直觉的分区方式是：算出 key 的哈希值，对节点数 N 取模，余数就是这个 key 该去的节点编号——<code>hash(key) mod N</code>。
+    平时看起来毫无问题，但只要 <strong>N 发生变化</strong>（加一台机器，N 从 4 变成 5），几乎所有 key 的取模结果都会跟着变，
+    也就是说：新增一台节点，却导致几乎全部数据都要重新搬家。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示例：N=4 → N=5 时取模结果几乎全变</span></div>
+    <pre><span class="com">// 假设几个 key 的哈希值如下</span>
+<span class="var">key</span>: <span class="str">"user_101"</span>  <span class="fn">hash</span> = <span class="num">17</span>
+<span class="var">key</span>: <span class="str">"user_102"</span>  <span class="fn">hash</span> = <span class="num">18</span>
+<span class="var">key</span>: <span class="str">"user_103"</span>  <span class="fn">hash</span> = <span class="num">19</span>
+<span class="var">key</span>: <span class="str">"user_104"</span>  <span class="fn">hash</span> = <span class="num">20</span>
+<span class="var">key</span>: <span class="str">"user_105"</span>  <span class="fn">hash</span> = <span class="num">21</span>
+
+<span class="com">// N = 4 时：hash mod 4</span>
+<span class="num">17</span> <span class="punct">mod</span> <span class="num">4</span> = <span class="num">1</span>    <span class="num">18</span> <span class="punct">mod</span> <span class="num">4</span> = <span class="num">2</span>    <span class="num">19</span> <span class="punct">mod</span> <span class="num">4</span> = <span class="num">3</span>    <span class="num">20</span> <span class="punct">mod</span> <span class="num">4</span> = <span class="num">0</span>    <span class="num">21</span> <span class="punct">mod</span> <span class="num">4</span> = <span class="num">1</span>
+
+<span class="com">// N = 5 时：hash mod 5（新增一个节点后）</span>
+<span class="num">17</span> <span class="punct">mod</span> <span class="num">5</span> = <span class="num">2</span>    <span class="num">18</span> <span class="punct">mod</span> <span class="num">5</span> = <span class="num">3</span>    <span class="num">19</span> <span class="punct">mod</span> <span class="num">5</span> = <span class="num">4</span>    <span class="num">20</span> <span class="punct">mod</span> <span class="num">5</span> = <span class="num">0</span>    <span class="num">21</span> <span class="punct">mod</span> <span class="num">5</span> = <span class="num">1</span>
+
+<span class="com">// 对比：5 个 key 里有 4 个的目标节点变了，只有 user_105 碰巧没变</span>
+<span class="com">// 节点数越大、增量越小，"碰巧不变"的比例反而更低，几乎必须全量重新分布</span></pre>
+  </div>
+  <p>
+    这就是取模分区的根本缺陷：<strong>N 一变，映射关系整体错位</strong>，而不是只有"新节点该接管的那部分"数据发生变化。
+    对于数据量巨大的系统，这意味着扩容一次就要触发一次几乎等同于"全量重建"的数据搬迁，代价高到无法在生产环境接受。
+  </p>
+
+  <!-- 更好的方案一：固定分区数 -->
+  <h2>方案一：固定数量的分区（Fixed Number of Partitions）</h2>
+  <p>
+    思路很简单：<strong>一开始就创建远多于当前节点数的分区</strong>（比如无论未来集群多大，都固定切成 1000 个分区），
+    然后把这些分区尽量均匀地分配给现有节点。加节点时，不需要重新计算每个 key 该落在哪个分区——
+    <strong>分区和 key 的映射关系永远不变，变的只是"分区被分配给哪个节点"</strong>。
+  </p>
+  <p>
+    再平衡时只需要把若干个<strong>整块分区</strong>从旧节点搬到新节点，搬迁单位是分区而不是单条数据，
+    操作上简单很多（甚至可以直接搬整个数据文件），而且搬移量是可控的、和新增节点数成比例的，不会牵动全局。
+    这也是 Elasticsearch、Kafka 等系统采用的思路。
+  </p>
+
+  <!-- 更好的方案二：一致性哈希 -->
+  <h2>方案二：一致性哈希（Consistent Hashing）</h2>
+  <p>
+    一致性哈希的机制是：把节点和 key <strong>哈希到同一个环形哈希空间（hash ring）</strong>上——
+    节点的哈希值决定它在环上的位置，key 的哈希值也落在环上某处，规则是"<strong>顺时针找到的第一个节点</strong>就负责这个 key"。
+  </p>
+  <p>
+    这样设计的好处是：当某个节点被添加或移除时，<strong>只有环上紧挨着这个节点的那一小段区间内的 key 会受影响</strong>，
+    需要在相邻节点之间搬移；环上其他区间的 key 到其负责节点的映射完全不受影响。相比取模分区"牵一发动全身"，
+    一致性哈希把影响范围从"全部 key"收窄到了"局部相邻区间"。
+  </p>
+  <div class="callout info">
+    <strong>虚拟节点（Virtual Nodes）：</strong>如果环上只放真实节点，节点数量少时，每个节点在环上占据的弧长可能很不均匀，
+    导致负载倾斜（有的节点分到的 key 特别多）。改进办法是让<strong>每个真实节点在环上映射出多个虚拟节点</strong>
+    （比如一台物理机对应 100 个虚拟节点，分散在环的不同位置），用数量换均匀度，从而让负载分布更平滑。
+  </div>
+
+  <!-- 呼应数据库模块 -->
+  <h2>与 09-数据库「可扩展性」的呼应</h2>
+  <p>
+    如果你学过 <code>09-数据库</code> 模块「可扩展性」一节，会记得分库分表场景下也提到了一致性哈希——
+    这不是巧合，而是<strong>同一种技术在分布式数据存储的再平衡问题上的直接应用</strong>：
+    无论是分布式缓存集群（类似 Redis Cluster 的哈希槽思路）、还是像 DynamoDB、ShardingSphere 这类支持动态扩缩容的分库分表中间件，
+    它们扩容/缩容时都要面对"怎么尽量少搬数据"这个同一个问题，答案也高度一致——固定分区数或一致性哈希，而不是简单取模。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>三种策略对比</h2>
+  <table>
+    <thead>
+      <tr><th>策略</th><th>扩缩容时的数据搬移代价</th><th>实现复杂度</th><th>典型使用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>取模分区（mod N）</strong></td>
+        <td>极高，N 一变几乎全部 key 都要重新分配</td>
+        <td>最简单，一行 <code>hash % N</code></td>
+        <td>节点数固定、几乎不扩缩容的小系统；教学示例</td>
+      </tr>
+      <tr>
+        <td><strong>固定分区数</strong></td>
+        <td>较低，只搬迁若干整块分区，与新增节点数成比例</td>
+        <td>中等，需要提前规划好分区总数并维护"分区→节点"映射</td>
+        <td>Elasticsearch、Kafka 等消息/搜索系统</td>
+      </tr>
+      <tr>
+        <td><strong>一致性哈希</strong></td>
+        <td>低，只影响环上相邻区间的 key</td>
+        <td>较高，需要维护哈希环，并引入虚拟节点解决负载不均</td>
+        <td>分布式缓存（Redis Cluster 类似思路）、DynamoDB、分库分表中间件</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见误区 -->
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多人直觉认为"取模分区加一台节点，只需要搬 1/N 的数据"（比如 4 台变 5 台，只搬 1/5）。
+    这个直觉是错的——从上面的数值例子能看到，<code>hash mod 4</code> 和 <code>hash mod 5</code> 的结果几乎完全不同，
+    实际需要搬移的比例接近 100%，而不是 1/N。只有当新节点数恰好是旧节点数的整数倍等特殊情况下，重合比例才会碰巧高一些，
+    但这在真实场景中无法依赖，本质上取模分区就是"设计上不支持渐进式扩容"。
+  </div>
+
+  <!-- 面试高频 -->
+  <div class="callout tip">
+    <strong>面试高频：</strong>"一致性哈希解决了什么问题？为什么比取模分区好？"
+    标准答案：取模分区在节点数变化时会导致几乎全部 key 的归属重新计算，数据搬移代价极高；
+    一致性哈希把节点和 key 映射到同一个哈希环上，节点增减只影响环上相邻的局部区间，<strong>把数据搬移量从"全量"降到"局部"</strong>，
+    这正是"一致性"（consistent）这个名字的含义——大部分映射关系在拓扑变化前后保持一致。
+    如果追问负载均衡问题，要补充一点：<strong>虚拟节点</strong>是让哈希环在节点数较少时也能保持负载均匀的关键改进。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>再平衡的目标是最小化数据搬移：</strong>集群拓扑一变化就要评估"这次变化到底需要挪多少数据"。</li>
+    <li><strong>取模分区是反面教材：</strong>N 一变几乎全量重新分布，看似简单实则完全不具备可扩展性。</li>
+    <li><strong>固定分区数和一致性哈希是两种主流解法：</strong>前者把搬移单位从"单条数据"变成"整块分区"，后者把影响范围从"全部 key"收窄到"局部区间"，两者都服务同一个目标——加/减节点时只动局部，不动全局。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-数据分区的策略与数据倾斜问题.html" class="nav-btn">← 数据分区的策略与数据倾斜问题</a>
+    <a href="../tx-consensus/01-分布式场景下事务隔离的挑战.html" class="nav-btn next">分布式场景下事务隔离的挑战 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>数据分区的策略与数据倾斜问题 — 分布式与微服务</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 复制与分区 / 数据分区的策略与数据倾斜问题
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">复制与分区</div>
+    <h1>数据分区的策略与数据倾斜问题</h1>
+    <p>复制解决的是"同一份数据放多处"，分区解决的是"数据太大放不进一台机器"——两者是正交的两个维度，合起来才是完整的分布式存储方案。</p>
+  </div>
+
+  <!-- 为什么需要分区 -->
+  <h2>为什么需要分区（Partitioning / Sharding）</h2>
+  <p>
+    单台机器的容量和吞吐都是有上限的：磁盘装不下全部数据，CPU/网络也扛不住全部请求。
+    <strong>分区（也叫分片，Sharding）</strong>的思路很直接——把数据集切成若干个子集（分区），分别放到不同的节点上，
+    每个节点只需要负责自己那一份数据的存储和查询。
+  </p>
+  <p>
+    这样一来，容量和吞吐都能随节点数量线性扩展：加机器就能装更多数据、扛更多请求。
+    但分区绝不是"随便切一刀"就完事——<strong>怎么切</strong>直接决定了负载能不能真正被均匀分摊到各个节点上。
+    如果切分策略不当，即使加再多机器，请求也可能全部堆积到某一个节点，这就是本篇要讲的核心问题：<strong>数据倾斜</strong>。
+  </p>
+
+  <!-- 哈希分区 -->
+  <h2>哈希分区（Hash Partitioning）</h2>
+  <p>
+    对每条记录的 key 计算哈希值 <code>hash(key)</code>，再根据哈希值落在哪个区间，决定它归属哪个分区。
+    例如有 4 个分区，可以简单地用 <code>hash(key) % 4</code> 决定去向。
+  </p>
+  <div class="callout tip">
+    <strong>优点：</strong>只要哈希函数本身分布均匀，任意一批 key 经过哈希后几乎必然被打散到各个分区，
+    <strong>天然适合把负载均匀摊到所有节点上</strong>，不容易出现某个分区数据量特别大的情况。
+  </div>
+  <div class="callout warn">
+    <strong>代价：</strong>哈希会把原本连续、有序的 key 打得七零八落，<strong>牺牲了范围查询能力</strong>。
+    比如想查"时间戳在 T1 到 T2 之间的所有事件"，这些 key 哈希后分散在几乎所有分区里，
+    数据库只能向<strong>全部分区</strong>发起查询再合并结果（scatter-gather），完全无法像范围分区那样"定点打击"。
+  </div>
+
+  <!-- 范围分区 -->
+  <h2>范围分区（Range Partitioning）</h2>
+  <p>
+    每个分区负责一段连续的 key 区间，例如按 key 的首字母分区（A-F 一个区，G-M 一个区……），
+    或者按时间戳分区（每天/每小时一个分区）。分区边界通常根据实际数据分布动态调整，而不是死板地均分。
+  </p>
+  <div class="callout tip">
+    <strong>优点：</strong>范围查询效率高——查一段连续区间的数据，只需要命中覆盖这段区间的少数几个分区，
+    不用像哈希分区那样全网扫描。
+  </div>
+  <div class="callout warn">
+    <strong>代价：容易产生热点。</strong>最经典的例子：如果按时间戳给一张事件表/时序表分区（比如"今天"一个分区），
+    那么<strong>所有新写入的数据都会落到同一个"最新"分区里</strong>——今天的分区被写爆，
+    而其他节点上存放历史数据的分区几乎无人问津、彻底闲置。分区数量再多，写入压力也全压在那一台机器上。
+  </div>
+
+  <!-- 数据倾斜 -->
+  <h2>数据倾斜（Data Skew）：分区设计要规避的核心问题</h2>
+  <p>
+    <strong>数据倾斜</strong>指的是某些分区承载的<strong>数据量</strong>或<strong>访问负载</strong>远高于其他分区（后者也叫"热点分区"，Hot Partition）。
+    一旦出现倾斜，分区最初的目的——把负载摊开——在那个热点节点上就彻底失效了：
+    <strong>不管你总共部署了多少台机器，系统的瓶颈永远卡在那台最忙的节点上</strong>，其他节点的富余算力毫无意义。
+  </p>
+  <p><strong>常见缓解思路：</strong></p>
+  <ul>
+    <li><strong>给热点 key 加随机前缀/后缀（加盐，Salting）：</strong>比如把热点 key <code>user:123</code> 拆成 <code>user:123:0</code> ~ <code>user:123:9</code>，人为分散到多个分区。
+      代价是读取时要反过来查询所有加盐后的变体再合并结果，读逻辑变复杂。</li>
+    <li><strong>应用层识别热点 key：</strong>提前监控访问模式，发现某些 key 明显比其他 key 热得多，针对性地做特殊处理（缓存、单独拆分等），而不是对所有 key 一视同仁。</li>
+  </ul>
+
+  <!-- 与分库分表呼应 -->
+  <div class="callout info">
+    <strong>与 09-数据库 呼应：</strong>在"可扩展性"一节讲分库分表时提到的路由策略，本质上就是这里的哈希分区和范围分区——
+    <strong>ShardingSphere</strong> 等分库分表中间件的路由算法，无非是"按 <code>id % 分库数</code> 取模路由"（哈希分区的工程实现）
+    和"按主键/时间范围路由到对应分库分表"（范围分区的工程实现）。两边的取舍完全一致：
+    取模路由分布均匀但不支持范围查询，范围路由对范围查询友好但容易在最新数据段产生热点。理解了这里的原理，再看分库分表中间件的配置项就会一目了然。
+  </div>
+
+  <!-- 对比表 -->
+  <h2>哈希分区 vs 范围分区</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>哈希分区</th><th>范围分区</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>负载分布</td>
+        <td>均匀，key 打散到各分区</td>
+        <td>不均匀，依赖 key 的实际分布</td>
+      </tr>
+      <tr>
+        <td>范围查询支持</td>
+        <td>差，需 scatter-gather 全分区查询</td>
+        <td>好，只命中相关分区</td>
+      </tr>
+      <tr>
+        <td>热点风险</td>
+        <td>低（哈希函数均匀的前提下）</td>
+        <td>高，尤其是按时间戳分区时"最新分区"必热</td>
+      </tr>
+      <tr>
+        <td>典型场景</td>
+        <td>KV 存储、按用户 ID 分片</td>
+        <td>时序数据库、日志系统、需要按区间扫描的场景</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>新手常常直接拿自增 ID 或时间戳这类<strong>单调递增</strong>的 key 做范围分区，
+    以为"分区数量够多就均匀了"。实际上单调递增的 key 无论怎么切区间，新数据永远追加在最后一个区间里，
+    结果就是最新的那个分区持续被写爆，其余分区早早地"退休"。这正是范围分区热点问题的典型翻车现场。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"什么是数据倾斜，如何避免？"
+    回答要点：数据倾斜是指部分分区数据量或访问量远超其他分区，导致该分区成为整个集群的瓶颈；
+    避免思路包括——优先用哈希分区打散负载，若必须范围分区则对热点 key 做加盐（随机前缀/后缀）拆分，
+    并在应用层监控识别热点 key 做针对性处理。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>分区解决容量和吞吐的扩展问题</strong>，与复制（解决可用性和读扩展）是两个正交的维度，实际系统通常两者结合使用。</li>
+    <li><strong>哈希分区换均匀、范围分区换范围查询能力</strong>，没有哪种分区策略是"更好"的，只有"更适合当前访问模式"的。</li>
+    <li><strong>数据倾斜是分区设计的头号敌人：</strong>好的分区策略必须结合实际的 key 分布和访问模式来设计，盲目分区反而可能制造出比不分区更糟的单点瓶颈。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-多主复制与无主复制.html" class="nav-btn">← 多主复制与无主复制</a>
+    <a href="./04-分区再平衡.html" class="nav-btn next">分区再平衡 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RPC 通信原理 — 微服务架构实践</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 微服务架构实践 / RPC 通信原理
+  </div>
+
+  <div class="hero">
+    <div class="tag">微服务架构实践</div>
+    <h1>RPC 通信原理</h1>
+    <p>服务拆开之后，进程内的方法调用变成了跨进程、跨网络的调用——RPC 的核心使命，就是让这种调用尽量还原成"像调本地方法一样简单"的体验。</p>
+  </div>
+
+  <h2>RPC 解决的问题：屏蔽远程调用的复杂性</h2>
+  <p>
+    RPC（Remote Procedure Call，远程过程调用）的目标很直白：<strong>让调用远程服务的代码，写起来和调用本地方法一样</strong>。
+    如果没有 RPC 框架，你要自己处理一大堆繁琐细节：把方法参数序列化成字节流、通过 Socket 发送到目标机器、目标机器反序列化还原参数、执行对应方法、把返回值再序列化传回来、调用方反序列化拿到结果——还要处理超时、重试、连接管理。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>RPC 就像点外卖软件——你只需要在 App 里点"下单"这个按钮（调用方法），背后其实经过了"生成订单信息 → 传给商家系统 → 商家接单 → 骑手取餐 → 送达"一整套复杂流程，但这些细节完全被 App 封装屏蔽了，你感受到的只是"点了个按钮，东西就送到了"。RPC 框架做的就是这件事：把序列化、网络传输、反序列化这些"配送细节"都藏在框架内部，业务代码只管"调用接口、拿到结果"。
+  </div>
+  <p>
+    一次典型的 RPC 调用背后发生了什么：调用方通过<strong>动态代理</strong>生成一个和真实接口签名一致的"桩"（Stub），业务代码调用这个桩上的方法时，代理会把方法名、参数打包<strong>序列化</strong>成二进制数据，通过网络协议（TCP/HTTP2 等）发送给服务提供方；服务端收到数据后<strong>反序列化</strong>还原出方法名和参数，通过反射找到真正的实现类执行，再把结果序列化传回来，调用方反序列化后返回给业务代码——整个过程业务代码完全无感知，这就是"透明化远程调用"。
+  </p>
+
+  <h2>gRPC vs Dubbo：两种主流 RPC 框架</h2>
+  <p>
+    实际工程中最常见的两类 RPC 方案，分别代表了"跨语言通用"和"Java 生态深度集成"两种取舍：
+  </p>
+  <table>
+    <thead><tr><th></th><th>gRPC</th><th>Dubbo</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>出身</strong></td>
+        <td>Google 开源，基于 HTTP/2 + Protobuf</td>
+        <td>阿里巴巴开源，Java 生态的老牌 RPC 框架</td>
+      </tr>
+      <tr>
+        <td><strong>序列化协议</strong></td>
+        <td>Protobuf（二进制、体积小、跨语言强类型）</td>
+        <td>Hessian2 / 支持多种序列化方式</td>
+      </tr>
+      <tr>
+        <td><strong>跨语言能力</strong></td>
+        <td>强，天生支持 Java/Go/Python/C++ 等多语言互通</td>
+        <td>主要面向 Java 生态，跨语言支持相对弱</td>
+      </tr>
+      <tr>
+        <td><strong>传输协议</strong></td>
+        <td>HTTP/2，原生支持双向流式调用（Streaming）</td>
+        <td>自定义私有协议（Dubbo 协议），也可扩展支持 REST</td>
+      </tr>
+      <tr>
+        <td><strong>服务治理能力</strong></td>
+        <td>相对基础，服务发现/负载均衡等需要额外集成（如配合 Envoy/Istio）</td>
+        <td>内置丰富，服务注册发现、负载均衡、路由规则、限流降级开箱即用</td>
+      </tr>
+      <tr>
+        <td><strong>适用场景</strong></td>
+        <td>多语言混合技术栈、需要流式调用（如实时推送、大文件传输）</td>
+        <td>纯 Java 技术栈、需要开箱即用的完整服务治理能力</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    值得一提的是 gRPC 的<strong>流式调用</strong>能力：普通 RPC 是"一次请求、一次响应"，而 gRPC 基于 HTTP/2 的多路复用支持客户端流、服务端流、双向流，适合需要持续推送数据的场景（比如实时行情推送），这是 Dubbo 传统模式不擅长的。
+  </p>
+
+  <h2>RPC vs REST：内部调用与对外 API 的取舍</h2>
+  <p>
+    另一个常见的困惑是：<strong>已经有 HTTP + JSON 的 REST 风格了，为什么还要用 RPC？</strong>两者并不是互相替代的关系，而是面向不同场景的工具：
+  </p>
+  <table>
+    <thead><tr><th></th><th>REST（HTTP + JSON）</th><th>RPC（如 gRPC / Dubbo）</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>通用性</strong></td>
+        <td>极强，浏览器、移动端、第三方系统都能直接调用，人类可读</td>
+        <td>较弱，通常需要专门的客户端 SDK 或代理生成的桩代码</td>
+      </tr>
+      <tr>
+        <td><strong>性能</strong></td>
+        <td>JSON 文本序列化体积大、解析慢，HTTP/1.1 无多路复用</td>
+        <td>二进制序列化体积小，基于 HTTP/2 等支持多路复用，性能更优</td>
+      </tr>
+      <tr>
+        <td><strong>调试便利性</strong></td>
+        <td>用浏览器/curl/Postman 就能直接测试，排查问题方便</td>
+        <td>需要专门工具（如 grpcurl）或了解 IDL 定义才能调试</td>
+      </tr>
+      <tr>
+        <td><strong>适用场景</strong></td>
+        <td>对外开放的公共 API、前后端交互</td>
+        <td>内部服务之间的高频、高性能调用</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    实践中的常见组合是：<strong>系统对外暴露 REST API 给前端和第三方使用，内部微服务之间用 RPC 通信</strong>，兼顾了外部易用性和内部性能。这也是为什么 API 网关（后面会讲）常常需要做协议转换——外部进来的是 REST 请求，网关转成 RPC 调用内部服务。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"RPC 和 HTTP 调用有什么区别？"参考答案：RPC 是一种编程模型（让远程调用像本地调用一样），HTTP 只是它可以选用的传输协议之一（比如 gRPC 就是基于 HTTP/2）；RPC 框架通常还内置了序列化协议、服务发现、负载均衡等能力，而普通 REST 调用需要自己在业务代码里处理这些细节，或者依赖网关/Service Mesh 来补齐。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>RPC 的本质：</strong>用动态代理 + 序列化协议 + 网络传输，把远程调用伪装成本地方法调用，屏蔽底层复杂性。</li>
+    <li><strong>gRPC vs Dubbo：</strong>前者靠 Protobuf + HTTP/2 换来跨语言和流式调用能力，后者靠深度绑定 Java 生态换来开箱即用的服务治理能力。</li>
+    <li><strong>RPC vs REST 不是二选一：</strong>对外用 REST 保证通用性和易调试性，内部服务间用 RPC 换取性能，两者常常在同一个系统里协同工作。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-服务拆分的康威定律与限界上下文.html" class="nav-btn">← 服务拆分的康威定律与限界上下文</a>
+    <a href="./04-服务发现与注册中心.html" class="nav-btn next">服务发现与注册中心 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>共识算法 Raft / Paxos 简介 — 分布式与微服务</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 事务与一致性 / 共识算法Raft Paxos简介
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">事务与一致性</div>
+    <h1>共识算法 Raft / Paxos 简介</h1>
+    <p>多个节点如何在没有"上帝视角"的情况下，就同一个值达成一致，还不能出现两边各说各话的"脑裂"——这是分布式系统里最硬核也最优雅的问题之一。</p>
+  </div>
+
+  <!-- 共识问题是什么 -->
+  <h2>共识问题（Consensus Problem）到底在解决什么</h2>
+  <p>
+    <strong>共识问题</strong>：让多个节点就<strong>同一个值</strong>（或者同一份操作序列/日志）达成一致，
+    即使其中一些节点很慢、会崩溃、消息会丢失或延迟，也不能出现<strong>两个节点各自认为不同的值被"决定"了</strong>这种局面。
+    这个"值"可以很抽象——可以是"谁是 Leader"，也可以是"日志第 N 条应该是什么内容"。
+  </p>
+  <p>
+    共识算法要同时保证两件事：<strong>安全性（Safety）</strong>——绝不会有两个节点对同一个决定给出不同答案（不能脑裂）；
+    <strong>活性（Liveness）</strong>——只要大多数节点存活且能通信，系统最终能达成一个决定，不会永远卡住。
+    这两者往往是矛盾的：要绝对安全很容易（永远不做决定就行），要保证系统一直能推进也不难（不检查一致性直接决定就行）——难的是同时做到。
+  </p>
+  <div class="callout info">
+    <strong>为什么这事很重要：</strong>
+    在前面讲主从复制/多主复制时提到，一个系统里如果同时有两个节点都认为自己是 Leader、都在接受写入，
+    就会出现<strong>脑裂（Split Brain）</strong>——两份写入互相冲突、数据分叉，事后极难修复。
+    Leader 选举本质上就是一个共识问题：所有节点必须就"谁是唯一的 Leader"达成一致。
+    类似的场景还有：分布式锁服务要决定"谁持有锁"（两个客户端都以为自己拿到了锁，后果可能是数据损坏）；
+    以及复制日志要保证"操作序列在每个节点上应用的顺序完全一致"（顺序一乱，各节点的状态就会分道扬镳）。
+  </div>
+
+  <!-- Paxos 简介 -->
+  <h2>Paxos：第一个被证明正确，但极难落地的共识算法</h2>
+  <p>
+    <strong>Paxos</strong> 是历史上第一个被广泛认可、并且经过严格数学证明的共识算法，由 Leslie Lamport 在上世纪 80 年代末提出。
+    它的正确性毋庸置疑，但它有一个"著名"的反面口碑：<strong>论文本身极其晦涂难懂，工程实现更是坑多到出名</strong>。
+    历史上不止一个团队按论文实现 Paxos 之后，在真实系统里跑出了极其隐蔽的一致性 bug——这也是 Paxos 虽然理论地位很高，
+    但工程界一直渴望一个"更好理解、更容易正确实现"的替代方案的原因。
+  </p>
+
+  <!-- Raft 设计目标 -->
+  <h2>Raft：以"可理解性"为第一设计目标</h2>
+  <p>
+    <strong>Raft</strong>（2014 年由 Diego Ongaro 和 John Ousterhout 提出）在设计之初就明确把
+    <strong>可理解性（Understandability）</strong>作为首要目标——不是"顺带好理解"，而是把它和安全性、活性放在同一优先级上来设计。
+    Raft 提供的一致性保证和 Paxos 是等价的，但通过把整个协议拆解成几个相对独立、职责清晰的子问题
+    （选主、日志复制、安全性），大幅降低了正确实现它的难度。这也是 Raft 能在近十年迅速成为工业界"事实标准"的关键原因。
+  </p>
+
+  <!-- 机制一：选举 -->
+  <h3>1. Leader 选举：选出唯一的 Leader</h3>
+  <p>
+    Raft 集群中的每个节点在任意时刻只处于三种状态之一：<strong>Follower（跟随者）</strong>、
+    <strong>Candidate（候选人）</strong>、<strong>Leader（领导者）</strong>。
+    正常情况下集群里只有一个 Leader，其余都是 Follower。
+  </p>
+  <p>
+    Follower 会等待 Leader 定期发来的心跳；如果在一个随机的<strong>超时时间</strong>内没有收到心跳
+    （可能是 Leader 崩了，也可能是网络分区把它们隔开了），Follower 就认为"当前没有可用的 Leader"，
+    转变为 Candidate，给自己投一票，并向所有其他节点发起投票请求。
+    只有拿到<strong>过半数（Majority）</strong>节点投票的 Candidate，才能成为新的 Leader。
+    成为 Leader 之后，<strong>所有客户端写请求都只由 Leader 处理</strong>，Follower 只负责被动地复制数据，不直接接受写入。
+  </p>
+
+  <!-- 机制二：日志复制 -->
+  <h3>2. 日志复制：只要求同步到多数节点，而不是全部</h3>
+  <p>
+    每当 Leader 收到一个写请求，它会把这次写操作作为一条<strong>日志条目（Log Entry）</strong>追加到自己的本地日志末尾，
+    然后并行地发送给所有 Follower，要求它们也把这条日志追加到各自的日志里。
+  </p>
+  <p>
+    关键点在于：一条日志条目只要被复制到<strong>多数（quorum）</strong>节点上，就可以被认为是<strong>已提交（Committed）</strong>的，
+    并不需要等所有节点都确认。这正是 Raft 能在少数节点变慢或宕机时依然正常对外提供服务的原因——
+    比如一个 5 节点集群，只要有 3 个节点（含 Leader 自己）确认了这条日志，就可以提交，
+    另外 2 个节点即使暂时掉线，也不会拖慢整个系统。
+  </p>
+
+  <!-- 机制三：任期 -->
+  <h3>3. 任期（Term）机制：如何从根上避免脑裂</h3>
+  <p>
+    Raft 把时间划分成一个个<strong>任期（Term）</strong>，每个任期最多只有一个 Leader（通过多数投票选出）。
+    集群中每一条消息（无论是心跳、日志复制请求还是投票请求）都携带发送方当前的任期号。
+  </p>
+  <p>
+    规则很简单但极其关键：<strong>只要一个节点看到消息里的任期号比自己当前记录的任期号更大，
+    它就会立刻更新自己的任期号，并且如果自己是 Leader 或 Candidate，会立刻退回 Follower 状态</strong>。
+  </p>
+  <p>
+    这个机制正是用来处理"网络分区导致的假 Leader"问题：假设旧 Leader 被网络分区隔离在少数派一侧，
+    它完全不知道多数派那边已经因为超时选出了新的、任期号更高的 Leader，于是它会继续以为自己还是 Leader。
+    但由于它已经无法从多数节点拿到日志复制确认，它提交的新日志条目永远无法真正生效；
+    一旦网络分区恢复、它重新连上集群，就会从新 Leader 或其他节点那里看到更高的任期号，
+    立刻意识到自己已经"过期"，主动退位为 Follower。整个过程中<strong>不存在两个 Leader 同时被多数派承认并接受写入</strong>的情况，
+    脑裂问题也就从协议层面被杜绝了。
+  </p>
+
+  <!-- 实际应用 -->
+  <h2>实际应用：你几乎不会自己写 Raft/Paxos，但天天在用它</h2>
+  <p>
+    <strong>etcd</strong> 本身就是基于 Raft 实现的分布式键值存储，被 <strong>Kubernetes</strong> 用作集群状态的存储中心
+    （所有 Pod、Service、Deployment 的期望状态都存在 etcd 里）。
+    <strong>Kafka</strong> 新版本的 Controller 选举（<strong>KRaft 模式</strong>，用来取代对 ZooKeeper 的依赖）也是基于 Raft 构建的。
+    <strong>Consul</strong> 直接使用 Raft 做集群协调；<strong>ZooKeeper</strong> 则使用一套被称为
+    <strong>ZAB（ZooKeeper Atomic Broadcast）</strong>的类 Paxos 协议来实现类似的效果。
+    这些系统的共同点是：<strong>普通业务开发者几乎不需要亲手实现共识算法</strong>，但只要你用到了服务发现、分布式配置中心、
+    分布式锁、Kubernetes 这类系统，底层就一定站着 Raft 或 Paxos 家族的某个实现。
+  </p>
+
+  <!-- 常见误区 -->
+  <div class="callout warn">
+    <strong>常见误区：</strong>
+    很多人把"共识算法"和"多主复制里的冲突解决"混为一谈——这是两个完全不同层面的问题。
+    共识算法解决的是"多个节点就同一个值/同一份日志顺序达成一致"，答案只有一个，不容许分歧；
+    而多主复制中的冲突解决（比如"最后写入胜出"）解决的是"两个节点各自已经独立写入了不同的值，事后如何合并/取舍"的问题，
+    本质上是在容忍分歧之后做补救。此外还有一个常见的误解：以为基于共识算法的系统能"容忍多数节点故障"——
+    恰恰相反，Raft/Paxos 需要<strong>多数节点存活且能互相通信才能继续对外提供服务</strong>，
+    它容忍的是<strong>少数（Minority）</strong>节点故障，而不是多数节点故障。一个 5 节点集群最多只能容忍 2 个节点同时故障。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Raft 是如何避免脑裂的？"
+    标准答案要点：① Leader 选举要求获得<strong>多数票</strong>，这保证了同一个任期内不可能有两个节点同时拿到多数票，
+    因此每个任期最多只有一个合法 Leader；② 每条消息都携带<strong>任期号</strong>，任何节点一旦看到更高的任期号就会立刻更新并让位，
+    使得网络分区恢复后残留的旧 Leader 会主动退位，而不会和新 Leader 同时接受写入。
+    两点结合，就是 Raft 从协议层面杜绝脑裂的核心机制。
+  </div>
+
+  <!-- 对比表 -->
+  <h2>Paxos vs Raft 对比一览</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>Paxos</th><th>Raft</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>可理解性</strong></td>
+        <td>差，论文晦涩，角色和消息流程不直观</td>
+        <td>好，设计之初就把"可理解性"作为首要目标，角色和流程清晰</td>
+      </tr>
+      <tr>
+        <td><strong>工程实现难度</strong></td>
+        <td>高，历史上多个团队按论文实现后出现隐蔽 bug</td>
+        <td>相对低，业界有大量成熟、久经考验的开源实现可直接复用</td>
+      </tr>
+      <tr>
+        <td><strong>核心思想是否相同</strong></td>
+        <td>基于"多数派"达成一致，提供强一致性保证</td>
+        <td>与 Paxos 等价，同样基于多数派投票 + 日志复制，属于同一思想的"工程友好版"</td>
+      </tr>
+      <tr>
+        <td><strong>实际应用案例</strong></td>
+        <td>Google Chubby、ZooKeeper（ZAB，类 Paxos 协议）</td>
+        <td>etcd（→ Kubernetes）、Consul、Kafka KRaft 模式</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>共识问题的本质：</strong>让多个不可靠的节点就同一个值/顺序达成一致，绝不允许出现分歧（脑裂）。</li>
+    <li><strong>Raft 的三大支柱：</strong>多数票选主保证唯一 Leader、日志只需复制到多数节点即可提交、任期号让旧 Leader 主动让位。</li>
+    <li><strong>工程视角：</strong>共识算法是分布式系统的"地基"之一，理解它的保证边界（容忍少数故障，而非多数），
+    比会不会手写实现更重要——因为你几乎总是在用别人已经验证过的实现（etcd、Consul、Kafka KRaft）。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-线性一致性与最终一致性.html" class="nav-btn">← 线性一致性与最终一致性</a>
+    <a href="../microservice/01-微服务拆分的原则与边界划分.html" class="nav-btn next">微服务拆分的原则与边界划分 →</a>
+  </div>
+
+</div>
+</body>
+</html>

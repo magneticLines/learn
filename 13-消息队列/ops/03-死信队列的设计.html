@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>死信队列的设计 — 消息队列</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / 运维与实战 / 死信队列的设计
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">运维与实战</div>
+    <h1>死信队列的设计</h1>
+    <p>消息队列模块的最后一站：当一条消息怎么处理都会失败时，总不能让它拖住后面所有正常消息，死信队列就是为此而生的"隔离区"。</p>
+  </div>
+
+  <!-- 问题场景 -->
+  <h2>问题场景：一条"毒消息"卡住整个 Partition</h2>
+  <p>
+    设想这样一个场景：某条消息的内容格式有问题（比如字段缺失导致反序列化失败），或者它触发了消费逻辑里的一个 Bug，导致<strong>每次消费都必然抛异常</strong>。
+    如果消费者的策略是"处理失败就不提交位移、下次重新拉取再处理一次"，这条消息会被<strong>无限重试</strong>——因为它的失败原因和网络抖动、临时超时完全不同，无论重试多少次结果都一样失败。
+  </p>
+  <p>
+    更麻烦的是，Kafka 单个 Partition 内消息是严格按顺序消费的，这条消息卡在这里无法被跳过，<strong>它后面排队的所有正常消息全部被阻塞，无法被处理</strong>。这就像高速公路上一辆抛锚的车堵住了整条车道，后面所有车都动弹不得。
+  </p>
+
+  <!-- 什么是死信队列 -->
+  <h2>死信队列：给"毒消息"一个隔离区</h2>
+  <p>
+    <strong>死信队列（Dead Letter Queue，DLQ）</strong>是一个专门用来存放"消费多次失败、确认无法在当前流程中处理"的消息的独立 Topic（或队列）。
+    它的核心思路是：<strong>与其让一条处理不了的消息无限阻塞正常流程，不如设定一个重试上限，超过上限就把它挪到旁边的"隔离区"，让主流程继续往前走</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像医院的分诊台，遇到当前设备处理不了的疑难病例，不会让它一直占用普通诊室影响其他病人排队，而是转到专门的专家会诊室，由更专业的人力或流程来处理，普通门诊照常运转不受影响。
+  </div>
+
+  <!-- 典型设计 -->
+  <h2>典型设计：重试 N 次后转发</h2>
+  <p>
+    死信队列并不是 Kafka 内置的强制机制（不同于某些 MQ 如 RabbitMQ 有原生 DLX 支持），在 Kafka 生态里通常由消费端应用逻辑或者流处理框架（如 Spring Kafka）来实现，基本套路如下：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>伪代码</span></div>
+    <pre><span class="kw">int</span> retryCount = <span class="fn">getRetryCount</span>(message);
+<span class="kw">try</span> {
+    <span class="fn">processMessage</span>(message);
+    <span class="fn">commitOffset</span>();
+} <span class="kw">catch</span> (<span class="ty">Exception</span> e) {
+    <span class="kw">if</span> (retryCount &lt; <span class="num">MAX_RETRY</span>) {
+        <span class="fn">retryLater</span>(message, retryCount + <span class="num">1</span>);
+    } <span class="kw">else</span> {
+        <span class="com">// 超过重试上限，转发到死信 Topic，不再阻塞主流程</span>
+        <span class="fn">sendToDeadLetterTopic</span>(message, e);
+        <span class="fn">commitOffset</span>(); <span class="com">// 主流程位移照常推进</span>
+    }
+}</pre>
+  </div>
+  <p>
+    转发到死信 Topic 之后，通常会带上失败原因、异常堆栈、重试次数等元信息，方便后续排查。死信 Topic 里的消息一般不会被自动重新处理，而是等待<strong>人工介入排查</strong>，或者由专门的<strong>补偿逻辑</strong>（修复数据后手动重放、走另一套兜底流程）来处理。
+  </p>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"消费失败就应该立刻扔进死信队列，越快隔离越好。"
+    这个做法会把很多本可以通过重试自愈的临时性失败（比如短暂的网络抖动、下游服务瞬时不可用）也提前判了死刑，导致死信队列里堆积大量其实"重试一下就能成功"的消息，增加了不必要的人工排查负担。合理的做法是<strong>先允许有限次数、带退避策略的重试</strong>，确认多次重试仍然失败后，再转入死信队列，兼顾自愈能力和隔离效果。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"如何设计死信队列？" 回答要点：先说明死信队列要解决什么问题（避免毒消息阻塞正常消费流程），再讲典型实现（重试 N 次仍失败则转发到独立的死信 Topic，并保留失败上下文），最后强调死信队列消息通常需要人工或补偿逻辑介入，而不是自动无限重试。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>死信队列本质是一种"故障隔离"手段：</strong>让少数处理不了的消息不再拖累大多数正常消息的处理进度。</li>
+    <li><strong>重试次数上限是关键参数：</strong>太小容易误判临时故障为永久故障，太大则起不到及时隔离的效果，需要结合失败类型合理设置。</li>
+    <li><strong>死信队列不是终点，而是排查的起点：</strong>它把"处理不了的消息"变成可观测、可追溯的数据，方便后续人工介入或做数据修复补偿。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-顺序消息如何保证.html" class="nav-btn">← 顺序消息如何保证</a>
+    <a href="../mq-roadmap.html" class="nav-btn next">🎉 已完成，返回路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

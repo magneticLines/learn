@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>消费者组与消费位移 — Kafka 核心概念</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / Kafka核心概念 / 消费者组与消费位移
+  </div>
+
+  <div class="hero">
+    <div class="tag">Kafka核心概念</div>
+    <h1>消费者组与消费位移</h1>
+    <p>这是 Kafka 消费端最核心也最容易在面试中被问倒的一篇：消费者组如何分配 Partition、offset 到底记录了什么、以及提交时机如何决定消息会不会丢或被重复消费。</p>
+  </div>
+
+  <h2>消费者组：一组消费者共同消费一个 Topic</h2>
+  <p>
+    <strong>消费者组（Consumer Group）</strong>是若干个消费者实例的集合，它们共用同一个 <code>group.id</code>，共同承担消费某个 Topic 全部 Partition 的任务。
+    Kafka 的分配规则很硬核：<strong>一个 Partition 在同一时刻只能被组内的一个消费者消费</strong>，不会出现组内两个消费者同时读同一个 Partition 的情况。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示意：Partition 与消费者组内消费者的分配关系</span></div>
+    <pre><span class="com">// Topic: order-created，共 3 个 Partition；消费者组 group-A 有 3 个消费者实例</span>
+
+partition-0  ──→  consumer-1
+partition-1  ──→  consumer-2
+partition-2  ──→  consumer-3
+
+<span class="com">// 如果 group-A 只有 2 个消费者，其中一个消费者要负责 2 个 partition：</span>
+partition-0  ──→  consumer-1
+partition-1  ──→  consumer-1
+partition-2  ──→  consumer-2
+
+<span class="com">// 如果 group-A 有 4 个消费者，多出来的第 4 个消费者没有 partition 可分，处于空闲：</span>
+partition-0,1,2  ──→  consumer-1, consumer-2, consumer-3
+consumer-4  ──→  <span class="hi">空闲，一直分不到 partition</span></pre>
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"消费者数量超过 Partition 数量会怎样？" 答案就是上面这个例子——多出来的消费者会分不到任何 Partition，白白闲置，不会提升任何吞吐。
+    这也反过来说明了为什么 Partition 数量的规划要考虑"预期的最大消费并发数"：<strong>消费的并行度上限就是 Partition 的数量</strong>，
+    这跟上一篇讲分区设计时的"并行度"是同一个结论的另一面。
+  </div>
+
+  <h2>offset：消费位移，记录"消费到哪里了"</h2>
+  <p>
+    <strong>offset（消费位移）</strong>记录的是"某个消费者组在某个 Partition 上，已经消费到了哪个位置"。它是三元组 <code>(消费者组, Topic, Partition)</code> 对应一个 offset 值，
+    而不是消息本身携带的属性——同一条消息，对消费者组 A 来说可能已经被消费过，对消费者组 B 来说可能还没被消费到，因为两个组的 offset 是各自独立维护的。
+  </p>
+  <p>
+    Kafka 把 offset 保存在一个内部特殊的 Topic <code>__consumer_offsets</code> 里（早期版本是存在 ZooKeeper 中），
+    消费者重启或者发生 Partition 重新分配（rebalance）之后，就是靠读取这里记录的 offset，知道该从哪个位置继续往后消费，而不是从头重新消费一遍。
+  </p>
+
+  <h2>offset 提交时机：自动提交 vs 手动提交</h2>
+  <p>
+    这是决定"消息会不会丢失、会不会被重复消费"的关键。核心问题在于：<strong>offset 提交（更新"已消费到哪里"这个记录）和"业务逻辑真正处理完这条消息"这两件事，谁先谁后</strong>。
+  </p>
+
+  <h3>自动提交（enable.auto.commit=true）</h3>
+  <p>
+    Kafka 客户端会按固定间隔（比如每 5 秒）自动把当前读到的 offset 提交上去，<strong>提交动作和业务逻辑是否处理完全脱钩</strong>。
+    这就可能出现：消息已经被消费者拉取到本地、offset 已经自动提交了，但业务逻辑还没处理完（或者处理到一半程序崩了）——
+    此时 Kafka 认为这条消息已经消费完毕，重启后会从提交过的 offset 之后继续消费，<strong>这条本该被处理但没处理完的消息就丢失了</strong>。
+  </p>
+
+  <h3>手动提交（enable.auto.commit=false）</h3>
+  <p>
+    由业务代码自己控制在什么时候调用 <code>commitSync()</code> / <code>commitAsync()</code> 提交 offset。
+    正确的做法是<strong>先完整处理完业务逻辑，再提交 offset</strong>：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>手动提交的正确顺序</span></div>
+    <pre><span class="ty">ConsumerRecords</span>&lt;<span class="ty">String</span>, <span class="ty">String</span>&gt; records = consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>.<span class="fn">ofMillis</span>(<span class="num">100</span>));
+<span class="kw">for</span> (<span class="ty">ConsumerRecord</span>&lt;<span class="ty">String</span>, <span class="ty">String</span>&gt; record : records) {
+    <span class="fn">processOrder</span>(record.<span class="fn">value</span>());  <span class="com">// 1. 先把业务逻辑处理完（比如扣库存、发短信）</span>
+}
+consumer.<span class="fn">commitSync</span>();          <span class="com">// 2. 处理成功后再提交 offset，标记这批消息"确实处理完了"</span></pre>
+  </div>
+  <p>
+    这样即使业务逻辑处理到一半程序崩溃，因为 offset 还没提交，重启后消费者会<strong>从上次提交的 offset 重新拉取</strong>，
+    这条消息会被<strong>重新消费一次</strong>——用"可能重复消费"换来了"不会丢消息"的保证。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区（面试高频）：</strong>"手动提交是不是就完全不会有问题了？" 不是。手动提交只是把"丢消息"的风险换成了"重复消费"的风险——
+    如果业务逻辑本身不是幂等的（比如"扣库存"这种操作重复执行两次会导致库存被多扣一次），重复消费一样会造成业务错误。
+    这就是为什么 <code>reliable/03-消息幂等性与重复消费的处理.html</code> 要专门讨论"业务侧如何做幂等"，
+    offset 提交策略只能保证"消息不丢"或"消息不重"其中一种取舍，不能同时保证两者绝对安全，最终还要靠业务逻辑的幂等设计兜底。
+  </div>
+
+  <h2>提交时机对比</h2>
+  <table>
+    <thead>
+      <tr><th>策略</th><th>提交时机</th><th>崩溃后果</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>自动提交</td>
+        <td>固定时间间隔，与业务处理是否完成无关</td>
+        <td>可能丢消息（提交了但没处理完）</td>
+        <td>对丢消息容忍度较高、追求简单的场景</td>
+      </tr>
+      <tr>
+        <td>手动提交</td>
+        <td>业务逻辑处理成功之后</td>
+        <td>可能重复消费（处理完但没来得及提交）</td>
+        <td>对丢消息零容忍，业务能做幂等处理的场景</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>消费者组：</strong>组内多个消费者共同瓜分一个 Topic 的所有 Partition，一个 Partition 同一时刻只能被组内一个消费者消费——消费者数超过 Partition 数会导致多余消费者空闲。</li>
+    <li><strong>offset：</strong>记录"某个消费者组在某个 Partition 上消费到哪里"，按 (组, Topic, Partition) 维度独立维护。</li>
+    <li><strong>提交时机决定丢失/重复：</strong>自动提交可能丢消息，手动提交（处理完再提交）可能重复消费，两者都需要业务逻辑的幂等设计来兜底最终的正确性。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-生产者的分区策略.html" class="nav-btn">← 生产者的分区策略</a>
+    <a href="../reliable/01-消息确认机制ack.html" class="nav-btn next">消息确认机制(ack) →</a>
+  </div>
+
+</div>
+</body>
+</html>

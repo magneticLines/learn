@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kafka 与 RabbitMQ 与 RocketMQ 的对比 — 消息队列基础</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / 消息队列基础 / Kafka 与 RabbitMQ 与 RocketMQ 的对比
+  </div>
+
+  <div class="hero">
+    <div class="tag">消息队列基础</div>
+    <h1>Kafka 与 RabbitMQ 与 RocketMQ 的对比</h1>
+    <p>三款主流消息队列的设计哲学完全不同：Kafka 追求极致吞吐、RabbitMQ 追求路由灵活、RocketMQ 追求金融级可靠与高吞吐的平衡。选型前先搞清楚各自的取舍。</p>
+  </div>
+
+  <h2>Kafka：基于日志的顺序写，为高吞吐而生</h2>
+  <p>
+    Kafka 的核心设计是把每个 Partition 实现成一份<strong>只追加写入的日志文件（append-only log）</strong>。生产者写消息永远是往文件末尾顺序追加，
+    消费者读消息也是按顺序从某个位置往后读——这跟机械磁盘的顺序 I/O 性能远高于随机 I/O 是同一个道理，也是 09-数据库 里讲 <strong>binlog</strong> 时同样用到的"顺序写日志"思想：
+    不管是 MySQL 的 binlog 还是 Kafka 的 Partition，本质都是"用顺序追加的日志文件换取极致的写入吞吐"。
+  </p>
+  <p>
+    因为消息落盘后不会被立刻删除，而是按照可配置的保留时间（比如 7 天）或者保留大小滚动清理，Kafka 天然适合<strong>日志采集、流处理、事件溯源</strong>这类需要海量吞吐、
+    并且可能需要"消息重放"（消费者从头再消费一遍）的场景。
+  </p>
+
+  <h2>RabbitMQ：基于 AMQP 协议，路由能力强大</h2>
+  <p>
+    RabbitMQ 实现了 AMQP（Advanced Message Queuing Protocol）协议，核心抽象是 <strong>Exchange（交换机）+ Binding（绑定规则）+ Queue（队列）</strong>：
+    生产者把消息发给 Exchange，Exchange 根据路由规则（direct / topic / fanout / headers 等类型）把消息分发到一个或多个 Queue。
+    这套模型让 RabbitMQ 的路由非常灵活，还原生支持很多开箱即用的高级特性：
+  </p>
+  <ul>
+    <li><strong>延迟队列：</strong>消息可以设置延迟多久才被消费者看到，常用于订单超时取消这类场景。</li>
+    <li><strong>死信队列（DLQ）：</strong>消费失败或过期的消息会自动转入专门的死信队列，便于后续排查和补偿处理（这也是 ops 目录里"死信队列设计"专门要讲的主题）。</li>
+    <li><strong>优先级队列：</strong>可以让紧急消息插队先被消费。</li>
+  </ul>
+  <p>
+    代价是 RabbitMQ 的吞吐量相对 Kafka 低一个量级（通常是万级 TPS，而 Kafka 可以做到十万甚至百万级），因为它的每条消息处理涉及更复杂的路由匹配和内存/磁盘管理，
+    不像 Kafka 那样靠简单的顺序写把吞吐推到极致。
+  </p>
+
+  <h2>RocketMQ：阿里出品，高吞吐与金融级事务并重</h2>
+  <p>
+    RocketMQ 最初为阿里"双十一"电商场景而生，设计目标是<strong>兼顾接近 Kafka 的高吞吐</strong>与<strong>严格的消息可靠性</strong>。
+    它的一个招牌特性是原生支持<strong>事务消息</strong>：可以保证"本地事务执行成功"和"消息成功发出"这两件事的最终一致性，
+    这在电商下单、支付这类要求"扣款和发消息必须同时成功或同时失败"的金融级场景里非常关键。
+  </p>
+  <p>
+    此外 RocketMQ 是 Java 编写、中文文档和社区都很活跃，国内公司自研或改造 RocketMQ 的成本相对较低，这也是它在国内电商、支付类系统中被广泛采用的原因之一。
+  </p>
+
+  <h2>三者选型对比表</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>Kafka</th><th>RabbitMQ</th><th>RocketMQ</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>底层模型</td>
+        <td>顺序写日志（append-only log）</td>
+        <td>AMQP 协议 + Exchange 路由</td>
+        <td>类 Kafka 的日志存储 + 自研协议</td>
+      </tr>
+      <tr>
+        <td>吞吐量</td>
+        <td>极高（十万级~百万级 TPS）</td>
+        <td>较低（万级 TPS）</td>
+        <td>高（十万级 TPS）</td>
+      </tr>
+      <tr>
+        <td>路由灵活性</td>
+        <td>较弱，靠 Topic + Partition</td>
+        <td>强，支持多种 Exchange 路由方式</td>
+        <td>中等</td>
+      </tr>
+      <tr>
+        <td>延迟队列 / 死信队列</td>
+        <td>需要自己实现</td>
+        <td>原生支持</td>
+        <td>原生支持</td>
+      </tr>
+      <tr>
+        <td>事务消息</td>
+        <td>支持（事务 Producer，偏流处理场景）</td>
+        <td>不原生支持</td>
+        <td>原生支持，金融级场景成熟</td>
+      </tr>
+      <tr>
+        <td>消息保留</td>
+        <td>可配置时长/大小，支持重放</td>
+        <td>消费后即删除（默认）</td>
+        <td>可配置时长，支持重放</td>
+      </tr>
+      <tr>
+        <td>典型场景</td>
+        <td>日志采集、流处理、大数据管道</td>
+        <td>业务解耦、任务队列、需要复杂路由的场景</td>
+        <td>电商交易、金融支付、国内业务系统</td>
+      </tr>
+      <tr>
+        <td>社区/生态</td>
+        <td>全球最流行，生态最丰富（Kafka Streams / Connect）</td>
+        <td>国际社区活跃，历史悠久</td>
+        <td>中文社区活跃，阿里系公司广泛使用</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Kafka 和 RabbitMQ 该怎么选？" 简单记忆：<strong>要吞吐选 Kafka，要灵活路由/高级特性选 RabbitMQ，要国内金融级事务消息选 RocketMQ</strong>。
+    更深一层的答案是要说出"为什么"——Kafka 的高吞吐来自顺序写日志放弃了复杂路由能力，RabbitMQ 的路由灵活来自 Exchange 机制但增加了处理开销，
+    这是一个典型的"吞吐 vs 功能丰富度"的工程取舍，而不是谁绝对更好。
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>不要把"Kafka 吞吐更高"简单理解为"Kafka 各方面都更强"。如果业务需要延迟队列、死信队列这类开箱即用的高级特性，
+    用 Kafka 自己实现的成本可能远高于直接用 RabbitMQ；同理如果需要严格的分布式事务消息保证，RocketMQ 的原生事务消息比在 Kafka 上自己拼凑事务方案要稳妥得多。
+    选型永远是"业务场景优先"，不是"参数越猛越好"。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Kafka：</strong>顺序写日志换取极致吞吐，适合日志采集、流处理，消息可配置保留支持重放。</li>
+    <li><strong>RabbitMQ：</strong>AMQP 协议带来灵活路由，原生支持延迟队列/死信队列，但吞吐相对较低。</li>
+    <li><strong>RocketMQ：</strong>兼顾高吞吐与金融级事务消息，国内生态成熟，中文社区活跃。</li>
+    <li>接下来的 Kafka 核心概念 Tab，将围绕 Topic/Partition、Broker/副本、生产者分区策略、消费者组这几个真正支撑起 Kafka 高吞吐能力的核心设计逐一展开。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-点对点模式与发布订阅模式.html" class="nav-btn">← 点对点模式与发布订阅模式</a>
+    <a href="../kafka/01-Topic与Partition的设计.html" class="nav-btn next">Topic 与 Partition 的设计 →</a>
+  </div>
+
+</div>
+</body>
+</html>

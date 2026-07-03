@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>微服务拆分的原则与边界划分 — 微服务架构实践</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 微服务架构实践 / 微服务拆分的原则与边界划分
+  </div>
+
+  <div class="hero">
+    <div class="tag">微服务架构实践</div>
+    <h1>微服务拆分的原则与边界划分</h1>
+    <p>微服务不是"拆得越细越先进"，而是一门"在收益和代价之间找平衡点"的工程学问。拆分的第一课，是先搞清楚该往哪个方向切、切到什么粒度就该停手。</p>
+  </div>
+
+  <h2>为什么要拆：单体的痛点</h2>
+  <p>
+    一个单体应用把所有模块（订单、库存、支付、用户）打包成一个进程部署。刚开始团队小、业务简单时这样最高效——一次编译、一次部署、一个事务搞定所有跨模块操作。
+    但随着团队和代码量增长，单体会暴露出几个结构性问题：<strong>任何一处小改动都要重新构建部署整个应用</strong>，一个模块的内存泄漏会拖垮全部功能，
+    团队之间在同一份代码库上频繁冲突，技术栈被绑死（想给某个模块用更合适的语言/框架也不行）。
+  </p>
+  <p>
+    微服务的核心思路是：<strong>把单体按业务能力拆成多个可以独立开发、独立部署、独立扩展的服务</strong>，用网络调用代替进程内调用。但这不是免费的午餐——拆分本身引入了分布式系统的全部复杂度，所以"怎么拆"比"要不要拆"更值得深究。
+  </p>
+
+  <h2>拆分的核心原则</h2>
+  <h3>高内聚低耦合</h3>
+  <p>
+    这是拆分的第一原则：<strong>一个服务内部的功能应该紧密相关（高内聚）</strong>，比如"订单创建、订单查询、订单状态流转"都属于订单服务的核心职责；
+    <strong>服务之间的依赖应该尽量少、尽量弱（低耦合）</strong>，订单服务需要知道"库存够不够"，但不应该关心库存服务内部是怎么实现库存扣减的，只通过接口交互。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>高内聚低耦合就像公司里的部门划分——财务部内部的报销、发票、结算流程应该紧密协作（高内聚），但财务部不需要知道研发部内部是怎么排期开发的，双方只通过"报销单"这种接口打交道（低耦合）。如果两个部门天天要开会对齐内部细节，说明部门边界划错了。
+  </div>
+
+  <h3>单一职责</h3>
+  <p>
+    一个服务应该只负责一类业务能力，并且是"因为同一个原因而改变"的代码放在一起。如果订单服务里既处理下单逻辑，又处理短信通知，又处理数据报表——
+    这三类需求的变更节奏完全不同（业务规则改动 vs 运营渠道变化 vs 报表口径调整），混在一个服务里会导致：改报表逻辑却要重新发布整个订单服务，增加了不必要的部署风险。
+  </p>
+
+  <h3>能独立部署和扩展</h3>
+  <p>
+    这是判断"是否真的拆干净了"的实操标准：<strong>某个服务能不能在不触碰其他服务代码、不需要其他服务同步发版的前提下，单独完成一次上线？</strong>
+    如果拆出来的两个服务总是要"手拉手一起发布"，说明它们之间存在隐性耦合（比如共享了同一张数据库表，或者接口协议经常一起变），本质上还是一个服务，只是物理上分成了两个进程——这是很多团队"伪微服务化"的常见陷阱。
+  </p>
+  <p>
+    独立扩展同样重要：电商大促时，下单和支付的流量会暴涨，但用户信息维护、报表统计这类服务流量平稳。拆开之后可以只对高流量服务扩容，而不必把整个单体都跟着扩容，节省资源。
+  </p>
+
+  <h2>拆得太细的代价</h2>
+  <p>
+    "微服务"三个字容易让人产生"服务越小越微，越微越先进"的错觉，但过度拆分会带来实实在在的成本：
+  </p>
+  <table>
+    <thead><tr><th>代价</th><th>具体表现</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>调用链变长</strong></td>
+        <td>原本一次进程内方法调用，拆分后变成好几跳网络请求，每一跳都有网络延迟、序列化开销，还可能因为网络抖动而失败。一次下单操作背后调用五六个微服务的情况并不少见。</td>
+      </tr>
+      <tr>
+        <td><strong>事务一致性变复杂</strong></td>
+        <td>单体里一个数据库事务能保证的强一致性，拆分成多个服务、多个数据库后就没了，需要引入 Saga、TCC 等分布式事务方案（本模块 <code>reliability</code> Tab 有专门讨论），开发和排错成本显著上升。</td>
+      </tr>
+      <tr>
+        <td><strong>运维成本上升</strong></td>
+        <td>每多一个服务，就多一套部署流水线、监控告警、日志采集、容量规划。几十个"纳米服务"会让运维和排障（一次故障要在十几个服务的日志里定位）变得异常痛苦。</td>
+      </tr>
+      <tr>
+        <td><strong>联调与测试变难</strong></td>
+        <td>本地开发环境要跑起一整条调用链涉及的所有服务，或者搭建复杂的联调环境，端到端测试的搭建和维护成本远高于单体。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>"微服务=按数据库表拆""服务越小越好"。正确的做法应该是先看业务边界（下一篇会讲限界上下文），再决定物理拆分粒度；拆分的目标是让团队能够独立、快速、安全地交付价值，而不是追求数字上的"服务数量"。Amazon 的"两个披萨原则"（一个团队的规模刚好两个披萨能喂饱）常被引用，本质也是在说：服务边界应该匹配一个小团队能独立维护的认知负载，而不是越细越好。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"什么时候应该做微服务拆分？"参考答案：当单体应用的构建/部署耗时、团队协作冲突、技术栈锁定已经成为团队效率的主要瓶颈，并且团队有能力承担分布式系统的运维复杂度（服务发现、链路追踪、分布式事务等基础设施到位）时，才是拆分的合适时机。很多团队"为了微服务而微服务"，在基础设施没跟上的情况下强行拆分，反而比单体更难维护。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>拆分不是目的，是手段：</strong>目标是让每个服务能被小团队独立理解、开发、部署、扩展。</li>
+    <li><strong>高内聚低耦合、单一职责是判断标准：</strong>拆完之后服务之间要能各自独立发布，不能"手拉手上线"。</li>
+    <li><strong>过粗过细都有代价：</strong>拆分粒度是在"单体的僵化"和"分布式的复杂度"之间找平衡点，下一篇用限界上下文给出更系统的划分方法。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../tx-consensus/03-共识算法RaftPaxos简介.html" class="nav-btn">← 共识算法 Raft / Paxos 简介</a>
+    <a href="./02-服务拆分的康威定律与限界上下文.html" class="nav-btn next">服务拆分的康威定律与限界上下文 →</a>
+  </div>
+
+</div>
+</body>
+</html>

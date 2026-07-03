@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Broker 与副本机制 — Kafka 核心概念</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / Kafka核心概念 / Broker 与副本机制
+  </div>
+
+  <div class="hero">
+    <div class="tag">Kafka核心概念</div>
+    <h1>Broker 与副本机制</h1>
+    <p>分区解决了吞吐问题，但如果存 Partition 的那台机器宕机了怎么办？副本机制就是 Kafka 用"一份数据存多份"换取高可用的答案，而 ISR 是这套机制里最精妙的取舍设计。</p>
+  </div>
+
+  <h2>Broker：Kafka 集群里的一个服务节点</h2>
+  <p>
+    <strong>Broker</strong> 就是运行着 Kafka 服务进程的一台机器（或一个进程实例）。一个 Kafka 集群通常由多个 Broker 组成，
+    上一篇讲到的 Partition 会被分散存储到不同的 Broker 上——这样既能利用多台机器的磁盘和网络带宽（提升吞吐），
+    也为接下来要讲的副本容灾提供了物理基础（副本必须分布在不同 Broker 上才有容灾意义，都放在同一台机器上，机器一挂全没了）。
+  </p>
+
+  <h2>为什么需要副本：单份数据经不起宕机</h2>
+  <p>
+    如果一个 Partition 只有一份数据存在某个 Broker 上，一旦这台 Broker 宕机（硬件故障、断电、网络分区），这个 Partition 上的数据就直接不可用了，
+    甚至可能永久丢失。这在生产环境是不可接受的。Kafka 的解法是给每个 Partition 配置多个<strong>副本（Replica）</strong>，
+    让同一份数据在多个不同的 Broker 上都保留一份拷贝。
+  </p>
+
+  <h2>Leader 与 Follower：读写都走 Leader，Follower 负责同步</h2>
+  <p>
+    一个 Partition 的多个副本中，只有<strong>一个</strong>被选为 <strong>Leader</strong>，负责处理所有的读写请求；
+    其余副本都是 <strong>Follower</strong>，它们唯一的工作是不断从 Leader 拉取最新数据，让自己的数据尽量跟 Leader 保持一致。
+    生产者和消费者都只与 Leader 打交道，Follower 在正常情况下是"备胎"，不直接对外提供服务。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>这就像公司的主数据库和只读从库——所有写操作都打到主库（Leader），从库（Follower）通过复制日志追平主库的数据，
+    一旦主库挂了，就从追得最紧的那个从库里选一个顶上来当新主库。这跟 09-数据库 里 MySQL 主从复制、依赖 binlog 同步的思路是同一套逻辑，
+    只是 Kafka 把"复制的内容"换成了它自己的 Partition 日志。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>示意：一个 Partition 的 3 副本分布</span></div>
+    <pre><span class="com">// Partition: order-created-0，副本因子(replication factor) = 3</span>
+
+Broker-0: order-created-0  <span class="hi">[Leader]</span>    <span class="com">// 处理所有读写</span>
+Broker-1: order-created-0  [Follower]  <span class="com">// 持续从 Leader 拉取数据同步</span>
+Broker-2: order-created-0  [Follower]  <span class="com">// 持续从 Leader 拉取数据同步</span></pre>
+  </div>
+
+  <h2>ISR：可用性与一致性之间的取舍</h2>
+  <p>
+    <strong>ISR（In-Sync Replicas，同步副本集合）</strong>是指那些数据进度跟 Leader 保持"足够接近"（没有落后太多）的副本集合，
+    包括 Leader 自己。Kafka 只会从 ISR 里选举新的 Leader，也只有当消息被 ISR 中的副本都写入成功后（配合生产者的 <code>acks=all</code> 配置），
+    才会被认为是"已提交"的安全消息——这一点在 <code>reliable/01-消息确认机制ack.html</code> 会展开讲。
+  </p>
+  <p>
+    ISR 机制的巧妙之处在于它是一个<strong>动态集合</strong>：如果某个 Follower 因为网络慢、GC 卡顿等原因，同步进度长期落后于 Leader，
+    Kafka 会把它<strong>移出 ISR</strong>，避免让选举新 Leader 或判断消息是否安全落盘时被这个"拖后腿"的副本影响；
+    等它追上进度后，又会被<strong>重新加回</strong> ISR。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"ISR 解决了什么问题？" 核心是<strong>在可用性和一致性之间做平衡</strong>：
+    如果要求所有副本（包括慢的）都同步完成才算写入成功，一致性最强，但只要有一个副本卡住，整个 Partition 的写入都会被拖慢，可用性变差；
+    如果只要求 Leader 自己写完就算成功，可用性最好，但 Leader 一旦宕机，数据可能丢失，一致性没保障。
+    ISR 是中间方案：只要求"跟得上的那些副本"都写完，跟不上的直接踢出局，不阻塞整体写入，同时保证被选为新 Leader 的副本数据是新鲜的。
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>不要以为副本数越多就一定越安全。副本数越多，需要同步的 Follower 也越多，
+    在 <code>acks=all</code> 的场景下写入延迟会相应增加（哪怕引入了 ISR 也是如此），而且更多副本意味着占用更多磁盘和网络资源。
+    副本因子（replication factor）通常设为 3 是工程实践中吞吐、成本、容灾能力三者的一个平衡点，不是越大越好。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Broker：</strong>Kafka 集群中的一个服务节点，Partition 分布在不同 Broker 上。</li>
+    <li><strong>副本机制：</strong>每个 Partition 有一个 Leader 负责读写，多个 Follower 负责同步，用"一份数据存多份"换取容灾能力。</li>
+    <li><strong>ISR：</strong>动态维护"跟得上 Leader"的副本集合，是 Kafka 在可用性和一致性之间做取舍的关键机制，也是新 Leader 选举和消息是否安全提交的判断依据。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-Topic与Partition的设计.html" class="nav-btn">← Topic 与 Partition 的设计</a>
+    <a href="./03-生产者的分区策略.html" class="nav-btn next">生产者的分区策略 →</a>
+  </div>
+
+</div>
+</body>
+</html>

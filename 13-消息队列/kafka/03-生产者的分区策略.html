@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>生产者的分区策略 — Kafka 核心概念</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / Kafka核心概念 / 生产者的分区策略
+  </div>
+
+  <div class="hero">
+    <div class="tag">Kafka核心概念</div>
+    <h1>生产者的分区策略</h1>
+    <p>一条消息发出去，Kafka 到底把它放进哪个 Partition？这个问题的答案直接决定了消息能不能保序、生产者的吞吐能不能打满——是这一篇要讲透的核心考点。</p>
+  </div>
+
+  <h2>问题的起点：一条消息该进哪个 Partition</h2>
+  <p>
+    上一篇讲到 Topic 会被拆成多个 Partition，那生产者发送一条消息时，Kafka 客户端要决定这条消息具体落到哪一个 Partition 里。
+    这个决策逻辑就是<strong>分区策略（Partitioner）</strong>，Kafka 默认按"是否指定了 key"分成两种情况处理。
+  </p>
+
+  <h2>指定 key：按 key 哈希，保证同 key 消息进同一分区</h2>
+  <p>
+    如果生产者发消息时指定了 <code>key</code>（比如用户 ID、订单 ID），Kafka 默认会对这个 key 做哈希运算，
+    然后对 Partition 数量取模，用结果决定消息进入哪个 Partition。<strong>同样的 key，只要 Partition 数量不变，哈希结果就是固定的</strong>，
+    也就是说同一个 key 的所有消息，一定会被发送到同一个 Partition。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示意：按 key 哈希分区</span></div>
+    <pre><span class="com">// 伪代码：默认分区器的核心逻辑</span>
+<span class="ty">int</span> partition = <span class="fn">hash</span>(key) % numPartitions;
+
+<span class="com">// 同一个 userId 作为 key，消息永远落到同一个 partition</span>
+producer.<span class="fn">send</span>(<span class="kw">new</span> <span class="ty">ProducerRecord</span>&lt;&gt;(<span class="str">"order-created"</span>, <span class="str">"user-1001"</span>, orderMsg));</pre>
+  </div>
+  <p>
+    结合上一篇讲的"单个 Partition 内部严格有序"，这就是<strong>需要保序的消息要用同一个 key</strong>这条实践经验的原理：
+    比如同一个用户的所有订单状态变更消息，只要都用 <code>userId</code> 作为 key，就能保证它们全部进入同一个 Partition，
+    从而在这个用户的维度上保持严格的先后顺序——这正是解决"Kafka 不保证全局有序"这个局限性的标准做法。
+  </p>
+
+  <h2>不指定 key：轮询或黏性分区</h2>
+  <p>
+    如果生产者发消息时没有指定 key（比如日志采集这类不关心顺序、只关心吞吐的场景），Kafka 早期版本采用<strong>轮询（Round-Robin）</strong>策略，
+    依次把消息分发到各个 Partition，尽量让每个 Partition 的负载均衡。
+  </p>
+  <p>
+    但轮询有个副作用：生产者客户端为了提升网络利用率，会把发往同一个 Partition 的多条消息攒成一个批次（batch）再一起发送。
+    如果每条消息都轮询到不同的 Partition，批次就很难攒起来，导致每个批次都很小、发送次数变多，反而降低了吞吐。
+    因此 Kafka 后来引入了<strong>黏性分区（Sticky Partitioning）</strong>：在一个批次还没被发送出去之前，尽量把无 key 的消息都黏在同一个 Partition 上，
+    凑够一个批次或者达到超时时间后才切换到下一个 Partition。
+  </p>
+  <div class="callout tip">
+    <strong>为什么叫"黏性"：</strong>可以理解成分区器有一点"惰性"——不是每条消息都重新随机选一个 Partition，而是像抹了胶水一样黏在当前 Partition 上，
+    直到当前批次凑满或超时才"挪窝"，这样能显著减少批次碎片化，提高吞吐。
+  </div>
+
+  <h2>两种策略对比</h2>
+  <table>
+    <thead>
+      <tr><th>场景</th><th>分区策略</th><th>能否保序</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>指定 key</td>
+        <td>对 key 哈希后取模</td>
+        <td>同 key 消息在同一 Partition 内有序</td>
+        <td>需要按业务维度（用户、订单）保序的场景</td>
+      </tr>
+      <tr>
+        <td>不指定 key</td>
+        <td>轮询 / 黏性分区</td>
+        <td>不保证任何顺序</td>
+        <td>只关心吞吐、不关心顺序的场景（如日志采集）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见误区（面试高频）：</strong>不要以为"指定了 key 就等于消息整体有序"。指定 key 只能保证<strong>同一个 key 的消息</strong>在同一个 Partition 内部有序，
+    不同 key 的消息完全可能落在不同 Partition，彼此之间不存在顺序关系。如果误以为随便指定个 key 就能让整个 Topic 有序，
+    在需要严格全局顺序的场景（比如金融流水）就会踩坑——这类场景要么把 Topic 只设一个 Partition（牺牲并行度换全局有序），要么在业务上重新设计有序性的粒度。
+  </div>
+  <div class="callout warn">
+    <strong>另一个陷阱：</strong>Partition 数量一旦扩容，同一个 key 的哈希取模结果会发生变化，导致新消息可能落到跟旧消息不同的 Partition 上，
+    历史上按同一个 key 保证的顺序性会被打破。这是生产环境扩容 Partition 时必须提前评估的风险点。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>指定 key：</strong>按 key 哈希取模决定 Partition，同一个 key 的消息总是进入同一个 Partition，从而在该 key 维度上保序。</li>
+    <li><strong>不指定 key：</strong>轮询或黏性分区，黏性分区通过减少批次碎片提升吞吐，但完全不保证顺序。</li>
+    <li><strong>实践经验：</strong>需要保序的消息一定要用同一个 key，同时要意识到 Partition 扩容可能打破已有的 key 分布，进而影响顺序性。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-Broker与副本机制.html" class="nav-btn">← Broker 与副本机制</a>
+    <a href="./04-消费者组与消费位移.html" class="nav-btn next">消费者组与消费位移 →</a>
+  </div>
+
+</div>
+</body>
+</html>

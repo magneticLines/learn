@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>应对负载增长的常见思路 — 分布式与微服务</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 可靠性可扩展性可维护性 / 应对负载增长的常见思路
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">可靠性可扩展性可维护性</div>
+    <h1>应对负载增长的常见思路</h1>
+    <p>"扩容"这件事没有标准答案，垂直扩展和水平扩展各有各的适用场景，真正专业的做法是先看清负载长什么样，再决定怎么扩。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    应对负载增长本质上只有两条路：<strong>垂直扩展（Scale Up）</strong>——换一台更强的机器（更多 CPU、更大内存、更快磁盘）；<strong>水平扩展（Scale Out）</strong>——用更多台普通机器分摊负载。前者简单直接但有物理和成本上限，后者理论上可以无限扩展但需要应用层做大量额外设计。绝大多数大型系统最终都会走向两者结合：单机尽量强，同时具备水平扩展能力。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>垂直扩展像是"这家小面馆生意太好，就换一口更大的锅，请一个手更快的师傅"——简单，但锅再大也有极限，师傅再快也就一双手。水平扩展像是"直接多开几家分店"——理论上可以开无数家，但需要解决"菜谱怎么保持一致、库存怎么调配、顾客怎么知道该去哪家"这些新问题，这就是分布式系统要解决的协调复杂度。
+  </div>
+
+  <!-- 垂直扩展 -->
+  <h2>垂直扩展：简单，但有物理上限</h2>
+  <p>
+    垂直扩展是给单台机器升配置：CPU 核数更多、内存更大、换成 NVMe SSD、用更高端的存储阵列。它的优势非常明显：<strong>应用代码几乎不需要改动</strong>——单机数据库、单体应用天然受益，不用处理分布式一致性、网络分区这些复杂问题。
+  </p>
+  <p>
+    但缺点同样明显：
+  </p>
+  <ul>
+    <li><strong>物理上限：</strong>单台机器的 CPU 核数、内存容量、IO 带宽终究有硬件天花板，顶级服务器价格也会指数级上升（性价比急剧下降）。</li>
+    <li><strong>单点故障：</strong>再强的一台机器也是一台机器，宕机就是整体宕机，可靠性没有任何提升，甚至因为集中了更多业务而风险更集中。</li>
+    <li><strong>成本非线性：</strong>顶配机器的性能提升往往远不如价格涨得快，扩展性价比会越来越差。</li>
+  </ul>
+
+  <!-- 水平扩展 -->
+  <h2>水平扩展：扩展性更强，但复杂度陡增</h2>
+  <p>
+    水平扩展是加更多台普通机器，把负载分摊到多个节点上。理论上只要还能加机器，系统就能继续扩展，而且天然具备容错能力（一台宕机，其他节点还能继续服务）。但它对应用架构提出了远超垂直扩展的要求：
+  </p>
+  <ul>
+    <li><strong>应用层要做到无状态（Stateless）：</strong>请求可以被路由到任意一个节点处理，节点本身不能保存"只有它知道"的会话数据，否则负载均衡就无法自由分配请求。</li>
+    <li><strong>数据要能被分区或复制：</strong>单机数据库放不下所有数据，或者单机扛不住所有读写，就需要引入分区（sharding）和复制（replication）——这是本路线图后面"复制与分区"这个 Tab 要重点讲的内容。</li>
+    <li><strong>需要分布式协调：</strong>多个节点之间如何达成一致、如何选主、如何处理网络分区，这些问题在单机时代根本不存在。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>常见误区：</strong>"水平扩展就是简单地多部署几个实例"。这只在应用完全无状态、且不需要共享可变数据时才成立（比如纯计算型的无状态 API）。一旦涉及数据库这类有状态组件，水平扩展就必然引入复制延迟、分区路由、数据一致性等一整套新问题，复杂度不是线性增加而是跳跃式增加。
+  </div>
+
+  <table>
+    <thead>
+      <tr><th></th><th>垂直扩展（Scale Up）</th><th>水平扩展（Scale Out）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>实现难度</td>
+        <td>低，几乎不改代码</td>
+        <td>高，需要无状态设计、分区、协调机制</td>
+      </tr>
+      <tr>
+        <td>扩展上限</td>
+        <td>受限于单机硬件天花板</td>
+        <td>理论上可以持续加机器</td>
+      </tr>
+      <tr>
+        <td>容错能力</td>
+        <td>无提升，单点故障风险仍在</td>
+        <td>天然具备，节点故障不影响整体</td>
+      </tr>
+      <tr>
+        <td>成本曲线</td>
+        <td>顶配机器性价比急剧下降</td>
+        <td>用大量普通机器，边际成本相对线性</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 没有万能架构 -->
+  <h2>核心思想：没有放之四海而皆准的扩展架构</h2>
+  <p>
+    DDIA 反复强调一个观点：<strong>可扩展的架构是围绕具体的负载特征设计出来的，脱离负载谈"哪种架构更好扩展"是没有意义的。</strong>一个每秒处理十万次简单读请求的系统，和一个每秒只有一百次但每次都要写入几十 MB 数据的系统，合理的扩展方案完全不同：
+  </p>
+  <ul>
+    <li><strong>读多写少：</strong>典型思路是加缓存、加只读副本（read replica），把读流量分散到多个副本上，写入路径基本不用改。</li>
+    <li><strong>写多读少：</strong>只读副本帮不上忙，需要考虑数据分区（把写入压力分摊到多个分片），或者选用天生擅长高吞吐写入的存储引擎（比如后面会讲到的 LSM-Tree）。</li>
+    <li><strong>数据量巨大但访问集中：</strong>可能只需要给热点数据加缓存，冷数据保持原有存储方式即可，不需要对整个数据集做分区。</li>
+    <li><strong>高并发但单次请求很轻：</strong>重点在于连接管理、无状态化、负载均衡，而不是数据存储层的改造。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"如何设计一个可扩展的系统？" 这是一个陷阱问题——好的回答不是直接背"加缓存、加消息队列、做分库分表"，而是先反问或说明"需要先搞清楚系统的负载特征：读写比例、数据规模、并发量级、访问模式是否有热点"，再针对性地给出方案。能主动指出"没有万能架构，扩展方案要基于负载设计"，是体现工程判断力的关键得分点。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>垂直扩展简单但有天花板：</strong>换更强的机器几乎不用改代码，但硬件上限和单点故障风险始终存在。</li>
+    <li><strong>水平扩展扩展性更强但复杂度陡增：</strong>需要应用无状态化、数据分区/复制、分布式协调，这是后续章节的核心内容。</li>
+    <li><strong>先看负载特征，再选扩展方案：</strong>读多写少、写多读少、数据量大、并发高，对应完全不同的扩展策略，没有一招鲜的万能架构。接下来先回顾数据模型和存储引擎的选择，为理解分区与复制打基础。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-描述负载与性能的常用指标.html" class="nav-btn">← 描述负载与性能的常用指标</a>
+    <a href="../storage/01-关系模型与文档模型的取舍.html" class="nav-btn next">关系模型与文档模型的取舍 →</a>
+  </div>
+
+</div>
+</body>
+</html>

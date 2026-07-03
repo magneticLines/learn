@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>点对点模式与发布订阅模式 — 消息队列基础</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / 消息队列基础 / 点对点模式与发布订阅模式
+  </div>
+
+  <div class="hero">
+    <div class="tag">消息队列基础</div>
+    <h1>点对点模式与发布订阅模式</h1>
+    <p>一条消息该被"一个人拿走"还是"所有人都能看到"？这是消息队列的两种根本消费模型，Kafka 用一套机制同时把两者都实现了。</p>
+  </div>
+
+  <h2>点对点模式（Point-to-Point）：Queue 模型</h2>
+  <p>
+    点对点模式对应传统的<strong>队列（Queue）</strong>模型：一条消息进入队列后，只会被<strong>一个</strong>消费者取走并消费，其他消费者拿不到这条消息了。
+    多个消费者同时监听同一个队列时，它们之间是<strong>竞争关系</strong>——谁先抢到消息，消息就归谁处理。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像银行的排号叫号系统。一张号码单只会被一个柜台窗口处理，哪怕同时开着 5 个窗口（5 个消费者），这 5 个窗口也只是在"抢客户"，
+    不会出现同一张号码单被 5 个窗口同时服务的情况。
+  </div>
+  <p>
+    这种模式的典型场景是<strong>任务分发</strong>：比如一批订单需要生成发票，把"生成发票"这个任务扔进队列，起 5 个 worker 进程去抢任务处理，
+    每个任务只需要被处理一次，多个 worker 的作用是<strong>并行分担工作量</strong>，而不是每个 worker 都重复处理一遍。
+  </p>
+
+  <h2>发布订阅模式（Publish-Subscribe）：Topic 模型</h2>
+  <p>
+    发布订阅模式对应<strong>主题（Topic）</strong>模型：生产者把消息发布到一个 Topic 上，所有订阅了这个 Topic 的消费者都能收到<strong>各自完整的一份</strong>消息副本。
+    消费者之间不是竞争关系，而是各自独立地接收广播。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像电视台直播。一场足球比赛的信号（消息）广播出去，所有打开电视调到这个频道（订阅了这个 Topic）的观众都能同时看到完整的比赛画面，
+    不会因为你家已经看了，隔壁老王家的电视就收不到信号了。
+  </div>
+  <p>
+    典型场景是<strong>广播通知</strong>：比如"订单已创建"这个事件，短信服务、积分服务、物流服务都需要各自独立地收到这条消息并处理自己的逻辑——
+    这正好对应上一篇讲的下单场景，一条消息要被多个不同职责的消费者都消费到，而不是被其中一个"抢走"。
+  </p>
+
+  <h2>Kafka 的巧妙之处：一套机制同时支持两种模式</h2>
+  <p>
+    Kafka 没有分别实现"队列"和"主题"两套 API，而是靠 <strong>Topic + 消费者组（Consumer Group）</strong>这一套机制，让同一个 Topic 可以同时表现出点对点和发布订阅两种行为：
+  </p>
+  <ul>
+    <li><strong>同一个消费者组内的多个消费者</strong>——是点对点的竞争关系。一个 Partition 在同一时刻只会被组内的一个消费者消费，多个消费者是在瓜分这个 Topic 下的所有 Partition，分摊处理压力。</li>
+    <li><strong>不同消费者组之间</strong>——是发布订阅的广播关系。每个消费者组都会各自拿到这个 Topic 的完整消息流，互不影响，就像多个订阅了同一个频道的独立观众。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>示意：订单 Topic 被两种消费者组处理</span></div>
+    <pre><span class="com">// Topic: order-created，假设有 3 个 Partition</span>
+
+<span class="com">// 消费者组 A：短信服务（3 个实例组成一个组，组内竞争消费 —— 点对点）</span>
+group.id = <span class="str">"sms-service-group"</span>
+  ├─ consumer-1  <span class="com">// 消费 partition-0</span>
+  ├─ consumer-2  <span class="com">// 消费 partition-1</span>
+  └─ consumer-3  <span class="com">// 消费 partition-2</span>
+
+<span class="com">// 消费者组 B：积分服务（另一个独立的组 —— 与组 A 是发布订阅关系）</span>
+group.id = <span class="str">"point-service-group"</span>
+  └─ consumer-1  <span class="com">// 独立消费全部 3 个 partition 的完整消息流</span></pre>
+  </div>
+  <p>
+    组 A 和组 B 都会收到<strong>完整的</strong>订单创建消息流（发布订阅），但组 A 内部的 3 个消费者实例是在瓜分这 3 个 Partition、各自只处理其中一部分（点对点）。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Kafka 到底是点对点还是发布订阅？" 标准答案是"两者都是，取决于消费者组的划分方式"。
+    如果所有消费者都属于同一个组，表现为点对点（一条消息只被组内一个人处理）；如果每个消费者都属于不同的组，表现为发布订阅（每个消费者都能收到全部消息）。
+    这也是 Partition 与消费者组关系这个高频考点的基础，后面 <code>kafka/04-消费者组与消费位移.html</code> 会深入展开。
+  </div>
+
+  <h2>两种模式对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>点对点（Queue）</th><th>发布订阅（Topic）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>一条消息会被几个消费者消费</td>
+        <td>恰好 1 个</td>
+        <td>每个订阅者各 1 份，可以有多个订阅者</td>
+      </tr>
+      <tr>
+        <td>多个消费者之间的关系</td>
+        <td>竞争（抢消息）</td>
+        <td>独立（各自广播接收）</td>
+      </tr>
+      <tr>
+        <td>典型场景</td>
+        <td>任务分发、工作量分摊（如生成发票）</td>
+        <td>事件广播、多方通知（如订单创建通知多个下游）</td>
+      </tr>
+      <tr>
+        <td>Kafka 中的实现</td>
+        <td>同一消费者组内的多个消费者</td>
+        <td>多个不同的消费者组</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>不要以为"Kafka 用了 Topic 这个词，所以它只能做发布订阅"。Topic 只是消息的逻辑分类容器，
+    真正决定消费行为是点对点还是发布订阅的，是<strong>消费者组的划分方式</strong>，而不是 Topic 本身。同理也不要以为消费者数量越多就消费得越快——
+    如果消费者数量超过了 Partition 数量，同一个组内多出来的消费者会分不到任何 Partition，处于空闲状态（下一篇讲 Kafka 架构时会再次遇到这一点）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>点对点：</strong>Queue 模型，一条消息只能被一个消费者拿到，多个消费者是竞争关系，适合任务分发。</li>
+    <li><strong>发布订阅：</strong>Topic 模型，一条消息可以被多个订阅者各自完整地收到，适合广播通知。</li>
+    <li><strong>Kafka 的设计：</strong>用"Topic + 消费者组"统一了两种模型——组内竞争（点对点），组间广播（发布订阅），不需要用两套系统。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-消息队列解决的问题.html" class="nav-btn">← 消息队列解决的问题</a>
+    <a href="./03-Kafka与RabbitMQ与RocketMQ的对比.html" class="nav-btn next">Kafka 与 RabbitMQ 与 RocketMQ 的对比 →</a>
+  </div>
+
+</div>
+</body>
+</html>

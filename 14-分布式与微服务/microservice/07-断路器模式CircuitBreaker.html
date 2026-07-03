@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>断路器模式 Circuit Breaker — 微服务架构实践</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 微服务架构实践 / 断路器模式 Circuit Breaker
+  </div>
+
+  <div class="hero">
+    <div class="tag">微服务架构实践</div>
+    <h1>断路器模式 Circuit Breaker</h1>
+    <p>[微服务设计补充] 一个服务的故障如果处理不当，会像多米诺骨牌一样沿着调用链传导，最终拖垮整个系统——断路器就是切断这条传导链的关键机制。</p>
+  </div>
+
+  <h2>问题的根源：雪崩效应</h2>
+  <p>
+    设想这样一条调用链：网关 → 订单服务 → 库存服务。如果库存服务因为某种原因（数据库慢查询、依赖的第三方接口超时）变得响应缓慢，会发生什么？
+    订单服务的每个请求线程在调用库存服务时都会阻塞等待，如果订单服务的线程池是有限的（几乎总是有限的），<strong>越来越多的线程被库存服务的慢响应占用，很快线程池就会被耗尽</strong>，
+    导致订单服务本身也变得无法响应——即便订单服务的其他逻辑完全健康。而订单服务的不可用又会拖累调用它的网关和上游服务，故障像雪崩一样一层层向上传导，最终整个系统瘫痪。这就是分布式系统里经典的<strong>雪崩效应</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>断路器这个名字直接借用了电路里的保险丝——家里的电路一旦某个电器短路导致电流异常，保险丝会自动跳闸切断电路，防止过载电流烧毁整个电路系统。它牺牲了"这一路暂时用不了电"的局部可用性，换来了"整个房子不会因为一个电器故障而起火"的整体安全。软件系统里的断路器也是同样的思路：牺牲对某个不健康下游的调用，换取整个调用链不被拖垮。
+  </div>
+
+  <h2>断路器的三种状态</h2>
+  <p>
+    断路器的核心是一个状态机，通过持续统计调用的成功率/失败率，在三种状态之间切换：
+  </p>
+  <table>
+    <thead><tr><th>状态</th><th>行为</th><th>触发条件</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>关闭 Closed</strong></td>
+        <td>正常状态，请求正常放行到下游服务，同时持续统计调用结果（成功/失败）</td>
+        <td>初始状态；半开状态下探测请求成功后也会回到这个状态</td>
+      </tr>
+      <tr>
+        <td><strong>打开 Open</strong></td>
+        <td>直接快速失败（Fail Fast），不再真正请求下游服务，而是立即返回错误或走降级逻辑，避免线程继续被下游拖住</td>
+        <td>Closed 状态下，一段时间窗口内的失败率超过预设阈值</td>
+      </tr>
+      <tr>
+        <td><strong>半开 Half-Open</strong></td>
+        <td>Open 状态维持一段冷却时间后，放行少量试探性请求去真实调用下游服务，用结果判断下游是否已经恢复</td>
+        <td>Open 状态的冷却计时器到期</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    半开状态是设计中很巧妙的一环：如果一直卡在"打开"状态，即便下游服务早就恢复了，断路器也感知不到，会一直无谓地拒绝请求；但如果直接切回"关闭"状态全量放行，万一下游还没真正恢复，又会立刻把刚缓过来的服务重新打垮。
+    半开状态用"小流量试探"的方式在两者之间找到了平衡——<strong>探测成功则认为下游已恢复，切回关闭状态恢复正常流量；探测失败则说明下游还没好，退回打开状态继续冷却</strong>。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"断路器的三种状态分别是什么，触发条件是什么？"这是分布式系统面试的高频题，回答时要能讲清楚状态之间的转换条件（失败率阈值触发 Closed→Open，冷却时间触发 Open→Half-Open，探测结果决定 Half-Open 的去向），而不只是背出三个名词。
+  </div>
+
+  <h2>常见实现：Resilience4j / Hystrix</h2>
+  <p>
+    <strong>Hystrix</strong> 是 Netflix 早期开源的容错框架，曾是 Spring Cloud Netflix 生态的标配，但目前已经停止维护；
+    <strong>Resilience4j</strong> 是目前更主流的替代方案，它是轻量级、模块化设计（断路器、限流器、隔离仓、重试等能力都是独立模块，按需引入），并且天然对 Java 8 的函数式编程风格更友好，Spring Cloud Circuit Breaker 也是以 Resilience4j 作为默认实现之一。
+    实际使用时通常是给某个远程调用方法包裹一层断路器逻辑，配置好失败率阈值、统计窗口大小、冷却时间等参数，剩下的状态切换完全由框架自动处理，业务代码只需要关心"调用失败/被熔断时的降级逻辑写什么"。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>把断路器和限流混为一谈。限流是"主动控制请求的准入速率"（防止流量洪峰打垮系统），断路器是"被动响应下游故障"（下游已经出问题了，快速失败止损）。两者经常配合使用，但解决的是不同阶段的问题——限流防患于未然，断路器亡羊补牢，实际系统里通常两者都需要，加上下一篇要讲的舱壁模式，共同构成了服务容错的组合拳。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>断路器解决的问题：</strong>防止对不健康下游的持续调用耗尽调用方资源，进而引发雪崩效应。</li>
+    <li><strong>三种状态的设计逻辑：</strong>关闭状态正常放行并统计失败率，打开状态快速失败保护自身，半开状态小流量试探判断下游是否恢复。</li>
+    <li><strong>生态选型：</strong>Hystrix 已停止维护，Resilience4j 是当前 Spring Cloud 生态的主流选择，通常和限流、舱壁隔离配合构成完整的容错体系。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-配置中心的设计.html" class="nav-btn">← 配置中心的设计</a>
+    <a href="./08-舱壁模式Bulkhead隔离故障.html" class="nav-btn next">舱壁模式 Bulkhead 隔离故障 →</a>
+  </div>
+
+</div>
+</body>
+</html>

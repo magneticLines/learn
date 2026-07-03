@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>多主复制与无主复制 — 分布式与微服务</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 复制与分区 / 多主复制与无主复制
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">复制与分区</div>
+    <h1>多主复制与无主复制</h1>
+    <p>单主复制靠"一个写入点"把所有并发写入天然排成一条队列，简单但有单点瓶颈。多主和无主复制放弃了这个假设，换来更高可用性和更好的地理分布——但代价是：<strong>冲突处理这个脏活，现在要你自己接手了</strong>。</p>
+  </div>
+
+  <!-- 从单主说起 -->
+  <h2>先回顾：单主复制的"简化假设"是什么</h2>
+  <p>
+    单主复制（single-leader）之所以简单，是因为所有写入都必须先经过唯一的 leader，leader 天然地把并发写入排成一个全局顺序——不会有"两个写入同时发生"这种情况需要处理，冲突问题在协议层面就被"设计掉"了。
+  </p>
+  <p>
+    但这个简化是有代价的：所有写入必须打一个来回到 leader 所在的地方。如果你的用户分布在全球，leader 只有一个（比如放在美国），那欧洲、亚洲用户每次写入都要跨洲网络往返，延迟高；一旦 leader 所在机房断网或宕机，整个系统的写能力直接归零。多主复制和无主复制，就是为了打破"只有一个写入点"这个约束而生的。
+  </p>
+
+  <!-- 多主复制 -->
+  <h2>多主复制（Multi-Leader Replication）</h2>
+  <p>
+    思路很直接：<strong>不再只有一个 leader，而是多个 leader，每个 leader 都能接受写入</strong>，leader 之间再异步地把各自收到的写入同步给对方。最典型的场景是<strong>多数据中心部署</strong>——每个数据中心放一个 leader，本地用户的写入只需要落到本地 leader，不用跨洲往返，写延迟大幅降低；即使某个数据中心整体离线，其他数据中心仍能正常接受写入。
+  </p>
+  <p>
+    多主复制的另一类重要场景是<strong>离线优先（offline-first）的客户端应用</strong>：比如你手机上的日历 App，本地数据库本身就可以看作一个"leader"——你在飞机上离线新建了一堆日程，这些写入先在本地生效，等联网后再和服务端及其他设备同步。<strong>协同编辑工具</strong>（多人同时编辑同一文档）本质上也是同样的模型：每个编辑者的客户端都在本地立即应用修改，再异步广播给其他人。
+  </p>
+
+  <h3>核心新问题：写冲突</h3>
+  <p>
+    单主复制里不存在的问题，在多主复制里成了绕不开的核心：<strong>两个 leader 可能在几乎同一时刻，各自独立地接受了对同一条记录的、互相冲突的写入</strong>。
+  </p>
+  <div class="callout info">
+    <strong>具体例子：</strong>用户 A 在欧洲数据中心把某文档标题改成"季度总结"，几乎同一时刻，用户 B 在美国数据中心把同一份文档的标题改成"Q3 Report"。两个写入分别在各自的 leader 上立即成功（因为各自 leader 当时都不知道对方的存在），等两个数据中心互相同步时，才发现同一个字段被改成了两个不同的值——到底以哪个为准？这是数据库无法凭空替你决定的。
+  </div>
+  <p>
+    常见的冲突解决思路：
+  </p>
+  <ul>
+    <li><strong>最后写入者获胜（Last Write Wins, LWW）：</strong>给每个写入打上时间戳，冲突时保留时间戳更晚的那个。简单粗暴，但意味着<strong>另一个写入会被静默丢弃</strong>——如果时钟不同步（时钟漂移在分布式系统里是常态），"更晚"的判断甚至可能是错的，这是真实的数据丢失风险，而不只是理论上的。</li>
+    <li><strong>合并（merge）：</strong>把冲突的多个值以某种规则合并，例如取并集、按字段分别合并（A 改了标题、B 改了正文，两个改动都保留）。</li>
+    <li><strong>应用层自定义解决逻辑：</strong>把冲突暴露给应用代码，甚至交给用户手动选择（类似 Git 遇到 merge conflict 时的处理方式），业务最清楚该怎么取舍。</li>
+  </ul>
+
+  <!-- 无主复制 -->
+  <h2>无主复制（Leaderless Replication）</h2>
+  <p>
+    无主复制（以 Amazon Dynamo 论文风格为代表，Cassandra、Riak 等都借鉴了这一思路）走得更彻底：<strong>压根不设 leader</strong>。客户端直接把写入并行发送给多个副本（或者通过一个协调节点转发），同样地，读请求也并行发送给多个副本，比较它们的返回结果。
+  </p>
+
+  <h3>Quorum：用数量关系换一致性保证</h3>
+  <p>
+    既然没有 leader 统一排序，怎么保证"读到的数据不会太旧"？答案是<strong>法定人数（quorum）机制</strong>：假设一共有 <code>N</code> 个副本，写入时只要有 <code>W</code> 个副本确认成功就算写成功，读取时只要有 <code>R</code> 个副本响应就返回结果。只要满足：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>quorum 重叠条件</span></div>
+    <pre><span class="var">W</span> <span class="punct">+</span> <span class="var">R</span> <span class="punct">&gt;</span> <span class="var">N</span></pre>
+  </div>
+  <p>
+    就能保证：任意一次写入所触达的副本集合，与任意一次读取所触达的副本集合，<strong>至少有一个副本是重叠的</strong>——也就是说，这次读取一定能读到那个至少包含了最新写入的副本，不会读到一个"完全没见过最新写入"的结果集。
+  </p>
+  <div class="callout info">
+    <strong>具体例子：</strong><code>N=3, W=2, R=2</code>。写入时至少 2 个副本（比如副本 1、2）确认收到了新值；读取时至少要问 2 个副本（比如副本 2、3）。由于总共只有 3 个副本，写命中的 {1,2} 和读命中的 {2,3} 必然至少有一个交集（这里是副本 2），读到的结果里就一定包含那次最新写入——即便副本 3 还没同步到最新值也没关系，因为读的是多个副本、取"最新版本"的那一个。
+  </div>
+  <p>
+    对于那些暂时没赶上最新写入的"落后"副本（比如上例中的副本 3），系统通常靠两种机制补齐差距：<strong>读修复（read repair）</strong>——读取时顺便发现某副本数据陈旧，就顺手把新值写回去；以及<strong>反熵过程（anti-entropy process）</strong>——后台常驻进程持续比对副本间的数据差异并同步，不依赖客户端读取来触发。
+  </p>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"W + R &gt; N，那不就相当于强一致性（线性一致性）了吗？" 并不是。quorum 只保证读写副本集合有重叠，<strong>不保证所有边缘情况下都读到最新值</strong>：比如两个写入并发发生且都只写到了不重叠的副本子集时，仍需要类似多主复制那样的<strong>版本向量（version vector）</strong>去检测和解决冲突；网络分区、副本恢复的时序问题也可能造成"陈旧读"的窗口。另外，"无主"不等于"完全没有协调"——协调节点的角色、读修复、反熵，本质上都是隐式的协调机制，只是不存在一个固定不变的"leader"身份。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么 Dynamo 风格系统要求 W + R &gt; N？" 期望答出：这是保证"写入的副本集合"与"读取的副本集合"必然存在交集的数学条件，从而保证至少能读到一份包含最新写入的副本，是一种用副本数量关系换取"读到新数据"概率保证的设计，而不是严格的线性一致性保证。追问"quorum 是不是就等于强一致性？" 要答出"不是，还需要版本向量等机制处理并发写冲突"。
+  </div>
+
+  <!-- 对比表 -->
+  <h2>三种复制模型对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>单主复制</th><th>多主复制</th><th>无主复制</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>网络分区时的写可用性</strong></td>
+        <td>差：leader 所在分区之外的客户端无法写入</td>
+        <td>好：每个数据中心的 leader 都能独立接受写入</td>
+        <td>好：只要凑够 W 个副本响应即可写成功</td>
+      </tr>
+      <tr>
+        <td><strong>是否需要处理写冲突</strong></td>
+        <td>不需要，leader 天然排序</td>
+        <td>需要，跨 leader 的并发写会冲突</td>
+        <td>需要，quorum 不能完全避免并发写冲突</td>
+      </tr>
+      <tr>
+        <td><strong>典型场景</strong></td>
+        <td>大多数传统数据库的默认模式</td>
+        <td>多数据中心部署、离线优先应用、协同编辑</td>
+        <td>Dynamo、Cassandra、Riak 等高可用 KV 存储</td>
+      </tr>
+      <tr>
+        <td><strong>复杂度</strong></td>
+        <td>低，模型简单直观</td>
+        <td>中高，需要设计冲突解决策略</td>
+        <td>高，需要 quorum 调参、版本向量、读修复/反熵</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>本质是可用性与一致性简单性之间的权衡：</strong>单主复制用"唯一写入点"换来了无冲突的简单模型，多主/无主复制放弃这个假设，换来更低延迟和更高可用性，但把冲突处理的复杂度转嫁给了系统设计者。</li>
+    <li><strong>quorum（W+R&gt;N）是无主复制的核心数学工具：</strong>它保证读写副本集合重叠，但不是线性一致性的替代品，边缘情况仍需版本向量等机制兜底。</li>
+    <li><strong>选型的关键问题是"能不能接受最终一致性和冲突"：</strong>如果业务逻辑天然能容忍"稍后合并"（如协同编辑、日历同步），多主/无主复制是很好的选择；如果业务要求任何时刻都有唯一确定的最新值（如银行余额扣款），单主复制或更强一致性协议会更合适。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-主从复制中的复制延迟问题.html" class="nav-btn">← 主从复制中的复制延迟问题</a>
+    <a href="./03-数据分区的策略与数据倾斜问题.html" class="nav-btn next">数据分区的策略与数据倾斜问题 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>日志结构存储引擎 LSM-Tree 简介 — 分布式与微服务</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 数据模型与存储引擎回顾 / 日志结构存储引擎 LSM-Tree 简介
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">数据模型与存储引擎回顾</div>
+    <h1>日志结构存储引擎 LSM-Tree 简介</h1>
+    <p>09-数据库模块已经讲透了 InnoDB 的 B+ 树是怎么组织磁盘数据的，这里不再重复 B+ 树细节，而是介绍另一条完全不同的技术路线——LSM-Tree，理解它为什么在写多读少的场景下能碾压 B+ 树。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>LSM-Tree（Log-Structured Merge-Tree，日志结构合并树）</strong>的核心思路是：写入操作永远只追加（append）到内存里一个有序的数据结构（称为 <strong>Memtable</strong>），从不在磁盘上原地修改数据；当 Memtable 攒到一定大小，就整体顺序刷写到磁盘，形成一个不可变的文件（称为 <strong>SSTable，Sorted String Table</strong>）；后台再定期把多个 SSTable 合并压缩（<strong>Compaction</strong>），清理掉过期和重复的数据。全程没有"找到某一行原地覆盖"这个动作，取而代之的是"不断追加新版本 + 后台异步整理"。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>B+ 树的更新像是"直接翻开账本某一页，用橡皮擦掉旧数字，写上新数字"——精确但每次都要先找到那一页（可能要翻好几层索引），而且擦写的位置在磁盘上是随机分散的。LSM-Tree 的更新像是"不管三七二十一，把新的一条流水记录直接写在账本最后一页"——写入永远是在末尾追加，飞快；但等你想查某个人的余额，就可能要往前翻好几本流水账本，把所有相关记录都翻出来核对，才能拼出最终结果。定期会有人把攒起来的旧账本重新誊抄、去重、合并成新的一本，这就是 compaction。
+  </div>
+
+  <!-- 写入路径 -->
+  <h2>写入路径：为什么快</h2>
+  <p>
+    LSM-Tree 写入快的根本原因，是它把随机写变成了顺序写：
+  </p>
+  <ol>
+    <li>写请求先写入内存中的 <strong>Memtable</strong>（通常用跳表 SkipList 或红黑树实现，保持 key 有序），同时为了防止进程崩溃丢数据，会先顺序追加写一份预写日志（WAL）到磁盘。</li>
+    <li>当 Memtable 达到设定大小，把它整体、顺序地刷写到磁盘，生成一个新的、不可变的 <strong>SSTable</strong> 文件（文件内部 key 已经排好序）。</li>
+    <li>磁盘上会积累多个 SSTable 文件（从新到旧），后台线程定期把它们合并（Compaction），清理掉被覆盖或删除的旧版本数据，减少文件数量。</li>
+  </ol>
+  <p>
+    整个写入路径里，落盘操作永远是"顺序追加一大块连续数据"，而不是"随机定位到磁盘某个扇区改一个字节"。对机械硬盘而言，顺序写和随机写的性能差距可以达到几十上百倍；即便在 SSD 上，顺序写依然能减少写放大、更充分利用带宽。这正是 LSM-Tree 写入吞吐量远高于 B+ 树的根本原因。
+  </p>
+
+  <!-- 读取路径的代价 -->
+  <h2>读取路径：为什么相对弱</h2>
+  <p>
+    代价出现在读取上。因为一条 key 的最新值可能在 Memtable 里，也可能在磁盘上任意一个 SSTable 文件里（旧版本可能分散在多个尚未合并的文件中），一次读取在最坏情况下需要：
+  </p>
+  <ul>
+    <li>先查内存里的 Memtable；</li>
+    <li>如果没有，按从新到旧的顺序依次查磁盘上的多个 SSTable 文件，直到找到该 key 或者确认它不存在。</li>
+  </ul>
+  <p>
+    为了避免每次读都扫描全部 SSTable，实践中会加布隆过滤器（Bloom Filter）快速排除"这个 key 肯定不在这个文件里"的情况，并且 compaction 本身也是在减少需要检查的文件数量。但即便如此，LSM-Tree 的读取路径在理论上依然比 B+ 树"顺着索引一路下钻，一次磁盘定位就能读到数据"要复杂。
+  </p>
+
+  <!-- 与 B+ 树对比 -->
+  <h2>与 B+ 树的本质差异：原地更新 vs 追加合并</h2>
+  <p>
+    09-数据库模块讲过，InnoDB 用的 B+ 树是<strong>原地更新（in-place update）</strong>结构：数据行在磁盘上有固定位置，更新时直接定位到那个数据页并修改。这带来的是读写相对均衡的性能特征——不管是查询还是更新，都是"顺着树结构定位到目标页，读或者改"，路径长度接近，性能比较稳定可预测。而 LSM-Tree 用的是<strong>追加与合并（append + compaction）</strong>的思路，牺牲部分读性能和后台 compaction 的额外 IO 开销，换来远超原地更新结构的写入吞吐量。
+  </p>
+  <table>
+    <thead>
+      <tr><th></th><th>B+ 树（如 InnoDB）</th><th>LSM-Tree（如 LevelDB / RocksDB）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>写入方式</td>
+        <td>原地更新，定位到具体数据页修改</td>
+        <td>只追加，写入 Memtable 再顺序刷盘</td>
+      </tr>
+      <tr>
+        <td>写入性能</td>
+        <td>受随机 IO 影响，相对较慢</td>
+        <td>顺序 IO，吞吐量高</td>
+      </tr>
+      <tr>
+        <td>读取性能</td>
+        <td>稳定，索引定位后一次读取</td>
+        <td>可能需要查多个 SSTable 文件，配合布隆过滤器优化</td>
+      </tr>
+      <tr>
+        <td>额外开销</td>
+        <td>无（更新即完成）</td>
+        <td>后台 compaction 消耗额外 CPU 和 IO</td>
+      </tr>
+      <tr>
+        <td>适合场景</td>
+        <td>读写均衡、需要稳定低延迟查询</td>
+        <td>写多读少，如日志、时序数据、埋点数据</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>"LSM-Tree 读比 B+ 树慢，所以整体性能更差"。这个结论忽略了负载场景——如果业务是写多读少（比如日志采集、监控指标、消息队列的持久化），LSM-Tree 用可控的读放大换来的写入吞吐量提升，往往是决定性的优势；反过来如果业务是频繁的点查、范围查询，且写入量不大，B+ 树的稳定读性能更合适。没有哪个结构"整体更好"，只有"更适合哪种负载"，这与前面讲的"扩展方案要基于负载设计"是同一个思路的延伸。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"LSM-Tree 和 B+ 树的区别，各自适合什么场景？" 标准答案框架：B+ 树原地更新，读写性能均衡，适合通用型 OLTP 数据库；LSM-Tree 只追加写、后台合并，写入性能极强但读取需要合并多个文件、依赖布隆过滤器优化，适合写多读少的场景。能进一步说出"顺序 IO vs 随机 IO"是两者性能差异的根本原因，以及 compaction 会带来额外的写放大（write amplification）开销，是加分项。
+  </div>
+
+  <!-- 代表实现 -->
+  <h2>代表实现</h2>
+  <p>
+    LSM-Tree 思想被广泛应用在需要高写入吞吐的存储系统中：<strong>LevelDB</strong>（Google 开源的嵌入式 KV 存储，LSM-Tree 的经典实现）、<strong>RocksDB</strong>（Facebook 基于 LevelDB 改进，被大量数据库和消息队列用作底层存储引擎）、以及 <strong>Cassandra</strong>（分布式宽列数据库，其单机存储引擎就是 LSM-Tree），都是理解这一技术路线时值得进一步了解的具体系统。
+  </p>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>核心思路是"只追加 + 后台合并"：</strong>写入永远顺序追加到 Memtable 再刷成不可变的 SSTable，用顺序 IO 换取远超原地更新的写入吞吐量。</li>
+    <li><strong>代价是读取路径变复杂：</strong>可能要查多个 SSTable 文件，需要布隆过滤器和 compaction 来控制这个代价。</li>
+    <li><strong>选型看负载而非"谁更先进"：</strong>写多读少（日志、时序数据）优先考虑 LSM-Tree，读写均衡、需要稳定低延迟查询优先考虑 B+ 树。下一部分进入"复制与分区"，看数据如何在多台机器之间同步与切分。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-关系模型与文档模型的取舍.html" class="nav-btn">← 关系模型与文档模型的取舍</a>
+    <a href="../repl-part/01-主从复制中的复制延迟问题.html" class="nav-btn next">主从复制中的复制延迟问题 →</a>
+  </div>
+
+</div>
+</body>
+</html>

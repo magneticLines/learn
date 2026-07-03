@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>顺序消息如何保证 — 消息队列</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / 运维与实战 / 顺序消息如何保证
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">运维与实战</div>
+    <h1>顺序消息如何保证</h1>
+    <p>Kafka 从来没有承诺过"全局有序"，它只承诺"单个 Partition 内有序"——搞懂这一点边界，顺序消息的设计就变得很直接。</p>
+  </div>
+
+  <!-- Kafka的有序性边界 -->
+  <h2>Kafka 只保证单个 Partition 内有序</h2>
+  <p>
+    Kafka 的 Topic 由多个 Partition 组成，每个 Partition 内部是一个严格的、只能追加写入的日志（Log），消息按写入顺序被分配递增的位移（Offset），
+    因此<strong>单个 Partition 内消息的顺序，天然与生产者写入的顺序一致，消费时读取也严格按位移递增读取</strong>。
+  </p>
+  <p>
+    但一个 Topic 通常有多个 Partition，多个 Partition 之间是完全并行、互不感知的，<strong>Kafka 不会跨 Partition 维护任何顺序关系</strong>。
+    如果两条相关的消息被分到了不同的 Partition，谁先被消费完全取决于两个 Partition 各自的处理速度，无法预测先后。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>把 Topic 想象成超市里的多条结账队伍（Partition）。同一条队伍里的顾客一定是按排队顺序被结账的（单队列有序），但队伍 A 的第 3 位顾客和队伍 B 的第 1 位顾客谁先结完账，完全取决于两条队伍各自的结账速度，没法保证"跨队伍"的先后关系。
+  </div>
+
+  <!-- 如何做到局部有序 -->
+  <h2>如何让相关消息严格有序：用相同的 Key</h2>
+  <p>
+    Kafka 生产者发送消息时，如果指定了 <strong>Key</strong>，默认分区器会对 Key 做哈希，<strong>相同 Key 的消息永远会被发送到同一个 Partition</strong>。
+    利用这个特性，只要把"需要保证顺序"的这批消息都设置成相同的 Key，就能确保它们进入同一个 Partition，从而获得严格的顺序保证。
+  </p>
+  <p>
+    比如一个订单从创建、支付、发货到签收会产生多条状态变更消息，只要这些消息都用<strong>订单 ID 作为 Key</strong>，就能保证同一个订单的状态变更消息一定按发生顺序被消费，不会出现"签收消息先于支付消息被处理"的诡异情况。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>伪代码</span></div>
+    <pre><span class="com">// 用订单 ID 作为 Key，保证同一订单的消息进入同一 Partition</span>
+producer.<span class="fn">send</span>(<span class="kw">new</span> <span class="ty">ProducerRecord</span>&lt;&gt;(<span class="str">"order-events"</span>, orderId, event));</pre>
+  </div>
+
+  <!-- 代价：牺牲并行度 -->
+  <h2>代价：只能被一个消费者串行处理</h2>
+  <p>
+    要维持顺序，消息必须落在同一个 Partition 里；而 Kafka 的规则是<strong>一个 Partition 在同一时刻只能被消费者组内一个消费者实例消费</strong>。
+    这意味着这批"需要保证顺序"的消息，只能被<strong>串行</strong>处理——无法通过增加消费者数量来并行处理同一个 Partition 内的消息，因为一旦并行，顺序保证就荡然无存了。
+  </p>
+  <div class="callout warn">
+    <strong>取舍本质：</strong>顺序性和并行吞吐是一对矛盾。同一个 Key 的消息越多，落到同一个 Partition 处理的压力越大，但又不能靠加消费者来分担，因为那样会破坏顺序。这是设计消息 Key 时必须提前想清楚的问题：<strong>不要为了图方便把所有消息都用同一个固定 Key</strong>（比如写死成常量），那样所有消息都会挤到同一个 Partition，其他 Partition 全部空闲，等于自己制造了消息积压和热点 Partition。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"用了 Kafka 就等于消息全局有序。"
+    这是最常见的误解，Kafka 默认的顺序保证范围仅限于"同一个 Partition"，Topic 整体是不保证顺序的。真正需要顺序的业务，必须主动通过 Key 的设计把相关消息导向同一个 Partition，这是应用层需要主动做的事，不是 Kafka 自动帮你做的。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Kafka 如何保证消息顺序？" 标准答案分两层：第一，Kafka 只保证单 Partition 内有序；第二，要让相关消息有序，需要用相同的 Key 把它们路由到同一个 Partition，代价是这些消息只能被一个消费者线程串行消费，牺牲了并行度。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>顺序保证的边界是 Partition，不是 Topic：</strong>这是理解 Kafka 顺序性问题的第一前提。</li>
+    <li><strong>Key 是控制消息路由、进而控制顺序的关键旋钮：</strong>相同 Key 进同一 Partition，是实现局部有序的唯一途径。</li>
+    <li><strong>顺序性和并行度是互斥的：</strong>设计 Key 时要按"顺序要求的粒度"来划分（比如按订单粒度而非全局粒度），既保证需要顺序的部分有序，又尽量保留整体的并行处理能力。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-消息积压的排查思路.html" class="nav-btn">← 消息积压的排查思路</a>
+    <a href="./03-死信队列的设计.html" class="nav-btn next">死信队列的设计 →</a>
+  </div>
+
+</div>
+</body>
+</html>

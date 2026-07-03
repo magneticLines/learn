@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>消息幂等性与重复消费的处理 — 消息队列</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / 可靠性与语义保证 / 消息幂等性与重复消费的处理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">可靠性与语义保证</div>
+    <h1>消息幂等性与重复消费的处理</h1>
+    <p>上一篇说到"至少一次"语义下消息可能重复投递，这一篇讲怎么在消费端把"重复"这个隐患彻底消化掉。</p>
+  </div>
+
+  <!-- 为什么消息会重复 -->
+  <h2>回顾：消息为什么会重复</h2>
+  <p>
+    在"至少一次"语义下，只要生产者的确认没有及时收到，或者消费者提交位移前发生了重启，系统为了保证"不丢"，宁可选择"重发一次"。
+    这就好比快递员按门铃后你没及时应门，他就会隔一会儿再来敲一次——为了确保你收到货，代价是你可能会被敲两次门、甚至收到两份一样的包裹（如果他记录混乱的话）。
+  </p>
+  <p>
+    <strong>幂等性（Idempotence）</strong>说的就是：<strong>同一个操作无论执行一次还是重复执行 N 次，最终产生的效果都完全一样</strong>。让消费逻辑具备幂等性，就是解决"消息重复"问题最根本、最通用的办法——既然无法从物理层面完全杜绝重复投递，那就让重复投递"无害化"。
+  </p>
+
+  <!-- 业务层面：唯一ID+去重表 -->
+  <h2>方案一：唯一 ID + 去重表</h2>
+  <p>
+    给每条消息（或者说每个业务事件）分配一个全局唯一的 ID，比如订单支付消息带上 <code>paymentId</code>。消费者处理消息前，先检查这个 ID 是否已经处理过：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>伪代码</span></div>
+    <pre><span class="kw">if</span> (<span class="fn">existsInDedupTable</span>(message.<span class="var">id</span>)) {
+    <span class="com">// 已经处理过，直接忽略，保证幂等</span>
+    <span class="kw">return</span>;
+}
+<span class="com">// 处理业务逻辑 + 插入去重记录，必须在同一个事务里</span>
+<span class="fn">doBusinessLogic</span>(message);
+<span class="fn">insertDedupRecord</span>(message.<span class="var">id</span>);</pre>
+  </div>
+  <div class="callout tip">
+    <strong>与数据库知识的联系：</strong>这正好呼应"09-数据库"里讲过的<strong>唯一索引约束</strong>。去重表的消息 ID 字段建上唯一索引，即便高并发下出现两个线程同时判断"未处理过"，插入去重记录时数据库也会因为唯一约束冲突而拒绝其中一个，从根本上避免了"判断和写入之间的竞态窗口"导致的重复处理——这比单纯在业务代码里做 if 判断更可靠。
+  </div>
+
+  <!-- 状态机判断 -->
+  <h2>方案二：状态机判断</h2>
+  <p>
+    很多业务实体本身带有状态流转，重复消息落到状态机上时天然就是无效操作。比如订单有"待支付 → 已支付 → 已发货"的状态流转，
+    当消费者收到"支付成功"的消息时，先查一下订单当前状态：<strong>如果订单已经是"已支付"状态，说明这条支付成功的消息之前处理过了，直接忽略这次重复消息即可</strong>，不需要再次执行"扣减库存、发送通知"等副作用操作。
+  </p>
+  <p>
+    这种方式不需要额外的去重表，天然利用业务状态本身的语义去识别重复，但前提是业务状态的流转必须是<strong>单向且不可逆</strong>的，否则状态判断可能出现二义性。
+  </p>
+
+  <!-- Kafka幂等producer -->
+  <h2>更底层的保障：Kafka 幂等生产者</h2>
+  <p>
+    上面两种是消费端（业务层面）的幂等处理。而 Kafka 从生产者这一端也做了一层防护，叫<strong>幂等生产者（Idempotent Producer）</strong>，专门解决"网络重试导致 Broker 端出现重复消息"的问题。
+  </p>
+  <p>
+    它的原理是：每个生产者被分配一个唯一的 <strong>Producer ID（PID）</strong>，发送的每条消息都带上一个<strong>递增的序列号（Sequence Number）</strong>。
+    Broker 端为每个 <code>&lt;PID, Partition&gt;</code> 维护一个"最后写入的序列号"，如果收到的消息序列号<strong>小于等于</strong>已经记录的值，说明这是一次网络重试导致的重复发送，Broker 直接丢弃，不会重复写入日志。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像给每个快递包裹贴上"发件人 + 流水号"，仓库只要发现流水号已经收过，就知道这是同一个包裹的重复投递，直接退回，不会入库两次。
+  </div>
+  <div class="callout warn">
+    <strong>注意边界：</strong>幂等生产者只能保证<strong>"生产者到 Broker"这一段单个 Session 内不重复</strong>，它无法保证"消费者读到消息、处理完、写下游系统"这个更长链路上的幂等性——生产者重启后 PID 会变化，之前的去重状态也会失效。所以业务层面的幂等处理（方案一、二）依然是不可或缺的，两者是互补关系，不是替代关系。
+  </div>
+
+  <!-- 对比 -->
+  <h2>三种幂等手段对比</h2>
+  <table>
+    <thead>
+      <tr><th>方案</th><th>作用层面</th><th>解决的重复来源</th><th>依赖</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>唯一 ID + 去重表</td>
+        <td>消费端 / 业务层</td>
+        <td>任意环节导致的重复消费</td>
+        <td>数据库唯一索引约束</td>
+      </tr>
+      <tr>
+        <td>状态机判断</td>
+        <td>消费端 / 业务层</td>
+        <td>任意环节导致的重复消费</td>
+        <td>业务状态单向流转</td>
+      </tr>
+      <tr>
+        <td>Kafka 幂等生产者</td>
+        <td>生产端 / Broker</td>
+        <td>网络重试导致的重复写入</td>
+        <td>PID + 序列号</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"开了 Kafka 的幂等生产者，我的消费逻辑就不用考虑重复消费了。"
+    幂等生产者解决的是生产者到 Broker 这一段的重复写入，跟消费者会不会重复拉取、重复处理是两回事（比如消费者处理完业务但提交位移失败导致重启后重新消费）。这是很多初学者容易混淆的边界，面试中经常被追问"幂等生产者解决的是哪一段的问题"。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"如何保证消费端的幂等性？" 标准答题结构：先说明消息重复的原因（至少一次语义下的重试），再给出业务层方案（唯一 ID 去重表、状态机判断），最后提一句 Kafka 自身也提供了幂等 Producer（PID + 序列号）来减少生产端重复，但两者作用层面不同，需要配合使用。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>幂等性是"精确一次"语义落地的关键一环：</strong>MQ 只能保证不丢，重复交给消费端来消化。</li>
+    <li><strong>去重表方案的可靠性来自数据库唯一索引：</strong>把"判断 + 写入"的竞态问题交给数据库约束兜底，而不是纯业务代码判断。</li>
+    <li><strong>Kafka 幂等生产者和消费端幂等处理是互补的两道防线：</strong>前者管生产端网络重试，后者管整条消费链路，不能互相替代。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-三种消息传递语义.html" class="nav-btn">← 三种消息传递语义</a>
+    <a href="../ops/01-消息积压的排查思路.html" class="nav-btn next">消息积压的排查思路 →</a>
+  </div>
+
+</div>
+</body>
+</html>

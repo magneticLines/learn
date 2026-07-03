@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Topic 与 Partition 的设计 — Kafka 核心概念</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / Kafka核心概念 / Topic 与 Partition 的设计
+  </div>
+
+  <div class="hero">
+    <div class="tag">Kafka核心概念</div>
+    <h1>Topic 与 Partition 的设计</h1>
+    <p>Topic 是给人看的逻辑分类，Partition 才是 Kafka 真正干活的物理单元——理解这一层拆分，才能理解 Kafka 为什么能做到高吞吐、以及"局部有序、全局不保证有序"到底是什么意思。</p>
+  </div>
+
+  <h2>Topic 是逻辑概念，Partition 才是物理存储单元</h2>
+  <p>
+    <strong>Topic（主题）</strong>只是一个逻辑上的消息分类名字，比如 <code>order-created</code>、<code>user-login-log</code>。
+    Kafka 在物理上并不会把一个 Topic 的所有消息塞进一个文件里，而是把它<strong>拆分成多个 Partition（分区）</strong>，
+    这些 Partition 可以分布在集群里不同的 Broker（服务节点）上。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>Topic 就像快递公司给"华东区包裹"起的一个名字，但真正处理包裹的是分布在上海、杭州、南京的多个分拣站（Partition）。
+    你把包裹寄给"华东区"这个统一入口，系统会把它分配到某一个具体的分拣站去处理——多个分拣站并行工作，处理能力自然比只有一个分拣站强得多。
+  </div>
+
+  <h2>为什么要分区：并行度是核心原因</h2>
+  <p>
+    如果一个 Topic 只有一个 Partition，那么无论你部署多少个消费者，同一时刻也只能有<strong>一个</strong>消费者在读这个 Partition
+   （这一点会在"消费者组"那篇详细讲）。也就是说，消费吞吐量的天花板被"一个 Partition 只能有一个消费者读"这条规则死死限制住了。
+  </p>
+  <p>
+    把一个 Topic 拆成多个 Partition 后，多个消费者就可以<strong>并行地</strong>分别读取不同的 Partition，处理吞吐随 Partition 数量近似线性提升。
+    这正是 Kafka 高吞吐能力的核心来源之一：不是靠单个 Partition 写得有多快，而是靠"分区 + 并行"把总吞吐堆上去。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>示意：Topic 拆分到多个 Broker 上的 Partition</span></div>
+    <pre><span class="com">// Topic: order-created，分成 3 个 Partition，分布在 3 台 Broker 上</span>
+
+Broker-0:  order-created<span class="punct">-</span><span class="num">0</span>   <span class="com">// partition 0，从 offset 0 开始顺序追加</span>
+Broker-1:  order-created<span class="punct">-</span><span class="num">1</span>   <span class="com">// partition 1，从 offset 0 开始顺序追加</span>
+Broker-2:  order-created<span class="punct">-</span><span class="num">2</span>   <span class="com">// partition 2，从 offset 0 开始顺序追加</span></pre>
+  </div>
+
+  <h2>Partition 内部严格有序，用 offset 标识位置</h2>
+  <p>
+    每个 Partition 内部是一个只能追加写入的有序日志，每条消息进来后会被分配一个单调递增的 <strong>offset（偏移量）</strong>，
+    表示这条消息在这个 Partition 里的位置。消费者按 offset 从小到大顺序读取，因此<strong>单个 Partition 内部的消息顺序是严格保证的</strong>——
+    先写入的消息 offset 一定更小，一定会被先读到。
+  </p>
+  <div class="tree">
+    <span class="hi">order-created-0（Partition 0 的日志文件）</span><br>
+    &nbsp;&nbsp;offset=0 → 消息A（先写入，offset 更小）<br>
+    &nbsp;&nbsp;offset=1 → 消息B<br>
+    &nbsp;&nbsp;offset=2 → 消息C（最后写入，offset 最大）
+  </div>
+
+  <h2>Topic 整体不保证全局有序</h2>
+  <p>
+    但如果一个 Topic 有多个 Partition，消息 A、B、C 完全可能被分散到不同的 Partition 上（分区策略下一篇详细讲），
+    每个 Partition 各自独立追加、独立编号 offset。这意味着<strong>从整个 Topic 的视角看，消息之间的先后顺序是不保证的</strong>——
+    你无法说"Partition 0 的第一条消息一定比 Partition 1 的第一条消息先发生"。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区（面试高频）：</strong>很多初学者以为"Kafka 是消息队列，消息队列不就该是有序的吗"，这是把"单个 Partition 有序"和"整个 Topic 有序"搞混了。
+    正确理解是：<strong>Kafka 只保证单个 Partition 内部有序，不保证跨 Partition 的全局有序</strong>。
+    如果业务需要保证某一类消息的顺序（比如同一个用户的所有操作必须按顺序处理），必须想办法让这些消息<strong>落到同一个 Partition</strong>里——
+    这就是下一篇"生产者的分区策略"里"需要保序的消息要用同一个 key"这条实践经验的由来。
+  </div>
+
+  <h2>分区数量不是越多越好</h2>
+  <p>
+    分区数直接决定了消费并行度的上限，但也不是无脑开越多越好：每个 Partition 在 Broker 上都会占用文件句柄、内存等资源，
+    Partition 数量过多会增加 Broker 的管理开销，也会拉长 Leader 选举（下一篇讲副本机制时会展开）的耗时。
+    实践中通常根据"预期的最大消费者并发数"来倒推分区数，而不是一开始就设置成一个很夸张的数字。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Topic 是逻辑分类，Partition 是物理存储和并行处理的基本单元。</strong></li>
+    <li><strong>分区的意义是并行度：</strong>多个 Partition 可以被多个消费者并行消费，是 Kafka 高吞吐的核心来源。</li>
+    <li><strong>局部有序、全局不保证有序：</strong>单个 Partition 内部用 offset 保证严格顺序，但跨 Partition 不保证顺序——这是高频面试考点，也是设计分区 key 策略的出发点。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../basics/03-Kafka与RabbitMQ与RocketMQ的对比.html" class="nav-btn">← Kafka 与 RabbitMQ 与 RocketMQ 的对比</a>
+    <a href="./02-Broker与副本机制.html" class="nav-btn next">Broker 与副本机制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

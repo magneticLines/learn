@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>服务发现与注册中心 — 微服务架构实践</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 微服务架构实践 / 服务发现与注册中心
+  </div>
+
+  <div class="hero">
+    <div class="tag">微服务架构实践</div>
+    <h1>服务发现与注册中心</h1>
+    <p>微服务实例会随着扩缩容、发布、故障重启不断变化 IP 和端口——服务发现机制解决的就是"调用方怎么知道该往哪个具体地址发请求"这个基础但关键的问题。</p>
+  </div>
+
+  <h2>问题的根源：实例地址是动态的</h2>
+  <p>
+    在单体应用里，模块之间是进程内方法调用，压根不存在"地址"的概念。但拆成微服务之后，订单服务要调用库存服务，就必须知道库存服务实例的 IP 和端口。
+    如果把地址写死在配置文件里，会立刻遇到麻烦：<strong>库存服务因为扩容多开了 3 个实例怎么办？某个实例宕机重启换了 IP 怎么办？做灰度发布只想让部分流量打到新版本实例怎么办？</strong>
+    手工维护地址列表在实例数量稍微多一点之后就完全不可行。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>服务发现就像打车软件的接单机制——你不需要提前知道"哪辆车、什么车牌"会来接你（提前写死地址），而是打车软件（注册中心）实时掌握着"当前哪些司机在线、位置在哪"，你发起叫车请求时，软件从这份实时列表里帮你匹配一个可用的司机。司机上线时会向平台"注册"自己的位置和状态，下线或熄火后这条记录也会被移除。
+  </div>
+
+  <h2>服务发现的基本流程</h2>
+  <p>
+    服务发现机制通常由三个角色构成：<strong>服务提供者、服务消费者、注册中心</strong>。整个协作过程是：
+  </p>
+  <ol>
+    <li><strong>注册：</strong>服务提供者（比如库存服务的某个实例）启动时，主动向注册中心上报自己的地址信息（IP、端口、健康状态等），并通过心跳机制持续证明自己"还活着"。</li>
+    <li><strong>订阅：</strong>服务消费者（比如订单服务）需要调用库存服务时，从注册中心查询/订阅当前所有健康的库存服务实例列表，而不是使用写死的地址。</li>
+    <li><strong>剔除：</strong>如果某个实例的心跳超时（宕机、网络分区、被下线），注册中心会将其从可用列表中剔除，避免消费者继续把请求打到一个已经不存在的地址上。</li>
+  </ol>
+  <p>
+    在 Spring Cloud 生态里，这一套机制有现成的组件支持：<strong>Nacos</strong>（阿里开源，集服务注册发现和配置中心于一体）、<strong>Eureka</strong>（Netflix 开源，Spring Cloud Netflix 的经典组件，目前已进入维护模式）、<strong>Consul</strong>（HashiCorp 出品，支持多数据中心和更丰富的健康检查方式）都是常见选型，服务提供者和消费者只需要引入对应的 Starter 依赖，几乎不需要手写注册发现逻辑。
+  </p>
+
+  <h2>客户端负载均衡 vs 服务端负载均衡</h2>
+  <p>
+    拿到实例列表之后，还有一个问题：<strong>该选哪一个实例发请求？</strong>这就涉及负载均衡策略的选择，而"由谁来做负载均衡决策"衍生出两种架构：
+  </p>
+  <table>
+    <thead><tr><th></th><th>客户端负载均衡</th><th>服务端负载均衡</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>决策方</strong></td>
+        <td>服务消费者自己（如集成 Ribbon / Spring Cloud LoadBalancer）</td>
+        <td>独立的负载均衡器/网关（如 Nginx、LVS，或云厂商的 SLB）</td>
+      </tr>
+      <tr>
+        <td><strong>调用路径</strong></td>
+        <td>消费者从注册中心拉取实例列表 → 本地按策略（轮询/随机/权重）选一个 → 直接发请求</td>
+        <td>消费者请求先打到统一的负载均衡器 → 负载均衡器转发到某个后端实例</td>
+      </tr>
+      <tr>
+        <td><strong>优点</strong></td>
+        <td>少一跳网络转发，延迟更低；负载均衡逻辑可以感知服务调用的上下文（如同机房优先）</td>
+        <td>对消费者透明，消费者不需要感知服务发现细节；语言无关，任何客户端都能用</td>
+      </tr>
+      <tr>
+        <td><strong>缺点</strong></td>
+        <td>负载均衡逻辑和具体语言/框架绑定，多语言团队要重复实现；消费者需要感知注册中心</td>
+        <td>负载均衡器本身可能成为单点或性能瓶颈；多了一跳网络转发，增加延迟</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    Spring Cloud 生态早期用 <strong>Ribbon</strong> 实现客户端负载均衡（消费者内嵌负载均衡逻辑），现在逐渐被 <strong>Spring Cloud LoadBalancer</strong> 取代；服务端负载均衡的思路则在 API 网关和 Service Mesh（本 Tab 最后一篇会讲）中被广泛使用——本质上是把"选实例"这个决策从业务代码里挪到了独立的基础设施层。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>认为"服务发现就是注册中心"。注册中心只是存储和维护实例列表的组件，服务发现是一整套包含注册、心跳保活、健康检查、订阅通知、负载均衡在内的机制。面试时如果只回答"用 Nacos 存地址"是不完整的，还要能说清楚心跳超时怎么处理、消费者怎么感知列表变化（推送 vs 轮询）。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Eureka 和 Nacos 的区别？""服务发现的 CAP 取舍？"这是高频考点。Eureka 设计上倾向 AP（可用性优先，网络分区时宁可返回稍微过期的实例列表也不停服）；Nacos 支持 AP 和 CP 两种模式可切换，功能上还多了配置中心能力（呼应下一篇）。理解注册中心在 CP/AP 之间的取舍，本质上还是在呼应分布式系统的 CAP 定理。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>服务发现解决的核心问题：</strong>实例地址动态变化时，让消费者始终能找到当前可用的服务实例。</li>
+    <li><strong>注册中心的职责：</strong>接收服务注册、维护心跳、剔除失效实例、向消费者提供实时的可用实例列表。</li>
+    <li><strong>客户端 vs 服务端负载均衡：</strong>前者性能更优但和语言/框架绑定，后者更通用但多一跳网络转发，两种架构在网关和 Service Mesh 时代常常结合使用。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-RPC通信原理.html" class="nav-btn">← RPC 通信原理</a>
+    <a href="./05-API网关的职责.html" class="nav-btn next">API 网关的职责 →</a>
+  </div>
+
+</div>
+</body>
+</html>

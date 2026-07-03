@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>API 网关的职责 — 微服务架构实践</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 微服务架构实践 / API 网关的职责
+  </div>
+
+  <div class="hero">
+    <div class="tag">微服务架构实践</div>
+    <h1>API 网关的职责</h1>
+    <p>当微服务数量变多，外部调用方不可能、也不应该直接面对几十个服务的地址——API 网关作为统一入口，把一堆和业务无关的"横切关注点"从每个服务里收拢到一处集中处理。</p>
+  </div>
+
+  <h2>问题的根源：横切关注点不该散落在每个服务里</h2>
+  <p>
+    假设没有网关，外部客户端（App、前端、第三方系统）要直接调用订单服务、库存服务、用户服务……每个服务都要各自实现一遍：请求怎么鉴权、超过阈值怎么限流、下游异常怎么熔断、访问日志怎么记录。
+    这些能力和"订单""库存"本身的业务逻辑毫无关系，却要在每个服务里重复一遍——这正是<strong>横切关注点</strong>（Cross-Cutting Concerns）的典型特征：不属于任何一个业务模块，却贯穿所有模块。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>API 网关就像写字楼的前台和门禁系统——访客不需要、也不被允许直接跑到每一层楼自己核实身份，而是统一在一楼前台登记、刷卡验证，前台会根据访客要去的楼层把人引导过去。如果每层楼都自己搞一套门禁核验逻辑，不仅重复建设，标准还可能不一致（有的楼层验证严格，有的宽松），出了安全问题也很难统一排查。
+  </div>
+
+  <h2>网关承担的核心职责</h2>
+  <table>
+    <thead><tr><th>职责</th><th>具体说明</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>路由转发</strong></td>
+        <td>根据请求路径、Header 等规则，把外部请求转发到对应的后端微服务，客户端不需要知道内部服务的具体地址和拆分方式。</td>
+      </tr>
+      <tr>
+        <td><strong>统一鉴权</strong></td>
+        <td>在请求真正到达业务服务之前，统一校验 Token/Session 是否合法，未登录或权限不足的请求直接在网关层拦截，业务服务不用重复写鉴权逻辑。</td>
+      </tr>
+      <tr>
+        <td><strong>限流熔断</strong></td>
+        <td>对请求量做统一的限流控制（比如某个接口每秒最多处理多少请求），防止突发流量打垮后端服务；也可以在网关层配合断路器策略，对已知异常的下游服务快速失败。</td>
+      </tr>
+      <tr>
+        <td><strong>协议转换</strong></td>
+        <td>外部通常是 REST/HTTP 请求，网关可以把它转换成内部服务使用的 RPC 协议（呼应上面 RPC 通信原理那篇提到的内外协议差异），实现"外部统一、内部灵活"。</td>
+      </tr>
+      <tr>
+        <td><strong>日志监控</strong></td>
+        <td>统一记录所有进出的请求日志、响应时间、状态码，作为链路追踪和问题排查的第一手数据来源，不需要每个服务各自维护一套访问日志格式。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>为什么要在网关层统一收口，而不是让每个服务自己处理</h2>
+  <p>
+    核心原因是<strong>避免重复造轮子，同时保证标准统一</strong>。如果鉴权逻辑分散在几十个服务里各自实现：
+  </p>
+  <ul>
+    <li>安全策略升级（比如 Token 过期时间调整、新增双因子校验）要改几十个服务，而不是改一个网关配置；</li>
+    <li>不同服务团队实现的鉴权逻辑标准不一致，容易出现有的服务校验严格、有的存在漏洞的情况；</li>
+    <li>限流阈值、熔断策略这类需要全局视角才能做好的能力（比如按用户维度做全局限流），单个服务局部视角很难做到位，而网关天然处于所有流量的汇聚点，适合做全局决策。</li>
+  </ul>
+  <p>
+    这本质上是一种关注点分离：<strong>让业务服务只关心业务逻辑本身，把和业务无关的通用能力下沉到网关这一层基础设施</strong>，这个思路和后面会讲的服务网格（Service Mesh）是一脉相承的，只是网关解决的是"南北向流量"（外部进入系统），服务网格解决的是"东西向流量"（服务之间）。
+  </p>
+
+  <h2>Spring Cloud Gateway</h2>
+  <p>
+    在 Spring Cloud 生态里，<strong>Spring Cloud Gateway</strong> 是官方主推的网关组件（早期还有 Zuul，目前 Gateway 是更现代化的选择），基于 Spring WebFlux 的响应式编程模型构建，具备高并发处理能力。
+    它通过声明式的路由规则（Route + Predicate + Filter）配置请求怎么匹配、怎么处理、转发到哪里，并且可以方便地和 Spring Cloud 生态里的注册中心（如 Nacos）、限流组件（如 Sentinel）集成，做到"服务发现 + 路由 + 限流"一体化。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>把业务逻辑也塞进网关（比如在网关层写订单状态判断），导致网关变成一个新的"单体瓶颈"。网关应该只处理通用的横切关注点，业务逻辑始终应该留在对应的微服务内部，否则网关会重新变成一个难以维护、耦合了各种业务分支判断的庞然大物，也失去了微服务拆分的意义。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>API 网关是外部流量进入微服务集群的统一入口：</strong>客户端只需要认识一个地址，不需要感知内部服务的拆分细节。</li>
+    <li><strong>核心职责是收口横切关注点：</strong>路由转发、统一鉴权、限流熔断、协议转换、日志监控，这些能力放在网关一处维护，避免每个服务重复实现、标准不一。</li>
+    <li><strong>边界要清晰：</strong>网关只处理通用能力，业务逻辑仍然属于各个微服务，不能让网关重新变成一个新的单体。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-服务发现与注册中心.html" class="nav-btn">← 服务发现与注册中心</a>
+    <a href="./06-配置中心的设计.html" class="nav-btn next">配置中心的设计 →</a>
+  </div>
+
+</div>
+</body>
+</html>

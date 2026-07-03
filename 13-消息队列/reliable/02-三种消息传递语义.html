@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>三种消息传递语义 — 消息队列</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #a78bfa; }
+  p code, li code { color: #a78bfa; }
+  h2 { color: #a78bfa; border-left-color: #a78bfa; }
+  .hero .tag { color: #a78bfa; border-color: #5b3fa0; }
+  .nav-btn.next { color: #a78bfa; border-color: #5b3fa0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../mq-roadmap.html">消息队列 路线图</a> / 可靠性与语义保证 / 三种消息传递语义
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">可靠性与语义保证</div>
+    <h1>三种消息传递语义</h1>
+    <p>消息队列面试的必考题。搞清楚"至多一次""至少一次""精确一次"到底在保证什么、代价是什么，比背定义重要得多。</p>
+  </div>
+
+  <!-- 为什么要分类讨论 -->
+  <h2>问题的根源：网络和进程都不可靠</h2>
+  <p>
+    发一条消息，中间要经过"生产者发送 → 网络传输 → Broker 落盘 → 消费者拉取 → 消费者处理 → 提交位移"这一长串环节，
+    <strong>任何一环都可能失败或者超时</strong>：网络抖动导致确认包没收到、消费者处理到一半宕机、位移提交前进程被杀……
+    "消息传递语义"讨论的就是：<strong>当这些意外发生时，系统对外承诺的到底是什么</strong>——消息会不会丢？会不会重复？
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>快递签收也面临同样的问题。快递员按了门铃就走（不管你有没有真收到）、快递员反复按门铃直到你签收为止（可能多按几次导致你以为来了两个包裹）、或者系统精确记录"这一单只能被签收一次"——三种做法对应的正是至多一次、至少一次、精确一次。
+  </div>
+
+  <!-- 至多一次 -->
+  <h2>至多一次（At Most Once）：可能丢，绝不重复</h2>
+  <p>
+    生产者发送消息后<strong>不等待确认、不重试</strong>，发出去就算完成任务。如果消息在网络传输中丢失，或者 Broker 没有成功保存，生产者对此一无所知，也不会有第二次尝试。
+  </p>
+  <p>
+    结果就是：<strong>消息最多被处理一次，但也可能一次都没被处理</strong>（也就是丢失）。这是三种语义里实现最简单、开销最低的一种，因为完全不需要处理"重复"的问题。
+  </p>
+
+  <!-- 至少一次 -->
+  <h2>至少一次（At Least Once）：不会丢，但可能重复</h2>
+  <p>
+    生产者发送消息后，如果在约定时间内没有收到 Broker 的成功确认（比如网络超时、Broker 短暂不可用），就会<strong>自动重试</strong>，直到收到确认为止。
+    这样就保证了消息"不会因为一次失败就凭空消失"，但重试机制天然带来一个副作用：<strong>如果消息其实已经成功写入了，只是确认包在返回路上丢了</strong>，生产者会误判为失败并重发，导致 Broker 里出现两条一模一样的消息。
+  </p>
+  <p>
+    消费端同理：消费者处理完一条消息，但还没来得及提交消费位移就宕机重启，重启后会从上一次提交的位移重新拉取，<strong>导致同一条消息被再处理一次</strong>。
+  </p>
+  <div class="callout tip">
+    <strong>为什么它是最常用的默认选择：</strong>"消息不丢"通常是业务的硬性要求，而"偶尔重复"往往可以通过消费端做幂等处理来解决（见下一篇）。相比"可能丢"的至多一次，至少一次用"可能重复但可修复"换来了更高的可靠性下限，性价比最高，因此绝大多数 MQ 的默认行为、绝大多数业务系统的默认选型都是它。
+  </div>
+
+  <!-- 精确一次 -->
+  <h2>精确一次（Exactly Once）：既不丢也不重，成本最高</h2>
+  <p>
+    每条消息<strong>有且仅有一次</strong>被处理，无论中途发生多少次网络抖动、重试、重启，最终效果上就像它只被处理了一次。这是最理想、也是实现成本最高的语义。
+  </p>
+  <div class="callout warn">
+    <strong>关键认知（面试高频）：</strong>"精确一次"通常<strong>不是靠 MQ 单方面凭空保证的</strong>，而是"至少一次的传输 + 消费端的幂等处理"组合出来的效果。也就是说，底层传输依然可能重复投递消息（Kafka 无法从物理上禁止网络重传），但只要消费端能够识别出"这条消息我已经处理过了"并直接跳过，站在业务结果的角度看，就实现了精确一次的语义。
+  </div>
+  <p>
+    Kafka 从 0.11 版本开始提供的<strong>幂等生产者（Idempotent Producer）</strong>和<strong>事务（Transactions）</strong>机制，正是为了在"生产者到 Broker"这一段网络容易重复的地方，尽量把"精确一次"往前推进一步（下一篇会展开讲幂等生产者的实现原理）。但要覆盖"消费、处理、写下游"的完整链路，仍然离不开消费端自己的幂等设计。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>三种语义对比</h2>
+  <table>
+    <thead>
+      <tr><th>语义</th><th>会不会丢</th><th>会不会重复</th><th>实现成本</th><th>典型做法</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>至多一次</strong></td>
+        <td>可能丢</td>
+        <td>不会重复</td>
+        <td>最低</td>
+        <td>发送后不重试（如 <code>acks=0</code>）</td>
+      </tr>
+      <tr>
+        <td><strong>至少一次</strong></td>
+        <td>不会丢</td>
+        <td>可能重复</td>
+        <td>中等</td>
+        <td>失败重试 + 消费端幂等处理</td>
+      </tr>
+      <tr>
+        <td><strong>精确一次</strong></td>
+        <td>不会丢</td>
+        <td>不会重复（业务效果上）</td>
+        <td>最高</td>
+        <td>至少一次 + 幂等/事务机制</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"Kafka 天生支持精确一次，我什么都不用做。"
+    Kafka 的幂等生产者和事务只能保证"生产者到 Broker"这一段、以及"读-处理-写"都在 Kafka 内部完成的场景（Kafka Streams）下的精确一次。一旦消费端把数据写到外部系统（数据库、缓存、调用其他服务），就必须自己实现幂等逻辑，否则"精确一次"的承诺在这一步就断掉了。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"说说三种消息传递语义的区别？" 答题要点：三个语义分别在"丢不丢""重不重"上做了不同取舍；至多一次不重试所以可能丢，至少一次靠重试保证不丢但可能重复，精确一次是"至少一次 + 幂等处理"组合出来的结果，而不是 MQ 单独就能保证的。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>三种语义的本质区别在于对"失败重试"的态度：</strong>不重试就可能丢，重试就可能重复，要既不丢又不重就得在重复上做文章。</li>
+    <li><strong>至少一次是工程实践中的甜蜜点：</strong>用"可能重复但可修复"换来"消息不丢"的底线保证。</li>
+    <li><strong>精确一次不是免费的午餐：</strong>它把复杂度从"MQ 要不要重试"转移到了"消费端怎么识别重复"，这正是下一篇要讲的幂等性设计。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-消息确认机制ack.html" class="nav-btn">← 消息确认机制 ack</a>
+    <a href="./03-消息幂等性与重复消费的处理.html" class="nav-btn next">消息幂等性与重复消费的处理 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>舱壁模式 Bulkhead 隔离故障 — 微服务架构实践</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 微服务架构实践 / 舱壁模式 Bulkhead 隔离故障
+  </div>
+
+  <div class="hero">
+    <div class="tag">微服务架构实践</div>
+    <h1>舱壁模式 Bulkhead 隔离故障</h1>
+    <p>[微服务设计补充] 断路器解决的是"发现下游故障后怎么办"，舱壁模式解决的是更前置的问题：怎么让一个下游的故障，从一开始就不会波及到其他健康的调用。</p>
+  </div>
+
+  <h2>名字的由来：船舶设计</h2>
+  <p>
+    舱壁模式（Bulkhead Pattern）这个名字直接来自船舶设计。远洋轮船的船体内部并不是一个大通舱，而是被一道道防水舱壁分隔成多个独立密封的舱室。
+    如果船体某一处破损进水，只有对应的那个舱室会被淹没，防水舱壁会挡住海水继续蔓延，其余舱室依然保持干燥，<strong>整艘船不会因为一处破损而彻底沉没</strong>。
+    泰坦尼克号的悲剧某种程度上也和舱壁设计的缺陷有关——舱壁高度不够，进水最终还是漫过舱壁蔓延到了相邻舱室。
+  </p>
+  <div class="callout info">
+    <strong>类比迁移到软件：</strong>把船体换成一个微服务进程，把舱室换成资源池（最典型的是线程池、数据库连接池），舱壁模式说的就是：<strong>为不同的下游依赖分配独立的、互不共享的资源池</strong>。某个下游依赖变慢或不可用，最多耗尽分配给它的那部分资源，不会连累调用其他下游的请求，因为它们用的是完全不同的一份资源。
+  </div>
+
+  <h2>问题的根源：共享资源池导致故障扩散</h2>
+  <p>
+    设想一个订单服务需要调用三个下游：库存服务、优惠券服务、物流服务。如果这三个调用共用同一个线程池（比如一个容量为 200 的公共线程池），一旦优惠券服务因为某个 bug 变得响应极慢，
+    大量调用优惠券服务的请求会占满这 200 个线程中的绝大部分——<strong>哪怕库存服务和物流服务本身完全健康，调用它们的请求也会因为拿不到空闲线程而排队甚至超时</strong>，整个订单服务被一个本来只影响"优惠券"功能的局部故障拖下水。
+  </p>
+  <p>
+    舱壁模式的做法是：给调用库存服务、优惠券服务、物流服务分别分配独立的线程池（比如各自 50 个线程）。优惠券服务变慢时，最多把分配给它的 50 个线程耗尽，
+    库存服务和物流服务的调用因为使用的是完全独立的线程池，不受任何影响，用户依然能正常下单、正常查库存，只是"使用优惠券"这一个功能暂时受阻——<strong>故障被成功限制在一个"舱"内，没有蔓延到整个系统</strong>。
+  </p>
+
+  <table>
+    <thead><tr><th></th><th>共享资源池</th><th>舱壁隔离</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>正常时</strong></td>
+        <td>资源利用率高，闲时可以互相调剂</td>
+        <td>各自独立，可能存在资源闲置浪费（A 的池子空闲时不能借给 B 用）</td>
+      </tr>
+      <tr>
+        <td><strong>某下游故障时</strong></td>
+        <td>故障扩散，拖累所有共享该资源池的调用</td>
+        <td>故障被限制在对应的资源池内，其他调用不受影响</td>
+      </tr>
+      <tr>
+        <td><strong>适用场景</strong></td>
+        <td>依赖数量少、可靠性都很高、资源紧张的场景</td>
+        <td>依赖数量多、可靠性参差不齐、需要保证核心链路不被非核心依赖拖累的场景</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>两种常见的舱壁实现方式</h2>
+  <p>
+    在 Resilience4j 这类容错框架里，舱壁模式通常有两种实现思路：
+  </p>
+  <ul>
+    <li><strong>线程池隔离（Thread Pool Bulkhead）：</strong>为不同依赖分配独立的线程池，调用在专属线程里执行。隔离性最强（可以对慢调用做超时中断），但需要额外的线程切换开销。</li>
+    <li><strong>信号量隔离（Semaphore Bulkhead）：</strong>不额外创建线程，而是用信号量限制同时能有多少个请求并发访问某个依赖，超过限制的请求直接拒绝。开销更小，但不能主动中断一个已经在执行的慢调用（信号量只管"准入"，不管"执行中"）。</li>
+  </ul>
+  <p>
+    两者的取舍本质上是"隔离性"和"资源开销"之间的权衡——对于特别关键、需要严格隔离的核心依赖，用线程池隔离更稳妥；对于依赖数量众多、追求轻量级隔离的场景，信号量隔离性价比更高。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"舱壁模式和断路器有什么关系？"参考答案：两者是互补而非替代关系。舱壁模式从资源分配的角度提前做隔离，防止单个依赖故障时抢占过多共享资源；断路器从调用结果统计的角度做故障发现和快速失败。实践中通常组合使用：给每个下游依赖分配独立的资源池（舱壁），同时在每个依赖的调用上包一层断路器，两道防线共同防止雪崩效应。
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>认为线程池隔离"资源利用率低就是缺点"，因而干脆不做隔离。要认识到这是刻意的取舍——舱壁模式本来就是用局部的资源浪费换取全局的稳定性，就像船舶防水舱壁平时也是"浪费"了一部分本可以用来装货的空间，但换来的是整艘船的抗沉能力，对于核心链路而言这笔交易通常是值得的。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>舱壁模式解决的问题：</strong>避免共享资源池导致一个下游的故障扩散拖累其他健康的调用。</li>
+    <li><strong>核心手段：</strong>按不同依赖拆分独立的资源池（线程池或信号量），把故障影响范围限制在对应的"舱"内。</li>
+    <li><strong>和断路器配合：</strong>舱壁负责隔离资源，断路器负责快速失败，两者组合构成更完整的服务容错方案。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./07-断路器模式CircuitBreaker.html" class="nav-btn">← 断路器模式 Circuit Breaker</a>
+    <a href="./09-服务网格ServiceMesh简介.html" class="nav-btn next">服务网格 Service Mesh 简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

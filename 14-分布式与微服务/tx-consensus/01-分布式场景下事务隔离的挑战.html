@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>分布式场景下事务隔离的挑战 — 分布式与微服务</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e7490; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e7490; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../distributed-roadmap.html">分布式与微服务 路线图</a> / 事务与一致性 / 分布式场景下事务隔离的挑战
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">事务与一致性</div>
+    <h1>分布式场景下事务隔离的挑战</h1>
+    <p>单机事务的隔离级别、锁、MVCC 这套工具箱，一旦事务要跨越多台机器，几乎全部失灵——这一篇讲清楚"为什么"，为后面 2PC、TCC、Saga 这些复杂方案打好理论地基。</p>
+  </div>
+
+  <!-- 回顾单机事务 -->
+  <h2>先回顾：单机事务的隔离是怎么做到的</h2>
+  <p>
+    在 <strong>09-数据库</strong> 模块的事务隔离级别一节里，我们已经讲过：SQL 标准定义了<strong>读未提交、读已提交、可重复读、串行化</strong>四个隔离级别，
+    数据库通过<strong>锁</strong>（如间隙锁、临键锁）和 <strong>MVCC（多版本并发控制）</strong>来实现这些级别——比如 InnoDB 用 ReadView 机制让一个事务在整个生命周期内只看到某个时间点的一致性快照。
+    但这一切讨论的前提是：<strong>所有数据都在同一个数据库实例、同一台机器上</strong>，锁管理器和事务 ID 生成器都是进程内的本地组件，协调成本几乎为零。
+  </p>
+
+  <!-- 核心转折 -->
+  <h2>转折点：一个"事务"要跨多台机器了</h2>
+  <p>
+    分布式系统里，一次业务操作往往需要同时改动<strong>多个物理上独立的节点</strong>。最经典的例子：转账时从 A 库扣钱、给 B 库加钱，而 A、B 是两个不同的分片（Shard）或数据库实例；
+    再比如微服务架构下，下单要同时调用"订单服务"和"库存服务"，而这两个服务<strong>各自持有自己独立的数据库</strong>，彼此互不可见。
+  </p>
+  <p>
+    问题来了：单机事务的"要么全成功、要么全失败"（原子性）以及"看到的都是一致快照"（隔离性），现在必须在<strong>多个独立的存储引擎之间</strong>共同维持——而这些引擎原本谁都不知道谁的存在。
+  </p>
+
+  <!-- 为什么难 -->
+  <h2>为什么单机的锁和 MVCC 搬不过来</h2>
+
+  <h3>1. 锁：从"进程内调用"变成"网络往返"</h3>
+  <p>
+    单机场景下，锁管理器就是内存里的一个数据结构，加锁、阻塞、唤醒都是纳秒级的本地操作，锁的持有者崩溃了，操作系统或数据库进程立刻能感知并释放锁。
+    但分布式锁必须靠<strong>网络请求</strong>协调——加锁要一次网络往返，解锁又要一次，锁的持有节点如果在事务执行到一半时<strong>宕机</strong>，其他节点根本不知道锁还要不要等下去；
+    网络分区时更麻烦：也许持锁节点其实还活着，只是暂时联系不上，贸然释放锁可能导致两个节点同时以为自己拿到了锁。
+  </p>
+
+  <h3>2. MVCC：从"本地事务 ID"变成"全局一致快照"</h3>
+  <p>
+    单机 MVCC 之所以便宜，是因为"当前有哪些事务在跑、它们的可见性边界在哪里"这些信息都在同一个进程的内存里，生成一份 ReadView 只是读一下本地计数器。
+    但分布式场景下，如果想让"某个时刻的快照"在所有参与节点上保持一致，就需要一种<strong>全局同步的时钟或协调服务</strong>来给所有节点的事务分配全局可比较的时间戳/版本号——
+    这正是"分布式快照隔离（Distributed Snapshot Isolation）"至今仍是研究级难题的原因，大多数实际系统并不会去完整实现它，而是退而求其次接受更弱的一致性模型或引入额外协调开销。
+  </p>
+
+  <h3>3. 协调成本随节点数增长，失败会带来"不确定态"</h3>
+  <p>
+    参与事务的节点越多，需要互相确认"你准备好提交了吗"的通信轮次就越多，协调成本不是线性增长这么简单，还叠加了网络延迟和故障概率的乘积效应。
+    更棘手的是：如果协调过程中某个节点崩溃或网络中断，其他节点根本不知道<strong>这个事务到底在所有节点上都提交了，还是都回滚了，还是提交了一半</strong>——这种"不确定态"在单机事务里是不存在的，因为单机上要么整个进程活着、要么整个进程死了，不存在"一部分数据提交了、另一部分没提交"的中间状态。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>单机事务 vs 分布式事务</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>单机事务（09-数据库）</th><th>分布式事务</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>加锁方式</td>
+        <td>进程内内存锁，纳秒级</td>
+        <td>需要网络往返协调，毫秒级且可能失败</td>
+      </tr>
+      <tr>
+        <td>一致性快照</td>
+        <td>本地 ReadView，读本地计数器即可</td>
+        <td>需要全局时钟/协调服务，成本高、实现难</td>
+      </tr>
+      <tr>
+        <td>节点崩溃的影响</td>
+        <td>要么整个事务都没提交，状态明确</td>
+        <td>可能出现"部分节点已提交、部分未知"的不确定态</td>
+      </tr>
+      <tr>
+        <td>协调参与方数量</td>
+        <td>固定为 1（本进程）</td>
+        <td>随参与节点数增加，成本和失败概率同步上升</td>
+      </tr>
+      <tr>
+        <td>典型解决方案</td>
+        <td>锁 + MVCC（本模块 09-数据库已覆盖）</td>
+        <td>2PC、TCC、Saga、可靠消息等（后续 Tab5 展开）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 承上启下 -->
+  <div class="callout info">
+    <strong>承上启下：</strong>正是因为锁和 MVCC 这两套单机武器在跨节点场景下都不好使，业界才发展出了 <strong>2PC（两阶段提交）</strong>以及 TCC、Saga、可靠消息最终一致性等"柔性事务"方案，
+    用来在无法依赖本地锁/本地快照的前提下，尽量逼近"要么都成功、要么都失败"的效果。这些方案会在本模块 Tab5「微服务架构实践」中详细展开，这里先把"为什么需要它们"的理论背景讲透。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"我在下单服务和库存服务的方法上都加个 <code>@Transactional</code>，调用链路上不就自动变成一个大事务了吗？"
+    这是完全错误的想法。<code>@Transactional</code> 管理的只是<strong>当前方法所在的这一个本地数据库连接/资源</strong>，它对另一个微服务内部用的是哪个数据库、连接是否提交毫不知情。
+    如果下单服务调用库存服务的接口后自己的事务回滚了，它没有任何手段去"撤销"已经在库存服务那边真正提交掉的数据库变更——两边的事务从一开始就是互相独立、互不感知的。
+  </div>
+
+  <!-- 面试高频 -->
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么分布式事务比单机事务难？" 参考答案：① 协调成本高——需要多轮网络通信确认各节点状态，不再是本地内存操作；② 故障场景下会出现不确定态——节点崩溃或网络分区时，无法立刻判断事务在所有参与方上到底是提交还是回滚；③ 本地的锁和 MVCC 快照机制天然只覆盖单个节点，无法跨节点复用，必须引入额外的协调机制（如 2PC 协调者、全局时钟）才能模拟出"类事务"的效果。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>单机事务的隔离级别、锁、MVCC，都建立在"进程内、无网络"这个隐含假设之上</strong>，一旦跨节点，这个假设就不成立了。</li>
+    <li><strong>分布式事务难，本质难在协调成本和故障下的不确定态</strong>，而不是简简单单"多加几台机器"的问题。</li>
+    <li><strong>这篇是纯理论铺垫</strong>：搞懂"为什么难"，后面学 2PC、TCC、Saga 时才能理解它们各自在用什么代价换取一致性，而不是死记硬背几个名词。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../repl-part/04-分区再平衡.html" class="nav-btn">← 分区再平衡</a>
+    <a href="./02-线性一致性与最终一致性.html" class="nav-btn next">线性一致性与最终一致性 →</a>
+  </div>
+
+</div>
+</body>
+</html>
