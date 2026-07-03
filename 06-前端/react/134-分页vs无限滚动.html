@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · 分页 vs 无限滚动</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / 列表性能 / 分页 vs 无限滚动</div>
+  <div class="hero">
+    <div class="tag">React · 性能优化</div>
+    <h1>分页 vs 无限滚动</h1>
+    <p>上一篇的虚拟滚动解决的是"数据已经在手里,怎么少渲染 DOM"。但更前置的问题是:<strong>数据本身就不该一次性全部拉下来</strong>——几万条数据一次性请求,接口慢、流量大,用户也用不上。分页和无限滚动是两种"分批要数据"的方案,权衡点完全不同。</p>
+  </div>
+
+  <h2>共同目标:避免一次性加载全部数据</h2>
+  <p>不管是分页还是无限滚动,后端接口的本质都是<strong>按页/按游标返回一小段数据</strong>(比如 <code>GET /items?page=2&amp;size=20</code>)。区别只在于:前端用什么方式决定"什么时候请求下一段数据"、以及"怎么把它们呈现给用户"。</p>
+
+  <h2>传统分页</h2>
+  <p>把数据切成一页一页,页面上显示页码,用户点击页码或"下一页"按钮切换。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>分页:每次只请求当前页,替换而非追加数据</span></div>
+    <pre><span class="kw">function</span> <span class="fn">ProductPage</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="punct">[</span><span class="var">page</span><span class="punct">,</span> <span class="var">setPage</span><span class="punct">]</span> <span class="punct">=</span> <span class="fn">useState</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+  <span class="kw">const</span> <span class="punct">{</span> <span class="var">data</span> <span class="punct">}</span> <span class="punct">=</span> <span class="fn">useQuery</span><span class="punct">({</span>
+    <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'products'</span><span class="punct">,</span> <span class="var">page</span><span class="punct">],</span>  <span class="com">// page 变化就是新的缓存 key,天然对应"翻页 = 换一页新数据"</span>
+    <span class="var">queryFn</span><span class="punct">:</span> <span class="punct">()</span> <span class="punct">=&gt;</span> <span class="fn">fetchProducts</span><span class="punct">(</span><span class="var">page</span><span class="punct">),</span>  <span class="com">// 每页数据独立,不和其他页拼接</span>
+  <span class="punct">});</span>
+
+  <span class="kw">return</span> <span class="punct">(</span>
+    <span class="jsx-expr">&lt;&gt;</span>
+      <span class="jsx-expr">{data?.items.map(item => &lt;Row key={item.id} {...item} /&gt;)}</span>
+      <span class="tag-c">&lt;Pagination</span> <span class="attr">current</span><span class="punct">=</span><span class="jsx-expr">{page}</span> <span class="attr">total</span><span class="punct">=</span><span class="jsx-expr">{data?.totalPages}</span> <span class="attr">onChange</span><span class="punct">=</span><span class="jsx-expr">{setPage}</span> <span class="tag-c">/&gt;</span>
+    <span class="jsx-expr">&lt;/&gt;</span>
+  <span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>优点:</strong>页码明确、可以直接跳转到第 N 页;URL 里带上页码就能被搜索引擎收录、被用户收藏和分享(SEO 友好);每页数据独立,内存占用可控,不会无限增长。</p>
+  <p><strong>缺点:</strong>翻页会打断阅读体验——用户看到第 3 页底部,点"下一页"整个列表被替换,原来看到哪条容易丢失上下文;对于"随手往下刷"的浏览类场景(社交动态、图片流),分页的操作成本显得繁琐。</p>
+
+  <h2>无限滚动</h2>
+  <p>用户滚动到列表底部时,自动追加加载下一批数据,拼接在已有列表后面,视觉上是一个不断变长的连续列表。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>无限滚动:IntersectionObserver 检测触底,追加下一页</span></div>
+    <pre><span class="kw">function</span> <span class="fn">Feed</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="punct">{</span> <span class="var">data</span><span class="punct">,</span> <span class="var">fetchNextPage</span><span class="punct">,</span> <span class="var">hasNextPage</span> <span class="punct">}</span> <span class="punct">=</span> <span class="fn">useInfiniteQuery</span><span class="punct">({</span>
+    <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'feed'</span><span class="punct">],</span>
+    <span class="var">queryFn</span><span class="punct">:</span> <span class="punct">({</span> <span class="var">pageParam</span> <span class="punct">})</span> <span class="punct">=&gt;</span> <span class="fn">fetchFeed</span><span class="punct">(</span><span class="var">pageParam</span><span class="punct">),</span>
+    <span class="var">getNextPageParam</span><span class="punct">:</span> <span class="punct">(</span><span class="var">lastPage</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="var">lastPage</span><span class="punct">.</span><span class="var">nextCursor</span><span class="punct">,</span>
+  <span class="punct">});</span>
+
+  <span class="kw">const</span> <span class="var">bottomRef</span> <span class="punct">=</span> <span class="fn">useRef</span><span class="punct">(</span><span class="kw">null</span><span class="punct">);</span>
+
+  <span class="fn">useEffect</span><span class="punct">(()</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+    <span class="com">// IntersectionObserver:监听"哨兵元素"是否进入视口,进入即代表滚动到了列表底部</span>
+    <span class="kw">const</span> <span class="var">observer</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">IntersectionObserver</span><span class="punct">(([</span><span class="var">entry</span><span class="punct">])</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+      <span class="kw">if</span> <span class="punct">(</span><span class="var">entry</span><span class="punct">.</span><span class="var">isIntersecting</span> <span class="punct">&amp;&amp;</span> <span class="var">hasNextPage</span><span class="punct">)</span> <span class="fn">fetchNextPage</span><span class="punct">();</span>
+    <span class="punct">});</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">bottomRef</span><span class="punct">.</span><span class="var">current</span><span class="punct">)</span> <span class="var">observer</span><span class="punct">.</span><span class="fn">observe</span><span class="punct">(</span><span class="var">bottomRef</span><span class="punct">.</span><span class="var">current</span><span class="punct">);</span>
+    <span class="kw">return</span> <span class="punct">()</span> <span class="punct">=&gt;</span> <span class="var">observer</span><span class="punct">.</span><span class="fn">disconnect</span><span class="punct">();</span>
+  <span class="punct">},</span> <span class="punct">[</span><span class="var">hasNextPage</span><span class="punct">]);</span>
+
+  <span class="kw">return</span> <span class="punct">(</span>
+    <span class="jsx-expr">&lt;&gt;</span>
+      <span class="jsx-expr">{data?.pages.flatMap(p => p.items).map(item => &lt;Row key={item.id} {...item} /&gt;)}</span>
+      <span class="tag-c">&lt;div</span> <span class="attr">ref</span><span class="punct">=</span><span class="jsx-expr">{bottomRef}</span> <span class="tag-c">/&gt;</span>  <span class="com">{/* 哨兵元素,进入视口就触发加载下一页 */}</span>
+    <span class="jsx-expr">&lt;/&gt;</span>
+  <span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout react">
+    <strong>和 TanStack Query 的联系:</strong> 无限滚动天然对应 <code>useInfiniteQuery</code>——它专门管理"多页数据拼接成一个连续列表"这件事:每页数据存在 <code>data.pages</code> 数组里,<code>getNextPageParam</code> 告诉它怎么从上一页结果推算下一页的游标/页码,<code>fetchNextPage</code> 负责触发加载并把新数据追加进去。手写"翻页替换数据"反而更适合普通的 <code>useQuery</code>(参见前面 useQuery 相关篇目),因为分页不需要拼接历史数据。
+  </div>
+
+  <p><strong>优点:</strong>体验连续,适合"随手往下刷"的浏览场景,不需要用户主动做翻页操作。</p>
+  <p><strong>缺点:</strong>难以定位到某个具体位置(没有页码可跳转);<strong>返回列表位置的处理复杂</strong>——用户点开第 200 条的详情页再返回,如果列表状态没有被正确保留(已加载的页数、滚动位置),要么重新从头加载、要么要专门做"滚动位置恢复"和"已加载页数缓存";不利于 SEO,因为大部分内容要靠 JS 滚动触发才会加载,搜索引擎爬虫不一定会执行滚动交互。</p>
+
+  <h2>对比总结</h2>
+  <table>
+    <tr><th>维度</th><th>传统分页</th><th>无限滚动</th></tr>
+    <tr><td>定位/跳转</td><td>支持,页码明确</td><td>不支持,只能顺序加载</td></tr>
+    <tr><td>浏览体验</td><td>翻页有割裂感</td><td>连续、沉浸感强</td></tr>
+    <tr><td>返回列表状态保留</td><td>简单,回到对应页码即可</td><td>复杂,需要缓存已加载数据和滚动位置</td></tr>
+    <tr><td>SEO / 可分享</td><td>友好,URL 带页码</td><td>不友好,内容靠交互懒加载</td></tr>
+    <tr><td>典型场景</td><td>后台管理系统、订单列表、搜索结果</td><td>社交动态、图片瀑布流、内容推荐流</td></tr>
+    <tr><td>配套 API</td><td><code>useQuery</code>(每页独立缓存)</td><td><code>useInfiniteQuery</code>(多页拼接)</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>怎么选:</strong> 问自己一个问题——用户是"要精确定位/反复查找某条数据"(订单、工单、后台管理),还是"漫无目的地随便刷"(社交流、推荐流)?前者选分页,定位能力和状态可恢复性更重要;后者选无限滚动,连续体验优先。不要仅凭"无限滚动看起来更现代"就无脑套用到所有列表上。
+  </div>
+
+  <div class="callout warn">
+    <strong>容易被忽视的陷阱:</strong> 无限滚动如果不做"返回时恢复滚动位置和已加载页数",用户从详情页返回列表会看到列表被重置回第一页、之前刷到的内容全部消失,体验比分页还差。工程上通常需要把已加载的页数和滚动位置存在路由状态或全局缓存里,在列表重新挂载时用来恢复——这也是无限滚动"隐藏成本"比分页高的地方。
+  </div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>分页和无限滚动都是为了避免一次性把全部数据拉到前端,区别在于"何时请求下一批"以及"新数据是替换还是追加"。</li>
+    <li>传统分页:页码明确、可跳转、SEO 友好、状态易恢复,但翻页体验割裂,适合需要精确定位的场景(后台管理、订单列表)。</li>
+    <li>无限滚动:用 IntersectionObserver 检测哨兵元素是否进入视口来触发加载下一页,体验连续,适合随手浏览的场景(社交流、推荐流),但难以定位、返回列表位置的恢复逻辑更复杂,对 SEO 不友好。</li>
+    <li>分页天然对应 <code>useQuery</code>(每页数据独立、互相替换);无限滚动天然对应 <code>useInfiniteQuery</code>(多页数据拼接进 <code>data.pages</code>)。</li>
+    <li>选择依据是产品场景而非技术偏好:能不能精确定位、要不要 SEO、返回列表要不要保留状态,这些产品需求决定了该用哪种方案。</li>
+    <li>虚拟滚动、分页、无限滚动三者是互补关系:分页/无限滚动控制"一次向后端要多少数据",虚拟滚动控制"拿到手的数据一次渲染多少 DOM"——大数据量列表往往需要两者结合。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="133-虚拟滚动TanStackVirtual.html" class="nav-btn">← 虚拟滚动 TanStack Virtual</a>
+    <a href="135-useTransition非紧急更新.html" class="nav-btn next">下一篇:useTransition — 非紧急更新 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · 预加载策略</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / 代码分割 / 预加载策略</div>
+  <div class="hero">
+    <div class="tag">React · 性能优化</div>
+    <h1>预加载策略</h1>
+    <p>纯懒加载解决了"首屏体积过大"的问题,却引入了一个新的小烦恼:<strong>用户点击链接的那一刻才开始下载代码,期间会有一瞬间的等待和 loading 闪烁</strong>。预加载策略的思路是:<strong>在用户还没点、但很可能要点之前,提前把代码下载好</strong>,点击时几乎无感切换。</p>
+  </div>
+
+  <h2>纯懒加载的副作用</h2>
+  <div class="flow">
+    <div class="flow-box">用户点击"订单"链接</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box danger">才开始下载 OrderList 的 chunk</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">下载 + 解析(有感知的等待)</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box ok">渲染出页面</div>
+  </div>
+  <p>网络越差,这段"点击 → 真正看到内容"之间的等待越明显。既要享受代码分割带来的首屏优化,又不想让用户在切换页面时等,答案就是<strong>把下载时机提前</strong>——不是不分割,而是提前触发那个本来要在点击时才发生的 <code>import()</code>。</p>
+
+  <h2>常见预加载时机</h2>
+  <table>
+    <tr><th>时机</th><th>原理</th></tr>
+    <tr><td>鼠标 hover 链接</td><td>用户把鼠标移到链接上,到真正点击通常还有几十到几百毫秒,这段时间足够提前发起 <code>import()</code></td></tr>
+    <tr><td>路由 loader 阶段并行拉取</td><td>React Router 的 loader 在导航过程中就会执行,可以和组件代码的 <code>import()</code> 并行,而不是等组件下载完再去请求数据</td></tr>
+    <tr><td>空闲时间预加载</td><td>用 <code>requestIdleCallback</code> 在浏览器空闲时提前加载"大概率会访问"的下一步页面</td></tr>
+    <tr><td>视口可见时预加载</td><td>用 <code>IntersectionObserver</code> 监测链接是否进入可视区域,进入即触发预加载</td></tr>
+  </table>
+
+  <h2>hover 预加载的代码示例</h2>
+  <p>思路很简单:把 <code>import()</code> 单独抽出来,链接的 <code>onMouseEnter</code> 和真正跳转都调用同一个函数——第一次调用会真正发起下载,第二次(比如用户真的点击了)因为浏览器/打包工具的模块缓存,直接复用已经下载好的结果,几乎瞬间完成。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>hover 时提前触发 import(),点击时无感知加载</span></div>
+    <pre><span class="com">// 和 lazy() 里用的是同一个 loader 函数,保证走同一份模块缓存</span>
+<span class="kw">const</span> <span class="fn">loadOrderList</span> <span class="punct">=</span> <span class="punct">()</span> <span class="punct">=&gt;</span> <span class="fn">import</span><span class="punct">(</span><span class="str">'./pages/OrderList'</span><span class="punct">);</span>
+<span class="kw">const</span> <span class="var">OrderList</span> <span class="punct">=</span> <span class="fn">lazy</span><span class="punct">(</span><span class="var">loadOrderList</span><span class="punct">);</span>
+
+<span class="kw">function</span> <span class="fn">NavLink</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">return</span> <span class="punct">(</span>
+    <span class="tag-c">&lt;Link</span>
+      <span class="attr">to</span><span class="punct">=</span><span class="str">"/orders"</span>
+      <span class="attr">onMouseEnter</span><span class="punct">=</span><span class="jsx-expr">{() =&gt; loadOrderList()}</span>  <span class="com">// 鼠标移入就提前下载,结果被浏览器/打包器缓存</span>
+    <span class="tag-c">&gt;</span>
+      订单
+    <span class="tag-c">&lt;/Link&gt;</span>
+  <span class="punct">);</span>
+<span class="punct">}</span>
+<span class="com">// 用户真正点击时,import() 直接命中缓存,Suspense fallback 几乎不会出现</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么点两次 import() 不会重复下载?</strong> ES 模块规范保证同一个模块路径在同一个模块图里<strong>只会被求值一次</strong>,后续 <code>import()</code> 拿到的是同一个已缓存的 Promise/模块对象。所以"hover 时调一次、点击时（lazy 内部)又调一次"完全安全,不会有重复网络请求或重复副作用。
+  </div>
+
+  <h2>结合路由 loader 并行拉取</h2>
+  <p>React Router 的数据路由(<code>createBrowserRouter</code> + <code>loader</code>)在开始导航的那一刻,就会<strong>同时</strong>启动"下载组件代码"和"执行 loader 拉取数据"这两件事,而不是等组件代码下载完、渲染出来之后才发起数据请求——这叫 <strong>render-as-you-fetch</strong>,比"先加载代码、代码里的 useEffect 再去发请求"的传统模式快得多。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>loader 与懒加载组件并行:两件事同时开始</span></div>
+    <pre><span class="punct">{</span>
+  <span class="var">path</span><span class="punct">:</span> <span class="str">'/orders/:id'</span><span class="punct">,</span>
+  <span class="var">element</span><span class="punct">:</span> <span class="tag-c">&lt;Suspense</span> <span class="attr">fallback</span><span class="punct">=</span><span class="jsx-expr">{&lt;Skeleton /&gt;}</span><span class="tag-c">&gt;&lt;OrderDetail</span> <span class="tag-c">/&gt;&lt;/Suspense&gt;</span><span class="punct">,</span>
+  <span class="com">// 导航开始的瞬间,loader 请求数据 和 OrderDetail 的 import() 同时发起</span>
+  <span class="var">loader</span><span class="punct">:</span> <span class="punct">({</span> <span class="var">params</span> <span class="punct">})</span> <span class="punct">=&gt;</span> <span class="fn">fetch</span><span class="punct">(</span><span class="jsx-expr">`/api/orders/${params.id}`</span><span class="punct">),</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>预加载太激进的代价:浪费带宽。</strong> 如果给页面上所有链接都加无差别的 hover 预加载,用户鼠标扫过一堆链接却只点了一个,其余全部白下载——对于移动网络或流量敏感场景,这是实打实的成本。常见折中:只对<strong>高频入口</strong>(导航栏、"下一步"按钮)做预加载,长尾页面维持纯懒加载。
+  </div>
+
+  <div class="callout warn">
+    <strong>太保守也不行:体验差。</strong> 完全不做预加载,每次导航都要经历"点击 → 下载 → loading → 渲染"的完整链路,即便代码分割已经把每个 chunk 做得很小,累积的等待感依然存在。是否预加载、预加载到什么粒度,本质是<strong>带宽成本 vs 交互流畅度</strong>之间的取舍,没有放之四海皆准的答案,需要结合真实用户的网络环境和访问路径来定。
+  </div>
+
+  <div class="callout react">
+    <strong>代码分割三篇小结:</strong> <code>React.lazy</code> + <code>Suspense</code> 解决"怎么渲染懒加载组件",<code>import()</code> 是底层拆包机制,预加载策略解决"什么时候提前触发下载"。三者组合起来,才是一套完整的、体验和性能兼顾的代码分割方案。
+  </div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>纯懒加载会在用户点击时才开始下载代码,带来一瞬间的加载等待,预加载策略通过提前触发 <code>import()</code> 来缓解。</li>
+    <li>常见预加载时机:鼠标 hover、路由 loader 阶段并行拉取、浏览器空闲时、元素进入可视区域。</li>
+    <li>hover 预加载只需把 <code>import()</code> 抽成独立函数,在 <code>onMouseEnter</code> 和 <code>lazy()</code> 里复用同一个引用,依靠模块缓存避免重复下载。</li>
+    <li>React Router 的 loader 可以和懒加载组件的下载<strong>并行</strong>进行(render-as-you-fetch),比"先下载代码再发请求"更快。</li>
+    <li>预加载粒度是带宽成本和交互流畅度的权衡:全站无差别预加载浪费流量,完全不做又体验差,应聚焦在高频入口按需开启。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="127-动态import拆包.html" class="nav-btn">← 动态 import() 拆包</a>
+    <a href="129-React.memo避免子组件无效渲染.html" class="nav-btn next">下一篇:React.memo 避免子组件无效渲染 →</a>
+  </div>
+</div>
+</body>
+</html>

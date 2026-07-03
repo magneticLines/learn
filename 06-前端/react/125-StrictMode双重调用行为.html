@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · Strict Mode 双重调用行为</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / 理解重渲染 / Strict Mode 双重调用行为</div>
+  <div class="hero">
+    <div class="tag">React · 性能优化</div>
+    <h1>Strict Mode 双重调用行为</h1>
+    <p>"我明明只点了一次按钮,为什么控制台打印了两条日志?React 是不是有 bug?"——这是几乎每个初学者都问过的问题。答案是:<strong>这是故意的</strong>。开发模式下 <code>&lt;StrictMode&gt;</code> 会把组件函数体、部分 Hook、以及 <code>useEffect</code> 故意调用两次,目的是<strong>提前替你暴露不纯的渲染逻辑和没清理的副作用</strong>。</p>
+  </div>
+
+  <h2>为什么要故意调用两次</h2>
+  <p>React 的核心假设是:<strong>组件函数必须是纯函数</strong>——同样的 props/state 输入,渲染函数应该产出同样的结果,不能在渲染过程中"顺手"做一些有副作用的事(比如修改外部变量、发请求、写 DOM)。这个假设是 React 能实现<strong>并发渲染</strong>(可以暂停、丢弃、重新开始一次渲染)的基础:如果渲染函数不纯,被打断重来时就会出问题。</p>
+
+  <p>但"你的组件是不是纯的"光靠肉眼审查很难发现,React 团队的解法很直接:<strong>故意重复调用一次,如果两次结果不一致或者产生了看得见的副作用,你就会立刻发现问题</strong>——而不是等到上线后并发特性触发才踩坑。</p>
+
+  <div class="flow">
+    <div class="flow-box">开发模式挂载组件</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box hl">渲染函数执行第一次</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box hl">立即再执行第二次(结果丢弃,只留第二次)</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box ok">正常显示 UI</div>
+  </div>
+
+  <h2>被双重调用的三类东西</h2>
+  <table>
+    <tr><th>被双调用的内容</th><th>说明</th></tr>
+    <tr><td>组件函数体</td><td>整个函数重新执行一遍,包括函数体里的 <code>console.log</code>、临时变量计算等</td></tr>
+    <tr><td>部分 Hook(如 <code>useState</code> 的初始化函数、<code>useReducer</code>)</td><td>传给它们的初始化函数会被调用两次,用来发现初始化逻辑里的副作用</td></tr>
+    <tr><td><code>useEffect</code>(挂载 + 清理)</td><td>挂载时:执行 → 清理 → 再执行一次;模拟"组件卸载又重新挂载"的场景</td></tr>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StrictMode 下 useEffect 的真实执行顺序</span></div>
+    <pre><span class="fn">useEffect</span><span class="punct">(()</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+  <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'订阅了 socket'</span><span class="punct">);</span>
+  <span class="kw">const</span> <span class="var">socket</span> <span class="punct">=</span> <span class="fn">connect</span><span class="punct">();</span>
+  <span class="kw">return</span> <span class="punct">()</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+    <span class="fn">console</span><span class="punct">.</span><span class="fn">log</span><span class="punct">(</span><span class="str">'清理了 socket'</span><span class="punct">);</span>
+    <span class="var">socket</span><span class="punct">.</span><span class="fn">disconnect</span><span class="punct">();</span>
+  <span class="punct">};</span>
+<span class="punct">}, []);</span>
+
+<span class="com">// 开发模式 + StrictMode 下,挂载时控制台依次打印:</span>
+<span class="com">// "订阅了 socket"  → 第一次执行 effect</span>
+<span class="com">// "清理了 socket"  → 立即调用清理函数</span>
+<span class="com">// "订阅了 socket"  → 再执行一次 effect(这次真正留下)</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>这是在帮你提前测试"卸载重挂载"的场景。</strong> React 未来的并发特性(比如离屏渲染、Activity 之类的能力)会出现"组件被暂时卸载、之后又恢复挂载,内部状态还要保留"的情况。如果你的 <code>useEffect</code> 写了清理函数却漏了什么(比如订阅了却没退订、定时器没清除),在 StrictMode 下"挂载→卸载→再挂载"的过程会立刻让 bug 现形,而不是留到生产环境某个复杂场景才炸。
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误解:"React 是不是有 bug,渲染了两次?"</strong> 不是 bug,而是<strong>故意的开发环境行为</strong>,并且只发生在<strong>开发模式 + 包裹了 <code>&lt;StrictMode&gt;</code></strong> 的场景下——生产构建(<code>npm run build</code> 之后的产物)不会双重调用,用户实际看到的行为是正常的单次渲染。判断"我的 effect 到底触发了几次"永远要以生产环境为准,不要在开发环境数日志条数来下结论。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>典型的踩坑写法:计数器在 StrictMode 下"跳两下"</span></div>
+    <pre><span class="kw">let</span> <span class="var">idCounter</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>  <span class="com">// ✗ 渲染函数外的可变变量,在渲染过程中被修改——不纯</span>
+
+<span class="kw">function</span> <span class="fn">Item</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="var">idCounter</span><span class="punct">++;</span>          <span class="com">// StrictMode 下这行执行两次,idCounter 会多加 1</span>
+  <span class="kw">return</span> <span class="tag-c">&lt;div&gt;</span><span class="jsx-expr">{idCounter}</span><span class="tag-c">&lt;/div&gt;</span><span class="punct">;</span>
+<span class="punct">}</span>
+<span class="com">// 正确做法:用 useRef 或 useId 生成稳定 id,不要在渲染函数体里直接修改外部变量</span></pre>
+  </div>
+
+  <div class="callout react">
+    <strong>和前两篇的联系:</strong> Profiler 里看到的"渲染两次"如果是开发环境下且用了 StrictMode,属于正常现象,不要误判为性能问题去优化它;真正该关注的是生产环境下、由三种真实重渲染原因(自身 state、父组件、Context)触发的多余渲染。
+  </div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>StrictMode 只在<strong>开发模式</strong>下故意把组件函数体、部分 Hook 初始化、<code>useEffect</code> 调用两次,目的是提前暴露不纯的渲染逻辑和没清理干净的副作用。</li>
+    <li>这是为将来的并发特性(暂停/丢弃渲染、卸载重挂载保留状态)做准备——不纯的组件在这些特性下会出问题。</li>
+    <li>生产构建<strong>不会</strong>双重调用,用户看到的是正常的单次渲染,不要用开发环境的日志条数判断生产行为。</li>
+    <li>常见踩坑:在渲染函数体里直接修改外部可变变量、副作用没写清理函数——这些在 StrictMode 下会很快暴露。</li>
+    <li>理解重渲染的三篇到此结束;接下来进入"代码分割"模块,从 <code>React.lazy</code> + <code>Suspense</code> 开始。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="124-ReactDevToolsProfiler使用.html" class="nav-btn">← React DevTools Profiler 使用</a>
+    <a href="126-React.lazy与Suspense路由懒加载.html" class="nav-btn next">下一篇:React.lazy + Suspense 路由懒加载 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · Axios 封装（拦截器 / 统一错误处理）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / HTTP 请求 / Axios 封装（拦截器 / 统一错误处理）</div>
+  <div class="hero">
+    <div class="tag">React · 生态实战</div>
+    <h1>Axios 封装:拦截器与统一错误处理</h1>
+    <p>裸用 <code>fetch</code> 或 <code>axios</code> 写请求,每次都要手写 <code>baseURL</code>、手动拼 <code>Authorization</code> 头、手动 <code>catch</code> 弹错误提示——十个接口写十遍一模一样的样板代码。<strong>拦截器(interceptor)</strong>把这些"每次都要做的事"收敛到一个地方,一次写好,全项目复用。</p>
+  </div>
+
+  <h2>问题:裸用请求库为什么会腐化</h2>
+  <p>想象一个真实项目要接入的接口:登录态要带 token、后端约定统一的错误码结构、401 要跳登录页、500 要弹 toast。如果每个组件自己发请求,这些逻辑会被复制粘贴到几十个地方:</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例:每个请求都重复处理 token 和错误</span></div>
+    <pre><span class="com">// UserProfile.jsx</span>
+<span class="kw">const</span> <span class="var">res</span> <span class="punct">=</span> <span class="kw">await</span> <span class="fn">fetch</span><span class="punct">(</span><span class="str">'https://api.example.com/user'</span><span class="punct">,</span> <span class="punct">{</span>
+  <span class="var">headers</span><span class="punct">:</span> <span class="punct">{</span> <span class="var">Authorization</span><span class="punct">:</span> <span class="str">`Bearer ${</span><span class="fn">localStorage</span><span class="punct">.</span><span class="fn">getItem</span><span class="punct">(</span><span class="str">'token'</span><span class="punct">)}`</span> <span class="punct">},</span>
+<span class="punct">});</span>
+<span class="kw">if</span> <span class="punct">(</span><span class="var">res</span><span class="punct">.</span><span class="var">status</span> <span class="punct">===</span> <span class="num">401</span><span class="punct">)</span> <span class="punct">{</span> <span class="var">location</span><span class="punct">.</span><span class="var">href</span> <span class="punct">=</span> <span class="str">'/login'</span><span class="punct">;</span> <span class="punct">}</span>
+<span class="kw">if</span> <span class="punct">(!</span><span class="var">res</span><span class="punct">.</span><span class="var">ok</span><span class="punct">)</span> <span class="punct">{</span> <span class="fn">toast</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">'请求失败'</span><span class="punct">);</span> <span class="punct">}</span>
+<span class="com">// OrderList.jsx 里几乎一模一样的代码又写一遍……</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>为什么这是个真问题?</strong> 不是"丑"这么简单——当后端某天把 token 的字段名从 <code>Authorization</code> 改成 <code>X-Auth-Token</code>,你得全项目搜索替换;当产品要求 401 时先弹确认框再跳转,你得改几十处。<strong>重复逻辑 = 修改成本随接口数量线性增长</strong>,这是拦截器要解决的核心问题。
+  </div>
+
+  <h2>request 拦截器:统一加认证头</h2>
+  <p>拦截器的本质是给 axios 实例注册一个"钩子函数",<strong>每次请求发出前</strong>(request 拦截器)或<strong>每次响应回来后</strong>(response 拦截器)都会自动执行,不需要在业务代码里手动调用。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>request.js:创建实例并注册 request 拦截器</span></div>
+    <pre><span class="kw">import</span> <span class="var">axios</span> <span class="kw">from</span> <span class="str">'axios'</span><span class="punct">;</span>
+
+<span class="kw">const</span> <span class="var">request</span> <span class="punct">=</span> <span class="var">axios</span><span class="punct">.</span><span class="fn">create</span><span class="punct">({</span>
+  <span class="var">baseURL</span><span class="punct">:</span> <span class="var">import</span><span class="punct">.</span><span class="var">meta</span><span class="punct">.</span><span class="var">env</span><span class="punct">.</span><span class="var">VITE_API_BASE</span><span class="punct">,</span>  <span class="com">// 环境变量,不同环境不同域名</span>
+  <span class="var">timeout</span><span class="punct">:</span> <span class="num">10000</span><span class="punct">,</span>
+<span class="punct">});</span>
+
+<span class="com">// request 拦截器:每次请求发出前自动执行,统一挂 token</span>
+<span class="var">request</span><span class="punct">.</span><span class="var">interceptors</span><span class="punct">.</span><span class="var">request</span><span class="punct">.</span><span class="fn">use</span><span class="punct">((</span><span class="var">config</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="var">token</span> <span class="punct">=</span> <span class="fn">localStorage</span><span class="punct">.</span><span class="fn">getItem</span><span class="punct">(</span><span class="str">'token'</span><span class="punct">);</span>
+  <span class="kw">if</span> <span class="punct">(</span><span class="var">token</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="var">config</span><span class="punct">.</span><span class="var">headers</span><span class="punct">.</span><span class="var">Authorization</span> <span class="punct">=</span> <span class="str">`Bearer ${</span><span class="var">token</span><span class="punct">}`</span><span class="punct">;</span>
+  <span class="punct">}</span>
+  <span class="kw">return</span> <span class="var">config</span><span class="punct">;</span>  <span class="com">// 必须返回 config,否则请求发不出去</span>
+<span class="punct">},</span> <span class="punct">(</span><span class="var">error</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="var">Promise</span><span class="punct">.</span><span class="fn">reject</span><span class="punct">(</span><span class="var">error</span><span class="punct">));</span></pre>
+  </div>
+
+  <h2>response 拦截器:统一处理错误</h2>
+  <p>response 拦截器接收两个回调:第一个处理<strong>成功</strong>响应(可以在这里直接"拆包",让业务代码拿到的就是 <code>data</code> 而不是整个 axios 响应对象),第二个处理<strong>失败</strong>(网络错误、非 2xx 状态码)。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>request.js:response 拦截器统一拆包与错误处理</span></div>
+    <pre><span class="var">request</span><span class="punct">.</span><span class="var">interceptors</span><span class="punct">.</span><span class="var">response</span><span class="punct">.</span><span class="fn">use</span><span class="punct">(</span>
+  <span class="punct">(</span><span class="var">response</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="var">response</span><span class="punct">.</span><span class="var">data</span><span class="punct">,</span>  <span class="com">// 成功:直接返回 data,业务代码不用每次写 res.data</span>
+  <span class="punct">(</span><span class="var">error</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="var">status</span> <span class="punct">=</span> <span class="var">error</span><span class="punct">.</span><span class="var">response</span><span class="punct">?.</span><span class="var">status</span><span class="punct">;</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">status</span> <span class="punct">===</span> <span class="num">401</span><span class="punct">)</span> <span class="punct">{</span>
+      <span class="fn">localStorage</span><span class="punct">.</span><span class="fn">removeItem</span><span class="punct">(</span><span class="str">'token'</span><span class="punct">);</span>
+      <span class="var">location</span><span class="punct">.</span><span class="var">href</span> <span class="punct">=</span> <span class="str">'/login'</span><span class="punct">;</span>  <span class="com">// 登录态失效,统一跳登录页</span>
+    <span class="punct">}</span> <span class="kw">else</span> <span class="kw">if</span> <span class="punct">(</span><span class="var">status</span> <span class="punct">&gt;=</span> <span class="num">500</span><span class="punct">)</span> <span class="punct">{</span>
+      <span class="fn">toast</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">'服务器开小差了,请稍后重试'</span><span class="punct">);</span>
+    <span class="punct">}</span> <span class="kw">else</span> <span class="punct">{</span>
+      <span class="fn">toast</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="var">error</span><span class="punct">.</span><span class="var">response</span><span class="punct">?.</span><span class="var">data</span><span class="punct">?.</span><span class="var">message</span> <span class="punct">||</span> <span class="str">'请求失败'</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="var">Promise</span><span class="punct">.</span><span class="fn">reject</span><span class="punct">(</span><span class="var">error</span><span class="punct">);</span>  <span class="com">// 继续 reject,让调用方(如 TanStack Query)也能感知失败</span>
+  <span class="punct">}</span>
+<span class="punct">);</span>
+
+<span class="kw">export</span> <span class="kw">default</span> <span class="var">request</span><span class="punct">;</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>关键细节:错误处理完仍要 <code>Promise.reject</code>。</strong> 拦截器里弹了 toast 不代表流程结束——调用方(比如后面要讲的 TanStack Query 的 <code>onError</code>,或组件里的 <code>try/catch</code>)往往还需要知道"这次请求失败了",从而决定要不要保留 loading 态、要不要禁用重试按钮。<strong>拦截器负责"通用的副作用"(弹提示、跳转),业务代码负责"具体页面该怎么响应"</strong>,两者不冲突。
+  </div>
+
+  <h2>对比:裸用 axios vs 封装后使用</h2>
+  <div class="compare-grid">
+    <div class="compare-card">
+      <div class="label">裸用 axios</div>
+      <pre>axios.get('https://api.x.com/user', {
+  headers: { Authorization: `Bearer ${token}` }
+}).then(res => res.data)
+  .catch(err => { /* 手写弹窗 */ });
+// 每个接口都要重复这套模板</pre>
+    </div>
+    <div class="compare-card">
+      <div class="label">封装后的 request 实例</div>
+      <pre>import request from './request';
+
+request.get('/user');
+// token、baseURL、错误弹窗全部自动处理
+// 业务代码只关心"要调哪个接口"</pre>
+    </div>
+  </div>
+
+  <h2>为什么这一步是给 TanStack Query 铺路</h2>
+  <p>封装 axios 实例本身<strong>不解决</strong>缓存、重复请求、loading/error 状态管理这些问题——那是 TanStack Query 的职责。这里做的事情很单纯:提供一个<strong>“开箱即用、自带认证和错误处理”的请求函数</strong>,下一篇会把它作为 <code>queryFn</code> 传给 <code>useQuery</code>,两者各司其职地组合起来。</p>
+
+  <div class="callout react">
+    <strong>提前预告:</strong> 封装到这一步,<code>request.get('/user')</code> 已经可以直接当 <code>queryFn</code> 用。但要注意 TanStack Query 需要 <code>queryFn</code> 抛出错误才能进入它自己的 <code>isError</code> 状态——上面拦截器里保留 <code>Promise.reject</code> 正是为了不破坏这个机制。
+  </div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>裸用 <code>fetch</code>/<code>axios</code> 会导致 token 拼接、错误处理这类"每次都要做的事"被复制粘贴到项目各处,维护成本随接口数量线性增长。</li>
+    <li><code>axios.create()</code> 创建一个带 <code>baseURL</code>、<code>timeout</code> 等公共配置的实例,避免硬编码域名。</li>
+    <li>request 拦截器在请求发出前统一注入 <code>Authorization</code> 头;response 拦截器统一拆包 <code>data</code>、统一处理 401 跳转和 5xx 提示。</li>
+    <li>拦截器里处理完错误后仍要 <code>Promise.reject(error)</code>,把"失败"这个信号继续传递给调用方,不能吞掉。</li>
+    <li>封装 axios 只负责"怎么发请求",不负责缓存和状态管理,这些留给下一篇的 TanStack Query 组合使用。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="143-RHF与Zod resolver整合.html" class="nav-btn">← RHF + Zod resolver 整合</a>
+    <a href="145-与TanStackQuery结合.html" class="nav-btn next">下一篇:与 TanStack Query 结合 →</a>
+  </div>
+</div>
+</body>
+</html>

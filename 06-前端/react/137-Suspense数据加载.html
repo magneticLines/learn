@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · Suspense 数据加载</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / 并发特性(进阶) / Suspense 数据加载</div>
+  <div class="hero">
+    <div class="tag">React · 并发特性</div>
+    <h1>Suspense 数据加载</h1>
+    <p>第 126 篇讲过 <code>Suspense</code> 配合 <code>React.lazy</code> 做代码分割——组件代码还没下载完,先显示 fallback。React 18 把这套"没就绪就显示 fallback,就绪了自动切换"的能力,从"等代码"扩展到了"等数据"。前提是数据获取方案得专门支持它,普通的 <code>useEffect</code> 请求做不到。</p>
+  </div>
+
+  <h2>先回顾:Suspense 到底在等什么</h2>
+  <p>第 126 篇里,<code>Suspense</code> 等的是 <code>React.lazy(() =&gt; import('./Chart'))</code> 返回的模块<strong>什么时候下载完</strong>。React 18 把这个能力泛化了:<code>Suspense</code> 真正等待的不是"代码"或"数据"这种具体东西,而是一个<strong>抛出来的 Promise</strong>——只要某个组件在渲染过程中"还没准备好",就可以抛出一个 Promise,离它最近的 <code>Suspense</code> 边界会捕获这个 Promise,显示 fallback,等 Promise resolve 后重新渲染这个组件。</p>
+  <p>代码分割只是这套机制的第一个应用场景:<code>React.lazy</code> 内部帮你做了"组件还没加载好就抛出加载中的 Promise"这件事。数据加载是第二个应用场景:一个支持 Suspense 的数据获取库,在数据还没到达时,同样"抛出一个还未 resolve 的 Promise",React 用完全相同的机制处理它。</p>
+
+  <div class="flow">
+    <div class="flow-box">组件渲染时数据未就绪</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box hl">组件抛出一个 Promise</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">最近的 Suspense 边界捕获</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">显示 fallback</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box ok">Promise resolve → 自动重渲染,显示真实内容</div>
+  </div>
+
+  <h2>命令式 vs 声明式:两种加载态写法的对比</h2>
+  <p>先看最熟悉的写法——手动用 <code>isLoading</code> 控制展示什么,这是<strong>命令式</strong>的:每个用到数据的组件都要自己知道"现在是不是在加载中"。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card">
+      <div class="label">命令式:手写 isLoading</div>
+      <pre>function Profile() {
+  const { data, isLoading } = useQuery(...);
+  if (isLoading) return &lt;Spinner /&gt;;
+  return &lt;ProfileCard user={data} /&gt;;
+}
+// 每一层用到异步数据的组件
+// 都要写一遍这个判断逻辑,
+// 加载态和展示逻辑耦合在一起</pre>
+    </div>
+    <div class="compare-card">
+      <div class="label">声明式:交给 Suspense</div>
+      <pre>function Profile() {
+  const { data } = useSuspenseQuery(...);
+  return &lt;ProfileCard user={data} /&gt;; // 走到这里数据一定已就绪
+}
+
+&lt;Suspense fallback={&lt;Spinner /&gt;}&gt;
+  &lt;Profile /&gt;
+&lt;/Suspense&gt;
+// 加载态提到外层统一声明,
+// 组件本身只管"数据到了怎么展示"</pre>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <strong>声明式的好处不止是少写几行 if。</strong> 当页面里有多个异步数据源(比如用户信息 + 订单列表 + 推荐商品)时,命令式写法要么每个组件各自 loading(界面一块一块地"跳出来"),要么手动合并多个 <code>isLoading</code> 判断;用 <code>Suspense</code> 可以直接嵌套多个边界,精确控制"哪几块内容一起等、哪几块可以各自独立展示",布局更可控,代码也不用手动合并加载状态。
+  </div>
+
+  <h2>示例:用支持 Suspense 的数据方案</h2>
+  <p>拿 TanStack Query(本系列前面讲 <code>useQuery</code> 用的那个库)举例,它提供了 <code>useSuspenseQuery</code>——用法和 <code>useQuery</code> 几乎一样,区别是数据未就绪时它会<strong>抛出 Promise</strong> 而不是返回 <code>isLoading: true</code>:</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>useSuspenseQuery:数据没到就让 Suspense 接管</span></div>
+    <pre><span class="kw">import</span> <span class="punct">{</span> <span class="var">useSuspenseQuery</span> <span class="punct">}</span> <span class="kw">from</span> <span class="str">'@tanstack/react-query'</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="punct">{</span> <span class="var">Suspense</span> <span class="punct">}</span> <span class="kw">from</span> <span class="str">'react'</span><span class="punct">;</span>
+
+<span class="kw">function</span> <span class="fn">UserProfile</span><span class="punct">({</span> <span class="var">userId</span> <span class="punct">})</span> <span class="punct">{</span>
+  <span class="com">// 没有 isLoading 字段了——渲染到这一行时,数据必然已经就绪</span>
+  <span class="kw">const</span> <span class="punct">{</span> <span class="var">data</span> <span class="punct">}</span> <span class="punct">=</span> <span class="fn">useSuspenseQuery</span><span class="punct">({</span>
+    <span class="var">queryKey</span><span class="punct">:</span> <span class="punct">[</span><span class="str">'user'</span><span class="punct">,</span> <span class="var">userId</span><span class="punct">],</span>
+    <span class="var">queryFn</span><span class="punct">:</span> <span class="punct">()</span> <span class="punct">=&gt;</span> <span class="fn">fetchUser</span><span class="punct">(</span><span class="var">userId</span><span class="punct">),</span>
+  <span class="punct">});</span>
+  <span class="kw">return</span> <span class="tag-c">&lt;h2&gt;</span><span class="jsx-expr">{data.name}</span><span class="tag-c">&lt;/h2&gt;</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="kw">function</span> <span class="fn">Page</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">return</span> <span class="punct">(</span>
+    <span class="tag-c">&lt;Suspense</span> <span class="attr">fallback</span><span class="punct">=</span><span class="jsx-expr">{&lt;Spinner /&gt;}</span><span class="tag-c">&gt;</span>
+      <span class="tag-c">&lt;UserProfile</span> <span class="attr">userId</span><span class="punct">=</span><span class="jsx-expr">{1}</span> <span class="tag-c">/&gt;</span>  <span class="com">{/* 数据没到 → 抛 Promise → 显示 Spinner;到了 → 自动切回这里 */}</span>
+    <span class="tag-c">&lt;/Suspense&gt;</span>
+  <span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>另一个常见落地场景是 Next.js 的<strong>异步 Server Component</strong>——组件函数本身就是 <code>async function Page() { const data = await fetchData(); ... }</code>,框架在渲染层面把"await 未完成"接到了 Suspense 机制上,同样是"没数据显示 fallback,数据到了自动替换"的声明式效果,写法上比手写 <code>useSuspenseQuery</code> 更直接,但这属于服务端渲染范畴,机制上是同一套思想的另一种实现。</p>
+
+  <h2>陷阱:不是所有数据获取方式都能配合 Suspense</h2>
+  <div class="callout warn">
+    <strong>最容易踩的坑:</strong> 普通的 <code>useState</code> + <code>useEffect</code> 数据获取(<code>useEffect(() =&gt; { fetch(...).then(setData) }, [])</code>)<strong>完全不支持 Suspense</strong>。它的加载过程发生在<strong>渲染完成之后</strong>的副作用里,不会在渲染阶段抛出 Promise,React 根本感知不到"这个组件在等数据"。把它包在 <code>Suspense</code> 里没有任何效果——该显示 fallback 的时候不会显示,组件依然是先渲染出空/undefined 状态,再等 effect 跑完手动 setState 触发二次渲染。<br><br>
+    要接入 Suspense,数据获取逻辑必须发生在<strong>渲染阶段</strong>并且遵循"没准备好就 <code>throw</code> 一个 Promise"的约定,这通常意味着要依赖专门支持它的库(TanStack Query 的 <code>useSuspenseQuery</code>、Relay、或者框架自带的机制),不建议自己手写这套底层逻辑——处理竞态、缓存、去重的细节很容易出错。
+  </div>
+
+  <h2>和已学内容的联系</h2>
+  <p>把这几篇串起来看:第 126 篇讲 <code>Suspense + React.lazy</code> 解决"代码还没下载好";这一篇讲同一套 <code>Suspense</code> 机制被数据获取库借用,解决"数据还没到"；而前面两篇 <code>useTransition</code>/<code>useDeferredValue</code> 解决的是另一件事——"渲染优先级"。三者可以组合使用:比如切换 tab 触发新的 <code>useSuspenseQuery</code> 请求时,用 <code>startTransition</code> 包裹这次切换,React 会保持旧内容展示而不是立刻跳出 fallback,直到新数据就绪才切换,这就是 React 官方文档里"用 Suspense 避免每次切换都闪烁 loading"的组合用法。</p>
+
+  <h2>小结</h2>
+  <ul>
+    <li><code>Suspense</code> 的底层机制是"捕获组件渲染时抛出的 Promise",第 126 篇的代码分割和这一篇的数据加载是同一套机制的两个应用场景。</li>
+    <li>声明式加载态把"要不要显示 loading"从每个组件里剥离出来,统一交给外层 <code>Suspense</code> 边界声明,尤其在多个异步数据源共存时更清晰。</li>
+    <li>要用上 Suspense 数据加载,必须用专门支持它的方案(<code>useSuspenseQuery</code>、Relay、异步 Server Component 等),不能靠普通的 <code>useState</code> + <code>useEffect</code>。</li>
+    <li>普通 <code>useEffect</code> 请求的加载发生在渲染之后的副作用里,不会抛出 Promise,包进 <code>Suspense</code> 也不会生效——这是最常见的误用。</li>
+    <li>可以和 <code>useTransition</code> 组合,让 tab 切换等场景在新数据未就绪前保留旧内容,避免频繁闪烁 fallback。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="136-useDeferredValue.html" class="nav-btn">← useDeferredValue</a>
+    <a href="138-AntDesign使用.html" class="nav-btn next">下一篇:Ant Design 使用(按需引入 / 主题定制) →</a>
+  </div>
+</div>
+</body>
+</html>

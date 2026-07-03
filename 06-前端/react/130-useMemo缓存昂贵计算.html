@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React · useMemo 缓存昂贵计算</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: #61dafb; border: 1px solid #164e63; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #61dafb; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #61dafb; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #475569; } .var { color: #e2e8f0; } .tag-c { color: #f87171; } .attr { color: #fbbf24; } .jsx-expr { color: #61dafb; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.react { background: #0c2231; border-color: #61dafb; color: #7dd3fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #61dafb; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #61dafb; border-color: #164e63; } .nav-btn.next:hover { background: #0c2231; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card pre { font-size: 0.82rem; line-height: 1.6; font-family: "Fira Code", Consolas, monospace; color: #94a3b8; white-space: pre-wrap; }
+    .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .flow-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 16px; font-size: 0.82rem; color: #94a3b8; text-align: center; font-family: "Fira Code", Consolas, monospace; }
+    .flow-box.hl { border-color: #61dafb; color: #61dafb; }
+    .flow-box.ok { border-color: #4ade80; color: #4ade80; }
+    .flow-box.danger { border-color: #f87171; color: #f87171; }
+    .flow-arrow { color: #475569; font-size: 1.2rem; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .method-box { background: #1e2030; border: 1px solid #2d3148; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; }
+    .method-box .method-label { font-size: 0.7rem; margin-bottom: 4px; }
+    .method-box code { font-family: "Fira Code", Consolas, monospace; color: #61dafb; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../react-roadmap.html">React 路线图</a> / 渲染优化 / useMemo 缓存昂贵计算</div>
+  <div class="hero">
+    <div class="tag">React · 性能优化</div>
+    <h1>useMemo 缓存昂贵计算</h1>
+    <p>函数组件每次重渲染都会<strong>完整重新执行一遍函数体</strong>——这是第 123 篇讲过的重渲染机制的直接推论。这意味着组件内任何一段计算,不管多贵,只要组件重渲染就会重跑一次。<code>useMemo</code> 让你把"计算结果"缓存下来,依赖不变就直接复用,不用重新算。</p>
+  </div>
+
+  <h2>原理:依赖不变则跳过重新计算</h2>
+  <p><code>useMemo(calcFn, deps)</code> 在组件首次渲染时执行 <code>calcFn</code> 拿到结果并缓存;之后每次重渲染,React 会用和 <code>memo</code> 浅比较相同的方式(<code>Object.is</code>)比较这次的 <code>deps</code> 数组和上次的 <code>deps</code> 数组——<strong>逐项比较</strong>,如果每一项都相等,就直接返回上次缓存的结果,<code>calcFn</code> 根本不会被重新调用;只要有一项变了,才重新执行 <code>calcFn</code> 算出新结果并更新缓存。</p>
+
+  <div class="flow">
+    <div class="flow-box">组件重渲染</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box hl">比较新旧 deps</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box ok">相同:复用缓存结果</div>
+  </div>
+  <div class="flow">
+    <div class="flow-box">组件重渲染</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box hl">比较新旧 deps</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box danger">不同:重新执行计算</div>
+  </div>
+
+  <h2>什么时候真正需要:计算量大 + 每次渲染都会重跑</h2>
+  <p>典型场景:对一个较大的数组做排序、过滤、聚合统计,而这个数组本身不常变化,但组件会因为其他无关状态(比如输入框的值、某个开关)频繁重渲染。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例:每次输入都重新排序一遍大数组</span></div>
+    <pre><span class="kw">function</span> <span class="fn">ProductList</span><span class="punct">({</span> <span class="var">products</span> <span class="punct">})</span> <span class="punct">{</span>  <span class="com">// products 有几千条</span>
+  <span class="kw">const</span> <span class="punct">[</span><span class="var">keyword</span><span class="punct">,</span> <span class="var">setKeyword</span><span class="punct">]</span> <span class="punct">=</span> <span class="fn">useState</span><span class="punct">(</span><span class="str">''</span><span class="punct">);</span>
+
+  <span class="com">// 每敲一个字符,组件就因 keyword 变化而重渲染一次</span>
+  <span class="com">// 而这行排序逻辑,不管 keyword 变没变,每次渲染都会重新跑一遍完整排序</span>
+  <span class="kw">const</span> <span class="var">sorted</span> <span class="punct">=</span> <span class="punct">[...</span><span class="var">products</span><span class="punct">].</span><span class="fn">sort</span><span class="punct">((</span><span class="var">a</span><span class="punct">,</span> <span class="var">b</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="var">a</span><span class="punct">.</span><span class="var">price</span> <span class="punct">-</span> <span class="var">b</span><span class="punct">.</span><span class="var">price</span><span class="punct">);</span>
+
+  <span class="kw">return</span> <span class="punct">(</span>
+    <span class="jsx-expr">&lt;&gt;</span>
+      <span class="tag-c">&lt;input</span> <span class="attr">value</span><span class="punct">=</span><span class="jsx-expr">{keyword}</span> <span class="attr">onChange</span><span class="punct">=</span><span class="jsx-expr">{(e) => setKeyword(e.target.value)}</span> <span class="tag-c">/&gt;</span>
+      <span class="jsx-expr">{sorted.filter(p => p.name.includes(keyword)).map(p => &lt;Item key={p.id} {...p} /&gt;)}</span>
+    <span class="jsx-expr">&lt;/&gt;</span>
+  <span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p><strong>问题:</strong>排序是 <code>O(n log n)</code>,<code>products</code> 根本没变,但只因为用户敲了一个字符导致 <code>keyword</code> 变化、组件重渲染,这几千条数据的排序就要白白重跑一遍——每次按键都可能感觉到明显卡顿。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例:useMemo 缓存排序结果,keyword 变化不触发重新排序</span></div>
+    <pre><span class="kw">function</span> <span class="fn">ProductList</span><span class="punct">({</span> <span class="var">products</span> <span class="punct">})</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="punct">[</span><span class="var">keyword</span><span class="punct">,</span> <span class="var">setKeyword</span><span class="punct">]</span> <span class="punct">=</span> <span class="fn">useState</span><span class="punct">(</span><span class="str">''</span><span class="punct">);</span>
+
+  <span class="com">// 只依赖 products;products 没变时,keyword 怎么变都不会重新排序</span>
+  <span class="kw">const</span> <span class="var">sorted</span> <span class="punct">=</span> <span class="fn">useMemo</span><span class="punct">(</span>
+    <span class="punct">()</span> <span class="punct">=&gt;</span> <span class="punct">[...</span><span class="var">products</span><span class="punct">].</span><span class="fn">sort</span><span class="punct">((</span><span class="var">a</span><span class="punct">,</span> <span class="var">b</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="var">a</span><span class="punct">.</span><span class="var">price</span> <span class="punct">-</span> <span class="var">b</span><span class="punct">.</span><span class="var">price</span><span class="punct">),</span>
+    <span class="punct">[</span><span class="var">products</span><span class="punct">]</span>
+  <span class="punct">);</span>
+
+  <span class="com">// filter 开销小,且必须依赖 keyword,不用额外缓存</span>
+  <span class="kw">const</span> <span class="var">filtered</span> <span class="punct">=</span> <span class="var">sorted</span><span class="punct">.</span><span class="fn">filter</span><span class="punct">((</span><span class="var">p</span><span class="punct">)</span> <span class="punct">=&gt;</span> <span class="var">p</span><span class="punct">.</span><span class="var">name</span><span class="punct">.</span><span class="fn">includes</span><span class="punct">(</span><span class="var">keyword</span><span class="punct">));</span>
+
+  <span class="kw">return</span> <span class="punct">(</span>
+    <span class="jsx-expr">&lt;&gt;</span>
+      <span class="tag-c">&lt;input</span> <span class="attr">value</span><span class="punct">=</span><span class="jsx-expr">{keyword}</span> <span class="attr">onChange</span><span class="punct">=</span><span class="jsx-expr">{(e) => setKeyword(e.target.value)}</span> <span class="tag-c">/&gt;</span>
+      <span class="jsx-expr">{filtered.map(p => &lt;Item key={p.id} {...p} /&gt;)}</span>
+    <span class="jsx-expr">&lt;/&gt;</span>
+  <span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>注意这里的取舍:</strong> 排序开销大、依赖(<code>products</code>)不常变 → 值得缓存;过滤(<code>filter</code>)开销小、且每次输入都必须重新算 → 不用缓存,直接算更简单。<strong>不是把所有中间计算都塞进 useMemo</strong>,而是只缓存"贵、且依赖变化频率明显低于组件渲染频率"的那部分。
+  </div>
+
+  <h2>陷阱:给开销很小的计算加 useMemo,反而更亏</h2>
+  <div class="callout warn">
+    <strong>useMemo 本身不是免费的。</strong> 它需要:①在内存里保存上一次的 deps 数组和计算结果;②每次渲染都执行一次 deps 的逐项比较。如果被缓存的计算本身只是 <code>a + b</code> 或者 <code>list.length</code> 这种开销微乎其微的操作,那么"比较 deps 是否变化"的成本可能比"直接重新算一遍"还高——加了 useMemo 反而更慢、还多占了一份内存,纯粹是负优化。<strong>不是所有计算都值得缓存</strong>,这是 React 官方文档明确提醒过的高频面试考点。
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card">
+      <div class="label">不该用 useMemo</div>
+      <pre>const total = items.length;
+const label = `共 ${count} 项`;
+const isEmpty = list.length === 0;
+// 这些计算本身比"比较 deps"还便宜</pre>
+    </div>
+    <div class="compare-card">
+      <div class="label">该用 useMemo</div>
+      <pre>const sorted = useMemo(
+  () => bigArray.slice().sort(cmp),
+  [bigArray]
+);
+// 排序/过滤/聚合大数据集,
+// 且依赖变化频率明显低于渲染频率</pre>
+    </div>
+  </div>
+
+  <h2>useMemo 缓存对象引用,配合 memo 使用</h2>
+  <p>回到上一篇的陷阱:传给 <code>memo</code> 子组件的对象/数组 prop,如果在渲染函数体内现场创建就会每次都是新引用。<code>useMemo</code> 除了缓存"计算结果",也常被用来缓存"对象引用本身",让下游的 <code>memo</code> 真正生效:</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>用 useMemo 稳定对象引用,配合 memo 组件</span></div>
+    <pre><span class="kw">function</span> <span class="fn">App</span><span class="punct">()</span> <span class="punct">{</span>
+  <span class="kw">const</span> <span class="punct">[</span><span class="var">count</span><span class="punct">,</span> <span class="var">setCount</span><span class="punct">]</span> <span class="punct">=</span> <span class="fn">useState</span><span class="punct">(</span><span class="num">0</span><span class="punct">);</span>
+
+  <span class="com">// style 对象只在依赖不变时保持同一个引用,ExpensiveList(memo)才能命中浅比较</span>
+  <span class="kw">const</span> <span class="var">style</span> <span class="punct">=</span> <span class="fn">useMemo</span><span class="punct">(()</span> <span class="punct">=&gt;</span> <span class="punct">({</span> <span class="var">color</span><span class="punct">:</span> <span class="str">'red'</span> <span class="punct">}),</span> <span class="punct">[]);</span>
+
+  <span class="kw">return</span> <span class="punct">(</span>
+    <span class="jsx-expr">&lt;&gt;</span>
+      <span class="tag-c">&lt;button</span> <span class="attr">onClick</span><span class="punct">=</span><span class="jsx-expr">{() => setCount(c => c + 1)}</span><span class="tag-c">&gt;</span><span class="jsx-expr">{count}</span><span class="tag-c">&lt;/button&gt;</span>
+      <span class="tag-c">&lt;ExpensiveList</span> <span class="attr">style</span><span class="punct">=</span><span class="jsx-expr">{style}</span> <span class="tag-c">/&gt;</span>
+    <span class="jsx-expr">&lt;/&gt;</span>
+  <span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>函数组件每次重渲染都会重新执行整个函数体,<code>useMemo(calcFn, deps)</code> 让 <code>deps</code> 不变时直接复用上次的计算结果,跳过重新计算。</li>
+    <li>依赖比较方式和 <code>memo</code> 一致:逐项 <code>Object.is</code> 比较,任意一项变化就重新执行 <code>calcFn</code>。</li>
+    <li>真正值得用的场景:计算开销大(排序/过滤/聚合大数据集)、且依赖变化频率明显低于组件渲染频率。</li>
+    <li>陷阱:给开销微小的计算加 useMemo,比较 deps 的成本可能比直接重算还高,是负优化而非优化——不是所有计算都值得缓存。</li>
+    <li><code>useMemo</code> 也常用来稳定对象/数组类型 prop 的引用,配合下游的 <code>memo</code> 组件才能真正跳过渲染。</li>
+    <li>下一篇讲 <code>useCallback</code>——用同样的思路解决"函数类型"的引用稳定问题,和 <code>useMemo</code> 是近亲。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="129-React.memo避免子组件无效渲染.html" class="nav-btn">← React.memo 避免子组件无效渲染</a>
+    <a href="131-useCallback稳定函数引用.html" class="nav-btn next">下一篇:useCallback 稳定函数引用 →</a>
+  </div>
+</div>
+</body>
+</html>
