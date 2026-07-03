@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设计一个即时聊天系统 — 系统设计</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../system-design-roadmap.html">系统设计 路线图</a> / 经典案例 / 设计一个即时聊天系统
+  </div>
+
+  <div class="hero">
+    <div class="tag">经典案例</div>
+    <h1>设计一个即时聊天系统</h1>
+    <p>微信、WhatsApp 这类 IM 系统看起来只是"发一句话对方就收到"，但要在弱网、掉线、多设备、消息乱序等各种真实网络环境下做到"消息不丢、不重、有序、能追溯已读状态"，是一整套精细的工程设计。</p>
+  </div>
+
+  <h2>问题的本质：从"数据传输"变成"实时送达 + 可靠投递"</h2>
+  <p>
+    即时聊天系统与普通 CRUD 应用最大的不同在于：<strong>服务端必须主动把数据推给客户端</strong>，而不是被动等客户端来查询。
+    此外，网络是不可靠的——消息可能丢包、客户端可能中途断线、用户可能同时用手机和电脑登录——所以系统还必须保证<strong>消息最终一定送达，且不重复、顺序正确</strong>。
+    这两个诉求（实时推送 + 可靠投递）合起来，就是即时聊天系统设计的全部核心。
+  </p>
+
+  <h2>实时送达：为什么是 WebSocket，而不是轮询</h2>
+  <p>
+    要让服务端能"主动"通知客户端，候选方案主要有三种，呼应 10-计算机网络里讲过的 HTTP 连接模型：
+  </p>
+  <table>
+    <thead><tr><th>方案</th><th>原理</th><th>问题</th></tr></thead>
+    <tbody>
+      <tr><td>短轮询（Polling）</td><td>客户端每隔几秒发一次 HTTP 请求，问"有没有新消息"</td><td>大部分请求都是空跑，浪费带宽和服务器资源；轮询间隔越短实时性越好但压力越大，是延迟和资源的死板取舍</td></tr>
+      <tr><td>长轮询（Long Polling）</td><td>客户端发请求后，服务端"hold住"这个连接不立即返回，直到有新消息才响应或超时</td><td>比短轮询好一些，但本质仍是"一问一答"，每次响应后要立刻发起下一次请求，且每次都要重新建立 HTTP 连接开销</td></tr>
+      <tr><td><strong>WebSocket</strong></td><td>基于 TCP 的全双工长连接，一次握手后连接保持打开，服务端和客户端可以在任意时刻主动向对方发送数据</td><td>需要维护大量长连接的服务端资源（连接数是新的容量瓶颈），但没有重复握手和轮询空跑的开销</td></tr>
+    </tbody>
+  </table>
+  <p>
+    WebSocket 的关键优势是<strong>全双工（Full-Duplex）</strong>：连接建立后，服务端可以在消息到达的瞬间直接推给客户端，不需要客户端追问。这从根本上消除了轮询方案里"延迟 vs 资源消耗"的两难——不必在"问得勤实时性好但耗资源"和"问得少省资源但延迟高"之间做取舍。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>轮询像是你每隔 5 分钟给快递员打一次电话问"到了没"；长轮询像是你打一个电话让快递员"到了再挂"；WebSocket 则是你和快递员始终保持通话，他一到你家楼下就直接告诉你，双方谁想说话随时都能说。
+  </div>
+
+  <h2>可靠投递：消息不丢、不重、有序、状态可追踪</h2>
+  <p>光有实时通道还不够，网络随时可能抖动、掉线，所以还需要一整套可靠性机制：</p>
+  <h3>1. 消息 ID 与去重</h3>
+  <p>
+    每条消息在发送前由客户端生成一个全局唯一 ID（通常是 UUID 或雪花算法生成的趋势递增 ID）。如果因为网络抖动导致同一条消息被重复发送或重复推送，接收端可以凭这个 ID 判断"是不是已经处理过"，从而实现幂等去重，避免用户看到重复的消息气泡。
+  </p>
+  <h3>2. ACK 确认机制</h3>
+  <p>
+    发送方把消息发出去后，并不能假设对方已经收到，而是要等待接收方（或服务端中转节点）回一个 ACK（确认收到）。如果超过一定时间没收到 ACK，发送方就要重发。这本质上是把 TCP 层"保证字节流可靠传输"的思路，上移到了应用层"保证消息语义可靠传输"——因为 TCP 只保证连接层面的字节不丢，不代表应用进程真的处理了这条消息（比如接收端 APP 在处理前崩溃了）。
+  </p>
+  <h3>3. 离线消息存储</h3>
+  <p>
+    如果接收方当前不在线（没有维持 WebSocket 长连接），消息不能凭空消失，而是要先落地存储（比如写入 Kafka 或数据库中的离线消息表），等这个用户下次上线建立连接时，再把这段时间积压的离线消息批量拉取推送过去。这里能明显看到和 Feed 流"收件箱"思路的相似性——都是"先落一份数据，等消费方就绪了再取"。
+  </p>
+  <h3>4. 消息状态机</h3>
+  <p>一条消息从发出到被对方看到，通常要经历几个明确的状态流转，客户端 UI 上常见的"单勾、双勾、蓝色双勾"就是这个状态机的可视化：</p>
+  <div class="tree">
+    <span class="hi">已发送</span>（客户端发出，服务端收到）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">已送达</span>（消息已经推送到接收方设备，接收方客户端确认收到）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">已读</span>（接收方打开会话，客户端上报"已读"回执）
+  </div>
+  <p>
+    每一次状态跃迁都需要一次 ACK 往返确认，服务端要维护每条消息、每个接收者的独立状态（群聊场景下一条消息可能对应几十个接收者，各自的送达/已读状态互不相同）。
+  </p>
+
+  <h2>消息存储的读写扩散权衡</h2>
+  <p>
+    群聊消息该如何存储和分发，同样存在类似 Feed 流的"推模式 vs 拉模式"取舍：给每个群成员各存一份消息（写扩散，群成员多时写入压力大）还是只存一份消息、成员上线后各自拉取（读扩散，实时性依赖轮询/推送时机）。实际 IM 系统通常也是折中：小群直接写扩散给所有成员的消息列表，超大群（如上千人的社群）转为拉模式或分批异步推送，思路与 Feed 流的推拉结合完全一致。
+  </p>
+
+  <h2>初学者常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为用了 WebSocket 消息就"绝对不会丢"。WebSocket 只保证连接存在期间的字节流传输，如果连接中途断开、或者接收端进程在处理消息前崩溃，消息依然可能丢失，必须靠应用层的 ACK + 重发机制兜底，这是很多面试者会忽略的一点。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>以为消息顺序可以靠"服务端到达时间"保证。在分布式部署下，同一用户的消息可能经过不同服务器节点转发，网络延迟不同会导致到达服务端的顺序和发送顺序不一致，因此通常需要客户端生成的递增序列号或时间戳来做最终排序，而不能依赖网络层面的先后顺序。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"如何保证消息不丢失？" 标准答题结构是分层回答：传输层用 WebSocket 保证长连接实时性 → 应用层用消息 ID + ACK 机制保证端到端确认 → 存储层用离线消息表兜底不在线场景 → 客户端本地也要做持久化和展示层去重。单说"用了 WebSocket 就不丢"是不完整的答案。
+  </div>
+
+  <h2>与已学知识点的联系</h2>
+  <ul>
+    <li><strong>呼应 10-计算机网络：</strong>WebSocket 是在一次 HTTP Upgrade 握手之后，把底层 TCP 连接从"请求-响应"模式升级为全双工模式，理解 TCP 长连接和三次握手的开销，才能理解为什么"复用一条连接"比"反复轮询建立连接"更划算。</li>
+    <li><strong>呼应 13-消息队列：</strong>离线消息的暂存、以及跨服务器节点之间的消息转发，往往借助消息队列（如 Kafka）做异步缓冲和削峰，避免某个接收端服务被瞬时消息量打垮。</li>
+    <li><strong>呼应 09-数据库：</strong>消息状态机（已发送/已送达/已读）通常需要持久化到数据库，且要支持高频的状态更新，这对写入性能提出了要求，实践中常见按用户或会话做分库分表来分摊压力。</li>
+  </ul>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>即时聊天系统的核心诉求是"实时推送 + 可靠投递"，WebSocket 解决前者，消息 ID/ACK/离线存储/状态机解决后者。</li>
+    <li>WebSocket 相比轮询的本质优势是全双工长连接，消除了"实时性 vs 资源消耗"的两难。</li>
+    <li>可靠投递不是靠单一技术点，而是传输层、应用层、存储层多层配合的结果。</li>
+    <li>群聊消息分发同样面临读写扩散的取舍，思路与 Feed 流的推拉结合一脉相承。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-设计一个Feed流系统.html" class="nav-btn">← 设计一个 Feed 流系统</a>
+    <a href="./05-设计一个打车系统Uber.html" class="nav-btn next">设计一个打车系统(Uber) →</a>
+  </div>
+
+</div>
+</body>
+</html>

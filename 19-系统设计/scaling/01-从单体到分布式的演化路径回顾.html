@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>从单体到分布式的演化路径回顾 — 系统设计</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #1f3528; }
+  .nav-btn.next { color: #4ade80; border-color: #1f3528; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../system-design-roadmap.html">系统设计 路线图</a> / 扩展性回顾 / 从单体到分布式的演化路径回顾
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">扩展性回顾</div>
+    <h1>从单体到分布式的演化路径回顾</h1>
+    <p>这是整条学习路线的最后一篇。不讲新知识点，而是把前面学过的所有模块串成一条故事线——看看一个系统从"一台服务器"长到"亿级用户"，每一步究竟是被什么逼着往前走的。</p>
+  </div>
+
+  <!-- 开场 -->
+  <h2>先讲一个故事</h2>
+  <p>
+    假设你和两个朋友决定做一个电商网站，暂且叫它 <strong>"随手买"</strong>。第一天，你们的架构简单到不能再简单：
+    一台云服务器，上面跑着一个 Java 单体应用（Spring Boot 打成一个 jar），连着同一台机器上的一个 MySQL 数据库。
+    商品、订单、用户、支付逻辑全部写在一个代码库里，部署时一次性全量发布。
+  </p>
+  <div class="callout info">
+    <strong>阶段 0：单体架构。</strong>这是一切的起点，也不是什么"落后"的架构——业务体量小的时候，单体架构开发快、部署简单、排查问题容易（所有日志在一台机器上），是最合适的选择。系统设计的教训往往是：<strong>过早引入复杂架构，比架构太简单更危险。</strong>
+  </div>
+  <p>
+    随手买上线后爆了单，用户从几十个涨到几十万，问题开始一个接一个地冒出来。接下来的每一次架构演进，都是"哪里疼医哪里"——先看清楚瓶颈在哪，再决定引入什么技术，而不是照着技术清单硬套。
+  </p>
+
+  <!-- 阶段一 -->
+  <h2>阶段一：数据库先扛不住了</h2>
+  <p>
+    用户量上来后，最先喊疼的是数据库。商品详情页每次打开都要查一次 MySQL，首页有大量"读"流量（浏览商品），下单量相对读取量小得多——这是典型的<strong>读多写少</strong>场景，但所有读写请求全打在同一个库上，主库的连接数和 I/O 很快见顶。
+  </p>
+  <p>
+    对应引入的技术，正是 <strong>09-数据库</strong> 模块讲的内容：搭建<strong>主从复制</strong>，写操作只打主库，读操作分流到多个从库（<strong>读写分离</strong>）；同时给高频查询字段（如商品 ID、用户 ID）加上合适的<strong>索引</strong>，把全表扫描变成索引查找。这一步解决的是"单库支撑不了读写并发"的问题，但没有解决"数据量本身太大"的问题——那是下一步的事。
+  </p>
+
+  <!-- 阶段二 -->
+  <h2>阶段二：数据量本身太大了</h2>
+  <p>
+    随手买做了两年，订单表堆到了几亿行。这时候即使读写分离，单张表的索引也大到查询变慢，主库的磁盘和内存都吃紧——问题从"并发太高"变成了"<strong>数据量太大，一台机器装不下</strong>"。
+  </p>
+  <p>
+    这一步对应的是 <strong>09-数据库扩展性 Tab</strong> 讲的<strong>分库分表</strong>：按用户 ID 或订单 ID 做哈希/范围分片，把一张巨表拆成分布在多台机器上的多张小表。代价是跨分片的联表查询、分布式 ID 生成、跨库事务都变复杂了——这也是为什么分库分表往往是"逼不得已才上"的重量级方案，而不是一开始就用。
+  </p>
+
+  <!-- 阶段三 -->
+  <h2>阶段三：热点数据被反复查询</h2>
+  <p>
+    双十一大促，"随手买"首页的爆款商品详情，一秒钟被请求几万次，但商品信息其实半小时都不会变一次。每次都穿透到数据库查询，纯属浪费——这类<strong>读多写少、且能容忍短暂不一致</strong>的热点数据，是缓存的天然战场。
+  </p>
+  <p>
+    对应 <strong>12-缓存</strong> 模块：把商品详情缓存进 Redis，绝大多数请求直接命中缓存，数据库压力骤降。但缓存不是免费的午餐，它带来了一整套新问题——<strong>缓存穿透</strong>（查询根本不存在的商品 ID，缓存和数据库都没有，请求全部打穿到 DB）、<strong>缓存击穿</strong>（某个爆款商品缓存恰好过期的瞬间，海量请求同时打到数据库）、<strong>缓存雪崩</strong>（大批缓存同时过期或 Redis 宕机，请求集体涌向数据库）、以及<strong>缓存与数据库的一致性</strong>（改了数据库，缓存什么时候更新/删除）。这些问题在 12-缓存 里都有专门的应对方案。
+  </p>
+
+  <!-- 阶段四 -->
+  <h2>阶段四：业务逻辑互相拖累</h2>
+  <p>
+    随手买加了"下单后发短信通知、更新积分、通知仓库备货"等一堆下游逻辑，一开始都写成下单接口里的同步调用。结果短信服务一抖动，整个下单接口跟着变慢甚至超时——一个非核心的次要环节，拖垮了核心的下单流程。
+  </p>
+  <p>
+    对应 <strong>13-消息队列</strong>：下单成功后，把"发短信""加积分""通知仓库"这些非核心动作封装成消息扔进 MQ，由下游服务异步消费。这样做到了两件事：<strong>解耦</strong>（下单逻辑不再依赖短信服务是否可用）和<strong>削峰</strong>（大促瞬时下单洪峰被 MQ 缓冲，下游按自己的处理能力慢慢消费，而不是被瞬时流量打垮）。
+  </p>
+
+  <!-- 阶段五 -->
+  <h2>阶段五：单体代码库难以维护</h2>
+  <p>
+    随手买的团队从 3 个人涨到 30 个人，所有人还在改同一个单体代码库：商品组改了一行代码，编译整个工程要等五分钟；订单组发布一个小版本，得把用户组、支付组的代码一起打包上线，一旦哪个模块有 bug，全站回滚。<strong>代码耦合和团队协作成本，成了新的瓶颈</strong>。
+  </p>
+  <p>
+    对应 <strong>14-分布式与微服务</strong>：把单体拆成用户服务、商品服务、订单服务、支付服务等独立部署的微服务，每个服务有自己的代码库、自己的发布节奏。但服务一多，新问题跟着来——服务之间怎么找到对方（<strong>服务发现</strong>）、外部请求怎么统一路由和鉴权（<strong>API 网关</strong>）、某个下游服务挂了会不会拖垮整条调用链（<strong>断路器/熔断降级</strong>）。这些"治理"手段本质上是把单体时代"进程内调用天然可靠"的假设打破后，必须补回来的能力。
+  </p>
+
+  <!-- 阶段六 -->
+  <h2>阶段六：微服务化之后，一致性变复杂了</h2>
+  <p>
+    拆分后最先暴露的问题是"下单"这件事从一次本地数据库事务，变成了跨订单服务、库存服务、支付服务的三次远程调用。以前 <code>@Transactional</code> 一个注解就能保证的原子性，现在没有一个数据库能跨服务帮你自动回滚了。
+  </p>
+  <p>
+    这正是 <strong>14-分布式与微服务的事务与一致性 Tab</strong> 要解决的问题：不再强求"要么全成功要么全失败"的<strong>强一致性</strong>，转而采用 TCC、Saga、本地消息表等<strong>柔性事务</strong>方案，接受"短暂不一致，但最终一定一致"的<strong>最终一致性</strong>。这是分布式系统里一个重要的心态转变——不是所有场景都需要、也不是所有场景都能负担得起强一致性。
+  </p>
+
+  <!-- 阶段七 -->
+  <h2>阶段七：用户遍布全球，静态资源变慢了</h2>
+  <p>
+    随手买做出海生意，欧洲用户打开商品图片要转几千公里跑到国内机房，延迟感知明显。同时国内单机房也扛不住全部流量，需要把请求分散到多台机器上。
+  </p>
+  <p>
+    对应 <strong>10-计算机网络</strong> 里的两个手段：<strong>CDN</strong> 把图片、JS、CSS 这类静态资源缓存到离用户最近的边缘节点，用户不再舍近求远回源到国内机房；<strong>负载均衡</strong> 把流量在多台应用服务器之间合理分摊，避免单机成为新的瓶颈，同时也为水平扩容（加机器）提供了基础。
+  </p>
+
+  <!-- 阶段八 -->
+  <h2>阶段八：系统太复杂，出问题难排查</h2>
+  <p>
+    这时候的随手买，一次下单请求背后可能涉及十几个微服务、几层缓存、一条消息队列链路。用户反馈"下单失败了"，排查起来却要翻十几个服务的日志，效率极低——<strong>系统复杂度本身，变成了新的运维成本</strong>。
+  </p>
+  <p>
+    对应 <strong>17-可观测性</strong>：统一采集<strong>日志</strong>方便集中检索，暴露关键指标做<strong>监控</strong>和告警，用<strong>链路追踪</strong>把一次请求跨多个服务的调用链串起来，一眼看出请求卡在了哪一跳。可观测性不是"锦上添花"，而是系统复杂到一定程度之后的生存必需品。
+  </p>
+
+  <!-- 阶段九 -->
+  <h2>阶段九：发布要频繁，还要保证质量</h2>
+  <p>
+    团队规模变大后，随手买从"两周发一次版"变成"一天发好几次版"。发布频率上去了，靠人工回归测试和手动部署根本跟不上，一旦哪次发布带出 bug，影响的是几十万在线用户。
+  </p>
+  <p>
+    对应 <strong>15-测试</strong>（单元测试、集成测试筑起质量的第一道防线，让"改了代码不放心"变成"跑一遍测试就有底"）和 <strong>16-容器化与 CI/CD</strong>（用容器把"我本地能跑"和"线上环境一致"的问题连根解决，配合自动化流水线把编译、测试、部署串成一条流水线，让发布从"手动、易错、令人紧张"变成"可重复、可回滚、习以为常"）。
+  </p>
+
+  <!-- 阶段十 -->
+  <h2>阶段十：安全不是补丁，是设计的一部分</h2>
+  <p>
+    最后要提一句贯穿始终、却容易被放到最后才想起的一环：安全。随手买在用户量还小的时候，可能觉得 XSS、SQL 注入、越权访问这些问题"等做大了再说"，但恰恰是这种心态，让安全漏洞在系统跑起来之后越滚越大——补一个漏洞，往往要动多个模块，比一开始就设计对代价高得多。
+  </p>
+  <div class="callout warn">
+    <strong>呼应 18-Web 安全：</strong>安全不应该是系统上线前"最后加一层"的补丁，而应该贯穿在每一层设计里——数据库层的参数化查询防注入、接口层的鉴权与限流、传输层的 HTTPS、前端的输出转义防 XSS，每一层都各自承担一部分安全责任，而不是指望某一个"安全模块"兜底所有问题。
+  </div>
+
+  <!-- 总结 -->
+  <h2>回头看整条演化路径</h2>
+  <div class="tree">
+    <span class="hi">单体（一台机器 + 一个库）</span><br>
+    &nbsp;&nbsp;└─ 读写压力大 → 主从复制 / 读写分离 / 索引优化（09-数据库）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 单表数据量太大 → 分库分表（09-数据库·扩展性）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 热点重复查询 → 缓存 + 穿透/击穿/雪崩/一致性应对（12-缓存）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 逻辑强耦合、同步调用互拖累 → 消息队列解耦削峰（13-消息队列）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 代码库难维护、团队协作冲突 → 微服务 + 服务发现/网关/熔断（14-分布式与微服务）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 跨服务事务变复杂 → 柔性事务 / 最终一致性（14-分布式与微服务·事务与一致性）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 全球用户延迟高 → CDN + 负载均衡（10-计算机网络）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 系统复杂难排查 → 日志/监控/链路追踪（17-可观测性）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 发布频繁要保质量 → 自动化测试 + 容器化/CI-CD（15-测试 / 16-容器化与CI-CD）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <span class="hi">安全必须贯穿每一层设计（18-Web安全）</span>
+  </div>
+
+  <p>
+    把这条链路完整看下来，会发现一个规律：<strong>没有一次架构演进是"为了炫技"而做的，每一次都是对当时明确存在的瓶颈的针对性回应</strong>。
+    系统设计能力的核心，从来不是"背下一张技术选型清单，照抄到自己的项目里"，而是训练出一种敏感度——看到一个系统，能判断出它现在最疼的地方在哪，以及用最小代价能不能解决这个疼点。过早引入缓存、消息队列、微服务，往往只是把简单问题复杂化，制造出更多需要维护的活动部件。
+  </p>
+  <div class="callout tip">
+    <strong>呼应"计算机抽象塔"心法：</strong>从这个视角回看整个学习路线——数据库、缓存、消息队列、网络、JVM、操作系统，都是一层一层的抽象，每一层的存在都是为了屏蔽下一层的复杂度，解决上一层暴露出来的具体问题。学这些技术的意义，从来不是记住名词和参数，而是理解每一层抽象"为什么在那里、解决了什么问题"——这也是贯穿这整个学习项目的核心心法。
+  </div>
+  <p>
+    "随手买"从一台服务器长成了今天这套系统，走的每一步都写在了前面这些模块里。这本书到这里就读完了，但真正的系统设计能力，是在往后遇到一个个具体的"疼点"时，知道去前面哪个模块翻出对应的武器。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../cases/07-设计一个视频网站YouTube.html" class="nav-btn">← 设计一个视频网站(YouTube)</a>
+    <a href="../../index.html" class="nav-btn next">🎉 全部模块已完成，返回总目录 →</a>
+  </div>
+
+</div>
+</body>
+</html>

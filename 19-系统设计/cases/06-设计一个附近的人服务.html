@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设计一个附近的人服务 — 系统设计</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../system-design-roadmap.html">系统设计 路线图</a> / 经典案例 / 设计一个附近的人服务
+  </div>
+
+  <div class="hero">
+    <div class="tag">经典案例</div>
+    <h1>设计一个附近的人服务(Proximity Service) <span style="font-size:0.8rem;color:#64748b;">[Vol.2]</span></h1>
+    <p>交友软件的"附近的人"、美食 App 的"附近好店"，本质问题和打车系统一样：给定一个坐标，找出周围范围内的一批对象。这一篇不再重复讲调度逻辑，而是把 GeoHash 这个核心索引技术的编码原理和边界陷阱彻底讲透。</p>
+  </div>
+
+  <h2>与打车系统的共性：都是"范围查询"问题</h2>
+  <p>
+    "附近的人" "附近的餐厅" "附近的司机"，从数据结构的角度看是同一类问题：<strong>给定一个中心点坐标和一个半径，从海量地理坐标点中查出落在这个圆形/矩形范围内的所有对象</strong>。
+    上一篇打车系统里提到 GeoHash 可以把二维坐标编码成可索引的字符串，这一篇深入拆解它到底是怎么编码的，以及它在实际使用中最容易踩的一个坑。
+  </p>
+
+  <h2>GeoHash 编码原理：交替二分经纬度</h2>
+  <p>
+    GeoHash 的编码过程可以理解成对经度和纬度分别做<strong>不断对半切分的二分查找</strong>，并把每一步"落在左半区还是右半区"的结果记录成一个二进制位：
+  </p>
+  <div class="tree">
+    <span class="hi">以纬度为例，范围 [-90, 90]，目标纬度 39.9</span><br>
+    &nbsp;&nbsp;第1步：中点 0，39.9 &gt; 0 → 落在右半区 [0, 90] → 记 <span class="hi">1</span><br>
+    &nbsp;&nbsp;第2步：中点 45，39.9 &lt; 45 → 落在左半区 [0, 45] → 记 <span class="hi">0</span><br>
+    &nbsp;&nbsp;第3步：中点 22.5，39.9 &gt; 22.5 → 落在右半区 [22.5, 45] → 记 <span class="hi">1</span><br>
+    &nbsp;&nbsp;...（不断重复，区间越切越小，精度越来越高）
+  </div>
+  <p>
+    经度做同样的二分过程，然后把经度和纬度产生的二进制位<strong>交替拼接</strong>（经、纬、经、纬……），得到一串二进制串，再把这串二进制按每 5 位一组转换成 Base32 字符（用 0-9 和部分字母表示），最终得到我们常见的 GeoHash 字符串，比如北京的某个坐标可能编码成 <code>wx4g0s</code>。
+  </p>
+  <p>
+    这个编码方式带来一个关键性质：<strong>字符串越长，切分的次数越多，代表的地理区域范围越小、精度越高；两个 GeoHash 字符串共享的前缀越长，代表它们所在的区域在地理上越接近</strong>。这就是为什么"查询附近的对象"可以转化为一个字符串前缀匹配问题——不再需要对每个候选点计算经纬度距离，而是直接查数据库里 GeoHash 前缀相同的记录，效率上等价于走了一次索引查找而不是全表扫描。
+  </p>
+
+  <h2>GeoHash 的边界陷阱：相邻的点，前缀可能天差地别</h2>
+  <p>
+    GeoHash 有一个初学者极易忽略、但面试中很爱追问的缺陷：<strong>它是按照固定网格切分空间的，两个物理位置非常接近的点，如果恰好落在网格分界线的两侧，它们的 GeoHash 编码可能前缀完全不同</strong>。
+  </p>
+  <div class="callout warn">
+    <strong>典型场景：</strong>假设某条经线正好是某一层切分的分界线，A 点在分界线以东 10 米，B 点在分界线以西 10 米——两点直线距离只有 20 米，却可能因为在这一层二分中分别落入"左区"和"右区"，导致后续所有更细粒度的编码都完全走向不同的分支，最终两个几乎重合的坐标点算出的 GeoHash 字符串前几位就不一样，甚至完全找不到公共前缀。
+  </div>
+  <p>
+    如果系统天真地认为"只要查询和自己 GeoHash 前缀相同的记录就是附近的人"，就会在网格边界附近漏掉大量实际上很近的邻居——这是纯前缀匹配方案的致命盲区。
+  </p>
+
+  <h2>解决方案：查询周围 9 宫格（自身 + 8 个相邻网格）</h2>
+  <p>
+    业界通用的规避方法是：<strong>不只查询目标点所在网格的 GeoHash，而是同时查询它上下左右及四个对角共 8 个相邻网格，加上自身网格，一共 9 个网格</strong>，把这 9 个网格内的候选对象都取出来，再对这批候选结果逐一计算真实的球面距离（如 Haversine 公式），过滤排序后返回真正落在半径范围内的结果。
+  </p>
+  <div class="tree">
+    <span class="hi">目标点所在网格</span>：中心格<br>
+    &nbsp;&nbsp;┌─────┬─────┬─────┐<br>
+    &nbsp;&nbsp;│ 左上 │ 上  │ 右上 │<br>
+    &nbsp;&nbsp;├─────┼─────┼─────┤<br>
+    &nbsp;&nbsp;│ 左  │<span class="hi">中心(目标)</span>│ 右  │<br>
+    &nbsp;&nbsp;├─────┼─────┼─────┤<br>
+    &nbsp;&nbsp;│ 左下 │ 下  │ 右下 │<br>
+    &nbsp;&nbsp;└─────┴─────┴─────┘<br>
+    查询这 9 个网格内的全部候选点，再精确计算距离过滤
+  </div>
+  <p>
+    这个"先粗筛后精算"的两阶段思路其实很常见：先用索引结构快速圈定一个可能包含答案的候选集合（哪怕这个集合稍微大一点、有少量误差），再对这个小得多的候选集合做一次精确但相对昂贵的计算（真实距离公式），从而避免对全体数据做精确计算的开销。
+  </p>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为 GeoHash 前缀长度选得越长，查询精度越高就万事大吉。前缀越长网格越小，边界效应反而更容易出现（因为网格更密，落在边界附近的点比例更高），必须始终配合"查询周围 9 宫格"这个策略，单纯依赖前缀匹配是不完整的方案。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"GeoHash 有什么缺陷？" 标准答案就是这个边界跳变问题，紧接着追问"怎么解决"，答案是查询目标网格及其 8 个相邻网格再精确计算距离过滤。能完整答出这一整套逻辑，通常能体现出对空间索引原理的真正理解，而不只是"背过 GeoHash 这个名词"。
+  </div>
+
+  <h2>与已学知识点的联系</h2>
+  <ul>
+    <li><strong>呼应 09-数据库：</strong>GeoHash 前缀匹配能够高效执行，前提是数据库对 GeoHash 列建立了合适的索引（比如 B+树索引天然支持前缀范围扫描），这与普通字符串字段建索引提升查询效率是同一套底层逻辑。</li>
+    <li><strong>呼应 12-缓存：</strong>"附近的人"这类结果通常具有较强的空间局部性和一定的时效性，可以对热点区域（比如商圈、地标附近）的查询结果做短时间缓存，减少重复的 9 宫格查询和距离计算开销。</li>
+    <li><strong>呼应上一篇打车系统：</strong>本篇是对上一篇"地理位置索引"部分的深挖，两者共享同一套 GeoHash/四叉树索引思想，只是应用场景从"实时调度"变成了"附近搜索/推荐"。</li>
+  </ul>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>GeoHash 通过交替二分经纬度、转换成字符串，把二维空间查询问题转化为一维字符串前缀匹配问题。</li>
+    <li>GeoHash 存在网格边界跳变的固有缺陷：物理上很近的两点可能编码前缀差异很大。</li>
+    <li>标准解法是查询目标网格及周围 8 个相邻网格（共 9 宫格），再对候选集合做精确距离计算过滤，这是"先粗筛、后精算"两阶段查询思路的典型应用。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-设计一个打车系统Uber.html" class="nav-btn">← 设计一个打车系统(Uber)</a>
+    <a href="./07-设计一个视频网站YouTube.html" class="nav-btn next">设计一个视频网站(YouTube) →</a>
+  </div>
+
+</div>
+</body>
+</html>

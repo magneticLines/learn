@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设计一个秒杀系统 — 经典案例</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../system-design-roadmap.html">系统设计 路线图</a> / 经典案例 / 设计一个秒杀系统
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">经典案例</div>
+    <h1>设计一个秒杀系统</h1>
+    <p>"1000 件商品，10 万人同时抢购"——秒杀系统的核心挑战不是"数据量大"，而是"极短时间窗口内的超高并发写请求"，这是一道把缓存、消息队列、分布式锁全部串起来的综合题。</p>
+  </div>
+
+  <!-- 需求澄清 -->
+  <h2>第一步：需求澄清</h2>
+  <table>
+    <thead>
+      <tr><th>类型</th><th>具体要求</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>功能性需求</td>
+        <td>用户在指定时间点抢购限量商品；库存扣完即结束；不能超卖（卖出数量绝不能超过库存）</td>
+      </tr>
+      <tr>
+        <td>非功能性需求</td>
+        <td>瞬时并发极高（可能是平时流量的成百上千倍）；持续时间短（往往几秒到几分钟内库存售罄）；绝对不能超卖，但允许"少量库存因保护机制而未在第一时间售出"</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>秒杀 vs 一般电商下单的本质区别：</strong>一般电商下单的流量是相对平滑的，而秒杀是"脉冲式"流量——比如平时 QPS 100，秒杀开始瞬间 QPS 冲到 10 万，1 分钟后又回落到平时水平。<strong>系统设计的核心目标不是长期支撑 10 万 QPS，而是"扛住这个瞬时脉冲，不被打垮"</strong>，这决定了后面所有设计都是围绕"削峰"展开的。
+  </div>
+
+  <!-- 容量估算 -->
+  <h2>第二步：容量估算</h2>
+  <p>
+    假设某商品秒杀活动预计吸引 100 万用户参与，其中 10% 的用户会在开始的前 1 秒内发起请求，那么瞬时峰值 QPS 可以粗略估算为 <strong>10 万</strong>。
+    而实际商品库存可能只有 1000 件——也就是说，<strong>99.9% 的请求最终都是"陪跑"，注定失败</strong>。这个数字直接决定了架构方向：<strong>既然绝大多数请求根本不需要真正走到数据库，那么系统的核心任务就是尽可能早地拦截和过滤掉这些无效请求</strong>，只让极少数"真正可能抢到商品"的请求触达最终的库存扣减逻辑。
+  </p>
+
+  <!-- 高层设计：分层削峰 -->
+  <h2>第三步：高层设计——分层削峰思路</h2>
+  <p>秒杀系统的高层设计可以理解成一个"漏斗"，每一层都在过滤掉一批请求，越往后流量越小：</p>
+  <div class="tree">
+    <span class="hi">① 前端限流</span>（按钮防重复点击、验证码增加机器人成本）<br>
+    &nbsp;&nbsp;↓ 过滤掉重复提交和部分机器人流量<br>
+    <span class="hi">② 网关层限流</span>（令牌桶 / 漏桶算法，拒绝超出承载能力的请求）<br>
+    &nbsp;&nbsp;↓ 只放行系统当前处理能力范围内的请求<br>
+    <span class="hi">③ 缓存层扣库存</span>（Redis 预热库存，原子操作 DECR + Lua 脚本防超卖）<br>
+    &nbsp;&nbsp;↓ 只有真正抢到库存名额的请求才能往下走<br>
+    <span class="hi">④ 消息队列异步下单</span>（削峰填谷，异步处理数据库落库）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">数据库</span>（持久化订单，压力已经被前面几层削掉了绝大部分）
+  </div>
+  <p>
+    这个漏斗结构直接体现了"分层过滤"的设计哲学：<strong>越靠前的层，过滤成本越低但精度也越低；越靠后的层，处理成本越高但必须绝对精确</strong>（库存扣减不能有任何差错）。把简单粗暴的拦截放在前面，把精细可靠的操作放在后面，才能用最小的代价扛住最大的流量。
+  </p>
+
+  <!-- 细化设计 -->
+  <h2>第四步：细化设计</h2>
+
+  <h3>1. 前端限流：第一道减压阀</h3>
+  <p>
+    按钮点击后立即置灰防止重复提交、加验证码增加"机器人刷单"的成本——这一层拦截的是"最低成本、最容易过滤"的无效流量，虽然拦不住真正的技术型攻击，但能显著削减普通用户误操作和低端脚本造成的重复请求。
+  </p>
+
+  <h3>2. 网关层限流：令牌桶 / 漏桶</h3>
+  <p>
+    进入系统内部之前，网关层要做限流，超出系统承载能力的请求直接拒绝（返回"活动太火爆，请稍后重试"），而不是让请求继续往下游传导压垮数据库。常见的两种限流算法：
+  </p>
+  <table>
+    <thead>
+      <tr><th>算法</th><th>原理</th><th>特点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>令牌桶</strong>（Token Bucket）</td>
+        <td>系统按固定速率往桶里放令牌，请求要拿到令牌才能通过，桶满了令牌就不再增加</td>
+        <td>允许一定程度的突发流量（桶里存量令牌可以被瞬间消耗），更贴近秒杀这种脉冲场景</td>
+      </tr>
+      <tr>
+        <td><strong>漏桶</strong>（Leaky Bucket）</td>
+        <td>请求先进桶，系统按固定速率从桶里"漏出"处理，桶满则拒绝新请求</td>
+        <td>严格平滑输出速率，不允许突发，适合要求下游处理速率绝对恒定的场景</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>选型建议：</strong>秒杀场景通常选令牌桶，因为它允许短时间内的突发放行（比如活动开始瞬间攒下的令牌可以一次性用完），更符合"开始瞬间冲一波，然后迅速回落"的流量特征。
+  </div>
+
+  <h3>3. 库存预热到缓存：避免每次打数据库</h3>
+  <p>
+    活动开始前，把商品库存数量提前加载到 Redis 中（呼应 <code>12-缓存</code>）。这样每个抢购请求只需要跟 Redis 交互，而不是每次都直接查询/更新数据库——Redis 单机可以轻松支撑数万级 QPS，而 MySQL 在同等硬件条件下的写入能力差一个数量级以上，把压力挡在缓存层是撑住瞬时高并发的关键一步。
+  </p>
+
+  <h3>4. Redis 原子操作 + Lua 脚本：杜绝超卖</h3>
+  <p>
+    这是秒杀系统最核心、面试最爱深挖的部分。先看一个<strong>错误的反例</strong>：
+  </p>
+  <div class="callout warn">
+    <strong>反例：</strong>先 <code>GET</code> 库存判断是否大于 0，再执行 <code>DECR</code> 扣减。这两步操作在高并发下不是原子的——假设库存剩 1，两个请求同时执行到 <code>GET</code>，都读到"库存为 1，大于 0"，于是两边都执行了 <code>DECR</code>，库存变成 -1，<strong>发生超卖</strong>。这是初学者最容易犯的经典错误，本质是"检查（check）"和"扣减（decrement）"这两步之间存在竞态条件（race condition）。
+  </div>
+  <p><strong>正例</strong>：把"检查库存 + 扣减库存"这两步操作用 Lua 脚本包起来，交给 Redis 单线程原子执行：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>seckill.lua</span></div>
+    <pre><span class="com">-- KEYS[1]：库存的 key；返回 1 表示扣减成功，返回 0 表示库存不足</span>
+<span class="kw">local</span> <span class="var">stock</span> = <span class="fn">tonumber</span>(<span class="fn">redis.call</span>(<span class="str">'GET'</span>, <span class="var">KEYS</span>[<span class="num">1</span>]))
+<span class="kw">if</span> <span class="var">stock</span> <span class="kw">and</span> <span class="var">stock</span> &gt; <span class="num">0</span> <span class="kw">then</span>
+    <span class="fn">redis.call</span>(<span class="str">'DECR'</span>, <span class="var">KEYS</span>[<span class="num">1</span>])
+    <span class="kw">return</span> <span class="num">1</span>
+<span class="kw">else</span>
+    <span class="kw">return</span> <span class="num">0</span>
+<span class="kw">end</span></pre>
+  </div>
+  <p>
+    Redis 本身是单线程模型，一个 Lua 脚本在执行期间不会被其他命令打断，这就天然保证了"检查 + 扣减"这个组合操作的原子性——这也是 Redis 处理"读后写"这类竞态场景的标准解法，比在应用层加分布式锁开销更低、实现更简单。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频考点：</strong>如果面试官问"能不能不用 Lua 脚本，用应用层的分布式锁（比如 Redisson）实现？"——技术上可行，但分布式锁涉及加锁/解锁的网络往返，并发性能远不如 Redis 原生的单线程原子操作；Lua 脚本方案是秒杀场景的业界标准做法，性能更优。
+  </div>
+
+  <h3>5. 消息队列异步下单：削峰填谷</h3>
+  <p>
+    Redis 扣减库存成功只代表这个用户"抢到了名额"，紧接着要生成订单、扣减真实数据库库存、锁定优惠券等一系列操作——如果这些操作都同步执行，相当于把 Redis 挡下来的洪峰又原封不动地转嫁给了数据库。
+    正确做法是：<strong>Redis 扣减成功后，立即把"下单请求"作为一条消息丢进消息队列（呼应 <code>13-消息队列</code>），前端先返回"抢购成功，正在生成订单"，后端消费者按数据库能承受的速率慢慢消费这些消息，异步完成下单落库</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>这就像热门演唱会的检票口——检票员（Redis 原子扣减）先快速判断"你有没有票"，有票的人先放行进场，但进场之后不是所有人同时冲向座位区的每一个入口，而是排队分批进入，避免所有人同一时刻挤爆一个通道（数据库）。
+  </div>
+  <p>
+    这一步是"前面学过的多个模块知识点在同一个真实场景里的组合应用"的最好体现：<strong>缓存</strong>（库存预热、扛住读写）+ <strong>消息队列</strong>（削峰、异步解耦）+ <strong>分布式系统的原子性保证</strong>（Lua 脚本），三者缺一不可，单独拿出哪一个都无法完整解决秒杀问题。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>不少初学者认为"加了消息队列就万事大吉"，但要注意消息队列只是把压力从"当下"转移到了"稍后处理"，如果消费速度长期跟不上生产速度，消息会持续堆积，最终还是会影响用户体验（比如订单生成延迟过久）。所以还需要合理评估消费者的处理能力，必要时对消费者也做水平扩容。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>秒杀的本质是"漏斗形"分层过滤：</strong>前端限流 → 网关限流 → 缓存扣库存 → 消息队列异步下单，每一层都在过滤流量，越往后精度要求越高。</li>
+    <li><strong>防超卖的核心是保证"检查库存 + 扣减库存"的原子性</strong>，Redis + Lua 脚本是业界标准解法，比应用层分布式锁更轻量高效。</li>
+    <li><strong>消息队列是"同步压力"转化为"异步慢慢消化"的关键一环</strong>，但要注意消费能力要跟得上，避免无限堆积。</li>
+    <li><strong>这道题串联了缓存、消息队列、限流算法多个模块的知识点</strong>，是"综合应用"这个模块名称的最佳注脚——真实系统的复杂问题，往往不是靠单一技术，而是靠多种技术的合理编排解决的。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-设计一个短链系统.html" class="nav-btn">← 设计一个短链系统</a>
+    <a href="./03-设计一个Feed流系统.html" class="nav-btn next">设计一个 Feed 流系统 →</a>
+  </div>
+
+</div>
+</body>
+</html>

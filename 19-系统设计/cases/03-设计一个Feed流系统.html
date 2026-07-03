@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设计一个 Feed 流系统 — 系统设计</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../system-design-roadmap.html">系统设计 路线图</a> / 经典案例 / 设计一个 Feed 流系统
+  </div>
+
+  <div class="hero">
+    <div class="tag">经典案例</div>
+    <h1>设计一个 Feed 流系统</h1>
+    <p>朋友圈、微博首页、Twitter Timeline 的共同问题：一个人发了一条内容，成千上万个关注者要看到它——这条内容什么时候写、写到哪、谁去读，是这类系统设计的全部矛盾所在。</p>
+  </div>
+
+  <h2>问题的本质：写一次，读很多次</h2>
+  <p>
+    Feed 流系统要解决的核心矛盾是：<strong>内容的生产是一次性的（发一条帖子），但内容的消费是多对多的</strong>（这条帖子要被每个粉丝在各自的时间线里看到，且要和这个粉丝关注的其他人的帖子按时间/权重混排）。
+    直白地说，系统必须回答一个问题：<strong>"用户刷 Feed 时看到的那一屏内容，到底是什么时候、在哪里生成的？"</strong> 这个问题的答案，决定了整个架构的形态，也就是接下来要讲的推模式和拉模式之争。
+  </p>
+
+  <h2>方案一：推模式（Push / Fan-out on Write）</h2>
+  <p>
+    <strong>核心思路：</strong>用户发布内容的那一刻，系统立刻把这条内容"推"给他的每一个粉丝，写入每个粉丝各自独立的 <strong>Feed 收件箱（Inbox）</strong>。粉丝刷 Feed 时，只需要读自己的收件箱，直接按时间排序返回，几乎不需要现算。
+  </p>
+  <div class="tree">
+    <span class="hi">用户 A 发布一条帖子</span><br>
+    &nbsp;&nbsp;├─ 查询 A 的粉丝列表（假设 3 个粉丝：B / C / D）<br>
+    &nbsp;&nbsp;├─ 写入 B 的收件箱（Inbox_B）<br>
+    &nbsp;&nbsp;├─ 写入 C 的收件箱（Inbox_C）<br>
+    &nbsp;&nbsp;└─ 写入 D 的收件箱（Inbox_D）<br>
+    <br>
+    <span class="hi">B 刷 Feed 时</span> → 直接读 Inbox_B，按时间倒序返回，<strong>读操作是 O(1) 查询</strong>
+  </div>
+  <p>
+    这里的收件箱本质上就是<strong>为每个用户预先计算好的一份"结果缓存"</strong>——这和 12-缓存模块讲的"空间换时间"是同一个思路：把本该在读的时候做的排序/聚合工作，提前挪到写的时候做掉，用存储成本换取读取延迟。收件箱通常存在 Redis 这样的 KV/List 结构里（例如每个用户一个 <code>List</code>，只保留最近几百条），而不是直接查关系型数据库，因为它要支撑海量的高频读。
+  </p>
+  <div class="callout warn">
+    <strong>致命缺陷——大 V 问题：</strong>如果发帖的是一个有 5000 万粉丝的明星账号，一次发帖就要写 5000 万次收件箱，这个"写扩散"（Fan-out）瞬间会打爆消息队列和存储层，而且用户可能等好几分钟才能收到推送完毕的内容。这就是推模式在大账号场景下无法回避的短板。
+  </div>
+
+  <h2>方案二：拉模式（Pull / Fan-out on Read）</h2>
+  <p>
+    <strong>核心思路：</strong>发布内容时什么都不做，只是简单地把帖子存一份（比如存进一张 <code>posts</code> 表）。用户刷 Feed 的那一刻，系统才实时去<strong>这个用户关注的所有人</strong>那里分别拉取最新的若干条内容，在内存里合并、按时间排序，再返回给用户。
+  </p>
+  <div class="tree">
+    <span class="hi">用户 B 刷 Feed（B 关注了 A、E、F 共 200 人）</span><br>
+    &nbsp;&nbsp;├─ 并发查询 A 最新的帖子<br>
+    &nbsp;&nbsp;├─ 并发查询 E 最新的帖子<br>
+    &nbsp;&nbsp;├─ ...（并发查询 200 个关注对象）<br>
+    &nbsp;&nbsp;└─ 把 200 份结果在内存中 <span class="hi">归并排序</span>，取 Top N 返回
+  </div>
+  <p>
+    拉模式的写操作极其轻量（只写一份数据，不管粉丝多少），完美规避了大 V 问题。但代价转移到了读端：<strong>每次刷 Feed 都要现场聚合成百上千个数据源</strong>，如果一个用户关注了很多人，这个聚合开销会随关注数线性增长，读延迟高、对数据库/缓存的瞬时压力大。
+  </p>
+
+  <h2>方案三（业界主流）：推拉结合（Hybrid）</h2>
+  <p>
+    实际生产系统（微博、Twitter 早期架构公开分享中都提到过类似思路）几乎不会单独用推或单独用拉，而是按<strong>粉丝数分层处理</strong>：
+  </p>
+  <table>
+    <thead><tr><th>账号类型</th><th>处理方式</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td>普通用户（粉丝数少，如 &lt; 1 万）</td><td>推模式，发帖时直接写入所有粉丝收件箱</td><td>粉丝少，写扩散成本可控，换来粉丝读取时的极低延迟</td></tr>
+      <tr><td>大 V / 明星账号（粉丝数巨大）</td><td>拉模式，不主动推送，标记为"特殊来源"</td><td>写扩散成本过高，宁可让关注者读时临时拉取合并</td></tr>
+      <tr><td>普通用户刷 Feed</td><td>读自己的收件箱（推的部分）+ 实时拉取关注的大 V 的最新内容，二者合并</td><td>把两种模式的结果在读取时再做一次小规模合并，兼顾写入效率与读取延迟</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Feed 流该用推还是拉？" 标准答案不是二选一，而是"看粉丝规模分层处理"——这正是系统设计面试想考察的：能不能跳出"非此即彼"的思维，针对不同子问题组合不同方案。追问"为什么不能所有人都推？"，答案落在"写扩散的成本与粉丝数成正比，大 V 场景会把这个成本放大到不可承受"。
+  </div>
+
+  <h2>与已学知识点的联系</h2>
+  <ul>
+    <li><strong>呼应 12-缓存：</strong>推模式下的收件箱本质就是一份"预计算好的缓存结果"，用写时的额外开销换取读时的 O(1) 响应，和缓存"空间换时间"的核心思想完全一致；收件箱通常也会设置一个最大长度（比如只保留最近 500 条），这和缓存的容量淘汰策略是同一个道理。</li>
+    <li><strong>呼应 09-数据库：</strong>帖子本体（原文、图片、点赞数）通常仍然存关系型数据库或列存储，收件箱只存"指针"（如 post_id + 作者 id + 时间戳），避免每个收件箱里都全量拷贝一份内容，这是典型的"索引与数据分离"思路。</li>
+    <li><strong>呼应 13-消息队列：</strong>推模式的写扩散过程（给几百万粉丝逐一写收件箱）不会同步阻塞发帖请求，而是发帖成功后立刻返回，把"写扩散"这个耗时任务丢进消息队列由后台 Worker 异步消费完成，这样用户发帖体验不会被几百万次写入拖慢。</li>
+  </ul>
+
+  <h2>初学者常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为拉模式"实时性更好所以更先进"。拉模式确实数据是实时的（不存在推送延迟），但它的代价是读放大——每次读都要做一次昂贵的多路归并，这在高并发读的场景下是灾难。选型没有绝对的"先进"，只有"匹配读写比例"。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>以为收件箱要存整条帖子内容。实际存的通常只是轻量的引用（post_id），全文渲染时再回源查询或走缓存，这样即使一条帖子后续被编辑或删除，也只需要改一处而不是几百万份拷贝。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>Feed 流的本质矛盾是"一次写、多次读"，推模式把工作量放在写时、拉模式把工作量放在读时。</li>
+    <li>推模式的瓶颈是大 V 的写扩散；拉模式的瓶颈是普通用户的读聚合开销。</li>
+    <li>业界主流做法是推拉结合：按粉丝规模分层，普通用户走推、大 V 走拉，读取时再合并，是"没有银弹、按场景组合方案"的典型体现。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-设计一个秒杀系统.html" class="nav-btn">← 设计一个秒杀系统</a>
+    <a href="./04-设计一个即时聊天系统.html" class="nav-btn next">设计一个即时聊天系统 →</a>
+  </div>
+
+</div>
+</body>
+</html>

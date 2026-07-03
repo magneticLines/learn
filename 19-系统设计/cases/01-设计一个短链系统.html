@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设计一个短链系统 — 经典案例</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../system-design-roadmap.html">系统设计 路线图</a> / 经典案例 / 设计一个短链系统
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">经典案例</div>
+    <h1>设计一个短链系统</h1>
+    <p>把一条很长的 URL 压缩成一个短小的链接（比如 xxx.ly/abc123），是系统设计面试里最经典的入门题——麻雀虽小，五脏俱全，读写分离、缓存、编码算法全都用得上。</p>
+  </div>
+
+  <!-- 需求澄清 -->
+  <h2>第一步：需求澄清</h2>
+  <p>按上一篇讲的套路，先把功能性和非功能性需求过一遍：</p>
+  <table>
+    <thead>
+      <tr><th>类型</th><th>具体要求</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>功能性需求</td>
+        <td>输入一个长 URL，生成一个唯一的短 URL；访问短 URL 时能重定向到原始长 URL</td>
+      </tr>
+      <tr>
+        <td>非功能性需求</td>
+        <td>系统要高可用；短码不能重复；重定向要低延迟；假设读写比例悬殊——生成短链是"写"，访问短链是"读"，读远多于写</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 容量估算 -->
+  <h2>第二步：容量估算</h2>
+  <p>假设日增 1000 万条短链，简单估算一下各项指标的数量级：</p>
+  <ul>
+    <li><strong>写 QPS：</strong>1000万 ÷ 86400秒 ≈ 116 QPS，考虑峰值系数（比如 5 倍），峰值写 QPS 约 <strong>580</strong>，压力不大。</li>
+    <li><strong>读 QPS：</strong>假设读写比 10:1（平均每条短链被访问 10 次），读 QPS 约为写 QPS 的 10 倍，峰值接近 <strong>5800</strong>，这才是系统的主要压力来源——所以"重定向"这条链路必须做优化，缓存是重点。</li>
+    <li><strong>存储量：</strong>假设按 10 年计算，1000万/天 × 365 × 10 ≈ 365 亿条记录。每条记录（短码 + 长 URL + 元信息）估算 500 字节，总存储量约 365亿 × 500B ≈ <strong>17TB</strong>，单机数据库存不下，需要考虑分片或者归档冷数据。</li>
+  </ul>
+  <div class="callout info">
+    <strong>估算的意义：</strong>这几个数字直接决定了后续设计——读 QPS 比写 QPS 高一个数量级，说明<strong>必须加缓存</strong>（呼应 <code>12-缓存</code>：读多写少的场景是缓存的典型用武之地）；17TB 的存储量说明单表迟早装不下，需要考虑分表或冷热数据分离。
+  </div>
+
+  <!-- 高层设计 -->
+  <h2>第三步：高层设计</h2>
+  <div class="tree">
+    <span class="hi">客户端</span>（提交长 URL / 访问短链）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">负载均衡 + 应用服务器</span>（分两个接口：生成短链、重定向）<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">缓存</span>（Redis，缓存"短码 → 长URL"的映射，扛住高频重定向读）<br>
+    &nbsp;&nbsp;↓（缓存未命中）<br>
+    <span class="hi">数据库</span>（持久化"短码 → 长URL"映射表）
+  </div>
+  <p>整个系统对外暴露两个核心接口：</p>
+  <ul>
+    <li><code>POST /shorten</code>：接收长 URL，生成短码，写入数据库，返回短链。</li>
+    <li><code>GET /{shortCode}</code>：根据短码查出长 URL，做重定向。这个接口会被高频访问，是优化的重点。</li>
+  </ul>
+
+  <!-- 细化设计 -->
+  <h2>第四步：细化设计</h2>
+
+  <h3>1. 短码生成方案</h3>
+  <p>这是本案例的核心难点，常见两种思路：</p>
+  <table>
+    <thead>
+      <tr><th>方案</th><th>原理</th><th>优点</th><th>缺点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>自增 ID + 62 进制编码</strong></td>
+        <td>用一个全局自增 ID（数据库自增主键，或者发号器），把十进制 ID 转换成 62 进制（0-9, a-z, A-Z 共 62 个字符）字符串</td>
+        <td>天然唯一不会碰撞，实现简单，编码后 6~7 位字符就能表示几十亿的 ID 空间</td>
+        <td>自增 ID 存在单点问题，且 ID 连续容易被恶意遍历、猜出短链规律</td>
+      </tr>
+      <tr>
+        <td><strong>哈希 + 碰撞检测</strong></td>
+        <td>对长 URL 做哈希（如 MD5/SHA256）取前若干位作为短码</td>
+        <td>不依赖全局自增，天然分布式友好</td>
+        <td>哈希存在碰撞概率，需要额外查库检测冲突，冲突后要重新计算或加盐，实现复杂度更高</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    62 进制编码的直觉：62 个字符，6 位长度能表示 62^6 ≈ 568 亿种组合，远超前面估算的 365 亿总量，留有余量。这也是"先估算容量、再做设计"的具体体现——短码要留多少位，不是拍脑袋决定的，而是由估算出的总数据量反推出来的。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频考点：</strong>面试官通常会追问"自增 ID 从哪来？单点怎么办？"——标准答案是用一个独立的发号器服务（比如基于数据库的一段号段预分配，或者类似雪花算法的分布式 ID 生成器），而不是让每个应用实例直接对同一个自增列做 <code>INSERT</code>，那样在高并发写入时会成为瓶颈和单点。
+  </div>
+
+  <h3>2. 数据库设计</h3>
+  <p>核心表结构很简单：</p>
+  <table>
+    <thead>
+      <tr><th>字段</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>short_code</code></td><td>短码，建唯一索引，作为查询的入口</td></tr>
+      <tr><td><code>long_url</code></td><td>原始长 URL</td></tr>
+      <tr><td><code>created_at</code> / <code>expire_at</code></td><td>创建时间、过期时间（如果支持短链过期）</td></tr>
+    </tbody>
+  </table>
+  <p>
+    因为读远多于写（前面估算读 QPS 是写 QPS 的 10 倍），<strong>重定向接口一定要走缓存</strong>：先查 Redis，命中直接返回长 URL；未命中再查数据库，并回填缓存。这是 <code>12-缓存</code> 里"Cache-Aside（旁路缓存）"模式的典型应用场景——短码到长 URL 的映射一旦生成基本不会再变，非常适合缓存，几乎不用担心缓存与数据库不一致的问题。
+  </p>
+
+  <h3>3. 重定向实现：301 还是 302</h3>
+  <p>这是短链系统里一个经常被问到、但很多人答不准确的细节：</p>
+  <table>
+    <thead>
+      <tr><th>状态码</th><th>含义</th><th>浏览器行为</th><th>对系统的影响</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>301</strong>（永久重定向）</td>
+        <td>告诉浏览器"这个短链永久指向该长 URL"</td>
+        <td>浏览器会缓存这次跳转结果，之后同一用户再次访问同一短链，<strong>不会再请求服务器</strong>，直接跳转</td>
+        <td>大幅减少服务器压力，但因为请求不再到达服务器，<strong>无法准确统计点击量</strong></td>
+      </tr>
+      <tr>
+        <td><strong>302</strong>（临时重定向）</td>
+        <td>告诉浏览器"这次跳转是临时的，下次还要重新问服务器"</td>
+        <td>浏览器不缓存跳转结果，<strong>每次访问都会重新请求服务器</strong></td>
+        <td>服务器压力更大，但可以精确统计每一次点击（这对于需要做链接分析、计费的短链服务很重要）</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>面试高频考点：</strong>这是短链系统面试里的经典"送分题"也是"送命题"——很多人只知道"301 是永久、302 是临时"，但答不出<strong>为什么短链服务大多默认用 302</strong>：因为短链服务的商业模式通常依赖点击统计（分析、广告计费），如果用 301 导致浏览器缓存跳转结果，服务端就完全看不到后续的访问请求了，统计数据会严重失真。所以要不要用 301，本质是"服务器性能"和"数据统计需求"之间的权衡，不是无脑选性能更优的方案。
+  </div>
+
+  <h3>4. 容量估算的落地验证</h3>
+  <p>
+    回到最初的估算：日增 1000 万短链，10 年 365 亿条数据，17TB 存储量。单张 MySQL 表通常建议不超过千万到亿级行数（受限于索引效率、备份恢复时间等），365 亿显然需要分表。
+    结合短码本身的哈希特性，可以按 <code>short_code</code> 做哈希取模分表，这样查询时可以直接根据短码定位到具体的表，不需要跨表扫描——这是"先有估算数字，再反推分片方案"的完整闭环。
+  </p>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>短码生成是本案例的灵魂：</strong>自增 ID + 62 进制编码是最常见的工业级方案，简单可靠；哈希方案需要额外处理碰撞，复杂度更高。</li>
+    <li><strong>读多写少的场景，缓存是标配：</strong>重定向接口必须走 Cache-Aside 模式，这是对 <code>12-缓存</code> 知识点的直接应用。</li>
+    <li><strong>301 vs 302 是"性能"和"数据统计"的权衡</strong>，没有绝对正确的选择，要结合业务目标决定。</li>
+    <li><strong>容量估算不是走过场</strong>：短码位数、要不要分表，都是由估算出的数据量反推出来的，不是凭感觉决定的。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../method/02-常见的扩展性技术选型清单.html" class="nav-btn">← 常见的扩展性技术选型清单</a>
+    <a href="./02-设计一个秒杀系统.html" class="nav-btn next">设计一个秒杀系统 →</a>
+  </div>
+
+</div>
+</body>
+</html>

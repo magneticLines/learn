@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设计一个打车系统(Uber) — 系统设计</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../system-design-roadmap.html">系统设计 路线图</a> / 经典案例 / 设计一个打车系统(Uber)
+  </div>
+
+  <div class="hero">
+    <div class="tag">经典案例</div>
+    <h1>设计一个打车系统(Uber) <span style="font-size:0.8rem;color:#64748b;">[Vol.2]</span></h1>
+    <p>打车软件表面上是"叫车-接单"，本质是一道实时地理匹配题：在几十万辆车、每秒都在移动的情况下，如何在毫秒级找到"离乘客最近的可用司机"？这是这类系统与前面案例最大的不同——第一次真正把"地理位置"作为一等公民来设计。</p>
+  </div>
+
+  <h2>问题的本质：高频位置更新 + 海量空间范围查询</h2>
+  <p>
+    打车系统的核心挑战可以拆成两个互相制约的子问题：
+  </p>
+  <ul>
+    <li><strong>写多：</strong>每一辆在线司机的车载 App 通常每 3~5 秒上报一次自己的经纬度，全城几十万辆车同时上报，这是一股持续不断的高频写入洪流。</li>
+    <li><strong>查快：</strong>乘客发起叫车请求时，系统必须在数百毫秒内从这几十万个不断变化的位置里，筛出"乘客周围 3 公里内"的司机子集，再从中挑出最优派单对象。</li>
+  </ul>
+  <p>
+    如果没有专门的空间索引，"查询附近的司机"就要退化成暴力遍历全部司机坐标、逐一计算距离——这在数据量稍大时就是不可接受的 O(n) 扫描。所以打车系统设计的关键落点，就在于<strong>如何用合适的数据结构把"二维地理位置"变成可以被数据库/缓存高效索引的一维结构</strong>。
+  </p>
+
+  <h2>①位置上报：写入压力的取舍</h2>
+  <p>
+    司机端 App 周期性地把自己的经纬度上报给服务端。上报频率本身就是一个权衡：<strong>频率越高，系统掌握的司机位置越精确、派单越准，但写入压力和网络流量也越大</strong>。实践中通常按需调整——比如司机正在接单/行驶中提高上报频率，空闲挂机状态适当降低。这批位置数据往往不是直接落盘到关系型数据库，而是写入内存型存储（如 Redis），因为位置数据具有很强的时效性，旧的位置几乎没有查询价值，天然适合用可以设置短 TTL 的缓存结构承载，这也是对 12-缓存"用最合适的存储介质匹配数据的访问模式"这一原则的体现。
+  </p>
+
+  <h2>②地理位置索引：把二维坐标降到一维</h2>
+  <p>
+    要支持"查询附近范围内的对象"，业界主要有两类思路：
+  </p>
+  <h3>方案 A：GeoHash</h3>
+  <p>
+    把经度和纬度分别做二分区间编码，交替拼接成一段二进制串，再按 Base32 转换成一段字符串（比如 <code>wx4g0s</code>）。字符串越长，编码的地理精度越高。<strong>关键性质是：GeoHash 字符串的公共前缀越长，代表的地理区域越接近</strong>——这意味着"查询附近的对象"可以转化为"查询 GeoHash 前缀相同或相近的记录"，这天然可以借助字符串索引（比如 Redis 的有序集合 ZSet，或者数据库里对 GeoHash 列建 B+树索引）高效完成，而不用对每条记录都计算一次经纬度距离。
+  </p>
+  <h3>方案 B：四叉树（Quadtree）</h3>
+  <p>
+    把整个地图看作一个大的正方形区域，如果某个区域内的对象数量超过阈值，就把这个区域均分成四个更小的象限，递归下去，直到每个叶子节点内的对象数量足够少。查询"附近的对象"时，只需要从根节点往下定位到目标坐标所在的叶子节点及其相邻节点，天然把搜索范围从全图收窄到局部子树。四叉树的优势是能根据对象疏密自适应调整精度（人口密集的市中心自动切分得更细），劣势是维护结构本身（分裂、合并节点）比 GeoHash 更复杂。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>GeoHash 像是把一张地图按经纬度网格反复对半裁剪、给每块编号，编号前几位相同的两块肯定挨得近；四叉树则像是给地图画一棵"分区目录树"，人多的地方多分几层子目录，人少的地方浅浅分完就够用了。
+  </div>
+
+  <h2>③订单调度：不只是"最近派单"</h2>
+  <p>
+    定位到"附近有哪些司机"只是第一步，真正派给谁还要考虑更多因素：
+  </p>
+  <ul>
+    <li><strong>就近优先：</strong>基础规则是优先派给物理距离最近、预计到达时间最短的司机，这样能减少乘客等待时间。</li>
+    <li><strong>负载均衡：</strong>如果只看"最近"，某个恰好停在热门上车点的司机会被反复连续派单，其他司机长期接不到单，造成司机端的强烈不公平感和潜在的司机流失。所以调度算法通常要引入接单频率、等待时长等因子做加权，避免订单过度集中在少数司机身上。</li>
+    <li><strong>供需平衡：</strong>更进一步，还要考虑区域性的供需失衡（比如演唱会散场瞬间打车需求暴涨），这时会引入动态调价或跨区域调度激励，但这已经超出了基础架构范畴，属于业务策略层面。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>面试高频陷阱：</strong>很多人设计打车系统时只想到"找最近的司机"，容易忽略负载均衡这个维度。面试官追问"如果附近同时有 10 个司机，怎么选？"时，只回答"选最近的"是不完整答案，还应该提到需要防止个别司机被高频复用、以及需要考虑司机当前状态（是否正在服务其他订单）。
+  </div>
+
+  <h2>与已学知识点的联系</h2>
+  <ul>
+    <li><strong>呼应 12-缓存：</strong>司机实时位置这种高频写入、强时效性的数据，天然适合放在 Redis 里（Redis 本身也内置了 GEO 相关命令，底层就是用 ZSet + GeoHash 编码实现的），而不是每次都读写关系型数据库。</li>
+    <li><strong>呼应 09-数据库：</strong>索引的本质是"用额外的存储空间换查询效率"，GeoHash/四叉树本质上就是专门针对空间数据设计的一种索引结构，思路与 B+树索引"避免全表扫描"是同一个逻辑，只是把一维的有序键换成了能表达空间相邻关系的编码。</li>
+    <li><strong>呼应 14-分布式与微服务：</strong>全国范围的位置数据和调度请求量巨大，实践中会按城市或区域做分片（Sharding），比如每个城市的司机位置和调度逻辑由独立的服务集群负责，这是分布式系统中常见的"按地理维度分片"策略。</li>
+  </ul>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>打车系统的核心挑战是"高频位置写入"与"实时空间范围查询"的双重压力。</li>
+    <li>GeoHash 和四叉树都是把二维地理坐标转化为可索引的一维结构，从而避免暴力扫描全部位置数据。</li>
+    <li>订单调度不能只看距离，还要兼顾负载均衡，避免个别司机被反复派单造成的不公平。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-设计一个即时聊天系统.html" class="nav-btn">← 设计一个即时聊天系统</a>
+    <a href="./06-设计一个附近的人服务.html" class="nav-btn next">设计一个附近的人服务 →</a>
+  </div>
+
+</div>
+</body>
+</html>

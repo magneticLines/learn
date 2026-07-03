@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设计一个视频网站(YouTube) — 系统设计</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../system-design-roadmap.html">系统设计 路线图</a> / 经典案例 / 设计一个视频网站(YouTube)
+  </div>
+
+  <div class="hero">
+    <div class="tag">经典案例</div>
+    <h1>设计一个视频网站(YouTube) <span style="font-size:0.8rem;color:#64748b;">[Vol.2]</span></h1>
+    <p>视频网站要解决的问题和前面几个案例都不一样：不是数据量大、也不是查询复杂，而是单个文件本身就很"重"，还要让全球各地的用户都能流畅播放，同时适配从 4G 手机到千兆宽带电脑的各种网络环境。</p>
+  </div>
+
+  <h2>问题的本质：大文件存储 + 全球低延迟分发 + 多网络环境适配</h2>
+  <p>
+    一个视频文件动辄几百 MB 到几个 GB，这带来三重挑战：<strong>上传时不能让用户干等着服务器处理完；播放时不能让每个用户的请求都跨越半个地球打到源站；同一个视频还要能在网速快慢不同的设备上都放得动</strong>。这三个问题分别对应下面三个关键设计。
+  </p>
+
+  <h2>①异步转码流水线：上传成功 ≠ 处理完成</h2>
+  <p>
+    用户上传的原始视频文件格式、分辨率、编码方式五花八门，而实际播放时需要提供多种分辨率（480p/720p/1080p/4K）和多种编码格式（适配不同浏览器/设备的解码能力），这个转换过程叫<strong>转码（Transcoding）</strong>，是非常耗 CPU、耗时的工作，一个几分钟的视频转码可能就要花费数分钟甚至更久。
+  </p>
+  <p>
+    如果让用户上传请求一直等到所有转码全部完成才返回"上传成功"，用户体验会非常糟糕（长时间白屏等待，网络稍有波动还可能导致失败重传）。正确做法是：
+  </p>
+  <div class="tree">
+    <span class="hi">用户上传原始视频</span><br>
+    &nbsp;&nbsp;├─ 原始文件先存入对象存储（如 S3/OSS），<span class="hi">立刻给用户返回"上传成功"</span><br>
+    &nbsp;&nbsp;├─ 同时把一条"待转码"任务丢进<span class="hi">消息队列</span><br>
+    &nbsp;&nbsp;└─ 后台转码集群的 Worker 异步消费队列，拉取原始文件，<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;并行生成多种分辨率/编码格式，逐个存回对象存储<br>
+    <br>
+    <span class="hi">转码全部完成后</span> → 更新视频状态为"可播放"，通知作者/触发推荐入库
+  </div>
+  <p>
+    这正是 13-消息队列讲过的"削峰填谷 + 异步解耦"的典型应用：把耗时的转码工作从用户请求的主链路中剥离出来，上传接口只负责"接收并确认收到"，真正的重活交给独立的转码集群按自己的节奏消费队列完成，即使某一时刻上传量激增，也只是让队列变长、不会直接拖垮上传接口的响应时间。
+  </p>
+
+  <h2>②CDN 分发：让用户就近取数据</h2>
+  <p>
+    视频是"大文件 + 海量重复访问"的典型静态资源——同一个热门视频可能被全球几百万用户观看，如果每个播放请求都直接打到源站服务器，源站的带宽和跨洲际的网络延迟都会成为瓶颈。<strong>CDN（内容分发网络）</strong>的思路是把视频文件预先分发、缓存到分布在世界各地的边缘节点上，用户播放时由 DNS 或调度层自动路由到地理上离用户最近的边缘节点拉取数据。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>与其让全世界的用户都跑到北京的总仓库取货，不如提前把热门商品铺货到每个城市的分仓，用户就近取货，配送速度自然快很多，也分摊了总仓库的压力。
+  </div>
+  <p>
+    这一点直接呼应 10-计算机网络中讲过的"网络延迟主要来自物理距离和跳数"——CDN 本质上就是用空间上的冗余存储，换取用户访问时的网络延迟降低，是典型的"用空间换时间"思路在网络分发层面的体现（与 12-缓存里"用存储换计算/查询时间"是同一种权衡哲学的不同应用场景）。
+  </p>
+
+  <h2>③自适应码率流媒体：网络差也不至于卡死</h2>
+  <p>
+    即使视频已经就近从 CDN 边缘节点获取，用户的实时网络状况仍然可能波动（地铁上信号忽好忽坏、WiFi 突然拥堵）。如果视频播放器从头到尾只用固定的一种清晰度，网速一旦跟不上就会持续缓冲卡顿。<strong>自适应码率流媒体（Adaptive Bitrate Streaming）</strong>技术，如 HLS（HTTP Live Streaming）和 MPEG-DASH，解决的正是这个问题：
+  </p>
+  <ul>
+    <li>视频在转码阶段会被切成一系列几秒钟长度的小分片（segment），并且<strong>同一段内容会同时准备好多种码率/清晰度的版本</strong>。</li>
+    <li>播放器客户端会持续监测当前的网络下载速度，根据实时带宽动态决定接下来该请求哪个清晰度版本的分片。</li>
+    <li>网络变差时自动切换到低清晰度分片（保证流畅播放不卡顿），网络恢复后再逐步切回高清晰度，整个过程用户几乎无感知，不需要重新加载或手动切换。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"如何应对用户网络不稳定？" 很多人第一反应是"多准备几个清晰度选项让用户手动切换"，但更完整的答案是自适应码率流媒体——播放器基于实时带宽自动、无缝地在分片粒度上切换清晰度，用户不需要手动干预，这也是 YouTube、Netflix 等主流视频平台的标准做法。
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为视频存储直接放数据库就行。视频这类大二进制文件不适合存在关系型数据库里（会让数据库体积暴涨、备份和查询效率急剧下降），正确做法是把视频文件本体存在专门的对象存储服务中，数据库里只存文件的元数据（标题、作者、存储路径、时长、转码状态等）。</li>
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>以为转码只需要生成一种"标准清晰度"就够了。实际上必须同时生成多种分辨率和多种编码格式的版本，才能配合自适应码率技术在播放时动态切换，如果只有单一版本，网络变化时播放器无法降级，只能卡顿等待缓冲。
+  </div>
+
+  <h2>与已学知识点的联系</h2>
+  <ul>
+    <li><strong>呼应 13-消息队列：</strong>上传与转码之间通过消息队列解耦，是"异步处理耗时任务、避免阻塞主流程响应"这一设计模式在视频场景下的直接应用，此前秒杀系统里用消息队列削峰的思路在这里同样适用，只是队列里传递的是"待转码任务"而不是"待处理订单"。</li>
+    <li><strong>呼应 10-计算机网络：</strong>CDN 分发依赖对网络延迟本质（物理距离、跳数、拥塞）的理解，理解了这些才能理解"为什么把内容复制到离用户更近的节点能显著提升体验"。</li>
+    <li><strong>呼应 12-缓存：</strong>CDN 边缘节点本质上就是一层分布式的"地理感知缓存"，同样面临缓存失效、更新传播的问题（比如视频作者删除或替换了视频，如何让全球边缘节点及时感知并失效旧缓存），思路与常规缓存失效策略是相通的。</li>
+  </ul>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>视频网站的三大核心挑战是大文件存储、全球低延迟分发、多网络环境适配，分别对应异步转码、CDN、自适应码率流媒体三项关键技术。</li>
+    <li>异步转码流水线把耗时处理从上传主链路剥离，呼应消息队列的削峰解耦思想。</li>
+    <li>CDN 把"用空间换时间"的权衡从存储层扩展到了网络分发层，让用户就近获取内容。</li>
+    <li>自适应码率流媒体让播放器能根据实时网络状况在分片粒度动态切换清晰度，是应对不稳定网络的标准方案。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-设计一个附近的人服务.html" class="nav-btn">← 设计一个附近的人服务</a>
+    <a href="../scaling/01-从单体到分布式的演化路径回顾.html" class="nav-btn next">从单体到分布式的演化路径回顾 →</a>
+  </div>
+
+</div>
+</body>
+</html>
