@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redis 为什么快 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #ef4444; }
+  p code, li code { color: #ef4444; }
+  h2 { color: #ef4444; border-left-color: #ef4444; }
+  .hero .tag { color: #ef4444; border-color: #7c1d1d; }
+  .nav-btn.next { color: #ef4444; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 数据结构与内核 / Redis 为什么快
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">数据结构与内核</div>
+    <h1>Redis 为什么快</h1>
+    <p>面试必问题，但大部分人只会背"单线程"三个字。真正的答案是三个原因叠加的结果，缺一不可——搞懂它们，才能理解 Redis 的设计取舍。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    Redis 快的本质原因有三个：<strong>①数据全部驻留内存</strong>，读写不用等磁盘 IO；<strong>②核心命令执行是单线程</strong>，没有多线程上下文切换和锁竞争的开销；
+    <strong>③基于 IO 多路复用（epoll）</strong>，单线程也能同时"盯着"成千上万个网络连接，不会因为等某个连接的数据而阻塞其他连接。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>把 Redis 想象成一个只有一个厨师的餐厅（单线程执行命令），但这个厨师做菜的食材全在手边的操作台上（内存），不用跑去后院仓库取货（磁盘 IO）；
+    同时前台有一个智能排号系统（epoll），能同时监控几千张桌子谁点好了菜、谁还没点，厨师只在真正要做菜时才动手，不会傻等某一桌顾客磨磨蹭蹭点菜。
+  </div>
+
+  <!-- 原因一 -->
+  <h2>原因一：数据全部存在内存里</h2>
+  <p>
+    内存的随机读写延迟在纳秒级，机械磁盘在毫秒级，SSD 也在微秒级——差了好几个数量级。Redis 把整个数据集放进内存，
+    从根本上避免了传统数据库那种"读磁盘页 → 解析 → 返回"的开销。这也是 Redis 被定位为<strong>缓存</strong>而非主存储的原因：
+    内存不是无限的，也不是绝对安全的（断电就丢），所以需要 RDB/AOF 做持久化兜底（后面"持久化" Tab 会展开讲）。
+  </p>
+
+  <!-- 原因二 -->
+  <h2>原因二：单线程模型，但要分清楚"单线程"指的是什么</h2>
+  <p>
+    这是最容易被问倒的细节。Redis <strong>执行命令的核心逻辑是单线程</strong>——同一时刻只有一条命令在操作数据，
+    这意味着不需要给数据结构加锁，也不存在多线程切换上下文（保存/恢复寄存器、缓存失效）的隐性成本。
+    但注意：<strong>Redis 6.0 之后，网络 IO 的读取和写入引入了多线程</strong>，用来分担网络数据的收发和协议解析压力；
+    真正"执行命令、操作内存数据结构"这一步，仍然是单线程完成的。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>"Redis 是单线程所以慢/是单线程所以不能利用多核" —— 这个说法只对了一半。
+    单线程不是 Redis 快的<strong>唯一</strong>原因（数据在内存、IO 多路复用同样关键），也不是 Redis 的短板：
+    因为 CPU 通常不是 Redis 的瓶颈（内存和网络带宽才是），单线程避免锁竞争带来的收益，往往比多线程并行计算的收益更大。
+    Redis 6.0+ 引入多线程 IO，针对的正是网络读写这个可以并行、又不涉及数据结构安全的环节，是"精准优化"而不是"推翻单线程"。
+  </div>
+
+  <!-- 原因三 -->
+  <h2>原因三：IO 多路复用（epoll）</h2>
+  <p>
+    如果没有多路复用，单线程处理网络连接会是灾难：一个线程同一时刻只能等一个连接的数据，其他几千个连接全部阻塞干等。
+    IO 多路复用的思路是：让操作系统内核帮你"盯梢"——把所有客户端连接的文件描述符注册给内核（Linux 下是 <code>epoll</code>），
+    只有当某个连接<strong>真正有数据可读/可写</strong>时，内核才通知应用程序去处理。这样一个线程就能高效地在成千上万个连接之间"按需响应"，
+    不会浪费 CPU 去轮询那些什么都没发生的连接。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>被问"Redis 为什么单线程还能这么快"时，标准答案要覆盖三点：数据在内存、单线程无锁无切换开销、
+    epoll 多路复用支撑高并发连接。三者缺一都不完整，尤其不要漏掉 epoll，这是让"单线程处理海量连接"成立的关键机制。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>内存存储</strong>解决了"数据访问慢"的问题，是快的物理基础。</li>
+    <li><strong>单线程执行</strong>解决了"并发安全"和"切换开销"的问题，用简单模型换取了极致的执行效率。</li>
+    <li><strong>epoll 多路复用</strong>解决了"单线程如何服务海量连接"的问题，是三者中最容易被忽略但同样关键的一环。</li>
+    <li>三者结合，才是 Redis 官方号称单机 QPS 可达十万级的完整原因，而不是"单线程"三个字能概括的。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../cache-roadmap.html" class="nav-btn">← 缓存 路线图</a>
+    <a href="./02-五种基本数据类型与典型应用场景.html" class="nav-btn next">五种基本数据类型与典型应用场景 →</a>
+  </div>
+
+</div>
+</body>
+</html>

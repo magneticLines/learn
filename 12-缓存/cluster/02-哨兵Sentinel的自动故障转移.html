@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>哨兵 Sentinel 的自动故障转移 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fca5a5; }
+  p code, li code { color: #fca5a5; }
+  h2 { color: #fca5a5; border-left-color: #fca5a5; }
+  .hero .tag { color: #fca5a5; border-color: #7f1d1d; }
+  .nav-btn.next { color: #fca5a5; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 高可用与集群 / 哨兵 Sentinel 的自动故障转移
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">高可用与集群</div>
+    <h1>哨兵 Sentinel 的自动故障转移</h1>
+    <p>主从复制解决了"有没有备份"，但主库挂了之后，谁来发现、谁来决策、谁来把从库扶正？这就是 Sentinel 要解决的问题——面试高频考点。</p>
+  </div>
+
+  <!-- 为什么需要 Sentinel -->
+  <h2>为什么需要 Sentinel</h2>
+  <p>
+    有了主从复制，主库挂了从库上还有一份数据，但这只是"数据不丢"，并不等于"服务不断"——客户端原本连的是主库，主库一挂，写请求全部失败，
+    如果没有人主动把某个从库提升为新主库并通知客户端切换，业务就要一直等运维人工介入。
+    <strong>Sentinel（哨兵）</strong>就是 Redis 官方提供的一套<strong>自动化监控 + 决策 + 故障转移</strong>系统，让主从架构具备自我修复能力。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>Sentinel 好比小区里的多个保安轮流巡逻，每人定期给"业主大群"（主库）打电话确认对方是否还在。如果只有一个保安打不通电话就断定业主失联未免草率（可能只是他自己手机没信号），但如果<strong>大多数保安都打不通</strong>，那就有理由相信业主真的出事了，需要启动应急预案（选一个新负责人顶上）。
+  </div>
+
+  <!-- 主观下线 vs 客观下线 -->
+  <h2>主观下线 vs 客观下线：避免误判的核心设计</h2>
+  <p>
+    Sentinel 会周期性地对主库、从库以及其他 Sentinel 发送 <code>PING</code> 命令，判断节点是否存活。这里的核心设计难点是：<strong>网络抖动很常见，单个 Sentinel 的一次判断并不可靠</strong>，如果直接根据一个 Sentinel 的观察就发起故障转移，很容易发生误判（主库其实还活着，只是这个 Sentinel 自己网络不好）。
+    为此 Redis 把下线判断拆成了两个阶段：
+  </p>
+  <table>
+    <thead>
+      <tr><th>阶段</th><th>触发条件</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>主观下线</strong><br>（Subjectively Down, SDOWN）</td>
+        <td>某一个 Sentinel 在指定超时时间内，<code>PING</code> 不通某个节点</td>
+        <td>只是"我觉得它挂了"，纯粹是这一个 Sentinel 的单方面判断，不代表事实</td>
+      </tr>
+      <tr>
+        <td><strong>客观下线</strong><br>（Objectively Down, ODOWN）</td>
+        <td>足够多（达到配置的 <code>quorum</code> 法定人数）的 Sentinel 都认为该节点主观下线</td>
+        <td>"大家都这么觉得"，才真正采信，触发故障转移流程</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    这是一个非常经典的<strong>用多数派共识来消除单点误判</strong>的设计思路，在分布式系统里反复出现（类似的思想在很多共识协议中都能看到）。只有主库达到客观下线，Sentinel 集群才会真正启动故障转移；从库主观下线通常只是记录状态，不会触发转移。
+  </p>
+
+  <!-- Sentinel 集群的选举 -->
+  <h2>多个 Sentinel 之间如何达成一致：Raft 选举 Leader</h2>
+  <p>
+    判断出主库客观下线后，还有一个问题：<strong>谁来牵头执行故障转移？</strong> 如果每个 Sentinel 都自己动手选新主库，可能会选出不同结果，造成混乱。
+    Redis Sentinel 借助 <strong>Raft 算法思想</strong>在多个 Sentinel 之间选出一个 <strong>Leader</strong>，由这个 Leader 独自负责执行故障转移的具体步骤，其他 Sentinel 只负责监控和投票，不参与实际操作。
+  </p>
+  <div class="callout tip">
+    <strong>要点：</strong>Raft 选举保证了"故障转移由谁来做"这件事本身也是有共识、不冲突的——这是 Sentinel 集群本身高可用的关键（Sentinel 集群自己也要能容忍部分节点失联）。
+  </div>
+
+  <!-- 故障转移流程 -->
+  <h2>故障转移的完整流程</h2>
+  <p>选出 Leader Sentinel 之后，故障转移大致分四步：</p>
+  <ol>
+    <li><strong>挑选新主库：</strong>在存活的从库中，按优先级（<code>slave-priority</code>）、复制进度（谁的数据和旧主库最接近）、runid 大小等规则，挑出一个最合适的从库；</li>
+    <li><strong>提升为主库：</strong>对选中的从库执行 <code>REPLICAOF NO ONE</code>，让它脱离从库身份，变成独立的主库；</li>
+    <li><strong>其余从库改投新主：</strong>让其他从库执行 <code>REPLICAOF</code> 指向新主库，重新建立复制关系（这里同样会经历一次全量或部分重同步）；</li>
+    <li><strong>通知客户端：</strong>Sentinel 更新自己维护的"当前主库是谁"的配置，客户端（配置了 Sentinel 地址而非直连主库地址）通过订阅 Sentinel 的事件通知，或者下次查询时得到新主库地址，从而自动切换写入目标。</li>
+  </ol>
+  <div class="callout warn">
+    <strong>常见误区：</strong>客户端不应该在配置文件里写死主库 IP，而应该配置 Sentinel 的地址列表，通过 Sentinel 查询"当前谁是主库"。如果写死主库 IP，Sentinel 就算完成了故障转移，客户端也不知道主库已经换人，业务照样中断——这是很多人上线 Sentinel 之后仍然踩坑的地方。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Sentinel 怎么判断主库真的挂了？" 答：先由单个 Sentinel 判定主观下线，再由多个 Sentinel 达成共识判定客观下线，避免网络抖动导致的误判；随后通过类 Raft 选举出 Leader Sentinel 执行故障转移：选新主、提升、其余从库改投、通知客户端。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>主观下线 vs 客观下线：</strong>用"多数派共识"取代"单点判断"，是分布式系统里防误判的经典设计。</li>
+    <li><strong>Raft 选举 Leader：</strong>保证故障转移这个动作本身有唯一的执行者，Sentinel 集群自身也具备高可用性。</li>
+    <li><strong>Sentinel 只解决"主库挂了怎么办"，不解决"数据量太大放不下"</strong>——这是下一篇 Cluster 分片集群要解决的问题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-主从复制原理与全量增量同步.html" class="nav-btn">← 主从复制原理与全量/增量同步</a>
+    <a href="./03-Cluster分片集群的原理.html" class="nav-btn next">Cluster 分片集群的原理 →</a>
+  </div>
+
+</div>
+</body>
+</html>

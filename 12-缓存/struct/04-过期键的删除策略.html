@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>过期键的删除策略 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #ef4444; }
+  p code, li code { color: #ef4444; }
+  h2 { color: #ef4444; border-left-color: #ef4444; }
+  .hero .tag { color: #ef4444; border-color: #7c1d1d; }
+  .nav-btn.next { color: #ef4444; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 数据结构与内核 / 过期键的删除策略
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">数据结构与内核</div>
+    <h1>过期键的删除策略</h1>
+    <p>设置了 EXPIRE 的键到期后不会立刻消失，Redis 要在"及时释放内存"和"不浪费 CPU 去主动扫描"之间找平衡——这正是面试爱问的考点。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    Redis 用<strong>惰性删除</strong>（lazy expire）+ <strong>定期删除</strong>（active expire）两种策略结合的方式处理过期键，
+    而不是理论上最"及时"但代价最大的<strong>定时删除</strong>（为每个设置了过期时间的键单独创建一个定时器，到点立刻删除）。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>定时删除像是给冰箱里每样快过期的食物都单独设一个闹钟，食物一多闹钟就多到吵得没法专心干别的事；
+    惰性删除像是"只有你打开冰箱拿某样东西时才检查它是不是过期了"，平时不主动看；定期删除则像是"每隔一段时间随手检查一遍冰箱，扔掉明显过期的东西"，
+    两者结合，既不会占用太多额外精力，又不至于让过期食物长期占着位置不管。
+  </div>
+
+  <!-- 三种策略对比 -->
+  <h2>为什么不用定时删除</h2>
+  <p>
+    定时删除对内存最友好——键一过期立刻释放——但需要维护大量定时器，在键数量庞大、过期时间密集的场景下，
+    会消耗大量 CPU 去管理和触发这些定时器，这与 Redis 单线程执行命令、需要把 CPU 时间优先让给正常请求的设计目标相冲突。
+    所以 Redis 放弃了定时删除，选择了更"折中"的两种策略。
+  </p>
+
+  <!-- 惰性删除 -->
+  <h2>惰性删除：访问时才检查</h2>
+  <p>
+    每次访问一个键时，Redis 先检查它是否已经过期，过期就删除并返回"键不存在"，不过期才正常处理。
+    这种策略的优点是<strong>几乎不占用额外 CPU</strong>——没有后台扫描的开销；缺点是<strong>如果一个过期键始终没有被访问，它会一直占用内存不被回收</strong>，
+    这在过期键数量多、访问频率低的场景下可能造成明显的内存浪费。
+  </p>
+
+  <!-- 定期删除 -->
+  <h2>定期删除：周期性抽查</h2>
+  <p>
+    Redis 内部有一个定时任务，周期性地从设置了过期时间的键里<strong>随机抽取一部分</strong>进行检查，删除其中已过期的键。
+    这弥补了惰性删除"无人访问就永不回收"的缺陷，同时通过限制每次抽查的数量和执行时间，避免像定时删除那样占用过多 CPU。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Redis 如何删除过期键？" 标准答案是<strong>惰性删除 + 定期删除相结合</strong>，而不是单独一种。
+    可以进一步追问延伸——"如果一个过期键既没被访问、又没被定期删除抽到，会怎样？" 答案是：它会一直占用内存，
+    直到被访问触发惰性删除、或被下一轮定期删除抽中，这也是为什么 Redis 还需要"内存淘汰策略"作为兜底（下一篇讲）。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"设置了 EXPIRE 之后，这个键到点就会自动从内存里消失。"
+    实际上 Redis 不保证这一点——过期只是给键打上了"逻辑上已失效"的标记，真正从内存里删除，依赖的是惰性删除或定期删除被触发。
+    在两者都没触发之前，这个键的数据依然占用着内存空间，只是正常的 <code>GET</code> 等命令会表现得像它不存在一样。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>定时删除内存最友好但 CPU 开销最大，Redis 因此放弃了它。</li>
+    <li>惰性删除几乎零开销，但可能让冷门的过期键长期占用内存。</li>
+    <li>定期删除是折中方案，周期性随机抽查，弥补惰性删除的盲区。</li>
+    <li>两者结合仍不能保证"内存绝对不会因为过期键而浪费"，这正是为什么还需要内存淘汰策略作为最后一道防线。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-底层编码优化.html" class="nav-btn">← 底层编码优化</a>
+    <a href="./05-内存淘汰策略.html" class="nav-btn next">内存淘汰策略 →</a>
+  </div>
+
+</div>
+</body>
+</html>

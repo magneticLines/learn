@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>内存淘汰策略 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #ef4444; }
+  p code, li code { color: #ef4444; }
+  h2 { color: #ef4444; border-left-color: #ef4444; }
+  .hero .tag { color: #ef4444; border-color: #7c1d1d; }
+  .nav-btn.next { color: #ef4444; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 数据结构与内核 / 内存淘汰策略
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">数据结构与内核</div>
+    <h1>内存淘汰策略</h1>
+    <p>当内存用满了怎么办？惰性删除和定期删除只处理"已过期"的键，真正的内存兜底方案是淘汰策略——面试高频，也是理解 LRU/LFU 区别的关键。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    当 Redis 使用的内存达到 <code>maxmemory</code> 配置的上限时，会根据配置的<strong>淘汰策略（eviction policy）</strong>决定如何腾出空间：
+    要么直接拒绝写入报错（<code>noeviction</code>），要么按某种规则挑选一部分键删除，为新数据腾地方。
+    挑选规则主要有三大类：<strong>LRU</strong>（淘汰最近最少使用的）、<strong>LFU</strong>（淘汰访问频率最低的）、<strong>random</strong>（随机淘汰）。
+  </p>
+
+  <!-- noeviction -->
+  <h2>noeviction：默认策略，不淘汰直接报错</h2>
+  <p>
+    这是 Redis 的默认策略：内存满了之后，所有会让内存继续增长的写命令都会返回错误，但读命令仍可正常执行。
+    适合把 Redis 当作<strong>存储</strong>而非单纯缓存使用、绝不容忍数据被静默删除的场景，代价是应用层必须处理写入失败的情况。
+  </p>
+
+  <!-- LRU -->
+  <h2>LRU 系列：淘汰最近最少使用的键</h2>
+  <p>
+    LRU（Least Recently Used）关注的维度是<strong>时间</strong>——一个键<strong>多久没被访问过</strong>。
+    越久没被访问的键，越优先被淘汰。Redis 提供 <code>allkeys-lru</code>（在所有键中淘汰）和 <code>volatile-lru</code>（只在设置了过期时间的键中淘汰）两个变体。
+  </p>
+  <div class="callout warn">
+    <strong>LRU 的误判场景：</strong>假设一个键在过去一小时内被访问了 1000 次，但最近 1 分钟恰好没人访问；
+    另一个键一小时内只被访问了 1 次，但恰好是刚刚访问的。纯 LRU 会认为后者"更新鲜"从而保留它、淘汰前者——
+    但从整体访问热度看，前者其实更应该被保留。这正是 LFU 被引入的原因。
+  </div>
+
+  <!-- LFU -->
+  <h2>LFU 系列：淘汰访问频率最低的键（Redis 4.0+）</h2>
+  <p>
+    LFU（Least Frequently Used）关注的维度是<strong>频率</strong>——一个键<strong>历史上被访问了多少次</strong>，
+    而不只看"最近一次访问的时间"。Redis 4.0 引入 <code>allkeys-lfu</code> 和 <code>volatile-lfu</code>，
+    更适合区分"真正的热点数据"和"偶尔被碰一下的冷数据"，避免 LRU 那种"只看最近一次时间就误判成活跃"的问题。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>redis.conf</span></div>
+    <pre><span class="com"># 达到 maxmemory 后，只在设置了过期时间的键中按访问频率淘汰</span>
+maxmemory 4gb
+maxmemory-policy volatile-lfu</pre>
+  </div>
+
+  <!-- random -->
+  <h2>random：随机淘汰</h2>
+  <p>
+    <code>allkeys-random</code> / <code>volatile-random</code> 顾名思义，随机挑选键淘汰，不做任何"热度"判断。
+    开销最低，但完全不考虑访问模式，一般只在对淘汰公平性没有要求、追求极致淘汰性能的场景下使用。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>LRU vs LFU：核心区别一览</h2>
+  <table>
+    <thead>
+      <tr><th>策略</th><th>判断维度</th><th>典型误判场景</th><th>引入版本</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>LRU</strong></td><td>时间：最近一次访问的时间</td><td>历史高频但最近恰好没访问的键被误淘汰</td><td>早期版本即有</td></tr>
+      <tr><td><strong>LFU</strong></td><td>频率：历史访问次数（带衰减）</td><td>需要额外维护计数器，内存略有开销</td><td>Redis 4.0+</td></tr>
+      <tr><td><strong>random</strong></td><td>无，纯随机</td><td>可能淘汰掉真正的热点数据</td><td>早期版本即有</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"LRU 和 LFU 的区别？" 一句话答案：<strong>LRU 看"最后一次访问是什么时候"，LFU 看"总共被访问了多少次"</strong>。
+    进一步追问"什么场景 LFU 更好？" 答：短时间内偶然被访问一次的冷数据，在 LRU 下会被误判为"最近使用"从而侥幸存活，
+    LFU 因为看重历史累计频率，能更准确地识别出真正的热点数据。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>maxmemory + 淘汰策略是 Redis 内存管理的最后一道防线，弥补惰性删除和定期删除"无法保证内存绝对可控"的缺口。</li>
+    <li>noeviction 保数据完整性但会拒绝写入，LRU/LFU/random 保写入可用性但可能丢数据，本质是"一致性 vs 可用性"的取舍。</li>
+    <li>LFU 是对 LRU 局限性的补充，二者的核心区别是"时间维度"还是"频率维度"，这是本篇乃至整个 Redis 面试里的高频细节题。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-过期键的删除策略.html" class="nav-btn">← 过期键的删除策略</a>
+    <a href="../persist/01-RDB快照持久化原理.html" class="nav-btn next">RDB 快照持久化原理 →</a>
+  </div>
+
+</div>
+</body>
+</html>

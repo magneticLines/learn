@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>主从复制原理与全量/增量同步 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fca5a5; }
+  p code, li code { color: #fca5a5; }
+  h2 { color: #fca5a5; border-left-color: #fca5a5; }
+  .hero .tag { color: #fca5a5; border-color: #7f1d1d; }
+  .nav-btn.next { color: #fca5a5; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 高可用与集群 / 主从复制原理与全量/增量同步
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">高可用与集群</div>
+    <h1>主从复制原理与全量/增量同步</h1>
+    <p>单个 Redis 实例挂了，数据就没了——主从复制是 Redis 高可用的地基：先复制一份完整数据，再让副本持续跟上主库的每一次写入。</p>
+  </div>
+
+  <!-- 为什么需要主从复制 -->
+  <h2>为什么需要主从复制</h2>
+  <p>
+    单机 Redis 有两个致命问题：<strong>一是单点故障</strong>，进程一挂，内存里的数据和对外服务同时消失；<strong>二是读性能瓶颈</strong>，所有读写都压在一个实例上。
+    主从复制（Replication）让一个主库（Master）挂载多个从库（Replica/Slave），从库实时复制主库的数据，天然带来两个好处：<strong>读写分离</strong>（写主库、读从库，分摊压力）和<strong>数据冗余</strong>（主库挂了，从库上还有一份完整数据，是后面讲的 Sentinel 自动故障转移的前提）。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>主库是"总部账本"，从库是"分部账本副本"。分部第一次开张时，总部把整本账册完整复印一份寄过去（全量同步）；之后总部每记一笔新账，就顺手抄送一份给所有分部（增量同步），分部账本就能和总部保持同步。
+  </div>
+
+  <!-- 全量同步 -->
+  <h2>全量同步：第一次连接时的完整快照</h2>
+  <p>从库第一次连接主库（或者断线重连但发现数据差异太大）时，会触发<strong>全量同步（Full Resync）</strong>，核心流程：</p>
+  <ol>
+    <li>从库发送 <code>PSYNC</code> 命令，携带自己的复制历史信息（runid + offset）；</li>
+    <li>主库发现是新从库（或历史对不上），返回 <code>+FULLRESYNC</code>，随即执行 <code>BGSAVE</code> 在后台生成一份 RDB 快照；</li>
+    <li><strong>关键点：</strong>生成快照期间，主库仍在正常处理客户端的写请求，这些写命令不会丢，而是被写入一块<strong>复制积压缓冲区（replication backlog，一个环形缓冲区）</strong>；</li>
+    <li>RDB 快照生成完毕后，主库把整个 RDB 文件发送给从库，从库清空自己的旧数据、加载这份 RDB；</li>
+    <li>加载完成后，主库再把刚才缓存在积压缓冲区里、快照生成期间产生的写命令，一并发给从库回放，补齐这段时间的差异。</li>
+  </ol>
+  <p>整个过程结束后，从库的数据状态就和主库对齐了，之后就进入增量同步阶段。</p>
+
+  <!-- 增量同步 -->
+  <h2>增量同步：持续的命令流异步复制</h2>
+  <p>
+    全量同步之后，主库不会再发送 RDB，而是把之后每一条<strong>写命令</strong>持续、异步地追加发送给所有从库，从库收到命令后在本地重新执行一遍（命令传播）。
+    这就是<strong>增量同步（Command Propagation）</strong>——本质上是"主库把自己的写操作日志，实时广播给从库去重放"。
+  </p>
+  <div class="callout warn">
+    <strong>异步的代价：</strong>主库执行完写命令会立即返回给客户端，不会等从库确认收到，这意味着<strong>主从复制是异步的、存在复制延迟</strong>。如果主库刚写完就宕机，还没来得及同步给从库的那部分数据就会丢失。这也是后面讲一致性、分布式锁陷阱时会反复提到的一个坑。
+  </div>
+
+  <!-- 断线重连：部分重同步 -->
+  <h3>断线重连不用总是全量：部分重同步</h3>
+  <p>
+    如果只是网络抖动导致从库短暂断线，重连后没必要把整个 RDB 再传一遍——只要断开时间不长、积压缓冲区还没被新写命令覆盖掉丢失的那段数据，
+    主库就可以直接把从库断线期间错过的命令，从积压缓冲区里补发过去，这叫<strong>部分重同步（Partial Resync）</strong>，比全量同步轻量得多。这也是复制积压缓冲区存在的第二个价值。
+  </p>
+
+  <!-- 和 MySQL 主从复制的对比 -->
+  <h2>对比：和 MySQL 主从复制（binlog）的异同</h2>
+  <p>
+    09-数据库模块讲过，MySQL 主从复制的核心思想是：主库把所有变更写入 <strong>binlog</strong>（二进制日志），从库拉取 binlog 并重放，从而保持数据一致。
+    Redis 的主从复制在<strong>设计思想上高度相似</strong>——都是"主库产生一份变更日志，从库拉取并重放"，但落地机制有几处关键差异：
+  </p>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>MySQL 主从复制</th><th>Redis 主从复制</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>复制内容</td>
+        <td>binlog（可以是行级变更，也可以是 SQL 语句）</td>
+        <td>写命令本身（命令传播），全量阶段传的是 RDB 快照</td>
+      </tr>
+      <tr>
+        <td>初次同步</td>
+        <td>从库先用 <code>mysqldump</code> 等工具拿到一份基准数据，再从某个 binlog 位点开始追</td>
+        <td>主库自动 <code>BGSAVE</code> 生成 RDB 快照发给从库，机制内置、无需额外工具</td>
+      </tr>
+      <tr>
+        <td>断点续传依据</td>
+        <td>binlog 文件名 + 偏移量（position），或 GTID</td>
+        <td>replication backlog + offset（复制积压缓冲区里的偏移量）</td>
+      </tr>
+      <tr>
+        <td>持久化载体</td>
+        <td>binlog 落盘持久保存，可长期回溯</td>
+        <td>积压缓冲区是内存中的环形缓冲区，容量有限，太久断线还是要全量</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    一句话总结：两者都是"日志流复制"思想的体现，但 MySQL 的 binlog 是持久化的、可无限回溯的日志文件，Redis 的积压缓冲区只是一个内存中的"短期缓冲垫"，超出容量就只能退回全量同步——这也是为什么 Redis 复制更适合"从库紧跟主库"的场景，而不擅长做大范围的时间点回溯。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Redis 主从复制第一次连接做什么？" 答：全量同步——主库 <code>BGSAVE</code> 生成 RDB 发给从库，期间的写命令缓存在复制积压缓冲区，之后再补发；后续都是增量同步，即持续异步传播写命令。断线重连优先尝试部分重同步，减少全量开销。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>全量同步解决"从0到1"：</strong>RDB 快照 + 积压缓冲区补差，保证从库拿到一份完整且不遗漏的数据。</li>
+    <li><strong>增量同步解决"持续跟进"：</strong>命令传播是异步的，带来延迟和潜在的数据丢失风险，理解这一点是后面理解 Sentinel、Cluster、缓存一致性问题的基础。</li>
+    <li><strong>和 MySQL 的相似之处是"日志流复制"的设计思想，差异在于持久化程度和复制粒度</strong>，这种跨技术栈的类比能帮你更快建立直觉。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../persist/03-混合持久化模式.html" class="nav-btn">← 混合持久化模式</a>
+    <a href="./02-哨兵Sentinel的自动故障转移.html" class="nav-btn next">哨兵 Sentinel 的自动故障转移 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>缓存穿透/击穿/雪崩及应对方案 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #b91c1c; }
+  p code, li code { color: #b91c1c; }
+  h2 { color: #b91c1c; border-left-color: #b91c1c; }
+  .hero .tag { color: #b91c1c; border-color: #7f1d1d; }
+  .nav-btn.next { color: #b91c1c; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 缓存实战 / 缓存穿透/击穿/雪崩及应对方案
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">缓存实战</div>
+    <h1>缓存穿透/击穿/雪崩及应对方案</h1>
+    <p>三个名字很像、经常被混着问的面试高频概念——但它们的触发条件、影响范围和解法完全不同，一定要能准确区分。</p>
+  </div>
+
+  <div class="callout info">
+    <strong>先建立直觉：</strong>三者都会导致"本该被缓存挡住的请求，最终打到了数据库上"，但原因各不相同——穿透是<strong>查询根本不存在的数据</strong>，击穿是<strong>某一个热点 key 恰好过期</strong>，雪崩是<strong>大量 key 同时失效或缓存整体宕机</strong>。记住"不存在 / 单点过期 / 大面积失效"这三个关键词，就不会混淆。
+  </div>
+
+  <!-- 缓存穿透 -->
+  <h2>缓存穿透：查询根本不存在的数据</h2>
+  <p>
+    <strong>现象：</strong>请求查询一个<strong>缓存和数据库里都没有</strong>的 key（比如用户传入一个不存在的 id=-1）。因为缓存里没有，请求必然穿透到数据库；因为数据库里也没有，这次查询无法被缓存住，下次同样的请求还是会再打到数据库。
+    如果有人恶意构造大量不存在的 key 发起请求，就能绕开缓存的保护，直接把压力全部压给数据库，甚至打垮数据库。
+  </p>
+  <p><strong>解决方案：</strong></p>
+  <ul>
+    <li><strong>缓存空值：</strong>查询数据库发现确实不存在时，也在缓存里写入一个特殊的空值标记（设置一个较短的过期时间），下次同样的请求直接命中这个空值缓存，不用再查数据库；</li>
+    <li><strong>布隆过滤器（Bloom Filter）：</strong>提前用一个布隆过滤器记录所有"确实存在"的 key，请求进来先过滤器判断，如果过滤器说"一定不存在"，直接拒绝，连缓存都不用查，从最前端就挡住无效请求。</li>
+  </ul>
+
+  <!-- 缓存击穿 -->
+  <h2>缓存击穿：单个热点 key 过期瞬间被并发打爆</h2>
+  <p>
+    <strong>现象：</strong>某一个访问量极高的热点 key（比如某个爆款商品详情）在缓存中<strong>过期的那一瞬间</strong>，恰好有大量并发请求同时到来。由于缓存已过期，这些请求会同时判断"未命中"，全部去查数据库，相当于短时间内大量重复查询同一份数据直接砸向数据库。
+  </p>
+  <p><strong>解决方案：</strong></p>
+  <ul>
+    <li><strong>互斥锁（Mutex）：</strong>缓存未命中时，只让第一个请求去查数据库并回填缓存，其他并发请求等待或重试，等缓存回填完毕后直接从缓存读取，避免重复查库；</li>
+    <li><strong>热点数据不设置过期时间（或者用逻辑过期）：</strong>对于明确知道是热点的数据，干脆不让它自然过期，而是通过后台任务主动刷新，从根源上避免"过期瞬间被击穿"这个场景发生。</li>
+  </ul>
+
+  <!-- 缓存雪崩 -->
+  <h2>缓存雪崩：大量 key 同时失效，或缓存整体宕机</h2>
+  <p>
+    <strong>现象：</strong>缓存雪崩有两种常见诱因：一是<strong>大量 key 设置了相同的过期时间</strong>（比如批量预热数据时统一设置了 1 小时过期），到点后集中失效，瞬间有大批请求同时穿透到数据库；二是<strong>Redis 实例本身宕机或不可用</strong>，导致所有请求都无法命中缓存，全部直接打到数据库。无论哪种诱因，最终结果都是数据库在短时间内被瞬时高并发压垮，甚至引发连锁的服务雪崩（数据库扛不住，上游服务也跟着超时）。
+  </p>
+  <p><strong>解决方案：</strong></p>
+  <ul>
+    <li><strong>过期时间加随机值：</strong>批量设置缓存时，在基础过期时间上叠加一个小的随机偏移量（比如 1 小时 ± 5 分钟），把原本集中在同一时刻的失效点打散，避免同时失效；</li>
+    <li><strong>搭建高可用集群：</strong>用前面讲过的主从 + Sentinel 或 Cluster，避免 Redis 单点宕机导致缓存整体不可用；配合服务端限流、熔断、数据库层面的降级策略，兜底最坏情况。</li>
+  </ul>
+
+  <!-- 三者对比表 -->
+  <h2>三者对比一览</h2>
+  <table>
+    <thead>
+      <tr><th>问题</th><th>触发条件</th><th>影响范围</th><th>核心解法</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>缓存穿透</strong></td>
+        <td>查询缓存和数据库中都不存在的 key</td>
+        <td>可被恶意放大，任意重复查询同一无效 key</td>
+        <td>缓存空值 / 布隆过滤器</td>
+      </tr>
+      <tr>
+        <td><strong>缓存击穿</strong></td>
+        <td>单个热点 key 恰好在高并发时过期</td>
+        <td>集中在一个 key 上的瞬时高并发查库</td>
+        <td>互斥锁 / 热点数据不过期</td>
+      </tr>
+      <tr>
+        <td><strong>缓存雪崩</strong></td>
+        <td>大量 key 同时过期，或 Redis 整体宕机</td>
+        <td>大面积、大批 key 同时失效，冲击整个数据库</td>
+        <td>过期时间加随机值 / 搭建高可用集群</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>被问到"讲讲缓存穿透、击穿、雪崩的区别"时，按"不存在的数据 / 单点过期 / 大面积失效"这个思路组织回答，再各自补充一到两个对应解法，是最容易讲清楚、面试官也最容易听懂的顺序。
+  </div>
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多初学者会把"击穿"和"雪崩"搞混，关键区分点是<strong>波及的 key 数量</strong>——击穿永远是"某一个热点 key"的问题，雪崩则是"一大批 key 或者整个缓存层"的问题。穿透和另外两者的本质区别则是"数据是否真的存在"。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>穿透：</strong>查不存在的数据 → 缓存空值 / 布隆过滤器。</li>
+    <li><strong>击穿：</strong>单个热点 key 并发过期 → 互斥锁 / 不设过期。</li>
+    <li><strong>雪崩：</strong>大批 key 集中失效或缓存宕机 → 过期时间加随机 / 高可用集群。</li>
+    <li><strong>三者本质都是"缓存没能挡住请求，数据库直接暴露在高并发下"</strong>，理解了触发条件的差异，解法也就顺理成章。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-缓存更新策略.html" class="nav-btn">← 缓存更新策略</a>
+    <a href="./03-缓存与数据库的一致性问题.html" class="nav-btn next">缓存与数据库的一致性问题 →</a>
+  </div>
+
+</div>
+</body>
+</html>

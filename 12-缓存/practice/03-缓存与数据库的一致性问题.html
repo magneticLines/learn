@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>缓存与数据库的一致性问题 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #b91c1c; }
+  p code, li code { color: #b91c1c; }
+  h2 { color: #b91c1c; border-left-color: #b91c1c; }
+  .hero .tag { color: #b91c1c; border-color: #7f1d1d; }
+  .nav-btn.next { color: #b91c1c; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 缓存实战 / 缓存与数据库的一致性问题
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">缓存实战</div>
+    <h1>缓存与数据库的一致性问题</h1>
+    <p>缓存和数据库是两份物理上独立的数据副本，只要写操作分两步走，中间就必然存在一个"两者不一致"的时间窗口——问题不是能不能完全消除它，而是怎么把窗口缩到足够短、足够安全。</p>
+  </div>
+
+  <!-- 问题的本质 -->
+  <h2>问题的本质：两次写操作不是原子的</h2>
+  <p>
+    上一篇讲到 Cache Aside 模式下，写操作是"更新数据库 + 删除缓存"两个步骤。这两步<strong>无法在一个原子操作里完成</strong>（数据库和 Redis 是两个独立的系统，没有跨系统的分布式事务保护），
+    这意味着在两步之间，必然存在一个短暂的窗口，此时数据库和缓存看到的数据是不一样的。09-数据库模块讲事务和锁时反复强调"原子性"的重要性，这里正是同样的问题在跨系统场景下的体现——只是这次没有数据库事务机制来兜底。
+  </p>
+
+  <!-- 先删缓存再更新库的问题 -->
+  <h2>时序陷阱一：先删缓存，再更新数据库</h2>
+  <p>如果写操作的顺序是"先删缓存，再更新数据库"，并发场景下可能出现下面的时序：</p>
+  <table>
+    <thead>
+      <tr><th>时间</th><th>写请求 A（更新数据）</th><th>读请求 B</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>t1</td><td>删除缓存中的 key</td><td></td></tr>
+      <tr><td>t2</td><td></td><td>查缓存未命中，转去查数据库，读到<strong>旧值</strong>（A 还没写完库）</td></tr>
+      <tr><td>t3</td><td></td><td>把这个旧值写回缓存</td></tr>
+      <tr><td>t4</td><td>把数据库更新为新值</td><td></td></tr>
+    </tbody>
+  </table>
+  <p>
+    结果是：数据库里是新值，但缓存里被 B 塞回去的是<strong>旧值</strong>，而且这个旧值会一直留在缓存里，直到下次这个 key 再被写、或者自然过期，才会被纠正——这是一个持续时间可能较长的不一致窗口。
+  </p>
+
+  <!-- 先更新库再删缓存的问题 -->
+  <h2>时序陷阱二：先更新数据库，再删缓存（更常见，但也不是绝对安全）</h2>
+  <p>
+    Cache Aside 推荐"先更新数据库，再删除缓存"，正是因为它比上面的顺序更不容易出问题——但"更不容易"不等于"绝对不会"。极端并发下依然可能出现类似问题：
+  </p>
+  <table>
+    <thead>
+      <tr><th>时间</th><th>读请求 B（缓存恰好过期）</th><th>写请求 A</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>t1</td><td>查缓存未命中，转去查数据库，读到<strong>旧值</strong></td><td></td></tr>
+      <tr><td>t2</td><td></td><td>更新数据库为新值</td></tr>
+      <tr><td>t3</td><td></td><td>删除缓存（此时缓存本来就是空的，删了也没用）</td></tr>
+      <tr><td>t4</td><td>把 t1 读到的旧值写回缓存</td><td></td></tr>
+    </tbody>
+  </table>
+  <p>
+    这个时序需要"B 的读请求和回填动作，恰好跨越了 A 的整个写操作"，触发条件比陷阱一苛刻得多（要求数据库写入比缓存回填还快，现实中数据库写通常比 Redis 写慢，所以概率更低），
+    但理论上依然存在，这也是为什么"先更新库再删缓存"只能说是<strong>更优</strong>，而不是<strong>完全没有不一致风险</strong>。
+  </p>
+
+  <!-- 延迟双删 -->
+  <h2>进阶方案一：延迟双删</h2>
+  <p>
+    针对陷阱二这种小概率场景，一种常见的加固手段是<strong>延迟双删</strong>：写请求先删一次缓存、更新数据库，然后<strong>等待一小段时间（比如几百毫秒，覆盖典型的并发读写窗口）后再删一次缓存</strong>。
+    这样即便中间有读请求把旧值写回了缓存，延迟的第二次删除也能把这个脏数据清理掉。代价是写请求的响应链路变长（或者要额外起一个异步任务去做第二次删除），是"用一点延迟换取一致性窗口更短"的取舍。
+  </p>
+
+  <!-- 订阅 binlog -->
+  <h2>进阶方案二：订阅数据库 binlog 异步更新缓存（如 Canal）</h2>
+  <p>
+    另一种思路是不让业务代码直接负责删缓存，而是<strong>订阅数据库的 binlog</strong>（09-数据库模块讲过，binlog 是 MySQL 记录所有数据变更的日志），
+    用类似阿里开源的 <strong>Canal</strong> 这样的工具伪装成一个 MySQL 从库，实时接收 binlog 变更事件，解析出"哪个表哪一行改了"，再据此去清理或更新对应的缓存 key。
+  </p>
+  <div class="callout info">
+    <strong>价值：</strong>这种方式把"更新数据库"和"维护缓存"彻底解耦——业务代码只管写数据库，不用记得手动删缓存，减少了因为漏写、写错导致的不一致，而且天然是基于数据库<strong>已经真正落盘的变更</strong>去更新缓存，比业务代码里"猜测性地"删缓存更可靠。代价是引入了额外的中间件和一定的处理延迟。
+  </div>
+
+  <!-- 最终一致 vs 强一致 -->
+  <h2>工程取舍：缓存场景通常追求"最终一致"，而不是"强一致"</h2>
+  <p>
+    看到这里应该能体会到：只要缓存和数据库是两份独立存储，<strong>要做到任意时刻两者都完全一致（强一致）</strong>，要么需要昂贵的分布式事务（严重拖慢性能，违背了用缓存提升性能的初衷），要么根本无法做到。
+    实际工程中更现实的目标是<strong>最终一致性</strong>：允许存在一个很短的不一致窗口，但保证这个窗口会在有限时间内（通常是毫秒到秒级）被纠正过来，不会无限期地留着脏数据。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"如何保证缓存和数据库的一致性？" 优秀的回答不是宣称"能做到强一致"，而是分层次讲：基础方案是 Cache Aside 的"先更新库再删缓存"（比先删缓存更不容易出问题）；针对极端并发窗口可以用延迟双删加固；更彻底的方案是订阅 binlog 异步更新缓存；最后点明"缓存场景的目标通常是最终一致，而不是强一致"，这是对工程权衡的准确认识。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>不一致的根源：</strong>写数据库和写缓存是两个独立、非原子的操作，中间必然存在时间窗口。</li>
+    <li><strong>"先更新库再删缓存"优于"先删缓存再更新库"</strong>，但不能消除所有不一致场景，只是把发生概率降到很低。</li>
+    <li><strong>延迟双删和订阅 binlog（如 Canal）是两种不同思路的加固方案</strong>：前者是业务代码层面的补救，后者是把一致性维护下沉到基础设施层。</li>
+    <li><strong>接受"最终一致"是缓存场景下更现实、更成熟的工程判断</strong>，而不是一味追求理论上的强一致。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-缓存穿透击穿雪崩及应对方案.html" class="nav-btn">← 缓存穿透/击穿/雪崩及应对方案</a>
+    <a href="./04-用Redis实现分布式锁.html" class="nav-btn next">用 Redis 实现分布式锁 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AOF 追加日志与重写机制 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c2020; }
+  .nav-btn.next { color: #f87171; border-color: #7c2020; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 持久化 / AOF 追加日志与重写机制
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">持久化</div>
+    <h1>AOF 追加日志与重写机制</h1>
+    <p>RDB 会在两次快照之间丢数据，AOF 换了个思路：记录每一条写命令，通过"重放日志"来恢复数据——代价是文件会越滚越大，需要重写机制压缩体积。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    AOF（Append Only File）不存数据快照，而是把<strong>每一条写命令</strong>以协议文本的形式追加写入日志文件。
+    宕机重启后，Redis 依次重新执行 AOF 文件里的命令，就能把数据恢复到宕机前的状态。
+    这个思路和 09-数据库模块讲过的<strong>redo log</strong>本质相同：都是"先把操作记下来，出问题了靠重放日志恢复"，
+    用日志的持久化换取比"只在某个时间点拍快照"更强的数据完整性保证。
+  </p>
+
+  <!-- 三种刷盘策略 -->
+  <h2>三种刷盘策略：性能与安全性的取舍</h2>
+  <p>
+    写命令先追加到内存缓冲区，再由操作系统决定何时真正落盘（fsync）。Redis 提供三种刷盘时机配置，本质是在
+    <strong>"数据安全性"</strong>和<strong>"写入性能"</strong>之间做取舍：
+  </p>
+  <table>
+    <thead>
+      <tr><th>策略</th><th>刷盘时机</th><th>性能</th><th>最坏情况丢失数据</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>always</code></td><td>每条写命令都立刻同步刷盘</td><td>最慢</td><td>几乎不丢（除非磁盘本身损坏）</td></tr>
+      <tr><td><code>everysec</code></td><td>每秒批量刷盘一次（默认）</td><td>接近内存速度，兼顾安全</td><td>最多丢失 1 秒内的写入</td></tr>
+      <tr><td><code>no</code></td><td>由操作系统决定何时刷盘</td><td>最快</td><td>可能丢失较多数据（依赖 OS 策略，通常数十秒）</td></tr>
+    </tbody>
+  </table>
+  <div class="callout info">
+    <strong>为什么 everysec 是默认值：</strong>always 每条命令都要等一次磁盘 IO 完成才返回，吞吐量会明显下降；
+    no 完全交给操作系统，虽然快但丢失窗口不可控。everysec 把丢失窗口限制在"最多 1 秒"，性能损失又很小，
+    是绝大多数场景下"够用又不太慢"的折中选择。
+  </div>
+
+  <!-- AOF 重写 -->
+  <h2>AOF 重写（rewrite）：不是去重命令，而是重新生成</h2>
+  <p>
+    AOF 记录的是命令流，如果一个键被反复 <code>INCR</code> 一万次，文件里就会有一万条 <code>INCR</code> 记录，文件体积会无限增长。
+    AOF 重写要解决这个问题，但它<strong>不是简单地把重复或可合并的命令去重、压缩</strong>，而是<strong>读取当前内存里的实际数据状态，
+    为每个键重新生成能够达到当前状态的最少命令集合</strong>。
+  </p>
+  <p>
+    比如那个被 <code>INCR</code> 一万次的键，当前值是多少，重写后就直接生成一条 <code>SET key value</code>，
+    彻底跳过中间过程，文件体积因此大幅压缩。这个过程同样通过 <code>fork</code> 子进程完成（子进程遍历内存数据生成新 AOF，
+    主进程仍正常处理请求并把新写入的命令同时追加到重写缓冲区，重写完成后再合并），避免阻塞主线程。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>redis-cli / redis.conf</span></div>
+    <pre><span class="com"># 手动触发一次 AOF 重写</span>
+<span class="fn">BGREWRITEAOF</span>
+<span class="com"># 自动触发条件：文件比上次重写后增长 100%，且体积超过 64MB</span>
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"AOF 重写是怎么压缩文件体积的？" 很多人会误答"去重相同的命令"，正确答案是
+    <strong>基于当前内存中的实际数据状态，重新生成一份能达到相同结果的最简命令集合</strong>，
+    这和"删除重复行"是完全不同的思路——重写后的文件里可能根本没有出现过原始命令序列中的任何一条命令。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>AOF 记录写命令而非数据快照，与 redo log 思路一致，数据完整性比 RDB 更强。</li>
+    <li>三种刷盘策略是"安全性 vs 性能"的经典取舍，<code>everysec</code> 是大多数场景的默认选择。</li>
+    <li>AOF 重写不是去重，而是基于当前数据状态重新生成最小命令集合，从根本上压缩文件体积。</li>
+    <li>下一篇讲混合持久化，看 Redis 如何把 RDB 的"恢复快"和 AOF 的"数据全"结合到一份文件里。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-RDB快照持久化原理.html" class="nav-btn">← RDB 快照持久化原理</a>
+    <a href="./03-混合持久化模式.html" class="nav-btn next">混合持久化模式 →</a>
+  </div>
+
+</div>
+</body>
+</html>

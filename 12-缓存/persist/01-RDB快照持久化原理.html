@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RDB 快照持久化原理 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c2020; }
+  .nav-btn.next { color: #f87171; border-color: #7c2020; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 持久化 / RDB 快照持久化原理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">持久化</div>
+    <h1>RDB 快照持久化原理</h1>
+    <p>内存数据说丢就丢，Redis 靠 RDB 把某一时刻的全量数据"拍照"存到磁盘上——关键在于如何在生成快照的同时，不阻塞主线程正常处理请求。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    RDB（Redis Database）是某个时间点上<strong>全量数据的二进制快照文件</strong>。生成快照的过程要解决一个核心矛盾：
+    快照需要遍历整个数据集写入磁盘，这个过程可能耗时不短，但 Redis 是单线程处理命令的，
+    如果快照生成期间阻塞主线程，所有客户端请求都会被卡住。Redis 用 <strong>fork 子进程 + 写时复制（Copy-on-Write）</strong>解决了这个问题。
+  </p>
+
+  <!-- fork + COW -->
+  <h2>fork 子进程 + 写时复制：不阻塞主线程的关键</h2>
+  <p>
+    执行 <code>BGSAVE</code> 时，主进程会 <code>fork</code> 出一个子进程。fork 的特点是子进程会获得父进程内存的一份"逻辑拷贝"，
+    但操作系统并不会立刻真的复制一份物理内存——而是让父子进程共享同一块物理内存页，只有当<strong>某一方要修改</strong>某一页数据时，
+    才会真正复制那一页出来单独修改，这就是写时复制（Copy-on-Write）。
+  </p>
+  <p>
+    这样一来：子进程负责把 fork 那一刻的数据完整写入 RDB 文件，全程只读不写，不影响自己看到的数据一致性；
+    主进程则继续正常处理客户端的读写请求，如果某个键在快照生成期间被修改，操作系统会先复制这一页内存，主进程改的是复制出来的新页，
+    子进程手里那份用于生成快照的旧页数据丝毫不受影响。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像给一屋子正在流动变化的档案拍照——不能让所有人先停下手里的工作等拍照结束，
+    于是找了个"分身"（子进程）按下快门那一刻的画面去慢慢冲印照片，而原班人马（主进程）继续正常工作；
+    如果原班人马要修改某份档案，会先复印一份新的来改，分身手里冲印用的那份原始档案不会被这次修改影响。
+  </div>
+
+  <!-- 优缺点 -->
+  <h2>RDB 的优点</h2>
+  <ul>
+    <li><strong>文件体积小：</strong>二进制紧凑格式，同样的数据量比 AOF（记录命令文本）小得多。</li>
+    <li><strong>恢复速度快：</strong>重启时直接把快照整体载入内存，不需要像 AOF 那样重放大量命令。</li>
+    <li><strong>适合备份和灾难恢复：</strong>可以定期把 RDB 文件复制到远端，做冷备份或跨机房容灾。</li>
+  </ul>
+
+  <h2>RDB 的缺点</h2>
+  <p>
+    最大的问题是<strong>数据丢失窗口</strong>：RDB 是按配置的时间点（如"5 分钟内至少 100 次写操作就触发一次快照"）生成的，
+    两次快照之间发生的所有写操作，如果这期间 Redis 意外宕机，就会全部丢失。这也是为什么"要求数据几乎不丢失"的场景，
+    通常要结合下一篇讲的 AOF 一起使用。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>"设置了 RDB 定期保存，数据就安全了。" 实际上 RDB 的保存点之间永远存在丢失窗口，
+    保存频率越高，丢失窗口越小，但快照生成本身也有开销（fork 一次、内存修改多时写时复制页数增多），不能无限缩短保存间隔来"逼近零丢失"，
+    这正是 RDB 这种"周期性全量快照"模式的固有局限，需要 AOF 来补足。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>redis-cli / redis.conf</span></div>
+    <pre><span class="com"># 手动触发一次快照，fork 子进程后台生成，不阻塞主进程</span>
+<span class="fn">BGSAVE</span>
+<span class="com"># redis.conf 中配置自动快照条件：900 秒内至少 1 次写，或 300 秒内至少 10 次写...</span>
+save 900 1
+save 300 10
+save 60 10000</pre>
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>RDB 是全量二进制快照，核心技术是 fork + 写时复制，让生成快照不阻塞主线程处理请求。</li>
+    <li>优点是文件小、恢复快，适合做备份和灾难恢复；缺点是两次快照之间的数据存在丢失风险。</li>
+    <li>下一篇讲 AOF 如何通过记录每条写命令来弥补 RDB 的数据丢失问题，两者各有取舍，实际生产中常常搭配使用。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../struct/05-内存淘汰策略.html" class="nav-btn">← 内存淘汰策略</a>
+    <a href="./02-AOF追加日志与重写机制.html" class="nav-btn next">AOF 追加日志与重写机制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

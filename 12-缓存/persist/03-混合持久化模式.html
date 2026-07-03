@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>混合持久化模式 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c2020; }
+  .nav-btn.next { color: #f87171; border-color: #7c2020; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 持久化 / 混合持久化模式
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">持久化</div>
+    <h1>混合持久化模式</h1>
+    <p>RDB 恢复快但会丢数据，AOF 数据全但恢复慢、文件大——Redis 4.0 之后干脆把两者优点拼在一个文件里，鱼与熊掌兼得。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    混合持久化（<code>aof-use-rdb-preamble</code>，Redis 4.0+ 引入）的思路很直接：
+    在 AOF 重写时，把重写那一刻的<strong>历史数据用 RDB 格式写入文件的前半部分</strong>（体积小、恢复快），
+    <strong>重写完成之后新产生的写命令，仍然用 AOF 协议文本格式追加在文件后半部分</strong>（保留了 AOF 数据几乎不丢的优点）。
+    最终这一个文件是"RDB 内容 + AOF 增量命令"拼接而成的混合体。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>如果把恢复数据比作看账本，纯 AOF 就像给你一整本从开业第一天记到今天的流水账，
+    想知道当前余额得从头把每一笔都加一遍，账本越厚查得越慢；纯 RDB 像只给你一张"今天开业前"的余额截图，
+    但截图之后发生的交易全部不知道。混合持久化相当于给你一张"上次盘点时的余额截图" + "盘点之后到现在的逐笔流水"，
+    既不用从创业第一天算起，又不会漏掉最新的交易记录。
+  </div>
+
+  <!-- 恢复过程 -->
+  <h2>恢复过程：先读 RDB 部分，再重放 AOF 部分</h2>
+  <p>
+    Redis 重启加载这份混合 AOF 文件时，会先识别文件头部是 RDB 格式，按 RDB 的方式把这部分数据快速载入内存
+    （不需要逐条重放命令，直接反序列化数据结构），然后再顺着后面的 AOF 增量命令一条条重放，
+    把重写之后发生的写操作补齐。整个过程比"从头重放完整 AOF 命令流"快得多，同时比"只依赖 RDB 快照"更完整。
+  </p>
+
+  <!-- 优缺点权衡 -->
+  <h2>为什么说这是两个优点的结合，而不是简单拼接</h2>
+  <table>
+    <thead>
+      <tr><th>方案</th><th>恢复速度</th><th>数据完整性</th><th>文件体积</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>纯 RDB</td><td>快（直接载入快照）</td><td>差（两次快照间会丢数据）</td><td>小</td></tr>
+      <tr><td>纯 AOF</td><td>慢（逐条重放全部历史命令）</td><td>好（按刷盘策略几乎不丢）</td><td>大（未重写时）</td></tr>
+      <tr><td>混合持久化</td><td>快（历史数据走 RDB 载入）</td><td>好（增量命令走 AOF 补齐）</td><td>较小（历史部分是 RDB 紧凑格式）</td></tr>
+    </tbody>
+  </table>
+  <p>
+    混合持久化没有发明新的存储原理，而是巧妙地把"AOF 重写时反正要遍历一次内存生成新文件"这个动作，
+    从"生成新的 AOF 命令流"改成了"生成 RDB 格式的数据块"，重写之后的增量部分依旧沿用 AOF 的追加写模式。
+    这是一种很典型的工程思路：<strong>不是发明全新方案，而是在已有两个方案的交界点上找到组合点</strong>。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>"开启了混合持久化，AOF 重写机制是不是就不需要了？"
+    并不是，混合持久化依然依赖 AOF 重写触发的时机（手动 <code>BGREWRITEAOF</code> 或自动触发条件），
+    只是重写时生成的"历史部分"从 AOF 命令格式换成了 RDB 格式，重写这个动作本身的触发逻辑没有变化。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>redis.conf</span></div>
+    <pre><span class="com"># 开启混合持久化：AOF 重写时历史数据用 RDB 格式写入</span>
+appendonly yes
+aof-use-rdb-preamble yes</pre>
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>混合持久化 = AOF 重写时的历史数据用 RDB 格式（快） + 重写之后的增量命令用 AOF 格式（全）。</li>
+    <li>恢复时先载入 RDB 部分、再重放 AOF 增量部分，兼顾了恢复速度和数据完整性。</li>
+    <li>本质是工程上的组合创新，而不是发明新的持久化原理，体现了"在已有方案边界找结合点"的设计思路。</li>
+    <li>持久化到这里讲完了 RDB、AOF、混合模式三种方案的取舍，下一个 Tab 会讲主从复制如何在多节点之间同步这些数据。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-AOF追加日志与重写机制.html" class="nav-btn">← AOF 追加日志与重写机制</a>
+    <a href="../cluster/01-主从复制原理与全量增量同步.html" class="nav-btn next">主从复制原理与全量增量同步 →</a>
+  </div>
+
+</div>
+</body>
+</html>

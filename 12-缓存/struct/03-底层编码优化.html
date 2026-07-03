@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>底层编码优化 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #ef4444; }
+  p code, li code { color: #ef4444; }
+  h2 { color: #ef4444; border-left-color: #ef4444; }
+  .hero .tag { color: #ef4444; border-color: #7c1d1d; }
+  .nav-btn.next { color: #ef4444; border-color: #7c1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 数据结构与内核 / 底层编码优化
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">数据结构与内核</div>
+    <h1>底层编码优化</h1>
+    <p>五种类型是"对外的接口"，Redis 在内部会根据数据量大小自动切换更紧凑的底层编码——这是 Redis 省内存的关键设计，也是理解跳表为什么被选中的入口。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    同一个类型（比如 Hash 或 ZSet），Redis 在<strong>数据量小</strong>的时候用更紧凑但操作稍慢的编码节省内存，
+    数据量变大后再自动"升级"为更适合大数据量的编码。三种典型的紧凑编码是：<strong>ziplist</strong>（压缩列表）、
+    <strong>intset</strong>（整数集合）、<strong>skiplist</strong>（跳跃表）。这是一种典型的"用条件换性能"设计：
+    大多数业务里 Hash/List/ZSet 的元素并不多，没必要一开始就用最通用但开销更大的结构。
+  </p>
+
+  <!-- ziplist -->
+  <h2>ziplist：小数据量下的压缩列表</h2>
+  <p>
+    ziplist 是一段连续内存，把多个元素紧凑地挨着存放，省掉了普通链表里每个节点都要额外维护的前后指针开销。
+    代价是：<strong>不支持随机访问</strong>（要查第 N 个元素得从头遍历），且中间插入/删除元素可能引发连锁的内存重分配（"连锁更新"）。
+    Redis 用它作为小 List、小 Hash、小 ZSet 的默认编码，一旦元素数量或单个元素大小超过阈值（如 <code>hash-max-ziplist-entries</code>），
+    就转换成更通用的编码（Hash 转 hashtable，ZSet 转 skiplist）。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>ziplist 像把一排小盒子紧挨着摆放在一条架子上，取东西方便、不浪费架子空间，
+    但如果要在中间插入一个新盒子，后面所有盒子都得往后挪——数据量小的时候挪一下无所谓，数据量大了就得换成"每个盒子单独挂钩子"（哈希表）的方式。
+  </div>
+
+  <!-- intset -->
+  <h2>intset：全是整数的小 Set 专用编码</h2>
+  <p>
+    如果一个 Set 里的元素全部是整数，且数量不多，Redis 会用 intset 编码——本质是一个<strong>有序的整数数组</strong>，
+    比通用的哈希表结构更省内存。一旦往里面塞入非整数元素，或者元素数量超过阈值，就会转换成 hashtable 编码。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>redis-cli</span></div>
+    <pre><span class="com"># 全是整数、数量少 → intset 编码</span>
+<span class="fn">SADD</span> myset 1 2 3
+<span class="fn">OBJECT</span> <span class="kw">ENCODING</span> myset  <span class="com"># "intset"</span>
+<span class="com"># 混入字符串 → 升级为 hashtable 编码</span>
+<span class="fn">SADD</span> myset <span class="str">"abc"</span>
+<span class="fn">OBJECT</span> <span class="kw">ENCODING</span> myset  <span class="com"># "hashtable"</span></pre>
+  </div>
+
+  <!-- skiplist -->
+  <h2>skiplist：ZSet 数据量大时的选择，为什么不用红黑树</h2>
+  <p>
+    当 ZSet 元素数量超过阈值时，Redis 用跳跃表（skiplist）维护有序性，而不是像很多教科书数据结构那样选择平衡树（红黑树、AVL 树）。
+    跳跃表的核心思路是<strong>用空间换查询效率</strong>：在有序链表的基础上，额外建立多层"索引层"，每一层都是下一层的"稀疏采样"，
+    查找时从最高层开始跳跃前进，逐层缩小范围，平均时间复杂度做到 <code>O(log N)</code>，接近平衡树。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"ZSet 为什么用跳表而不用红黑树？" 作者黄健宏在《Redis 设计与实现》里给出的原因主要两点：
+    <strong>①实现简单</strong>——跳表的插入、删除逻辑比红黑树的旋转、变色平衡操作直观得多，不易出 bug，代码维护成本低；
+    <strong>②范围查询更方便</strong>——跳表本质是有序链表加多层索引，找到起点后直接顺着链表向后遍历即可完成区间查询（如 <code>ZRANGEBYSCORE</code>），
+    而红黑树做范围查询需要中序遍历，实现和性能都不如链表直接。
+  </div>
+
+  <!-- 呼应数据库模块 -->
+  <h2>呼应：和 09-数据库 模块讲过的 B+ 树对比</h2>
+  <p>
+    跳表和 B+ 树都是"有序结构"，但适用场景完全不同，本质是<strong>内存结构</strong>和<strong>磁盘结构</strong>的取舍差异：
+    B+ 树为了减少磁盘 IO 次数，把每个节点设计得很"胖"（一个节点装尽可能多的 key，匹配磁盘页大小），层数很浅；
+    跳表是纯内存结构，不需要考虑磁盘页对齐，靠"层级索引 + 随机层数"实现近似平衡，不需要 B+ 树那种复杂的节点分裂合并逻辑。
+    一句话总结：<strong>B+ 树为磁盘 IO 优化，跳表为内存下的简单实现和范围查询优化</strong>，两者都追求"有序 + 高效查找"，但因为存储介质不同，选择了完全不同的路径。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>三种紧凑编码速查</h2>
+  <table>
+    <thead>
+      <tr><th>编码</th><th>适用场景</th><th>核心特点</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>ziplist</strong></td><td>小 List / 小 Hash / 小 ZSet</td><td>连续内存紧凑存储，省空间但不支持随机访问</td></tr>
+      <tr><td><strong>intset</strong></td><td>全是整数的小 Set</td><td>有序整数数组，比哈希表更省内存</td></tr>
+      <tr><td><strong>skiplist</strong></td><td>大 ZSet</td><td>多层索引链表，O(log N) 查找，实现简单，范围查询方便</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>Redis 对象的编码不是固定的，会随数据量自动"升级"，这是典型的"用复杂度换内存"设计思想。</li>
+    <li>ziplist/intset 是"小数据量专属捷径"，本质是牺牲部分操作效率换取更紧凑的内存布局。</li>
+    <li>跳表被选为 ZSet 大数据量下的实现，核心原因是实现简单、范围查询友好，而不是查找效率比红黑树更高。</li>
+    <li>理解"为什么不用某个更常见的结构"，往往比记住"用了什么结构"更有面试价值。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-五种基本数据类型与典型应用场景.html" class="nav-btn">← 五种基本数据类型与典型应用场景</a>
+    <a href="./04-过期键的删除策略.html" class="nav-btn next">过期键的删除策略 →</a>
+  </div>
+
+</div>
+</body>
+</html>

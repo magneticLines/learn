@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cluster 分片集群的原理 — 缓存</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fca5a5; }
+  p code, li code { color: #fca5a5; }
+  h2 { color: #fca5a5; border-left-color: #fca5a5; }
+  .hero .tag { color: #fca5a5; border-color: #7f1d1d; }
+  .nav-btn.next { color: #fca5a5; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../cache-roadmap.html">缓存 路线图</a> / 高可用与集群 / Cluster 分片集群的原理
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">高可用与集群</div>
+    <h1>Cluster 分片集群的原理</h1>
+    <p>主从 + Sentinel 解决了"挂了怎么办"，但没解决"数据太多一台机器放不下"——Cluster 用哈希槽把数据横向分散到多个主节点，是 Redis 原生的分片方案。</p>
+  </div>
+
+  <!-- 为什么需要 Cluster -->
+  <h2>为什么需要 Cluster</h2>
+  <p>
+    主从复制 + Sentinel 架构下，无论有多少个从库，<strong>写入始终只能打到唯一的主库</strong>，主库的内存容量和写入吞吐都是整个集群的天花板。
+    当数据量大到单机内存放不下，或者写并发大到单机扛不住时，就需要把数据<strong>水平拆分（分片，Sharding）</strong>到多个主节点上，每个主节点只负责一部分数据——这就是 <strong>Redis Cluster</strong> 要解决的问题。
+  </p>
+
+  <!-- 哈希槽 -->
+  <h2>为什么用哈希槽，而不是直接对节点数取模</h2>
+  <p>
+    最直观的分片思路是：<code>node_index = hash(key) % 节点数量</code>，哪个 key 落在哪个节点，直接算出来。这个思路简单，但有一个致命问题：
+  </p>
+  <div class="callout warn">
+    <strong>取模分片的问题：</strong>一旦节点数量发生变化（扩容加一台机器，或缩容减一台机器），<code>% 节点数量</code> 的结果几乎对所有 key 都会变化，意味着<strong>绝大多数 key 都要重新计算归属、跨节点搬迁</strong>，扩缩容代价极其昂贵，生产环境几乎不可接受。
+  </div>
+  <p>
+    Redis Cluster 的解法是引入一层间接的映射：把整个 key 空间划分成固定的 <strong>16384 个哈希槽（hash slot）</strong>，每个 key 通过 <code>CRC16(key) % 16384</code> 计算出唯一归属的槽位，然后<strong>槽位再分配给具体的节点</strong>（比如 3 个主节点，可以分别负责 0~5460、5461~10922、10923~16383 号槽）。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>取模分片就像"按学号除以班级数直接分班"——转来一个新班，几乎所有学生的班级都要重排。哈希槽则像"先把学生按学号分到 16384 个固定的储物格，储物格再打包分给各个班"——转来新班，只需要把<strong>部分储物格</strong>挪给新班，不用打乱所有学生的储物格编号，绝大多数学生的归属完全不受影响。
+  </div>
+  <p>
+    这样扩缩容时，只需要把一部分槽（连同槽里的 key）从旧节点迁移到新节点，<strong>迁移的是槽，不是重新计算所有 key 的归属</strong>，代价可控，且可以在业务不停机的情况下逐步完成迁移。
+  </p>
+
+  <!-- 客户端路由 -->
+  <h3>客户端怎么知道该连哪个节点</h3>
+  <p>
+    Redis Cluster 里每个节点都知道完整的"槽位 → 节点"映射表。客户端可以连接任意一个节点发送命令，如果这个 key 恰好不归当前节点管，节点会返回一个 <code>MOVED</code>
+    重定向响应，告诉客户端"这个槽在另一个节点，请重新请求"。成熟的 Redis 客户端会缓存这份槽位映射，减少重定向带来的额外往返。
+  </p>
+
+  <!-- Cluster vs 主从+Sentinel -->
+  <h2>对比：Cluster（去中心化分片） vs 主从 + Sentinel（单主写入）</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>主从 + Sentinel</th><th>Redis Cluster</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>写入吞吐 / 容量上限</td>
+        <td>受限于单个主库的内存和处理能力</td>
+        <td>数据分散到多个主节点，容量和吞吐可随节点数横向扩展</td>
+      </tr>
+      <tr>
+        <td>架构复杂度</td>
+        <td>相对简单，一套主从 + 若干 Sentinel 进程即可</td>
+        <td>更复杂，涉及槽位分配、迁移、多主节点协调</td>
+      </tr>
+      <tr>
+        <td>多 key 操作</td>
+        <td>没有限制，所有 key 都在同一个主库</td>
+        <td>受限——跨槽的多 key 操作（如某些场景下的事务、<code>MGET</code> 涉及不同槽）不被直接支持，需要用 hash tag 把相关 key 强制分到同一槽</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>数据量单机放得下、追求架构简单、运维成本低的中小型场景</td>
+        <td>数据量大、并发高、需要水平扩展的大型场景</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    值得一提的是，Redis Cluster 本身也内置了主从思想：每个负责一部分槽的主节点，通常还会挂自己的从节点，主节点挂了由其从节点自动顶上（类似 Sentinel 的故障转移，但内置在 Cluster 协议里，不需要额外部署 Sentinel 进程）——可以理解为 <strong>Cluster = 分片 + 每个分片自带迷你版的高可用</strong>。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Redis Cluster 为什么用 16384 个哈希槽，而不是直接对节点数取模？" 答：取模分片在节点数变化时会导致几乎所有 key 重新分布，代价太大；哈希槽把 key 空间划分成固定数量的槽，扩缩容只需迁移部分槽，代价可控，且槽的数量（16384）是提前定好的固定值，不随节点增减而变化。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>哈希槽是"取模分片"和"一致性哈希"之外的第三种思路：</strong>用固定数量的槽做一层间接映射，扩缩容只搬槽不搬全部 key。</li>
+    <li><strong>Cluster 解决的是容量和吞吐的水平扩展问题，Sentinel 解决的是单点故障的自动恢复问题</strong>，两者不是互斥的，Cluster 内部的每个分片本身也具备主从自动切换能力。</li>
+    <li><strong>选型要看数据规模：</strong>不是所有场景都需要 Cluster 的复杂度，单机内存够用、追求简单可维护，主从 + Sentinel 往往是更务实的选择。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-哨兵Sentinel的自动故障转移.html" class="nav-btn">← 哨兵 Sentinel 的自动故障转移</a>
+    <a href="../practice/01-缓存更新策略.html" class="nav-btn next">缓存更新策略 →</a>
+  </div>
+
+</div>
+</body>
+</html>
