@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>用户级线程与内核级线程 — 并发编程回顾</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #92400e; }
+  .nav-btn.next { color: #fbbf24; border-color: #92400e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 并发编程回顾 / 用户级线程与内核级线程
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">并发编程回顾</div>
+    <h1>用户级线程与内核级线程</h1>
+    <p>02-并发模块里创建一个 <code>Thread</code>、调用 <code>start()</code>，背后到底是谁在负责"调度"这个线程去 CPU 上跑？答案取决于线程是"用户级"还是"内核级"的——这决定了线程调度是操作系统的事，还是应用程序自己的事。</p>
+  </div>
+
+  <!-- 两种模型 -->
+  <h2>谁来调度线程：内核，还是用户态的线程库</h2>
+  <p>
+    "线程"这个概念可以在两个完全不同的层面实现，区别在于<strong>谁负责决定"下一刻该运行哪个线程"</strong>。
+  </p>
+
+  <h3>内核级线程（Kernel-Level Thread, KLT）</h3>
+  <p>
+    线程的创建、调度、切换全部由<strong>操作系统内核</strong>完成。内核维护着每个线程的调度信息，能感知到系统里究竟有多少个线程在跑。这类线程能被内核直接分配到<strong>不同的 CPU 核心上并行执行</strong>，也能在一个线程发生阻塞式系统调用（比如等待磁盘 IO）时，内核直接调度同进程的另一个线程继续运行，不会因为一个线程卡住而拖累整个进程。代价是：线程的创建和上下文切换都需要陷入内核态，开销比纯用户态操作要大。
+  </p>
+
+  <h3>用户级线程（User-Level Thread, ULT）</h3>
+  <p>
+    线程的创建、调度、切换完全在<strong>用户态由一个线程库自己管理</strong>，内核对这些线程一无所知——在内核眼里，整个进程始终只是"一个"内核调度单位。线程库自己维护一张线程表，用协作式或时间片轮转的方式在用户态"手动"切换执行上下文，切换速度极快（不需要陷入内核态）。但致命缺点是：<strong>一旦某个用户级线程发起了阻塞式系统调用（如同步读文件），整个进程（包括其他所有用户级线程）都会被内核一起阻塞</strong>——因为内核根本不知道进程内部还有其他"线程"在等着运行，也无法做到只调度别的线程去替补。同时，多个用户级线程也无法真正利用多核 CPU 并行——因为内核只把整个进程当成一个调度单位分配给一个核。
+  </p>
+
+  <!-- Java 线程模型 -->
+  <h2>Java 线程本质上是内核级线程（1:1 模型）</h2>
+  <p>
+    传统 JVM（HotSpot）里，一个 Java <code>Thread</code> 对象在创建时会直接映射为一个操作系统的内核级线程，这被称为 <strong>1:1 线程模型</strong>：一个用户可见的线程实体，对应一个内核调度实体。这也是为什么 Java 线程能利用多核并行、也能在某个线程阻塞 IO 时不影响其他线程调度——因为调度权完全交给了操作系统内核，内核有能力单独暂停/恢复某一个线程。这个映射关系也解释了为什么创建大量 Java 线程会显著消耗系统资源：每个 <code>Thread</code> 背后都真实占用一个内核线程的调度开销和默认栈空间（通常 512KB～1MB）。
+  </p>
+
+  <!-- 现代复兴 -->
+  <h2>现代复兴：协程与虚拟线程</h2>
+  <p>
+    用户级线程"切换快"这个优点，在现代高并发场景下重新被重视起来——只不过换了个名字：<strong>协程（Coroutine）</strong>、Java 21 引入的<strong>虚拟线程（Virtual Thread，JEP 444）</strong>。这些方案的共同思路是：在用户态（或者说 JVM 内部）维护大量轻量级的执行单元，由用户态的调度器（而不是操作系统内核）负责把它们映射到少量的内核线程上运行，这被称为 <strong>M:N 模型</strong>——M 个用户态线程复用 N 个内核线程。
+  </p>
+  <p>
+    虚拟线程巧妙地解决了传统用户级线程"一阻塞就全阻塞"的老问题：当虚拟线程执行到阻塞式 IO 操作时，JVM 会把它从底层的内核线程上"卸下来"挂起，让内核线程去执行其他就绪的虚拟线程，等 IO 完成后再把它重新调度回某个内核线程上继续执行——这一整套"卸下再挂载"的机制完全在 JVM 用户态内部完成，不需要每个虚拟线程各自占用一个昂贵的内核线程，因此可以轻松创建成百万个虚拟线程。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>用户级线程 vs 内核级线程</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>用户级线程</th><th>内核级线程</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>调度者</td>
+        <td>用户态线程库</td>
+        <td>操作系统内核</td>
+      </tr>
+      <tr>
+        <td>创建/切换开销</td>
+        <td>极小（不陷入内核态）</td>
+        <td>较大（需要系统调用、上下文切换）</td>
+      </tr>
+      <tr>
+        <td>多核并行能力</td>
+        <td>无法真正并行（内核只见一个调度单位）</td>
+        <td>可以并行到不同 CPU 核心</td>
+      </tr>
+      <tr>
+        <td>阻塞影响范围</td>
+        <td>一个阻塞，整个进程都阻塞</td>
+        <td>只阻塞发起调用的那个线程</td>
+      </tr>
+      <tr>
+        <td>典型代表</td>
+        <td>早期协程库、Java 虚拟线程（M:N）</td>
+        <td>Java 传统 Thread（1:1）、pthread</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"虚拟线程就是用户级线程，所以是老技术的简单重命名。"
+    虚拟线程比早期纯粹的用户级线程更聪明的地方在于：它并不是完全脱离内核独立运作，而是<strong>依赖 JVM 与操作系统协作</strong>，在虚拟线程执行阻塞 IO 时精确识别"这是一次可以被挂起的阻塞点"，主动让出底层内核线程。这解决了传统用户级线程"一阻塞就全阻塞"的根本缺陷，是一种更精细的 M:N 调度实现，而不是简单地把线程搬到用户态就完事。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么大量创建 Java 线程会导致系统性能急剧下降？" 标准答案：<strong>每个 Java 线程都是一个真实的内核级线程，创建开销大、默认占用较大的线程栈内存，操作系统调度成百上千个线程时上下文切换的开销也会显著增加</strong>。这正是线程池要"复用线程"、以及虚拟线程要解决的核心问题。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>线程调度权在内核还是用户态，决定了阻塞行为和多核利用能力的天壤之别</strong>：内核级线程调度精细但切换贵，用户级线程切换快但传统实现有"一阻塞全阻塞"的硬伤。</li>
+    <li><strong>传统 Java 线程是 1:1 内核级线程</strong>，创建成本高是所有线程池化实践的根本原因。</li>
+    <li><strong>虚拟线程是 M:N 模型在现代 JVM 里的落地</strong>，本质上是用户级线程思想的复兴，但通过与内核协作解决了老问题，是理解 Java 高并发新方向的关键背景知识。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-三种并发编程模型对比.html" class="nav-btn">← 三种并发编程模型对比</a>
+    <a href="./03-竞态条件的底层硬件原因.html" class="nav-btn next">竞态条件的底层硬件原因 →</a>
+  </div>
+
+</div>
+</body>
+</html>

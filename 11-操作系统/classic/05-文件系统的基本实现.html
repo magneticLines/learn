@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>文件系统的基本实现 — 进程调度与经典理论</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #7c1d51; }
+  .nav-btn.next { color: #f472b6; border-color: #7c1d51; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 进程调度与经典理论 / 文件系统的基本实现
+  </div>
+
+  <div class="hero">
+    <div class="tag">进程调度与经典理论</div>
+    <h1>文件系统的基本实现</h1>
+    <p>这是操作系统模块的最后一篇——从"文件名"到"磁盘上的真实数据"，中间隔着一层关键的间接层：inode。理解了它，"删除文件"、硬链接、软链接这些日常操作背后的原理就都清楚了。</p>
+  </div>
+
+  <h2>一个文件到底由什么组成</h2>
+  <p>
+    我们平时说的"一个文件"，其实是两部分信息拼起来的：
+  </p>
+  <ul>
+    <li><strong>文件名</strong>：人类可读的名字，比如 <code>report.txt</code>。</li>
+    <li><strong>文件的实际内容和属性</strong>：数据本身，以及大小、权限、创建时间、数据存在磁盘哪些块上等元信息。</li>
+  </ul>
+  <p>
+    Unix / Linux 文件系统的一个核心设计决策是：<strong>把这两部分彻底拆开，用一层间接的映射关系连接起来</strong>。这个设计带来的好处，是接下来所有内容的根基。
+  </p>
+
+  <h2>inode：文件的"身份证"，但不包含名字</h2>
+  <p>
+    <strong>inode（索引节点，index node）</strong>是文件系统里真正描述一个文件的结构，它存储了几乎所有关于文件的元数据：
+  </p>
+  <ul>
+    <li>文件类型（普通文件/目录/符号链接……）</li>
+    <li>权限（读/写/执行，属主/属组）</li>
+    <li>文件大小</li>
+    <li>时间戳（创建、修改、访问时间）</li>
+    <li><strong>指向数据块的指针</strong>（文件真正的内容存在磁盘的哪些数据块上）</li>
+    <li><strong>链接计数</strong>（有多少个文件名指向这个 inode）</li>
+  </ul>
+  <div class="callout warn">
+    <strong>关键点，也是最容易被忽略的细节：inode 里唯一不包含的信息就是"文件名"。</strong>文件名是存在<strong>目录</strong>里的，不是存在 inode 里的。
+  </div>
+
+  <h2>目录项：文件名到 inode 的映射</h2>
+  <p>
+    <strong>目录（Directory）</strong>本身也是一种特殊的文件，它的内容就是一张表，记录着"文件名 → inode 编号"的映射关系，这一条条记录叫<strong>目录项（Directory Entry，简称 dentry）</strong>。
+  </p>
+  <p>
+    当你执行 <code>cat report.txt</code> 时，系统的查找过程是：
+  </p>
+  <ol>
+    <li>在当前目录的目录项列表里查找名字为 <code>report.txt</code> 的记录，找到它对应的 inode 编号。</li>
+    <li>根据 inode 编号找到对应的 inode 结构，读出里面记录的权限、数据块指针等信息。</li>
+    <li>校验权限通过后，根据数据块指针去磁盘上读取真正的文件内容。</li>
+  </ol>
+  <div class="callout info">
+    <strong>类比：</strong>inode 就像图书馆的一本书本身（书的内容、页数、出版信息，装订成册放在书库某个具体位置），而目录项就像图书馆的检索卡片（写着"书名 → 索书号"）。你在目录里看到的"文件名"，其实只是一张指向某本书的卡片，同一本书完全可以被多张不同名字的卡片同时指向。
+  </div>
+
+  <h2>为什么"删除文件"本质是"减少 inode 的链接计数"</h2>
+  <p>
+    理解了 inode 和目录项是分离的，就能解释一个经常让人困惑的现象：<strong>执行 <code>rm report.txt</code> 之后，文件的数据不一定立刻从磁盘上消失</strong>。
+  </p>
+  <p>
+    真正发生的事情是：
+  </p>
+  <ol>
+    <li>从目录里删掉 <code>report.txt</code> 这一条目录项（也就是这张"检索卡片"）。</li>
+    <li>把该文件对应 inode 里的<strong>链接计数（link count）减 1</strong>。</li>
+    <li>只有当链接计数<strong>减到 0</strong>，并且没有任何进程还打开着这个文件时，操作系统才会真正回收这个 inode 和它占用的数据块，数据才算彻底被清除。</li>
+  </ol>
+  <div class="callout tip">
+    <strong>呼应 Java/Linux 实践：</strong>这正是为什么"一个进程打开了一个日志文件，你在另一个终端把它 <code>rm</code> 掉之后，磁盘空间并没有立刻释放"——因为进程持有的文件描述符还占着一个引用，inode 的链接计数没有真正归零，直到进程关闭这个文件描述符（或进程退出）才会真正释放空间。运维排查"磁盘满了但 <code>du</code> 和 <code>df</code> 结果对不上"时，十有八九就是这个原因（可以用 <code>lsof | grep deleted</code> 定位到底是哪个进程还占着已删除的文件）。
+  </div>
+
+  <h2>硬链接与软链接</h2>
+  <p>
+    理解了 inode 和目录项的关系，硬链接、软链接的区别就变得非常直观：
+  </p>
+  <table>
+    <thead>
+      <tr><th></th><th>硬链接（Hard Link）</th><th>软链接 / 符号链接（Symbolic Link）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>本质</td>
+        <td>新增一个目录项，直接指向<strong>同一个 inode</strong></td>
+        <td>创建一个新的、独立的文件（有自己的 inode），内容是<strong>目标文件的路径字符串</strong></td>
+      </tr>
+      <tr>
+        <td>链接计数</td>
+        <td>目标文件的链接计数会 +1</td>
+        <td>不影响目标文件的链接计数</td>
+      </tr>
+      <tr>
+        <td>删除原文件后</td>
+        <td>只要还有其他硬链接存在，数据依然可访问</td>
+        <td>原文件被删后，软链接变成"悬空链接"，访问会报错</td>
+      </tr>
+      <tr>
+        <td>能否跨文件系统/分区</td>
+        <td>不能（inode 编号只在同一文件系统内唯一）</td>
+        <td>可以（本质只是存了一个路径字符串）</td>
+      </tr>
+      <tr>
+        <td>能否链接目录</td>
+        <td>通常不允许（避免目录树出现环）</td>
+        <td>可以</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    一句话总结：<strong>硬链接是"多个名字共用同一个 inode"，软链接是"一个独立的、内容为路径字符串的新文件"</strong>——这也是为什么硬链接删掉一个名字，数据还在；软链接指向的原文件被删掉，链接本身就失效了（因为它引用的是路径，不是 inode）。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>inode 存元数据和数据块指针，不存文件名；文件名存在目录项里，是"名字 → inode"的映射。</strong>这一层间接是理解文件系统的钥匙。</li>
+    <li><strong>删除文件的本质是减少 inode 链接计数，计数归零且无进程占用才真正回收数据</strong>，这解释了"rm 后磁盘空间未释放"这类常见现象。</li>
+    <li><strong>硬链接共享 inode，软链接是存路径的独立文件</strong>，面试问区别时抓住这一点回答即可。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-页面置换算法.html" class="nav-btn">← 页面置换算法</a>
+    <a href="../os-roadmap.html" class="nav-btn next">回到路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

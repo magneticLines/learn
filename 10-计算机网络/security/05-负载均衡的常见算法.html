@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>负载均衡的常见算法 — 计算机网络</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 安全与现代基础设施 / 负载均衡的常见算法
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全与现代基础设施</div>
+    <h1>负载均衡的常见算法</h1>
+    <p>单台服务器扛不住流量时，负载均衡负责把请求"分派"给一群服务器。分派规则不同，适用场景也不同——这是后端架构面试的常客。</p>
+  </div>
+
+  <h2>为什么需要负载均衡</h2>
+  <p>
+    一台服务器的处理能力和网络带宽是有上限的。当请求量超过单机承载能力，办法要么是"竖向扩展"（换更强的机器，总有天花板），
+    要么是"横向扩展"（部署多台机器分摊流量）。横向扩展带来一个新问题：<strong>客户端的请求该发给哪一台？</strong>
+    负载均衡器（Load Balancer）就是站在客户端和一组后端服务器之间，按某种策略把每个请求转发到某一台的组件。
+  </p>
+
+  <h2>常见负载均衡算法</h2>
+
+  <h3>1. 轮询（Round Robin）</h3>
+  <p>
+    请求按顺序依次分配给每台服务器，一圈轮完再从头开始。实现最简单，<strong>假设所有服务器性能均等</strong>时效果不错。
+  </p>
+  <div class="callout warn">
+    <strong>局限：</strong>如果某台机器配置更差或已经在处理慢请求，轮询依然一视同仁地分配同样多的请求，容易造成短板机器过载。
+  </div>
+
+  <h3>2. 加权轮询（Weighted Round Robin）</h3>
+  <p>
+    给每台服务器配置一个权重，权重越高分到的请求越多。比如三台服务器权重 5:3:2，每 10 个请求中就按这个比例分配。
+    解决了轮询"假设所有机器性能均等"的问题，适合<strong>异构集群</strong>（新旧机器混部）。
+  </p>
+
+  <h3>3. 最少连接数（Least Connections）</h3>
+  <p>
+    把新请求分配给<strong>当前处理连接数最少</strong>的服务器。相比轮询，它是"动态"的——实时感知每台机器的负载情况，
+    而不是按固定顺序机械分配。适合<strong>请求处理时长差异很大</strong>的场景（比如有的请求要处理几秒，有的几毫秒），轮询在这种场景下容易出现"忙的更忙"。
+  </p>
+
+  <h3>4. IP 哈希（IP Hash）</h3>
+  <p>
+    对客户端 IP 做哈希运算，结果映射到固定的一台服务器，同一个客户端的请求总是落到同一台机器上。
+    这解决了<strong>会话保持（Session Sticky）</strong>问题——如果业务逻辑依赖存在单机内存里的会话状态（比如未做分布式 Session 的登录态），
+    同一用户的请求必须落在同一台机器，否则会出现"登录了但下一个请求又要求重新登录"的怪象。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>IP 哈希在真实场景中并不完美——大量用户可能共享同一出口 IP（比如公司/校园网做了 NAT），会导致负载分配不均；同时如果某台机器下线，哈希结果重新映射会导致大量原本固定在该机器的用户瞬间切换到别的机器，可能引发缓存失效等连锁问题。
+  </div>
+
+  <h2>算法对比一览</h2>
+  <table>
+    <thead><tr><th>算法</th><th>核心逻辑</th><th>适用场景</th><th>局限</th></tr></thead>
+    <tbody>
+      <tr><td>轮询</td><td>依次分配</td><td>服务器性能相近、请求处理时长均匀</td><td>不感知实际负载差异</td></tr>
+      <tr><td>加权轮询</td><td>按权重比例分配</td><td>异构集群（性能不同的机器混部）</td><td>权重需要人工评估设置</td></tr>
+      <tr><td>最少连接数</td><td>分给当前负载最低的机器</td><td>请求处理时长差异大</td><td>需要维护每台机器的实时连接状态</td></tr>
+      <tr><td>IP 哈希</td><td>同一 IP 固定分到同一台</td><td>依赖单机会话状态、需要会话保持</td><td>分布不均、扩缩容时哈希漂移</td></tr>
+    </tbody>
+  </table>
+
+  <h2>四层负载均衡 vs 七层负载均衡</h2>
+  <p>
+    这是另一个正交的分类维度——负载均衡器在哪一层网络协议上做决策：
+  </p>
+  <ul>
+    <li><strong>四层负载均衡：</strong>工作在传输层，只看 <strong>IP + 端口</strong>（回顾传输层 Tab 学的 TCP/UDP），不解析应用层内容，直接转发数据包。优点是速度快、开销小；缺点是无法感知 HTTP 层面的信息（比如按 URL 路径路由）。典型实现：LVS。</li>
+    <li><strong>七层负载均衡：</strong>工作在应用层，会解析 HTTP 报文内容（URL、Header、Cookie 等），可以做更精细的路由决策，比如把 <code>/api/*</code> 转发给后端服务集群、把 <code>/static/*</code> 转发给静态资源服务器。代价是需要解析应用层协议，性能开销比四层大。典型实现：Nginx、HAProxy。</li>
+  </ul>
+  <div class="callout info">
+    <strong>类比：</strong>四层负载均衡像快递分拣时只看"寄往哪个城市"就分流水线，不拆包裹；七层负载均衡则会拆开包裹看里面装的是什么类型的货物，再决定送到哪个具体仓库——更智能，但也更耗时。
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"负载均衡算法选一个'最好的'就行。" 没有放之四海皆准的最优算法，选择取决于机器是否同构、请求处理时长是否均匀、业务是否依赖会话状态。实际生产环境中常常是多种策略组合（比如七层按路径路由 + 每个路径内部用最少连接数）。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"负载均衡有哪些算法，怎么选？" 按"轮询→加权轮询→最少连接数→IP 哈希"讲清楚各自解决的问题即可；追问"四层和七层区别"，抓住"是否解析应用层内容"这个核心差异回答。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>负载均衡的本质是横向扩展下"如何把请求合理分派给多台机器"的问题。</li>
+    <li>算法选择要结合机器是否同构、请求耗时是否均匀、是否需要会话保持来综合判断。</li>
+    <li>四层负载均衡快但"看不懂"应用层内容，七层负载均衡功能强但开销更大，二者常搭配使用。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-WebSocket与长连接.html" class="nav-btn">← WebSocket 与长连接</a>
+    <a href="./06-CDN的工作原理.html" class="nav-btn next">CDN 的工作原理 →</a>
+  </div>
+
+</div>
+</body>
+</html>
+</content>

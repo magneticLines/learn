@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>三种并发编程模型对比 — 并发编程回顾</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #92400e; }
+  .nav-btn.next { color: #fbbf24; border-color: #92400e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 并发编程回顾 / 三种并发编程模型对比
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">并发编程回顾</div>
+    <h1>基于进程 / IO多路复用 / 线程的三种并发编程模型对比</h1>
+    <p>02-并发模块讲的是"Java 里怎么写多线程代码、怎么保证线程安全"，这一篇往下退一层：操作系统层面，让一个服务器同时服务多个客户端，其实有三条完全不同的技术路线，线程只是其中一种。</p>
+  </div>
+
+  <!-- 问题背景 -->
+  <h2>共同的问题：一个服务器如何同时服务多个客户端</h2>
+  <p>
+    设想写一个网络服务器，要同时处理成百上千个客户端连接。最朴素的想法是"来一个客户端就处理一个，处理完再接待下一个"——但这样任何一个客户端卡住（比如网络慢、发送数据很慢），后面所有客户端都要排队等待，完全没法用。操作系统和应用程序设计者对此提出了三种截然不同的解法，对应三种并发编程模型。
+  </p>
+
+  <!-- 模型一 -->
+  <h2>模型一：基于进程的并发</h2>
+  <p>
+    每接受一个客户端连接，就用 <code>fork()</code> 创建一个全新的<strong>子进程</strong>专门服务这个客户端，父进程继续监听新连接。每个子进程都有<strong>独立的地址空间</strong>，彼此完全隔离。
+  </p>
+  <p>
+    优点是<strong>隔离性极好</strong>：一个子进程崩溃不会波及其他进程，也不用担心多个客户端的处理逻辑互相踩内存。缺点也很明显：<code>fork()</code> 创建进程的开销大（需要复制页表等一整套进程上下文，虽然现代系统用写时复制 Copy-on-Write 优化过，但仍然比创建线程重得多），进程间如果需要共享数据，还必须通过管道、共享内存、Socket 等笨重的进程间通信（IPC）机制，无法像线程那样直接共享同一份内存。
+  </p>
+
+  <!-- 模型二 -->
+  <h2>模型二：基于 IO 多路复用的并发</h2>
+  <p>
+    整个服务器<strong>只用一个进程、一个线程</strong>，但通过 <code>select</code>/<code>poll</code>/<code>epoll</code> 这类系统调用，同时"盯着"成百上千个客户端的 Socket 连接，哪个连接上有数据到达就处理哪个，处理完立刻转向下一个就绪的连接，绝不在某一个客户端上阻塞等待。这正是 <strong>Nginx、Redis</strong> 等高性能服务器的核心并发模型（Redis 早期版本单线程处理所有请求，靠的就是这套机制）。
+  </p>
+  <p>
+    优点是<strong>没有多进程/多线程的切换开销</strong>，也不存在多线程共享数据带来的竞态问题（因为始终只有一个执行流在跑业务逻辑）。缺点是<strong>编程模型更复杂</strong>——所有逻辑都要写成事件驱动、非阻塞的风格（不能有一步"卡住等结果"的代码），业务逻辑一旦有耗时的 CPU 密集计算，会直接卡住整个事件循环，拖慢所有其他连接的响应。
+  </p>
+
+  <!-- 模型三 -->
+  <h2>模型三：基于线程的并发</h2>
+  <p>
+    每个客户端连接分配一个<strong>线程</strong>而不是进程，所有线程共享同一个进程的地址空间。这是 Java 传统 Web 服务器（如 Tomcat 的经典 BIO 模式）最常用的模型，也是 02-并发模块里"如何保证线程安全"讨论的直接应用场景。
+  </p>
+  <p>
+    优点是<strong>创建和切换开销远小于进程</strong>（线程共享地址空间，不需要复制页表），同时因为共享内存，线程间通信天然方便（直接读写共享变量即可）。但这个"方便"正是双刃剑的另一面：<strong>正因为共享内存，才产生了竞态条件、需要用锁保护临界区</strong>——02-并发模块讲的 <code>synchronized</code>、<code>volatile</code>、各种并发工具类，本质上都是在为这个模型的"共享带来的风险"打补丁。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>三种模型取舍对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>基于进程</th><th>基于 IO 多路复用</th><th>基于线程</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>隔离性</td>
+        <td>最好，独立地址空间</td>
+        <td>无隔离概念（单执行流）</td>
+        <td>差，共享地址空间</td>
+      </tr>
+      <tr>
+        <td>创建/切换开销</td>
+        <td>最大</td>
+        <td>无切换开销（单线程）</td>
+        <td>中等</td>
+      </tr>
+      <tr>
+        <td>数据共享方式</td>
+        <td>需要 IPC（管道/共享内存）</td>
+        <td>天然共享（同一进程内变量）</td>
+        <td>天然共享（同一进程内变量）</td>
+      </tr>
+      <tr>
+        <td>需要处理竞态条件</td>
+        <td>基本不需要</td>
+        <td>不需要（单执行流不并发访问）</td>
+        <td>需要，是主要复杂度来源</td>
+      </tr>
+      <tr>
+        <td>编程模型复杂度</td>
+        <td>简单（每个进程按顺序写逻辑）</td>
+        <td>复杂（必须事件驱动/非阻塞）</td>
+        <td>中等（顺序写逻辑，但要考虑同步）</td>
+      </tr>
+      <tr>
+        <td>典型代表</td>
+        <td>传统 Apache prefork 模式</td>
+        <td>Nginx、Redis、Node.js</td>
+        <td>Java 传统 BIO 服务器、大部分 Java 应用</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"IO 多路复用是单线程，所以性能一定比多线程差。"
+    恰恰相反，对于以 IO 等待为主、CPU 计算量小的场景（如大部分网络请求转发、KV 存储读写），IO 多路复用往往<strong>性能更好</strong>——因为它省去了线程切换的上下文开销和竞态处理的锁开销。但如果业务里混入了大量 CPU 密集计算，单线程模型就会成为瓶颈，这也是为什么 Redis 6.0 之后引入了多线程处理网络 IO（但核心数据操作仍是单线程，以此保证操作的原子性）。三种模型没有绝对的优劣，只有"适合什么场景"的取舍。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么 Redis 是单线程还能这么快？" 标准答案要点：<strong>数据全部在内存里操作，避免了慢速磁盘 IO；采用 IO 多路复用模型处理网络连接，避免了线程切换和锁竞争的开销；单线程的操作天然是原子的，不需要额外加锁</strong>。这道题本质上考的就是这三种并发模型的取舍理解。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>三种模型是操作系统层面"如何组织并发执行流"的三条不同路线</strong>，02-并发模块讨论的线程安全问题，只是"基于线程"这一种模型下才会遇到的问题。</li>
+    <li><strong>隔离性和共享效率是核心权衡</strong>：进程隔离最好但开销最大，线程共享高效但引入竞态风险，IO 多路复用用单线程规避了竞态但要求业务逻辑必须非阻塞。</li>
+    <li>理解了这三种模型，才能理解 Java NIO、Netty 的 Reactor 模型本质上是把"IO 多路复用"这个操作系统能力包装成了 Java 层面好用的编程接口。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../link/03-系统调用的本质.html" class="nav-btn">← 系统调用的本质</a>
+    <a href="./02-用户级线程与内核级线程.html" class="nav-btn next">用户级线程与内核级线程 →</a>
+  </div>
+
+</div>
+</body>
+</html>

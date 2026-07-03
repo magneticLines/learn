@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TCP 流量控制（滑动窗口） — 传输层</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 传输层 / TCP 流量控制（滑动窗口）
+  </div>
+
+  <div class="hero">
+    <div class="tag">传输层</div>
+    <h1>TCP 流量控制（滑动窗口）</h1>
+    <p>上一篇解决了"数据丢了怎么发现、怎么补"，但还有一个问题没解决：发送方能不能敞开了发？如果接收方处理不过来，疯狂发送只会把对方的缓冲区撑爆。滑动窗口就是解决这个问题的机制。</p>
+  </div>
+
+  <h2>问题：发送方凭什么"悠着点发"</h2>
+  <p>
+    如果 TCP 只有序号和确认应答，一种最简单的做法是"发一个字节，等一个 ACK，再发下一个"——这叫<strong>停等协议（Stop-and-Wait）</strong>，
+    正确性没问题，但效率极低：每次都要等一个完整的 RTT 才能发下一批数据，链路大部分时间都在空闲。
+  </p>
+  <p>
+    另一个极端是"不管对方死活，数据只管往外发"——这样吞吐是上去了，但如果接收方处理速度跟不上（比如接收方 CPU 繁忙、应用层没来得及从缓冲区读走数据），
+    接收缓冲区很快被填满，后续到达的数据只能被丢弃，反而造成大量无谓的重传。
+  </p>
+  <p>
+    滑动窗口机制就是在这两个极端之间找的平衡点：<strong>允许发送方一次性发送多个报文段而不必逐个等待确认，但发送的总量不能超过接收方当前还能承受的数据量</strong>。
+  </p>
+
+  <h2>滑动窗口如何工作</h2>
+  <p>
+    接收方在每个 ACK 报文里都会带上一个<strong>接收窗口（rwnd, Receive Window）</strong>字段，
+    告诉发送方"我这边的接收缓冲区还剩多少空间，你最多还能再发这么多字节过来，不需要逐个等确认"。
+  </p>
+  <div class="tree">
+发送方缓冲区（字节流视角）：
+┌──────────┬─────────────────────┬─────────────┐
+│ 已发送已确认 │   已发送未确认 + 可发送未发送   │  不可发送     │
+└──────────┴─────────────────────┴─────────────┘
+                 ▲<span class="hi">←──── 发送窗口 (由 rwnd 决定) ────→</span>▲
+             窗口左边界                          窗口右边界
+
+  收到新 ACK → 窗口向右"滑动"（左边界右移，确认过的部分被移出窗口）
+  接收方处理能力下降 → rwnd 变小 → 窗口右边界收缩，发送方降速
+  </div>
+  <p>
+    随着 ACK 不断到达，窗口在字节流上像一把"可伸缩的取景框"一样向右滑动——这就是"滑动窗口"名字的由来。
+    发送方在窗口范围内的数据可以连续发出，不需要每发一个字节就停下来等确认，大大提升了吞吐率，同时又不会让接收方超载。
+  </p>
+
+  <h2>核心区分：流量控制 vs 拥塞控制</h2>
+  <p>
+    这是一个极高频的面试考点，很多人把两者混为一谈，其实它们保护的对象完全不同：
+  </p>
+  <table>
+    <thead><tr><th>维度</th><th>流量控制（Flow Control）</th><th>拥塞控制（Congestion Control）</th></tr></thead>
+    <tbody>
+      <tr><td>保护对象</td><td>接收方（防止接收缓冲区溢出）</td><td>整个网络（防止链路和路由器过载）</td></tr>
+      <tr><td>依据信息</td><td>接收方主动通告的接收窗口 <code>rwnd</code></td><td>发送方根据丢包、延迟等信号自己估算的拥塞窗口 <code>cwnd</code></td></tr>
+      <tr><td>是点对点还是全局的</td><td>点对点：只关心这条连接对端的处理能力</td><td>全局性：网络中间的路由器、链路带宽都可能是瓶颈，与本连接无关的其他流量也会造成影响</td></tr>
+      <tr><td>最终生效窗口</td><td colspan="2">实际允许发送的数据量 = <code>min(rwnd, cwnd)</code>，两者中更小的那个说了算</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>记忆技巧：</strong>流量控制是"一对一"的绅士协定（我告诉你我能吃多少，你就喂多少），拥塞控制是"多对一共享资源"的博弈（大家都在抢同一条网络管道，谁也不知道别人发了多少）。下一篇会详细展开拥塞控制的具体算法。
+  </div>
+
+  <h2>常见误区与边界情况</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"窗口越大，性能一定越好。" 窗口大小和带宽时延积（BDP, Bandwidth-Delay Product = 带宽 × RTT）密切相关：如果窗口小于 BDP，链路的带宽没有被充分利用（发送方在等 ACK，但链路其实还有余量）；这也是为什么高带宽高延迟网络（长肥管道）需要更大的 TCP 窗口（涉及 TCP 窗口扩大选项 Window Scaling），否则吞吐会被严重限制。
+  </div>
+  <div class="callout warn">
+    <strong>陷阱：糊涂窗口综合征（Silly Window Syndrome）。</strong>
+    如果接收方每次只腾出很小一点缓冲区空间就立刻通告一个很小的非零窗口（比如 1 字节），会导致发送方发送大量微小的报文段，首部开销远大于实际数据，效率极低。
+    解决办法是接收方遵循 <strong>Clark 算法</strong>：只有当缓冲区空出的空间达到一定阈值（如 MSS 大小或缓冲区一半）才通告新窗口；发送方也配合 <strong>Nagle 算法</strong>：小数据量时先攒一攒，凑够一个较大的报文段或等到收到前一个 ACK 再发，避免发送过多小包。
+  </div>
+
+  <h2>与前面知识点的联系</h2>
+  <p>
+    滑动窗口的正确运作，建立在上一篇讲的<strong>序号机制</strong>之上——窗口的左右边界本质上就是字节流序号上的两个游标；
+    而窗口内报文丢失后的快速重传机制，也是与滑动窗口配合工作的：当某个报文段丢失，后续报文段仍在窗口内被发送方持续发出，接收方靠重复 ACK 提示发送方尽快重传空缺部分，而不必让整个窗口停摆。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>滑动窗口解决"发送方一次能发多少"的效率问题，同时避免压垮接收方。</strong></li>
+    <li><strong>流量控制保护接收方，拥塞控制保护网络，两者作用范围不同，缺一不可。</strong></li>
+    <li><strong>下一篇进入拥塞控制——发送方如何在完全不了解网络内部状态的情况下，通过试探摸清网络的承载能力。</strong></li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-TCP如何保证可靠传输.html" class="nav-btn">← TCP 如何保证可靠传输</a>
+    <a href="./06-TCP拥塞控制.html" class="nav-btn next">TCP 拥塞控制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

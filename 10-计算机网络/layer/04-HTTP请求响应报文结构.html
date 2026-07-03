@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HTTP 请求响应报文结构 — 计算机网络</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 分层与应用层 / HTTP 请求响应报文结构
+  </div>
+
+  <div class="hero">
+    <div class="tag">分层与应用层</div>
+    <h1>HTTP 请求响应报文结构</h1>
+    <p>不管 HTTP 版本怎么演进，请求和响应报文的"语义结构"是相通的——搞懂这套结构，浏览器 F12 抓的每一行网络面板信息才不再是天书。</p>
+  </div>
+
+  <h2>为什么报文要长这个样子</h2>
+  <p>
+    HTTP 是一个基于文本（HTTP/2、3 是二进制帧，但语义上仍等价于文本报文）的<strong>请求-响应</strong>协议：客户端发一个请求报文，服务器必须回一个响应报文。报文本质上就是"结构化的纯文本"，之所以设计成固定的四段式结构，是为了让接收方能用最简单的规则（按行、按空行分割）就把报文解析出来，而不需要复杂的语法分析器。
+  </p>
+
+  <h2>请求报文结构</h2>
+  <div class="tree">
+    <span class="hi">请求行</span>　　方法 空格 URL 空格 HTTP版本<br>
+    <span class="hi">请求头</span>　　若干行 "字段名: 值"<br>
+    　　　　　（空行，表示头部结束）<br>
+    <span class="hi">请求体</span>　　可选，GET 通常没有，POST/PUT 常携带数据
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>真实抓包示例：POST 登录请求</span></div>
+    <pre><span class="fn">POST</span> <span class="str">/api/login</span> <span class="ty">HTTP/1.1</span>
+<span class="var">Host</span><span class="punct">:</span> www.example.com
+<span class="var">User-Agent</span><span class="punct">:</span> Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+<span class="var">Accept</span><span class="punct">:</span> application/json
+<span class="var">Content-Type</span><span class="punct">:</span> application/json
+<span class="var">Content-Length</span><span class="punct">:</span> <span class="num">38</span>
+<span class="var">Cookie</span><span class="punct">:</span> sessionId=abc123xyz
+
+{<span class="str">"username"</span>: <span class="str">"shea"</span>, <span class="str">"password"</span>: <span class="str">"******"</span>}</pre>
+  </div>
+  <p>
+    第一行是<strong>请求行</strong>：<code>POST</code> 是方法，<code>/api/login</code> 是请求的资源路径，<code>HTTP/1.1</code> 是协议版本。
+    接下来若干行是<strong>请求头</strong>，每行都是 <code>字段名: 值</code> 的键值对，携带各种元信息——<code>Host</code> 告诉服务器要访问哪个域名（一台服务器可能承载多个网站）、<code>Content-Type</code> 告诉服务器请求体是什么格式、<code>Cookie</code> 携带身份标识（下一篇会详细展开）。
+    然后是一个<strong>空行</strong>，它是报文里最容易被忽略但至关重要的部分——正是这个空行告诉解析器"头部结束了，后面是body"。
+    最后是<strong>请求体</strong>，携带真正要提交的数据。
+  </p>
+
+  <h2>响应报文结构</h2>
+  <div class="tree">
+    <span class="hi">状态行</span>　　HTTP版本 空格 状态码 空格 状态描述<br>
+    <span class="hi">响应头</span>　　若干行 "字段名: 值"<br>
+    　　　　　（空行，表示头部结束）<br>
+    <span class="hi">响应体</span>　　实际返回的数据（HTML/JSON/图片二进制...）
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>真实抓包示例：登录成功响应</span></div>
+    <pre><span class="ty">HTTP/1.1</span> <span class="num">200</span> <span class="str">OK</span>
+<span class="var">Content-Type</span><span class="punct">:</span> application/json; charset=utf-8
+<span class="var">Content-Length</span><span class="punct">:</span> <span class="num">45</span>
+<span class="var">Set-Cookie</span><span class="punct">:</span> sessionId=abc123xyz; Path=/; HttpOnly
+<span class="var">Cache-Control</span><span class="punct">:</span> no-store
+<span class="var">Date</span><span class="punct">:</span> Fri, 03 Jul 2026 06:30:00 GMT
+
+{<span class="str">"code"</span>: <span class="num">0</span>, <span class="str">"message"</span>: <span class="str">"login success"</span>}</pre>
+  </div>
+  <p>
+    第一行是<strong>状态行</strong>：协议版本 + 状态码 <code>200</code> + 状态描述 <code>OK</code>（状态码含义下一篇专门展开）。
+    响应头里 <code>Content-Type</code> 告诉浏览器该怎么解析响应体（这里是 JSON），<code>Set-Cookie</code> 是服务器让浏览器保存一个 Cookie（这是下一篇 Cookie/Session 机制的关键字段）。
+    空行之后是响应体——本例中是一段 JSON 文本，如果是访问网页则会是完整的 HTML。
+  </p>
+
+  <h2>常见头部字段速查</h2>
+  <table>
+    <thead>
+      <tr><th>字段</th><th>出现位置</th><th>作用</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Host</code></td><td>请求头</td><td>目标域名，支持虚拟主机</td></tr>
+      <tr><td><code>User-Agent</code></td><td>请求头</td><td>标识客户端（浏览器/系统/设备）</td></tr>
+      <tr><td><code>Content-Type</code></td><td>请求/响应头</td><td>body 的数据格式（如 <code>text/html</code>、<code>application/json</code>）</td></tr>
+      <tr><td><code>Content-Length</code></td><td>请求/响应头</td><td>body 的字节长度</td></tr>
+      <tr><td><code>Cookie</code></td><td>请求头</td><td>客户端携带的会话标识，回传给服务器</td></tr>
+      <tr><td><code>Set-Cookie</code></td><td>响应头</td><td>服务器让客户端保存的 Cookie</td></tr>
+      <tr><td><code>Connection</code></td><td>请求/响应头</td><td>是否保持持久连接（<code>keep-alive</code>）</td></tr>
+      <tr><td><code>Cache-Control</code></td><td>响应头</td><td>缓存策略</td></tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为空行只是"好看"，可有可无。空行是报文解析的关键分隔符，缺了它接收方无法判断头部在哪里结束——这也是为什么在 Postman 之类工具里手写原始报文时，必须严格保留这一空行。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>以为 GET 请求一定没有请求体。HTTP 规范上并不禁止 GET 带 body，只是绝大多数服务器/框架实现约定俗成地忽略 GET 的 body，语义上 GET 也不应该有副作用地携带数据（这和下一篇的方法幂等性/安全性有关）。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"HTTP 报文由哪几部分组成？"——按顺序背出请求行/状态行、头部、空行、body 四段结构，并能说出空行的作用是分隔头部和 body。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>四段式结构是解析报文的骨架：</strong>起始行描述"做什么/结果如何"，头部描述"元信息"，空行做分隔，body 装载真正的数据。</li>
+    <li><strong>浏览器 F12 网络面板本质就是在展示这套结构：</strong>Headers 面板对应请求头/响应头，Response 面板对应响应体。</li>
+    <li><strong>下一篇聚焦请求行里的"方法"和状态行里的"状态码"：</strong>这是本 Tab 里的核心考点。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-HTTP协议的演进.html" class="nav-btn">← HTTP 协议的演进</a>
+    <a href="./05-常见HTTP状态码与方法.html" class="nav-btn next">常见 HTTP 状态码与方法 →</a>
+  </div>
+
+</div>
+</body>
+</html>

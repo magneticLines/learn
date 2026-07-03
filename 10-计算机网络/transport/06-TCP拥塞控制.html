@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TCP 拥塞控制 — 传输层</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 传输层 / TCP 拥塞控制
+  </div>
+
+  <div class="hero">
+    <div class="tag">传输层</div>
+    <h1>TCP 拥塞控制</h1>
+    <p>流量控制解决了"接收方能不能吃得下"，但发送方完全不知道"沿途的网络能不能扛得住"——网络中间的路由器、链路带宽是所有连接共享的黑盒。拥塞控制就是发送方在这个黑盒面前，通过"投石问路"摸清网络承载能力的一整套算法。</p>
+  </div>
+
+  <h2>问题的本质：网络状态是个黑盒</h2>
+  <p>
+    发送方看不到网络中间到底有多少路由器、链路带宽多大、有多少条其他连接在抢占同一段链路。
+    它唯一能感知到的信号，就是<strong>自己的报文是否按时收到了确认</strong>——如果迟迟没有 ACK 或者出现丢包，大概率是网络中间某个环节堵了（路由器缓冲区排队溢出）。
+    TCP 拥塞控制的核心思路就是：<strong>用一个额外的"拥塞窗口"（cwnd, Congestion Window）动态调整发送速率，慢慢试探、快速退避，逼近网络当前能承受的最大速率</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像在陌生的黑暗房间里摸索前进——一开始小步慢慢挪（慢启动），走顺了就加快步子（拥塞避免），一旦撞到障碍物（丢包）立刻大幅后退，然后重新谨慎试探。
+  </div>
+
+  <h2>阶段一：慢启动（Slow Start）</h2>
+  <p>
+    连接刚建立时，发送方对网络一无所知，如果一上来就发送大量数据，很可能瞬间打爆路由器缓冲区。
+    因此 <code>cwnd</code> 从一个很小的初始值开始（通常是 1~10 个 MSS），<strong>每收到一个 ACK，cwnd 就增加 1 个 MSS</strong>——
+    这意味着每经过一个 RTT，cwnd 会翻倍（指数增长）。
+  </p>
+  <div class="tree">
+RTT 1: cwnd=1  →发送1个报文段
+RTT 2: cwnd=2  →发送2个报文段（收到1个ACK涨1个MSS，共涨2次）
+RTT 3: cwnd=4  →发送4个报文段
+RTT 4: cwnd=8  →发送8个报文段  ...指数增长，直到触发阈值或丢包
+  </div>
+  <p>
+    "慢启动"这个名字其实容易让人误解——它是指从很小的值<strong>开始</strong>，但增长速度其实是指数级的，一点都不慢。
+  </p>
+
+  <h2>阶段二：拥塞避免（Congestion Avoidance）</h2>
+  <p>
+    当 <code>cwnd</code> 增长到一个阈值 <code>ssthresh</code>（slow start threshold）后，指数增长太危险了（很容易一举冲垮网络），
+    于是切换成线性增长：<strong>每经过一个完整 RTT，cwnd 只增加 1 个 MSS</strong>（而不是每个 ACK 都加），这就是"加法增大（Additive Increase）"。
+  </p>
+  <p>
+    这个阶段的目标是谨慎地、缓慢地逼近网络承载上限，一旦真的发生丢包，说明已经摸到了天花板。
+  </p>
+
+  <h2>丢包后的应对：两种情形，两种反应</h2>
+  <table>
+    <thead><tr><th>丢包检测方式</th><th>说明</th><th>处理策略</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>超时（Timeout）</strong></td>
+        <td>说明网络拥塞已经很严重，连重复 ACK 都传不回来</td>
+        <td><code>ssthresh = cwnd / 2</code>，<code>cwnd</code> 直接打回 1 个 MSS，重新进入慢启动——"乘法减小（Multiplicative Decrease）"</td>
+      </tr>
+      <tr>
+        <td><strong>快速重传（收到 3 个重复 ACK）</strong></td>
+        <td>说明网络还能传输 ACK，只是丢了个别报文，拥塞没有那么严重</td>
+        <td>触发<strong>快恢复（Fast Recovery）</strong>：<code>ssthresh = cwnd / 2</code>，<code>cwnd = ssthresh</code>（不打回 1），直接进入拥塞避免阶段线性增长，无需从头慢启动</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    这套"加法增大、乘法减小"的策略有个专门的名字叫 <strong>AIMD（Additive Increase Multiplicative Decrease）</strong>，
+    它被证明在多条 TCP 连接共享网络时，能收敛到一种相对公平的带宽分配状态——谁都不会疯狂抢占，谁都会在探测到拥塞时主动退让。
+  </p>
+
+  <div class="tree">
+cwnd
+ │                          ╱╲
+ │                        ╱    ╲
+ │            ╱‾‾‾‾‾‾‾‾‾╱        ╲___拥塞避免(线性增长)
+ │          ╱  拥塞避免           ╲
+ │        ╱                        ╲___丢包,乘法减半
+ │      ╱ 慢启动(指数增长)
+ │    ╱
+ │  ╱
+ └──────────────────────────────────────────▶ 时间
+     慢启动→触碰阈值→拥塞避免→丢包→减半重新增长(经典锯齿状曲线)
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>"拥塞控制就是慢启动。" 慢启动只是拥塞控制四个阶段之一，完整的算法是"慢启动 → 拥塞避免 → （丢包）→ 快速重传/快恢复 → 回到拥塞避免"这样一个循环，慢启动只在连接刚建立或发生严重超时后才会触发。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>"cwnd 和 rwnd 是一回事。" 上一篇讲过，两者概念完全不同：<code>rwnd</code> 是接收方告诉你的、保护接收方的窗口；<code>cwnd</code> 是发送方自己估算的、保护网络的窗口。实际允许发送的数据量永远是 <code>min(cwnd, rwnd)</code>。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"TCP 怎么判断网络拥塞？" 标准答案：<strong>以丢包作为拥塞的信号</strong>——这是以 Reno、CUBIC 为代表的传统拥塞控制算法的核心假设。但这个假设本身是有局限的（比如无线网络中丢包常常是信号干扰而非拥塞导致），这也是本 Tab 最后一篇要讲的 BBR 算法诞生的动机：换一种完全不同的方式判断拥塞。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>拥塞控制的本质：</strong>在完全看不到网络内部状态的前提下，通过"探测 - 退让"循环去逼近可用带宽，是一种黑盒优化。</li>
+    <li><strong>慢启动指数试探、拥塞避免线性逼近、快速重传快速止损——三者环环相扣，共同构成 AIMD 策略。</strong></li>
+    <li><strong>传统算法把"丢包"当作拥塞的唯一信号，这个假设并不总是成立，为后面讲 QUIC 和 BBR 埋下伏笔。</strong></li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-TCP流量控制滑动窗口.html" class="nav-btn">← TCP 流量控制（滑动窗口）</a>
+    <a href="./07-为什么HTTP3选择基于UDP的QUIC协议.html" class="nav-btn next">为什么 HTTP/3 选择基于 UDP 的 QUIC 协议 →</a>
+  </div>
+
+</div>
+</body>
+</html>

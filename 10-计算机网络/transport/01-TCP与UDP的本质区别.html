@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TCP 与 UDP 的本质区别 — 传输层</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 传输层 / TCP 与 UDP 的本质区别
+  </div>
+
+  <div class="hero">
+    <div class="tag">传输层</div>
+    <h1>TCP 与 UDP 的本质区别</h1>
+    <p>传输层的核心使命是"把数据从一个进程送到另一个进程"，但送达的方式有两种哲学：不惜代价保证送到（TCP），还是尽力而为、快就完事（UDP）。理解这个取舍，是理解整个传输层的起点。</p>
+  </div>
+
+  <h2>先搞清楚：传输层解决什么问题</h2>
+  <p>
+    网络层（IP）只负责把数据包从一台<strong>主机</strong>送到另一台主机，它不关心这台主机上到底是哪个程序在等这个数据。
+    传输层在此基础上加了一层<strong>进程到进程（process-to-process）</strong>的寻址——靠端口号（port）区分同一台主机上的不同应用。
+    这是 TCP 和 UDP 的共同点：<strong>它们都提供"端口寻址"和"差错检测（校验和）"这两项基本服务</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>IP 层好比"快递公司把包裹送到某栋写字楼"，传输层则负责"送到写字楼里具体哪个房间（端口号）"。TCP 和 UDP 的区别，在于要不要"签收确认、丢件包赔、按顺序派送"这一整套服务。
+  </div>
+
+  <h2>本质区别：可靠性是有代价的</h2>
+  <p>
+    TCP 和 UDP 最根本的区别不是"一个可靠一个不可靠"这么简单，而是<strong>TCP 用连接状态、确认应答、超时重传、拥塞控制换来了可靠性和有序性，而这一切都需要额外的时间开销和内存开销</strong>。
+    UDP 则把这些全部砍掉，只留最基本的"发出去"，换来的是极致的简单和低延迟。
+  </p>
+  <table>
+    <thead><tr><th>维度</th><th>TCP</th><th>UDP</th></tr></thead>
+    <tbody>
+      <tr><td>连接</td><td>面向连接，通信前需三次握手建立连接</td><td>无连接，发送前无需建立任何状态</td></tr>
+      <tr><td>可靠性</td><td>保证送达，丢包会重传</td><td>不保证送达，丢了就丢了</td></tr>
+      <tr><td>顺序</td><td>保证接收方按发送顺序收到（靠序号重排）</td><td>不保证顺序，谁先到算谁的</td></tr>
+      <tr><td>流量/拥塞控制</td><td>有滑动窗口 + 拥塞控制算法</td><td>没有，发送速率完全由应用层决定</td></tr>
+      <tr><td>报文开销</td><td>首部至少 20 字节，含大量控制字段</td><td>首部固定 8 字节（源端口/目的端口/长度/校验和）</td></tr>
+      <tr><td>传输方式</td><td>字节流（Byte Stream），无消息边界</td><td>数据报（Datagram），保留消息边界</td></tr>
+      <tr><td>典型延迟</td><td>建连 + 重传机制引入额外 RTT</td><td>发出即走，延迟最低</td></tr>
+    </tbody>
+  </table>
+
+  <h2>什么场景该用 UDP</h2>
+  <p>
+    UDP 并不是"落后于 TCP 的过时协议"，而是在特定场景下的<strong>更优解</strong>：
+  </p>
+  <ul>
+    <li><strong>实时音视频通话（VoIP、视频会议）：</strong>丢一帧画面或一小段声音，人眼耳朵几乎察觉不到，但如果用 TCP，一旦丢包触发重传，画面会卡顿甚至积压延迟——"迟到的数据不如没有"，实时性比完整性更重要。</li>
+    <li><strong>DNS 查询：</strong>一次查询就是一问一答的短小报文，为此专门三次握手再挥手，开销远大于收益；应用层自己简单重试一次成本更低。</li>
+    <li><strong>直播、在线游戏：</strong>同理，玩家状态同步要的是"最新的位置"，而不是"每一个历史位置都不丢"。</li>
+    <li><strong>广播/多播场景：</strong>TCP 是点对点连接，无法天然支持一对多；UDP 可以配合 IP 多播把一份数据发给一组接收者。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>记忆技巧：</strong>凡是"实时性 > 完整性"或者"一问一答、成本敏感"的场景，优先考虑 UDP；凡是"数据必须完整无误"的场景（文件传输、网页、支付），必须用 TCP。
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>"UDP 不可靠 = UDP 不能做可靠传输。" 错。可靠性是可以在应用层之上自己实现的——QUIC（HTTP/3 的基础）就是在 UDP 之上自己造了一套可靠传输、拥塞控制机制，绕开了 TCP 内核实现的僵化问题，这个话题在本 Tab 第 7 篇会详细展开。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>"TCP 是流，UDP 是包"这句话很多人只记了结论没理解含义。TCP 把数据看成一条没有边界的字节流，应用层调用几次 <code>write</code> 和对端调用几次 <code>read</code> 收到的次数完全可能对不上（可能粘包/拆包）；而 UDP 每次 <code>sendto</code> 对应一个独立数据报，接收方一次 <code>recvfrom</code> 正好收到一个完整报文，天然保留消息边界。这是很多"粘包问题"面试题的根源。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>没有绝对更好的协议，只有更适合场景的协议：</strong>可靠性、有序性是用时间和资源换来的，不是免费的。</li>
+    <li><strong>TCP 的复杂性正是本 Tab 接下来 5 篇的主线：</strong>三次握手建连、四次挥手断连、序号确认保证可靠、滑动窗口做流量控制、拥塞控制算法调节发送速率——每一项都是在为"可靠"这两个字买单。</li>
+    <li><strong>先建立这个全局印象，再逐个拆解细节，理解会顺畅很多。</strong></li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../layer/07-DNS域名解析的完整过程.html" class="nav-btn">← DNS 域名解析的完整过程</a>
+    <a href="./02-TCP三次握手.html" class="nav-btn next">TCP 三次握手 →</a>
+  </div>
+
+</div>
+</body>
+</html>

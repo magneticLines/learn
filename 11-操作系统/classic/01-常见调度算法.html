@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>常见调度算法 — 进程调度与经典理论</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #7c1d51; }
+  .nav-btn.next { color: #f472b6; border-color: #7c1d51; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 进程调度与经典理论 / 常见调度算法
+  </div>
+
+  <div class="hero">
+    <div class="tag">进程调度与经典理论</div>
+    <h1>常见调度算法</h1>
+    <p>CPU 只有一个（或几个核），但"就绪"的进程往往有一堆——调度算法就是回答"下一个该轮到谁"这个问题的策略。不同策略背后是完全不同的价值取舍。</p>
+  </div>
+
+  <h2>为什么需要调度算法</h2>
+  <p>
+    多道程序设计的核心矛盾是：<strong>CPU 是稀缺的独占资源，而就绪进程往往不止一个</strong>。操作系统必须有一套规则来决定谁先用、用多久、什么时候被换下去。
+    这套规则设计得好不好，直接决定了系统"用起来"的体验——是像超市排队一样公平，还是像插队严重的窗口一样让人抓狂。
+  </p>
+  <p>
+    调度算法要在三个经常互相冲突的目标之间做权衡：
+  </p>
+  <ul>
+    <li><strong>公平性（Fairness）</strong>：每个进程都能拿到应得的 CPU 时间，不会有人永远排不上号。</li>
+    <li><strong>响应时间（Response Time）</strong>：尤其是交互式场景，用户点一下鼠标，程序要"感觉上"立刻有反应，哪怕后台还有一堆计算任务在跑。</li>
+    <li><strong>吞吐量（Throughput）</strong>：单位时间内系统整体处理完的任务数量，太频繁地切换进程本身也要花时间（上下文切换开销），切多了吞吐量反而下降。</li>
+  </ul>
+  <div class="callout info">
+    <strong>类比：</strong>调度算法就像餐厅安排厨师做菜的策略——"先来后到"简单但可能让点了小菜的顾客等一桌满汉全席做完；"轮流切菜、每人做一点"响应快但切换菜品本身也要洗刀具（开销）；"VIP 优先"体验好但普通顾客可能永远排不上。
+  </div>
+
+  <h2>先来先服务（FCFS，First-Come First-Served）</h2>
+  <p>
+    最朴素的思路：进程按到达就绪队列的顺序排队，谁先来谁先用 CPU，用完（或阻塞）才轮到下一个，<strong>非抢占式</strong>。
+  </p>
+  <p>
+    问题很直观：如果一个耗时很长的任务排在前面，后面一堆短任务都得干等，整体的平均等待时间会被拉得很长。这在操作系统理论里叫 <strong>护航效应（Convoy Effect）</strong>——想象高速公路上一辆超载卡车挡在前面，后面一长串小车只能龟速跟着挪。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>FCFS 本身不复杂，但很多人会以为它"公平"，其实它只是"按到达顺序公平"，对任务本身的长短完全不敏感，短任务的用户体验会很差。
+  </div>
+
+  <h2>时间片轮转（RR，Round Robin）</h2>
+  <p>
+    给每个进程分配一个固定的时间片（比如 20ms），用完就强制切换给下一个进程，<strong>抢占式</strong>调度的代表。就绪队列是一个环形队列，轮流处理，保证谁都不会被无限期地晾在一边。
+  </p>
+  <p>
+    时间片长度是关键的调优参数：
+  </p>
+  <ul>
+    <li>时间片太长 → 退化成接近 FCFS，交互响应变差。</li>
+    <li>时间片太短 → 上下文切换过于频繁，CPU 大量时间花在"保存/恢复现场"上，有效吞吐量下降。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>经验法则：</strong>《现代操作系统》里提到一个直觉判断——时间片要设置得比典型的上下文切换开销大得多（比如切换开销 1ms，时间片设 20-50ms 比较合理），否则大部分 CPU 时间都在"切换"本身上空转。
+  </div>
+
+  <h2>优先级调度（Priority Scheduling）</h2>
+  <p>
+    给每个进程赋一个优先级，调度器永远选优先级最高的就绪进程运行。优先级可以是静态的（创建时定死），也可以是动态的（运行过程中动态调整，比如等待越久优先级越高）。
+  </p>
+  <p>
+    最大的问题是 <strong>饥饿（Starvation）</strong>：如果高优先级进程源源不断地到来，低优先级进程可能永远轮不到 CPU。经典的解决方案是 <strong>老化（Aging）</strong>——进程等待的时间越长，就逐渐提升它的优先级，保证再低优先级的任务最终也能被调度到。
+  </p>
+  <div class="callout warn">
+    <strong>面试高频：</strong>"优先级调度会有什么问题？怎么解决？" 标准答案就是"饥饿 + 老化机制"，一定要能说出这两个关键词。
+  </div>
+
+  <h2>多级反馈队列（MLFQ，Multilevel Feedback Queue）</h2>
+  <p>
+    这是现代操作系统（Linux、Windows 的调度器都是它的变种）实际采用的思路，可以理解成前几种算法的"综合与进化"：
+  </p>
+  <ul>
+    <li>系统维护<strong>多个优先级队列</strong>，每个队列对应不同的时间片长度（优先级越高，时间片通常越短）。</li>
+    <li>新进程从最高优先级队列开始跑。如果一个时间片内没跑完（说明它是计算密集型的长任务），就把它<strong>降级</strong>到下一级队列，时间片也变长。</li>
+    <li>如果进程在时间片用完之前就主动让出 CPU（比如等待 IO，说明它是交互式的短任务），就保持在原队列甚至适当提升优先级。</li>
+    <li>同样引入老化机制，防止低优先级队列的任务被饿死。</li>
+  </ul>
+  <p>
+    这套机制的巧妙之处在于：<strong>它不需要事先知道任务是"长任务"还是"短任务"，而是通过运行时的行为反馈动态学习出来</strong>——短任务（交互式）会一直呆在高优先级、短时间片的队列里，响应快；长任务（计算密集）会逐渐下沉到低优先级、长时间片的队列里，减少切换开销、保证吞吐量。这正好同时兼顾了响应时间和吞吐量。
+  </p>
+
+  <h2>算法对比一览</h2>
+  <table>
+    <thead>
+      <tr><th>算法</th><th>是否抢占</th><th>优点</th><th>缺点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>FCFS</strong></td>
+        <td>否</td>
+        <td>实现简单，无饥饿</td>
+        <td>护航效应，短任务体验差</td>
+      </tr>
+      <tr>
+        <td><strong>时间片轮转 RR</strong></td>
+        <td>是</td>
+        <td>公平，响应及时</td>
+        <td>时间片选取敏感，切换开销</td>
+      </tr>
+      <tr>
+        <td><strong>优先级调度</strong></td>
+        <td>可抢占可不抢占</td>
+        <td>能体现任务重要性差异</td>
+        <td>低优先级可能饥饿（需老化缓解）</td>
+      </tr>
+      <tr>
+        <td><strong>多级反馈队列 MLFQ</strong></td>
+        <td>是</td>
+        <td>无需预知任务类型，自适应响应与吞吐的平衡</td>
+        <td>实现复杂，参数（队列数/时间片/降级规则）需调优</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>没有万能算法，只有权衡：</strong>公平性、响应时间、吞吐量三者很难同时最优，选算法本质是选取舍。</li>
+    <li><strong>MLFQ 是现实答案：</strong>它不是发明了新的原理，而是把 FCFS、时间片、优先级的思路组合起来，用运行时反馈自适应地逼近最优。</li>
+    <li><strong>面试要记住的三个词：</strong>护航效应（FCFS）、时间片长度权衡（RR）、饥饿与老化（优先级）——这是最容易被追问细节的地方。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../io/05-零拷贝技术.html" class="nav-btn">← 零拷贝技术</a>
+    <a href="./02-死锁的四个必要条件.html" class="nav-btn next">死锁的四个必要条件 →</a>
+  </div>
+
+</div>
+</body>
+</html>

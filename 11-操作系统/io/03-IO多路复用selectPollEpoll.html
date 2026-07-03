@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IO 多路复用(select / poll / epoll) — 系统级IO与网络编程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c5e10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c5e10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 系统级IO与网络编程 / IO 多路复用(select / poll / epoll)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">系统级IO与网络编程</div>
+    <h1>IO 多路复用：select / poll / epoll</h1>
+    <p>一个线程如何同时"盯"着上万个网络连接，只在真正有数据到达时才去处理？这是高并发服务器的核心问题，也是操作系统面试里出现频率最高的考点之一。</p>
+  </div>
+
+  <!-- 问题引入 -->
+  <h2>要解决的问题：一个线程，成千上万个连接</h2>
+  <p>
+    上一篇提到，阻塞 IO 逼着我们"一个连接一个线程"，而裸非阻塞 IO 的忙轮询又白白浪费 CPU。理想的方案是：<strong>用一个（或少数几个）线程，
+    把成千上万个 fd 交给内核去"看管"，只有当其中某些 fd 真的有数据可读/可写时，内核才通知应用程序去处理</strong>。这就是 IO 多路复用（IO Multiplexing）要做的事。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>你在餐厅当服务员，如果每桌客人一喊你就得贴身站着等（阻塞 IO 的思路），一个服务员顶多伺候一桌。
+    IO 多路复用相当于：所有桌子上装了呼叫器，你站在中控台，呼叫器一响你就知道<strong>具体哪几桌</strong>需要服务，一个人轻松应付上百桌——多路复用的本质就是这个"呼叫器中控台"。
+  </div>
+
+  <!-- select -->
+  <h2>第一代方案：select</h2>
+  <p>
+    <code>select()</code> 把一批 fd 打包成一个位图（<code>fd_set</code>）传给内核，内核遍历这些 fd，检查哪些已经就绪，然后把结果写回这个位图，
+    <code>select()</code> 返回后，应用程序还要<strong>再遍历一遍全部 fd</strong>，才能知道到底是哪几个就绪了。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="kw">fd_set</span> <span class="var">readfds</span>;
+<span class="fn">FD_ZERO</span>(&amp;<span class="var">readfds</span>);
+<span class="kw">for</span> (<span class="kw">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++)
+    <span class="fn">FD_SET</span>(<span class="var">fds</span>[<span class="var">i</span>], &amp;<span class="var">readfds</span>);  <span class="com">// 每次调用都要重新构造整个集合</span>
+
+<span class="fn">select</span>(<span class="var">maxfd</span> + <span class="num">1</span>, &amp;<span class="var">readfds</span>, <span class="var">NULL</span>, <span class="var">NULL</span>, <span class="var">NULL</span>); <span class="com">// 陷入内核，遍历检查</span>
+
+<span class="kw">for</span> (<span class="kw">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++)          <span class="com">// 用户态再遍历一遍，才知道谁就绪了</span>
+    <span class="kw">if</span> (<span class="fn">FD_ISSET</span>(<span class="var">fds</span>[<span class="var">i</span>], &amp;<span class="var">readfds</span>))
+        <span class="com">/* 处理 fds[i] */</span>;</pre>
+  </div>
+  <p><code>select</code> 有三个明显的硬伤：</p>
+  <ul>
+    <li><strong>fd 数量有上限</strong>：<code>fd_set</code> 底层是定长位图，Linux 下通常限制在 1024 个（<code>FD_SETSIZE</code>），扛不住高并发。</li>
+    <li><strong>每次调用都要把整个 fd 集合从用户态拷贝到内核态</strong>，fd 越多，拷贝开销越大。</li>
+    <li><strong>时间复杂度 O(n)</strong>：内核要遍历全部 fd 判断就绪状态，返回后用户态还要再遍历一遍，两次线性扫描。</li>
+  </ul>
+
+  <!-- poll -->
+  <h2>第二代方案：poll</h2>
+  <p>
+    <code>poll()</code> 用一个 <code>pollfd</code> 结构体数组代替位图，理论上没有 1024 个的数量限制，接口也更清晰（把关注的事件和返回的事件分开存放）。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="kw">struct</span> <span class="ty">pollfd</span> <span class="var">fds</span>[<span class="var">N</span>];
+<span class="kw">for</span> (<span class="kw">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">N</span>; <span class="var">i</span>++) {
+    <span class="var">fds</span>[<span class="var">i</span>].<span class="var">fd</span> = <span class="var">sockfds</span>[<span class="var">i</span>];
+    <span class="var">fds</span>[<span class="var">i</span>].<span class="var">events</span> = <span class="var">POLLIN</span>;  <span class="com">// 关心"可读"事件</span>
+}
+<span class="fn">poll</span>(<span class="var">fds</span>, <span class="var">N</span>, -<span class="num">1</span>);        <span class="com">// 依然是把整个数组拷进内核，内核依然线性遍历</span></pre>
+  </div>
+  <div class="callout warn">
+    <strong>陷阱：</strong>很多人以为 poll 解决了 select 的所有问题，其实 poll 只解决了"数量上限"这一个问题。
+    <strong>每次调用仍然要拷贝整个 fd 数组到内核态，内核仍然要 O(n) 线性遍历所有 fd 才能找出就绪的那几个</strong>——当 fd 数量达到几万时，
+    多数 fd 其实都是空闲的，但每次调用都要把它们全部检查一遍，这是巨大的浪费。select/poll 本质上是同一类方案：都是"轮询式"的多路复用。
+  </div>
+
+  <!-- epoll -->
+  <h2>第三代方案：epoll（Linux 高并发标配）</h2>
+  <p>
+    epoll 的设计思路完全不同：<strong>不再每次调用都全量传入 fd 集合，而是让内核长期持有一份 fd 列表，并且用事件回调机制主动维护一个"就绪列表"</strong>。
+    具体分成三个系统调用：
+  </p>
+  <ul>
+    <li><code>epoll_create()</code>：在内核中创建一个 epoll 实例，返回一个 epoll fd。</li>
+    <li><code>epoll_ctl()</code>：向这个实例<strong>注册/修改/删除</strong>要监控的 fd（只需要做一次，不用每次轮询都重新传入）。</li>
+    <li><code>epoll_wait()</code>：阻塞等待，<strong>只返回真正就绪的 fd 列表</strong>，不需要应用层再遍历全部 fd 去判断。</li>
+  </ul>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="kw">int</span> <span class="var">epfd</span> = <span class="fn">epoll_create1</span>(<span class="num">0</span>);
+
+<span class="kw">struct</span> <span class="ty">epoll_event</span> <span class="var">ev</span>;
+<span class="var">ev</span>.<span class="var">events</span> = <span class="var">EPOLLIN</span>;
+<span class="var">ev</span>.<span class="var">data</span>.<span class="var">fd</span> = <span class="var">sockfd</span>;
+<span class="fn">epoll_ctl</span>(<span class="var">epfd</span>, <span class="var">EPOLL_CTL_ADD</span>, <span class="var">sockfd</span>, &amp;<span class="var">ev</span>); <span class="com">// 只注册一次</span>
+
+<span class="kw">struct</span> <span class="ty">epoll_event</span> <span class="var">events</span>[<span class="num">1024</span>];
+<span class="kw">int</span> <span class="var">n</span> = <span class="fn">epoll_wait</span>(<span class="var">epfd</span>, <span class="var">events</span>, <span class="num">1024</span>, -<span class="num">1</span>);
+<span class="com">// events[0..n) 里全是已就绪的 fd，不用再遍历判断，直接处理即可</span>
+<span class="kw">for</span> (<span class="kw">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">n</span>; <span class="var">i</span>++)
+    <span class="com">/* 处理 events[i].data.fd */</span>;</pre>
+  </div>
+  <p>
+    epoll 底层用的是<strong>事件驱动 + 回调</strong>：当某个被监控的 fd 状态变化（比如网卡收到数据触发中断），内核会通过回调把这个 fd 直接放进一个"就绪列表"，
+    <code>epoll_wait()</code> 只需要返回这个列表，而不需要遍历所有被监控的 fd。<strong>活跃连接数与总连接数无关</strong>——就算你监控了 10 万个 fd，
+    但只有 10 个是活跃的，<code>epoll_wait()</code> 也只需要处理这 10 个，复杂度趋近 <strong>O(1)</strong>（准确说是 O(就绪 fd 数)，而不是 O(总 fd 数)）。
+  </p>
+
+  <!-- 三者对比 -->
+  <h2>select / poll / epoll 对比一览（高频考点）</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>select</th><th>poll</th><th>epoll</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>fd 数量上限</td><td>有限制（常见 1024）</td><td>无硬性限制</td><td>无硬性限制</td></tr>
+      <tr><td>fd 集合传递方式</td><td>每次调用全量拷贝</td><td>每次调用全量拷贝</td><td>注册一次，内核长期持有</td></tr>
+      <tr><td>查找就绪 fd 的方式</td><td>内核线性遍历 + 用户态再遍历</td><td>内核线性遍历 + 用户态再遍历</td><td>事件回调，直接返回就绪列表</td></tr>
+      <tr><td>时间复杂度</td><td>O(n)</td><td>O(n)</td><td>接近 O(1)（相对于就绪 fd 数）</td></tr>
+      <tr><td>适用场景</td><td>fd 少、追求可移植性</td><td>fd 数量不确定但不算海量</td><td>Linux 下高并发场景的首选</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么 Redis、Nginx 这类高并发服务都用 epoll？" 核心原因是它们要维护成千上万个长连接，但同一时刻真正活跃（有数据可读写）的连接往往只是很小一部分。
+    select/poll 每次都要把全部连接扫一遍才能找到这一小撮活跃连接，浪费大量 CPU 在"确认那些没事发生的连接确实没事"上；epoll 通过事件回调机制，
+    直接精确地告诉你"就是这几个"，天然适合"大量连接、少量活跃"这种典型的互联网服务器场景。
+  </div>
+
+  <!-- 与Java NIO的联系 -->
+  <h2>与 Java NIO 的联系</h2>
+  <p>
+    Java 的 <code>java.nio.channels.Selector</code> 就是对多路复用机制的跨平台封装：在 Linux 上，<code>Selector</code> 的底层实现（<code>EPollSelectorProvider</code>）
+    直接基于 epoll；在早期或其他平台上可能退化为 poll/select 的实现。写 Netty、Tomcat NIO 连接器这类高并发网络框架时，本质上都是在用户层面复用同一套
+    "一个（或几个）线程 + Selector 轮询 + 事件回调处理"的模型，这正是本篇 epoll 思想在 Java 生态里的直接体现。
+  </p>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>select → poll → epoll 的演进主线：</strong>从"有数量限制的全量轮询"到"无限制的全量轮询"再到"事件驱动、只返回活跃 fd"。</li>
+    <li><strong>epoll 高效的关键：</strong>fd 注册与事件收集分离，配合内核态事件回调，避免了每次调用都要线性扫描全部 fd 的开销。</li>
+    <li>这套多路复用机制正是下一篇 Socket 编程里 <code>accept</code> 之后能同时处理海量连接的技术基础。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-阻塞IO与非阻塞IO.html" class="nav-btn">← 阻塞 IO 与非阻塞 IO</a>
+    <a href="./04-Socket编程的基本模型.html" class="nav-btn next">Socket 编程的基本模型 →</a>
+  </div>
+
+</div>
+</body>
+</html>

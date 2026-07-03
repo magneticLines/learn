@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DNS 域名解析的完整过程 — 计算机网络</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 分层与应用层 / DNS 域名解析的完整过程
+  </div>
+
+  <div class="hero">
+    <div class="tag">分层与应用层</div>
+    <h1>DNS 域名解析的完整过程</h1>
+    <p>在浏览器发出那个真正的 HTTP 请求之前，还有一件事必须先完成：把人类好记的域名，翻译成机器真正认识的 IP 地址。这一篇是"分层与应用层"Tab 的收尾，也是通往传输层/网络层的入口。</p>
+  </div>
+
+  <h2>为什么需要 DNS</h2>
+  <p>
+    网络世界里，真正定位一台主机靠的是 IP 地址（IP 地址本身的结构会在网络层 Tab 详细展开），但 IP 地址（比如 <code>142.250.66.174</code>）对人类极不友好——记不住，也没有含义。<strong>DNS（Domain Name System，域名系统）</strong>就是一套把人类可读的域名（<code>www.google.com</code>）翻译成 IP 地址的分布式查询系统。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>DNS 就像电话簿/通讯录——你想给"张三"打电话，不需要记住他的手机号，只要在通讯录里查"张三"这个名字，系统就帮你查出对应的号码再拨出去。DNS 做的是同样的事：应用只需要知道域名，DNS 负责把域名翻译成真正用来建立连接的 IP 地址。
+  </div>
+  <p>
+    DNS 之所以要设计成<strong>分布式、分层级</strong>的系统，而不是搞一台全球唯一的中心服务器，核心原因和 C/S 架构的单点瓶颈问题是一样的道理——全世界几十亿设备每天产生海量域名查询，单点服务器无论从算力、带宽还是容灾角度都扛不住，必须靠分层分区、层层缓存来分摊压力。
+  </p>
+
+  <h2>完整链路：从浏览器输入网址到拿到 IP</h2>
+  <p>当你在浏览器输入 <code>www.example.com</code> 并回车，会依次经过下面这条查询链路：</p>
+  <div class="tree">
+    <span class="hi">1. 浏览器缓存</span> — 浏览器自己维护一份最近解析过的域名缓存，命中直接返回<br>
+    　　　│ 未命中<br>
+    <span class="hi">2. 操作系统缓存</span> — 查系统的 hosts 文件和本地 DNS 缓存（Windows: ipconfig /displaydns）<br>
+    　　　│ 未命中<br>
+    <span class="hi">3. 本地 DNS 服务器</span>（也叫 递归域名服务器，通常是运营商或 8.8.8.8 这类公共 DNS）<br>
+    　　　│ 自己没有缓存，代替你去公网上逐级查询<br>
+    <span class="hi">4. 根域名服务器</span> — 全球共 13 组，不知道具体 IP，但知道".com 归谁管"，返回顶级域名服务器地址<br>
+    　　　│<br>
+    <span class="hi">5. 顶级域名服务器</span>（TLD，如 .com/.cn 的服务器）— 不知道具体 IP，但知道"example.com 归哪个权威服务器管"<br>
+    　　　│<br>
+    <span class="hi">6. 权威域名服务器</span> — 真正保存 example.com 完整 DNS 记录的服务器，返回最终 IP<br>
+    　　　▼<br>
+    本地 DNS 服务器把结果返回给你的电脑，并缓存起来（供后续查询和其他用户复用）
+  </div>
+
+  <h2>递归查询 vs 迭代查询</h2>
+  <p>
+    上面这条链路里，其实包含两种不同的"问法"，理解这个区别是这一篇的核心考点：
+  </p>
+  <ul>
+    <li>
+      <strong>递归查询（Recursive Query）</strong>：你的电脑向本地 DNS 服务器发起的查询是递归的——"我不管你怎么查，你必须给我一个最终答案（IP 地址），查不到也要告诉我错误"，本地 DNS 服务器把"一层层往下问"的全部脏活累活都包揽了。
+    </li>
+    <li>
+      <strong>迭代查询（Iterative Query）</strong>：本地 DNS 服务器向根、顶级域、权威服务器发起的查询是迭代的——每一级服务器都只回答"我不知道最终答案，但我知道下一步该去问谁"，从不代劳往下查，把"继续问谁"这个责任丢回给发起查询的一方（本地 DNS 服务器自己）。
+    </li>
+  </ul>
+  <div class="callout info">
+    <strong>为什么这样设计：</strong>如果根域名服务器要对全世界所有客户端的查询都做递归（自己往下一层层查完再返回），它的负载会大到无法承受。让根/顶级域/权威服务器只做"指路"这种轻量级的迭代应答，把真正繁重的多轮查询工作分摊给数量众多、离用户更近的本地 DNS 服务器去做，是一种典型的"负载下沉"设计。
+  </div>
+
+  <h2>缓存：贯穿全程的性能优化</h2>
+  <p>
+    整条链路里几乎每一站都有缓存（浏览器缓存、系统缓存、本地 DNS 服务器缓存），这是因为域名到 IP 的映射<strong>相对稳定，短期内很少变化</strong>，重复查询同一个域名走一遍完整的递归+迭代流程纯属浪费。DNS 记录里的 <strong>TTL（Time To Live）</strong>字段就是权威服务器告诉大家"这条记录你可以缓存多久"，超过这个时间才需要重新查询，这也是为什么修改了域名解析记录之后，全网生效往往需要等待一段时间（旧记录的 TTL 还没过期）。
+  </p>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为浏览器发起的所有查询都是"迭代"的。实际上，客户端到本地 DNS 服务器这一段几乎总是<strong>递归查询</strong>，只有本地 DNS 服务器代替你向权威链路发起的查询才是<strong>迭代查询</strong>。混淆这两段是这道题最容易丢分的地方。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>以为 DNS 只在建立连接前查一次就完事，之后就不用管了。实际上 DNS 解析发生在 TCP 连接建立之前——先解析出 IP，再用这个 IP 去和服务器完成三次握手（下一 Tab 会详细讲），DNS 解析的耗时会直接叠加在整个页面加载时间里，这也是为什么很多性能优化手段（DNS 预解析 <code>&lt;link rel="dns-prefetch"&gt;</code>）专门针对这一步。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"说一下 DNS 解析的完整过程" ——按"浏览器缓存 → 系统缓存 → 本地 DNS 服务器 → 根 → 顶级域 → 权威"这条链路背下来，并补充"客户端到本地 DNS 是递归查询，本地 DNS 到根/顶级域/权威是迭代查询"这个关键区分点，基本能覆盖这道题的主要得分点。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>DNS 用分层 + 缓存解决了"域名翻译"的可扩展性问题：</strong>和根域名服务器只做"指路人"而不是"全能查询员"是同一个设计思路。</li>
+    <li><strong>递归查询和迭代查询的角色分工，是负载下沉思想的具体体现：</strong>越靠近核心的服务器职责越轻，越靠近用户的服务器承担越多的中转工作。</li>
+    <li><strong>本 Tab（分层与应用层）到此收尾：</strong>从分层思想、C/S 与 P2P 架构，到 HTTP 协议本身、报文结构、状态码方法、Cookie/Session，最后落到 DNS 解析——一次完整的"用户发起请求前后都经历了什么"的应用层全景。下一 Tab 将深入 TCP 与 UDP，看数据究竟是怎么被可靠地送达的。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-Cookie与Session.html" class="nav-btn">← Cookie 与 Session</a>
+    <a href="../transport/01-TCP与UDP的本质区别.html" class="nav-btn next">TCP 与 UDP 的本质区别 →</a>
+  </div>
+
+</div>
+</body>
+</html>

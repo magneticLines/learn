@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>路由选择原理 — 计算机网络</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 网络层与链路层 / 路由选择原理
+  </div>
+
+  <div class="hero">
+    <div class="tag">网络层与链路层</div>
+    <h1>路由选择原理</h1>
+    <p>上一篇讲了 IP 协议只负责"尽力转发"，但转发到底怎么"选路"？一个数据包从你的电脑到大洋彼岸的服务器，中间要经过十几个路由器，每一跳都要做一次决策——这就是路由选择要解决的问题。</p>
+  </div>
+
+  <h2>路由表：路由器做转发决策的依据</h2>
+  <p>
+    路由器本质上是一台专用于转发数据包的设备，它内部维护一张<strong>路由表（Routing Table）</strong>，每次收到一个 IP 数据包，就查这张表决定"该从哪个网络接口把包发出去"。
+    路由表的每一行大致包含三个关键信息：
+  </p>
+  <table>
+    <thead>
+      <tr><th>字段</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>目的网络（Destination）</strong></td><td>一个网络前缀，如 <code>192.168.1.0/24</code></td></tr>
+      <tr><td><strong>下一跳（Next Hop）</strong></td><td>要把包转发给哪个相邻路由器的 IP</td></tr>
+      <tr><td><strong>出接口（Interface）</strong></td><td>从路由器的哪个物理/逻辑端口发出去</td></tr>
+    </tbody>
+  </table>
+  <div class="callout info">
+    <strong>类比：</strong>路由表就像快递分拨中心的路线图——收到一个包裹，看收件地址属于哪个片区，就把它扔到对应片区的下一个转运车上，一站接一站传递，直到最后一个分拨点直接送到收件人手中。路由器不需要知道"完整路径"，只需要知道"下一步该交给谁"。
+  </div>
+
+  <h2>最长前缀匹配：路由表查找的核心原则</h2>
+  <p>
+    路由表里可能同时存在多条能匹配同一个目的 IP 的记录，比如同时有 <code>0.0.0.0/0</code>（默认路由，匹配一切）和 <code>192.168.1.0/24</code>（更精确的路由）。
+    这时路由器该选哪一条？答案是<strong>最长前缀匹配（Longest Prefix Match）</strong>：在所有能匹配目标地址的路由项里，选择网络前缀（掩码位数，即 <code>/24</code> 里的数字）最长、也就是匹配最精确的那一条。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示例：目标地址 192.168.1.100 命中哪条路由</span></div>
+    <pre><span class="com">// 路由表中同时存在:</span>
+<span class="var">0.0.0.0/0</span>        <span class="com">-&gt; 默认路由，走出口网关</span>
+<span class="var">192.168.0.0/16</span>   <span class="com">-&gt; 前缀 16 位匹配</span>
+<span class="var">192.168.1.0/24</span>   <span class="com">-&gt; 前缀 24 位匹配，最精确</span>
+
+<span class="com">// 三条路由对 192.168.1.100 都能匹配，
+// 但 /24 的前缀最长，最终选择这一条转发</span></pre>
+  </div>
+  <p>
+    这样设计的意义在于：路由表不需要为每一个具体 IP 都存一条记录（那样表会大到无法维护），而是可以用"粗粒度的默认路由兜底 + 细粒度路由做例外"的方式组织，
+    既节省了路由表空间，又保证了转发的精确性——这也是 CIDR（无类别域间路由）能够工作的根本机制。
+  </p>
+
+  <h2>静态路由 vs 动态路由</h2>
+  <p>路由表里的条目是怎么来的？有两种方式：</p>
+  <h3>静态路由（Static Routing）</h3>
+  <p>
+    由网络管理员手动配置固定的路由条目。优点是简单、可控、不消耗额外带宽和计算资源；缺点是网络拓扑一旦变化（比如某条链路故障），静态路由不会自动更新，需要人工介入。
+    适合拓扑简单、很少变化的小型网络（比如公司内网出口只有一条线路）。
+  </p>
+  <h3>动态路由（Dynamic Routing）</h3>
+  <p>
+    路由器之间通过路由协议自动交换网络拓扑信息，动态计算并更新路由表，网络发生变化时能自动收敛到新的最优路径。互联网这种大规模、拓扑经常变化的网络，必须依赖动态路由算法。经典的两大类算法思路：
+  </p>
+  <table>
+    <thead>
+      <tr><th>算法类型</th><th>核心思路</th><th>代表协议</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>距离矢量（Distance Vector）</strong></td>
+        <td>每个路由器只知道"到每个目的地的距离（跳数）+ 该走哪个邻居"，定期把自己的路由表发给相邻路由器，靠"邻居的邻居"逐步扩散信息，类似"道听途说"式地拼凑全局认知</td>
+        <td>RIP</td>
+      </tr>
+      <tr>
+        <td><strong>链路状态（Link State）</strong></td>
+        <td>每个路由器主动向全网广播自己与直连邻居的链路信息，所有路由器因此都能拿到完整的网络拓扑图，再各自用最短路径算法（如 Dijkstra）独立计算出到每个目的地的最优路径</td>
+        <td>OSPF</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>面试高频：</strong>距离矢量算法存在经典的"无穷计数（count-to-infinity）"问题——当某条链路故障时，相邻路由器之间可能互相把对方过时的错误信息当作参考，导致路由收敛缓慢甚至震荡；链路状态算法因为每个节点都拥有全局拓扑视图，收敛更快也更不容易出现这种问题，但需要更多计算资源和带宽来广播拓扑信息。这是两类算法的核心取舍。
+  </div>
+
+  <h2>与传输层的呼应</h2>
+  <p>
+    回顾传输层 Tab 讲过的 TCP：三次握手建立的是"端到端的连接语义"，但这条"连接"背后走的物理路径，在网络层看来可能每个包走的路由都不完全一样（IP 是无连接的，不保证包按同一路径、同一顺序到达）。
+    路由选择只关心"下一跳去哪"，不维护"这个连接固定走哪条路"的状态——这也是网络层和传输层职责边界的一个直观体现。
+  </p>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>以为路由器会为每个数据包计算出完整的端到端路径。实际上路由器只做"最长前缀匹配 + 决定下一跳"这一步决策，完整路径是所有路由器一跳一跳独立决策的结果，没有任何一个节点掌握全局路径信息（链路状态算法虽然掌握全局拓扑，但转发时依然是逐跳决策，不是提前规划好整条路径再发送）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>路由表 + 最长前缀匹配</strong>是路由器转发决策的核心机制，兼顾了表空间与精确性。</li>
+    <li><strong>静态路由简单可控，动态路由自动适应拓扑变化</strong>，大规模网络必须依赖动态路由协议。</li>
+    <li><strong>距离矢量 vs 链路状态</strong>是收敛速度、资源消耗、鲁棒性上的经典取舍，是很多路由协议设计的理论基础。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-IP协议与IP地址分类.html" class="nav-btn">← IP 协议与 IP 地址分类</a>
+    <a href="./03-NAT网络地址转换的作用.html" class="nav-btn next">NAT 网络地址转换的作用 →</a>
+  </div>
+
+</div>
+</body>
+</html>

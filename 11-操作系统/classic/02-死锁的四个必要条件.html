@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>死锁的四个必要条件 — 进程调度与经典理论</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #7c1d51; }
+  .nav-btn.next { color: #f472b6; border-color: #7c1d51; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 进程调度与经典理论 / 死锁的四个必要条件
+  </div>
+
+  <div class="hero">
+    <div class="tag">进程调度与经典理论</div>
+    <h1>死锁的四个必要条件</h1>
+    <p>02-并发模块里排查过 Java 死锁的现象，这里补上理论根基——死锁不是玄学，它有严格的、可以逐条验证的四个必要条件，缺一个都不会发生。</p>
+  </div>
+
+  <h2>什么是死锁</h2>
+  <p>
+    <strong>死锁（Deadlock）</strong>：一组进程（或线程）中的每一个都在等待这组进程中另一个成员占有的资源，导致所有成员都永远阻塞、谁也无法继续往下走。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>两个人在一座只能容一人通过的独木桥上迎面相遇，谁都不肯退让——A 说"你先让开我才能走"，B 说"你先让开我才能走"，双方就这样永远僵在桥中间。这就是死锁最直观的画面：<strong>每个人都拿着对方需要的资源（桥上的位置），同时又在等待对方释放</strong>。
+  </div>
+
+  <h2>四个必要条件</h2>
+  <p>
+    1971 年 Coffman 等人提出，死锁发生必须<strong>同时</strong>满足以下四个条件，这也是这个知识点最容易被考的地方——四个条件要求逐字背下来，因为面试常常要求"破坏哪一个条件来避免死锁"。
+  </p>
+
+  <h3>1. 互斥条件（Mutual Exclusion）</h3>
+  <p>
+    资源一次只能被一个进程占用，不能共享。比如一台打印机同一时刻只能有一个进程在用，别的进程想用就必须等待。
+  </p>
+  <p>
+    这个条件往往是资源本身的物理属性决定的（打印机、独占锁），很难被打破——你不能强行让互斥资源变成共享资源，比如两个人同时抢一把椅子坐，本质上物理空间就不允许共享。
+  </p>
+
+  <h3>2. 请求与保持条件（Hold and Wait）</h3>
+  <p>
+    进程已经至少持有一个资源，同时又在请求新的资源，而这个新资源正被别的进程占用。也就是说，<strong>进程不会一次性申请完所有需要的资源，而是拿到一部分后再去申请剩下的</strong>，这就给"卡在中间"留下了空间。
+  </p>
+
+  <h3>3. 不可剥夺条件（No Preemption）</h3>
+  <p>
+    进程已经获得的资源，在未使用完之前，不能被其他进程或操作系统强行剥夺，只能由持有者自己主动释放。如果资源可以被强制抢走，死锁就能通过"抢占"来打破。
+  </p>
+
+  <h3>4. 循环等待条件（Circular Wait）</h3>
+  <p>
+    存在一个进程等待资源的环形链：P1 等待 P2 占有的资源，P2 等待 P3 占有的资源，……，Pn 等待 P1 占有的资源，形成一个闭环。
+  </p>
+  <div class="callout info">
+    <strong>回到独木桥类比：</strong>循环等待条件就是"A 在等 B 让路，B 在等 A 让路"——这正是一个最小的、长度为 2 的循环等待环。如果是三个人在三岔路口互不相让，环就变成 A→B→C→A，本质完全一样。
+  </div>
+
+  <h2>为什么"四个都满足"才会死锁</h2>
+  <p>
+    这四个条件是<strong>必要条件的合取</strong>：只要破坏其中任意一个，死锁就不可能发生。这也是死锁预防策略的理论基础（下一篇会展开）：
+  </p>
+  <ul>
+    <li>如果资源可以共享（破坏互斥）→ 大家都能用，不存在互相等待。</li>
+    <li>如果进程必须一次性申请完所有资源才能开始运行（破坏请求与保持）→ 不会出现"拿着一半、等另一半"的中间状态。</li>
+    <li>如果资源可以被强制剥夺（破坏不可剥夺）→ 系统可以把某个进程手里的资源抢过来给别人，打破僵局。</li>
+    <li>如果所有进程申请资源必须按照统一的全局顺序（破坏循环等待）→ 资源请求图不可能形成环。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多人以为"只要有循环等待就一定是死锁"，其实循环等待只是必要条件之一——如果资源是可以共享的（不满足互斥），即使表面上看起来在"互相等"，实际上大家都能同时拿到资源，并不会真正卡死。四个条件必须<strong>同时</strong>成立才叫死锁。
+  </div>
+
+  <h2>呼应 Java 中的死锁</h2>
+  <p>
+    02-并发模块里排查过的经典 Java 死锁场景——两个线程分别持有 <code>lockA</code>、<code>lockB</code>，又分别尝试获取对方持有的锁——正好是这四个条件的完美实例：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>DeadlockDemo.java</span></div>
+    <pre><span class="com">// 线程1: synchronized(lockA) { synchronized(lockB) { ... } }</span>
+<span class="com">// 线程2: synchronized(lockB) { synchronized(lockA) { ... } }</span>
+<span class="com">// 互斥: synchronized 锁本身就是互斥资源</span>
+<span class="com">// 请求与保持: 线程1拿着lockA又去请求lockB，反之亦然</span>
+<span class="com">// 不可剥夺: JVM 的内置锁不会被强制剥夺，只能线程自己释放</span>
+<span class="com">// 循环等待: 线程1等线程2的锁，线程2等线程1的锁，形成环</span></pre>
+  </div>
+  <p>
+    用 <code>jstack</code> 抓线程栈时能看到 <code>Found one Java-level deadlock</code> 的提示，本质上就是 JVM 检测到了资源分配图里的一个环。这也解释了为什么"固定加锁顺序"是 Java 里最常见的死锁规避手段——它直接破坏的就是循环等待条件。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>四个条件缺一不可：</strong>互斥、请求与保持、不可剥夺、循环等待，必须同时成立死锁才会发生。</li>
+    <li><strong>破坏任意一个即可避免死锁：</strong>这是所有死锁预防策略的理论出发点，下一篇展开讲具体怎么破坏。</li>
+    <li><strong>面试必背：</strong>能脱口而出四个条件的名字，并且能举一个具体场景说明"这里满足了哪一个"，是这个知识点的基本要求。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-常见调度算法.html" class="nav-btn">← 常见调度算法</a>
+    <a href="./03-死锁预防避免检测与恢复.html" class="nav-btn next">死锁预防 避免 检测与恢复 →</a>
+  </div>
+
+</div>
+</body>
+</html>

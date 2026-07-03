@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HTTP/2 的多路复用与头部压缩 — 计算机网络</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 安全与现代基础设施 / HTTP/2 的多路复用与头部压缩
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全与现代基础设施</div>
+    <h1>HTTP/2 的多路复用与头部压缩<span style="font-size:0.9rem; color:#64748b; font-weight:400;">［HPBN 补充］</span></h1>
+    <p>分层与应用层 Tab 讲过 HTTP 协议的演进历程，这里深入 HTTP/2 最核心的两个性能优化：二进制分帧带来的多路复用，以及 HPACK 头部压缩。</p>
+  </div>
+
+  <h2>回顾问题：HTTP/1.1 的队头阻塞</h2>
+  <p>
+    HTTP/1.1 里，一条 TCP 连接上的请求是<strong>串行处理</strong>的——同一条连接上，前一个请求的响应没回来之前，下一个请求的响应无法先返回（这是应用层协议本身的限制，即使 TCP 层面数据已经乱序到达也没用）。
+    浏览器为了缓解这个问题，通常会对同一个域名开 6~8 条并发 TCP 连接来"并行"发请求，但这只是绕过问题而不是解决问题——连接数一多，
+    又会带来更多次 TCP 三次握手和 TLS 握手的开销（回顾传输层 Tab），而且服务器和中间网络设备维护连接本身也有成本。这种应用层的排队等待现象叫做<strong>队头阻塞（Head-of-Line Blocking）</strong>。
+  </p>
+
+  <h2>HTTP/2 的解法：二进制分帧层</h2>
+  <p>
+    HTTP/2 在应用层和传输层之间引入了一个新的<strong>二进制分帧层（Binary Framing Layer）</strong>。
+    它把每一个 HTTP 消息（请求或响应）拆分成一个个更小的<strong>帧（Frame）</strong>，每个帧都带有一个<strong>流标识（Stream ID）</strong>，
+    标记这个帧属于哪一个逻辑上的请求-响应对。多个流的帧可以在<strong>同一条 TCP 连接上交织传输、乱序到达，再由接收端按 Stream ID 重新组装还原</strong>。
+  </p>
+  <div class="tree">
+    HTTP/1.1（同一连接上必须排队）：<br>
+    [======请求A完整响应======][==请求B==][====请求C====]<br>
+    <br>
+    HTTP/2（同一连接上交织并行）：<br>
+    [A帧][B帧][C帧][A帧][C帧][B帧][A帧]... ──▶ 接收端按 <span class="hi">Stream ID</span> 重组<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 流A → 完整响应A<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 流B → 完整响应B<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 流C → 完整响应C
+  </div>
+  <p>
+    这就是<strong>多路复用（Multiplexing）</strong>：一条 TCP 连接上可以同时并行处理多个请求/响应，某个请求的处理慢了不会挡住其他请求继续返回数据。
+    也因为一条连接就够用了，浏览器不再需要为同一域名开多条并发连接，减少了握手开销和服务器连接维护成本。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱（面试高频）：</strong>HTTP/2 解决的是<strong>应用层</strong>的队头阻塞，但底层 TCP 是<strong>字节流、严格有序</strong>的协议——如果其中一个 TCP 报文在网络中丢失，TCP 层会要求重传，在收到重传数据之前，<strong>这条连接上所有流的后续数据都无法被应用层处理</strong>，哪怕它们已经先到达了。这就是"传输层的队头阻塞"，HTTP/2 治标不治本，真正解决要靠 HTTP/3 基于 QUIC 的每个流独立传输（下一篇详解）。
+  </div>
+
+  <h2>HPACK：头部压缩解决什么问题</h2>
+  <p>
+    HTTP 请求里有大量重复的头部字段——比如同一个浏览器发出的每个请求，<code>User-Agent</code>、<code>Cookie</code>、<code>Accept-Language</code> 等字段几乎一字不差地重复出现。
+    HTTP/1.1 里这些头部是纯文本，每次都要完整重传，随着 Cookie 越积越大，头部开销甚至可能超过请求体本身。
+  </p>
+  <p>
+    HTTP/2 引入 <strong>HPACK</strong> 压缩算法，核心思路有两个：
+  </p>
+  <ul>
+    <li><strong>静态表：</strong>预定义了一份包含常见头部字段（如 <code>:method: GET</code>、<code>content-type</code> 等）的表，双方都认识这份表，传输时直接用一个索引号代替完整字段名和值。</li>
+    <li><strong>动态表：</strong>连接建立后，双方会记住"之前发送过的头部字段"，如果后续请求的头部和之前重复，<strong>只需要传一个索引号，而不用重新传完整内容</strong>；只有第一次出现的新字段才需要完整传输(并加入动态表供后续复用)。</li>
+  </ul>
+  <div class="callout info">
+    <strong>类比：</strong>HTTP/1.1 像是每次寄信都把发件人地址完整抄写一遍；HPACK 则像是双方提前约定"以后信里写个编号 3，就代表那串固定地址"，之后只需要写编号，大幅省下重复劳动。
+  </div>
+
+  <h2>对比：HTTP/1.1 vs HTTP/2</h2>
+  <table>
+    <thead><tr><th>维度</th><th>HTTP/1.1</th><th>HTTP/2</th></tr></thead>
+    <tbody>
+      <tr><td>消息格式</td><td>纯文本</td><td>二进制分帧</td></tr>
+      <tr><td>并发处理</td><td>同连接内串行，靠开多连接绕过队头阻塞</td><td>同连接内多路复用，多个流交织并行</td></tr>
+      <tr><td>头部开销</td><td>每次完整传输，明文冗余</td><td>HPACK 压缩，重复字段只传索引</td></tr>
+      <tr><td>队头阻塞</td><td>应用层存在（同连接内请求排队）</td><td>应用层已解决，但传输层（TCP 丢包重传）仍存在</td></tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"HTTP/2 多路复用彻底解决了队头阻塞。" 只解决了应用层的队头阻塞。因为 HTTP/2 仍然跑在单条 TCP 连接上，TCP 的有序交付特性会导致"传输层队头阻塞"——这正是催生 HTTP/3 抛弃 TCP、改用基于 UDP 的 QUIC 协议的直接原因（呼应传输层 Tab 讲过的"为什么 HTTP/3 选择 QUIC"）。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"HTTP/2 相比 1.1 做了什么优化？" 答案要点：① 二进制分帧 + 多路复用，一条连接并行处理多个请求，缓解应用层队头阻塞；② HPACK 头部压缩，用静态表+动态表消除重复头部的传输开销；③ 支持服务器推送（Server Push，可以简单提及）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>二进制分帧层是 HTTP/2 的地基，把请求/响应拆成带 Stream ID 的帧，实现同连接内的多路复用。</li>
+    <li>HPACK 用静态表+动态表消除重复头部字段的传输冗余，尤其在 Cookie 较大时效果显著。</li>
+    <li>多路复用解决了应用层队头阻塞，但 TCP 层面的队头阻塞依然存在，这是 HTTP/3 改用 QUIC 的根本动机。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./07-TLS13握手优化.html" class="nav-btn">← TLS 1.3 握手优化</a>
+    <a href="./09-HTTP3与QUIC协议详解.html" class="nav-btn next">HTTP/3 与 QUIC 协议详解 →</a>
+  </div>
+
+</div>
+</body>
+</html>
+</content>

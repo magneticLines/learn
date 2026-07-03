@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Unix IO 的统一视角(一切皆文件) — 系统级IO与网络编程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c5e10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c5e10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 系统级IO与网络编程 / Unix IO 的统一视角(一切皆文件)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">系统级IO与网络编程</div>
+    <h1>Unix IO 的统一视角：一切皆文件</h1>
+    <p>普通文件、目录、终端、磁盘设备、管道、socket——底层千差万别的资源，为什么在 Unix 里都能用同一套 <code>open/read/write/close</code> 来操作？这是操作系统设计里最优雅的抽象之一。</p>
+  </div>
+
+  <!-- 问题引入 -->
+  <h2>先看一个反直觉的事实</h2>
+  <p>
+    如果你写过 C 语言的文件操作，会发现一件很神奇的事：<strong>读一个磁盘文件</strong>和<strong>读一个网络连接</strong>，用的居然是同一个函数 <code>read()</code>；
+    <strong>往终端打印字符</strong>和<strong>往磁盘写数据</strong>，用的也是同一个函数 <code>write()</code>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="kw">int</span> <span class="var">fd1</span> = <span class="fn">open</span>(<span class="str">"/tmp/data.txt"</span>, <span class="var">O_RDONLY</span>);   <span class="com">// 打开一个磁盘文件</span>
+<span class="kw">int</span> <span class="var">fd2</span> = <span class="fn">socket</span>(<span class="var">AF_INET</span>, <span class="var">SOCK_STREAM</span>, <span class="num">0</span>); <span class="com">// 建立一个 TCP socket</span>
+<span class="kw">int</span> <span class="var">fd3</span> = <span class="fn">open</span>(<span class="str">"/dev/tty"</span>, <span class="var">O_WRONLY</span>);     <span class="com">// 打开终端设备</span>
+
+<span class="com">// 三种完全不同的底层资源，读写方式却一模一样</span>
+<span class="fn">read</span>(<span class="var">fd1</span>, <span class="var">buf</span>, <span class="num">128</span>);
+<span class="fn">read</span>(<span class="var">fd2</span>, <span class="var">buf</span>, <span class="num">128</span>);
+<span class="fn">write</span>(<span class="var">fd3</span>, <span class="str">"hello\n"</span>, <span class="num">6</span>);</pre>
+  </div>
+  <p>
+    这不是巧合，而是 Unix 从设计之初就贯彻的一条哲学：<strong>Everything is a file（一切皆文件）</strong>。
+  </p>
+
+  <!-- 为什么这么设计 -->
+  <h2>为什么要设计成"一切皆文件"</h2>
+  <p>
+    操作系统要管理的 IO 设备五花八门：硬盘、网卡、键盘、鼠标、打印机……如果每一种设备都设计一套专属的 API（比如 <code>disk_read()</code>、<code>net_read()</code>、<code>keyboard_read()</code>），
+    会带来两个致命问题：
+  </p>
+  <ul>
+    <li><strong>应用层代码没法复用</strong>：写一段处理数据的逻辑，换个数据来源（从文件读改成从网络读）就要重写整套调用代码。</li>
+    <li><strong>操作系统的复杂度会指数级上升</strong>：每新增一种设备类型，就要给所有上层工具（shell、编辑器、编译器……)重新适配一遍。</li>
+  </ul>
+  <div class="callout info">
+    <strong>类比：</strong>这就好比现实世界里的"插座标准化"。不管你家电器是电视、冰箱还是台灯，只要插头是国标两孔/三孔，就能插进同一个插座里获取电力——你不需要为每种电器发明新的供电接口。
+    Unix 把这套思路用在了 IO 上：不管底层是磁盘、网卡还是管道，只要它愿意实现"读"和"写"这两个基本动作，就能套进同一套接口里。
+  </div>
+  <p>
+    这个抽象的核心载体就是<strong>文件描述符（file descriptor，简称 fd）</strong>——一个小整数，是进程与某个"可读写资源"之间的句柄。
+    内核在背后维护一张表，把这个整数映射到真正的资源（可能是磁盘上的一个 inode，也可能是一个 socket 的通信缓冲区，也可能是一个管道）。
+    应用层完全不关心 fd 背后具体是什么，只管调用统一的四个动作：<code>open</code>（获取 fd）、<code>read</code>（读）、<code>write</code>（写）、<code>close</code>（释放 fd）。
+  </p>
+
+  <!-- 统一抽象的范围 -->
+  <h2>被这套抽象统一起来的资源</h2>
+  <table>
+    <thead>
+      <tr><th>资源类型</th><th>典型例子</th><th>获取 fd 的方式</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>普通文件</td><td>磁盘上的 <code>.txt</code>、<code>.log</code></td><td><code>open("/path/file")</code></td></tr>
+      <tr><td>目录</td><td>文件系统目录本身也是一种特殊文件</td><td><code>open("/path/dir")</code></td></tr>
+      <tr><td>字符/块设备</td><td>终端 <code>/dev/tty</code>、磁盘 <code>/dev/sda</code></td><td><code>open("/dev/...")</code></td></tr>
+      <tr><td>管道</td><td>Shell 里的 <code>ls | grep xxx</code></td><td><code>pipe()</code></td></tr>
+      <tr><td>Socket</td><td>TCP/UDP 网络连接</td><td><code>socket()</code></td></tr>
+    </tbody>
+  </table>
+  <p>
+    正因为这套统一，Shell 里那句耳熟能详的 <code>command &gt; output.txt</code> 才能成立——重定向的本质，就是把标准输出这个 fd（默认指向终端）
+    换成指向一个磁盘文件的 fd，而 <code>command</code> 本身的代码完全不用感知这个变化，它只管往 <code>write(1, ...)</code> 里写数据。
+  </p>
+
+  <!-- 局限性 -->
+  <h2>这套抽象也不是万能的</h2>
+  <div class="callout warn">
+    <strong>常见误区：</strong>"一切皆文件"不等于"所有资源的行为完全一样"。比如磁盘文件支持随机访问（<code>lseek</code> 跳到任意偏移量），
+    而 socket、管道是面向流的，不支持 <code>lseek</code>；socket 还需要额外的 <code>connect/bind/listen/accept</code> 来建立连接语义，这是纯文件操作没有的部分。
+    统一的只是"最基本的读写接口"，不同资源在此之上仍然保留了各自的特化操作。
+  </div>
+
+  <!-- 与其他模块的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>Java NIO 的 <code>Channel</code> 抽象</strong>正是对这套统一视角的直接映射：<code>FileChannel</code>、<code>SocketChannel</code> 底层都对应一个 fd，Java 只是把它包装成了面向对象的接口。</li>
+    <li>后面讲<strong>阻塞 IO / 非阻塞 IO</strong>、<strong>IO 多路复用</strong>时，讨论的"fd 是否就绪"，正是建立在本篇这套 fd 抽象之上——没有统一的 fd，就没法用同一个 <code>select/epoll</code> 同时监控文件和 socket。</li>
+    <li>呼应 <strong>10-计算机网络</strong> 模块：Socket 本质上就是"传输层协议的 fd 化包装"，下一篇 Socket 编程会展开讲。</li>
+  </ul>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>统一接口带来代码复用</strong>：同一段读写逻辑可以无缝切换数据源，这是 Unix 管道、重定向等强大特性的根基。</li>
+    <li><strong>fd 是这套抽象的核心载体</strong>：一个小整数，屏蔽了背后千差万别的资源实现细节。</li>
+    <li>下一篇开始讨论"读写这个 fd 时线程会不会被阻塞"，这是理解高并发 IO 模型的第一步。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../concur/03-竞态条件的底层硬件原因.html" class="nav-btn">← 竞态条件的底层硬件原因</a>
+    <a href="./02-阻塞IO与非阻塞IO.html" class="nav-btn next">阻塞 IO 与非阻塞 IO →</a>
+  </div>
+
+</div>
+</body>
+</html>

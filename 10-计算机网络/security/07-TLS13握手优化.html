@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TLS 1.3 握手优化 — 计算机网络</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 安全与现代基础设施 / TLS 1.3 握手优化
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全与现代基础设施</div>
+    <h1>TLS 1.3 握手优化<span style="font-size:0.9rem; color:#64748b; font-weight:400;">［HPBN 补充］</span></h1>
+    <p>《计算机网络：自顶向下方法》成书于 2016 年，TLS 1.3 是 2018 年才正式发布的标准，本篇引入《High Performance Browser Networking》的内容补齐这块空白：TLS 1.3 到底比 1.2 快在哪。</p>
+  </div>
+
+  <h2>回顾问题：TLS 1.2 握手为什么慢</h2>
+  <p>
+    上一个 Tab 讲过，TLS 1.2 完整握手需要额外 <strong>1 个 RTT</strong>（ClientHello 到收到服务端 Finished 之间来回一次），
+    加上 TCP 三次握手的 1 个 RTT，一次全新的 HTTPS 连接首字节到达前，至少要经过 2 个 RTT 的等待。
+    对首屏时间（TTFB, Time To First Byte）敏感的场景，这些 RTT 是实打实的延迟，尤其在移动网络下 RTT 动辄上百毫秒，累积起来非常明显。
+  </p>
+
+  <h2>TLS 1.3 的核心优化一：1-RTT 握手</h2>
+  <p>
+    TLS 1.2 慢在哪：客户端要先看服务器"选了哪个加密套件、给了什么证书"，然后才能生成 Pre-Master Secret 发回去——这是一个必须等服务器先回话的串行过程。
+  </p>
+  <p>
+    TLS 1.3 的做法是：<strong>客户端在 ClientHello 里就顺便"猜"服务器可能支持的密钥交换参数，直接把自己这一侧的密钥交换材料（key share）一并发过去</strong>，
+    不再等服务器回复之后才协商。服务端收到后，如果客户端猜的参数自己也支持，就能直接用这些材料算出会话密钥，并在返回 ServerHello 时就带上加密的证书和 Finished 消息。
+  </p>
+  <div class="tree">
+    TLS 1.2（2-RTT，握手+建连）              TLS 1.3（1-RTT，握手）<br>
+    ClientHello ──────────▶                 ClientHello + <span class="hi">Key Share</span> ──────────▶<br>
+    ◀── ServerHello                         ◀── ServerHello + <span class="hi">Key Share</span><br>
+    ◀── Certificate                              + Certificate + Finished<br>
+    ◀── ServerHelloDone<br>
+    ClientKeyExchange ────▶<br>
+    Finished ──────────────▶                 Finished ──────────────▶<br>
+    ◀── Finished<br>
+    <br>
+    （握手部分需要 1 个 RTT 才走完）          （握手部分只需 1 个 RTT，且客户端发完<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;第二条消息就能开始发业务数据）
+  </div>
+  <p>
+    本质是把"先商量用什么密钥交换算法，再交换密钥材料"这两步<strong>合并成一步乐观地并行发出</strong>——如果猜中了（服务器也支持这套参数，绝大多数情况下都能猜中，因为主流密钥交换算法就那么几种），就省下了一整个 RTT；如果没猜中，服务端会要求重新走一次（HelloRetryRequest），退化到接近 1.2 的开销，但这是极少数情况。
+  </p>
+
+  <h2>TLS 1.3 的核心优化二：0-RTT 恢复（Early Data）</h2>
+  <p>
+    如果客户端和服务端之前已经建立过一次 TLS 1.3 连接，服务端会给客户端发一个<strong>会话票据（session ticket）</strong>。
+    下次重新连接时，客户端可以直接用这个票据里派生出的密钥<strong>在第一条消息里就带上加密的业务数据一起发出去</strong>，不需要再等任何握手往返——这就是 <strong>0-RTT</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>1-RTT 像是你和熟人打电话，一接通就能直接说事，不用先寒暄"你是谁、我是谁"；0-RTT 更进一步，像是你直接把要说的话录成语音消息，对方一开门（哪怕人还没到）消息就已经送达了。
+  </div>
+
+  <h2>0-RTT 的代价：重放攻击风险</h2>
+  <p>
+    0-RTT 数据是在服务端还没来得及做任何"活性确认"的情况下就被接受和处理的——攻击者如果截获了这条 0-RTT 数据包，可以原封不动地<strong>重放</strong>给服务器多次。
+    如果这条数据是幂等的（比如查询商品信息），重放没什么危害；但如果是"转账""下单"这类<strong>非幂等操作</strong>，重放攻击可能导致重复扣款、重复下单等严重后果。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>0-RTT 不是免费的午餐。因为无法防御重放攻击，规范明确建议 0-RTT 数据只应该用于携带幂等请求（例如 GET 请求），业务上如果不做额外校验就贸然把非幂等操作也塞进 0-RTT，是一个真实的安全隐患。
+  </div>
+
+  <h2>为什么更快的握手对 TTFB 很重要</h2>
+  <p>
+    首屏时间（TTFB）直接决定用户感知的"网站快不快"，而 TTFB 的组成里，TCP 握手 + TLS 握手往往占了不小的比例，尤其是在延迟较高的移动网络下。
+    TLS 1.3 把握手从 2-RTT 降到 1-RTT（重连场景下甚至 0-RTT），相当于直接省掉几十到上百毫秒的等待——这对大流量网站来说，是能直接影响转化率的优化。
+  </p>
+
+  <h2>常见误区与面试高频考点</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"TLS 1.3 的 0-RTT 是首次连接就能做到的。" 不对，0-RTT 依赖<strong>此前建立过连接留下的会话票据</strong>，首次连接依然要走完整的 1-RTT 握手；0-RTT 只在"恢复连接"场景下生效。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"TLS 1.3 相比 1.2 做了哪些优化？" 答案要点：① 把密钥交换参数提前和 ClientHello 一起发，握手从 2-RTT 降到 1-RTT；② 支持基于会话票据的 0-RTT 数据传输，但存在重放攻击风险，只适合幂等请求；③ 移除了一批不安全的旧加密套件（如 RSA 密钥交换，强制使用具备前向保密的 ECDHE）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>TLS 1.3 通过让客户端在 ClientHello 阶段就"预测并携带"密钥交换材料，把握手从 2-RTT 压缩到 1-RTT。</li>
+    <li>0-RTT 利用历史会话票据实现"无需握手直接发数据"，但因无法防重放，只适合幂等操作。</li>
+    <li>握手轮数的减少直接转化为 TTFB 的降低，是现代高性能 Web 基础设施升级 TLS 版本的核心驱动力。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-CDN的工作原理.html" class="nav-btn">← CDN 的工作原理</a>
+    <a href="./08-HTTP2的多路复用与头部压缩.html" class="nav-btn next">HTTP/2 的多路复用与头部压缩 →</a>
+  </div>
+
+</div>
+</body>
+</html>
+</content>

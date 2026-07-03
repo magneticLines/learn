@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>零拷贝技术 — 系统级IO与网络编程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c5e10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c5e10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 系统级IO与网络编程 / 零拷贝技术
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">系统级IO与网络编程</div>
+    <h1>零拷贝技术</h1>
+    <p>把一个文件通过网络发送出去，数据明明只需要"原样转发"，操作系统却默默做了好几次没必要的内存拷贝。零拷贝技术就是把这些多余的搬运省掉，是 Kafka、Nginx 高吞吐的秘密武器之一。</p>
+  </div>
+
+  <!-- 传统IO的问题 -->
+  <h2>传统方式：一次文件发送要经过几次拷贝</h2>
+  <p>
+    考虑一个最常见的场景：读一个磁盘文件，原封不动地通过网络发送出去（例如 HTTP 服务器返回一个静态文件，或者文件服务器下载）。传统写法是：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="kw">char</span> <span class="var">buf</span>[<span class="num">8192</span>];
+<span class="fn">read</span>(<span class="var">file_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>));   <span class="com">// 从磁盘读到用户态 buffer</span>
+<span class="fn">write</span>(<span class="var">sock_fd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>));  <span class="com">// 再从用户态 buffer 写到 socket</span></pre>
+  </div>
+  <p>看起来只有两行代码，但背后完整的数据搬运路径是这样的：</p>
+  <div class="tree">
+    磁盘<br>
+    &nbsp;&nbsp;└─① DMA 拷贝→<span class="hi">内核缓冲区（read buffer）</span> &nbsp;<span style="color:#64748b">// read() 触发</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─② CPU 拷贝→<span class="hi">用户缓冲区（应用程序的 buf）</span> &nbsp;<span style="color:#64748b">// read() 从内核态返回用户态</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─③ CPU 拷贝→<span class="hi">Socket 缓冲区</span> &nbsp;<span style="color:#64748b">// write() 从用户态进入内核态</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─④ DMA 拷贝→网卡发送
+  </div>
+  <p>
+    这一趟下来，数据被<strong>拷贝了 4 次</strong>（2 次 DMA 拷贝 + 2 次 CPU 拷贝），并且发生了<strong>至少 4 次用户态/内核态上下文切换</strong>
+    （<code>read()</code> 调用陷入内核再返回一次，<code>write()</code> 调用陷入内核再返回一次）。仔细看会发现：<strong>数据在②和③这两步里，只是从内核缓冲区搬到用户缓冲区，
+    再原封不动地搬回内核的 socket 缓冲区</strong>——用户态程序根本没有对这段数据做任何加工，这两次拷贝纯属浪费。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>这就像快递从仓库 A 运到仓库 B，中间却非要先卸到你家客厅，你看都没看一眼，又原样搬上另一辆车送到仓库 B——如果仓库 A 和仓库 B 之间能直接对接，
+    完全不需要在你家客厅这个"中转站"停留。零拷贝技术做的就是把这个不必要的"卸到客厅"环节去掉。
+  </div>
+
+  <!-- mmap -->
+  <h2>方案一：mmap 减少一次拷贝</h2>
+  <p>
+    <code>mmap()</code> 把内核缓冲区直接映射到用户态的虚拟地址空间，用户程序和内核共享同一块物理内存，不再需要"内核缓冲区 → 用户缓冲区"这次 CPU 拷贝。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="kw">void</span> *<span class="var">addr</span> = <span class="fn">mmap</span>(<span class="var">NULL</span>, <span class="var">len</span>, <span class="var">PROT_READ</span>, <span class="var">MAP_SHARED</span>, <span class="var">file_fd</span>, <span class="num">0</span>);
+<span class="fn">write</span>(<span class="var">sock_fd</span>, <span class="var">addr</span>, <span class="var">len</span>);  <span class="com">// 直接从映射区写到 socket，少了一次 CPU 拷贝</span></pre>
+  </div>
+  <p>拷贝次数从 4 次降到 3 次，但 <code>write()</code> 仍然要触发一次上下文切换，数据仍然要从内核缓冲区拷贝到 socket 缓冲区。</p>
+
+  <!-- sendfile -->
+  <h2>方案二：sendfile，真正的"零拷贝"</h2>
+  <p>
+    <code>sendfile()</code> 干脆把"读文件"和"写 socket"这两个动作合并成一次系统调用，数据全程<strong>不经过用户态</strong>：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="fn">sendfile</span>(<span class="var">sock_fd</span>, <span class="var">file_fd</span>, <span class="var">NULL</span>, <span class="var">len</span>); <span class="com">// 一次系统调用，内核内部完成搬运</span></pre>
+  </div>
+  <div class="tree">
+    磁盘<br>
+    &nbsp;&nbsp;└─① DMA 拷贝→<span class="hi">内核缓冲区</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─② <span class="hi">CPU 拷贝（或在支持 scatter-gather 的网卡上，连这一步都省掉）</span>→Socket 缓冲区<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─③ DMA 拷贝→网卡发送
+  </div>
+  <p>
+    在支持 <strong>scatter-gather DMA</strong> 的现代网卡上，甚至连"内核缓冲区 → socket 缓冲区"这次 CPU 拷贝都可以省掉——内核只需要把数据在内核缓冲区里的
+    位置和长度描述符传给网卡，网卡直接从内核缓冲区 DMA 读取数据发送，全程<strong>只有 2 次 DMA 拷贝，0 次 CPU 拷贝，且只需 2 次上下文切换</strong>
+    （调用 <code>sendfile</code> 陷入内核、执行完返回用户态）。这才是"零拷贝"名字的真正含义——零的是 <strong>CPU 参与的数据拷贝</strong>，而不是完全没有任何数据搬运。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>零拷贝不是说数据完全不移动（DMA 搬运始终存在，因为数据终究要从磁盘物理介质搬到网卡），而是<strong>消除了 CPU 亲自参与、
+    在用户态和内核态之间来回倒腾数据的那几次冗余拷贝</strong>，同时减少了昂贵的上下文切换次数。
+  </div>
+
+  <!-- 对比表 -->
+  <h2>传统 IO vs 零拷贝对比</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>传统 read+write</th><th>mmap+write</th><th>sendfile（+scatter-gather）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>拷贝次数</td><td>4 次（2 DMA + 2 CPU）</td><td>3 次（2 DMA + 1 CPU）</td><td>2 次（2 DMA + 0 CPU）</td></tr>
+      <tr><td>上下文切换</td><td>4 次</td><td>4 次</td><td>2 次</td></tr>
+      <tr><td>用户态是否经手数据</td><td>是</td><td>是（通过映射）</td><td>否</td></tr>
+      <tr><td>适用场景</td><td>需要对数据做加工处理</td><td>需要在用户态访问但不修改</td><td>原样转发文件/数据，如静态资源、消息日志</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Java NIO -->
+  <h2>Java 里的零拷贝：FileChannel.transferTo()</h2>
+  <p>
+    Java NIO 的 <code>FileChannel.transferTo(long position, long count, WritableByteChannel target)</code> 就是对 <code>sendfile()</code>
+    系统调用的直接封装。当 <code>target</code> 是一个 <code>SocketChannel</code> 时，JVM 会在支持的操作系统上自动走零拷贝路径：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>java</span></div>
+    <pre><span class="kw">try</span> (<span class="ty">FileChannel</span> <span class="var">fileChannel</span> = <span class="ty">FileChannel</span>.<span class="fn">open</span>(<span class="var">path</span>, <span class="ty">StandardOpenOption</span>.<span class="var">READ</span>)) {
+    <span class="com">// 直接把文件内容"转发"给 socket channel，避免用户态中转</span>
+    <span class="var">fileChannel</span>.<span class="fn">transferTo</span>(<span class="num">0</span>, <span class="var">fileChannel</span>.<span class="fn">size</span>(), <span class="var">socketChannel</span>);
+}</pre>
+  </div>
+  <div class="callout tip">
+    <strong>面试高频 / 实践联系：</strong>Kafka 能做到极高吞吐的关键优化之一，就是 Broker 向 Consumer 发送消息时大量使用了 <code>transferTo()</code>
+    这种零拷贝方式——消息从磁盘日志文件读出后直接转发给网络连接，不需要在 JVM 堆内存里过一遍，既减少了 CPU 拷贝开销，也避免了不必要的 GC 压力
+    （数据根本没有进入 JVM 堆，自然不会产生额外对象）。同理，Nginx 的 <code>sendfile on;</code> 配置项打开的正是同一种机制。
+  </div>
+
+  <!-- 与其他模块的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li>呼应 <strong>08-JVM 模块</strong>：零拷贝之所以能避开 JVM 堆，是因为 NIO 的 <code>DirectByteBuffer</code>（堆外内存）机制——数据缓冲区直接由操作系统管理，不受 GC 影响，这也是 NIO 高性能 IO 的重要组成部分。</li>
+    <li>本篇是"系统级 IO 与网络编程"模块的收尾：从"一切皆文件"的统一抽象，到阻塞/非阻塞的等待策略，到 epoll 的高效通知，到 Socket 的编程模型，最后落到零拷贝——一条"如何让数据搬运更高效"的完整主线。</li>
+  </ul>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>传统 IO 的浪费点：</strong>数据在内核缓冲区和用户缓冲区之间被没有意义地来回搬运。</li>
+    <li><strong>mmap 减少一次拷贝，sendfile 才是真正意义的零拷贝</strong>：让数据全程留在内核态，甚至靠网卡的 scatter-gather 能力做到零 CPU 拷贝。</li>
+    <li><strong>Java 的 <code>transferTo()</code> 是零拷贝落地到应用层的入口</strong>，Kafka、Nginx 等高吞吐系统都靠它来减少 CPU 开销与内存占用。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-Socket编程的基本模型.html" class="nav-btn">← Socket 编程的基本模型</a>
+    <a href="../classic/01-常见调度算法.html" class="nav-btn next">常见调度算法 →</a>
+  </div>
+
+</div>
+</body>
+</html>

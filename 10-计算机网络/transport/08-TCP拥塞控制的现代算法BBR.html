@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TCP 拥塞控制的现代算法（BBR） — 传输层</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 传输层 / TCP 拥塞控制的现代算法（BBR）
+  </div>
+
+  <div class="hero">
+    <div class="tag">传输层</div>
+    <h1>TCP 拥塞控制的现代算法（BBR）</h1>
+    <p>补充内容 [来自 High Performance Browser Networking]。前面讲的慢启动/拥塞避免/AIMD 是以 Reno、CUBIC 为代表的传统算法思路，它们有一个共同的假设——"丢包 = 拥塞"。BBR 从根本上质疑了这个假设，换了一套完全不同的判断依据。</p>
+  </div>
+
+  <h2>传统算法的假设:"丢包才算拥塞"</h2>
+  <p>
+    上一篇讲的 AIMD 策略（慢启动、拥塞避免、快速重传/快恢复）以及后来的 CUBIC（Linux 默认拥塞控制算法），本质上都是<strong>基于丢包的拥塞控制（Loss-Based）</strong>——
+    它们不断增大发送速率，直到真的发生丢包才认为"到达网络上限了"，然后退避。
+  </p>
+  <p>
+    这个假设在有线网络的早期是合理的，因为当时网络中的路由器缓冲区较小，链路一旦拥塞，缓冲区很快溢出并丢包，"丢包"和"拥塞"几乎是同义词。
+    但现代网络环境发生了两个重要变化，让这个假设开始站不住脚：
+  </p>
+  <ul>
+    <li>
+      <strong>缓冲膨胀（Bufferbloat）：</strong>现代路由器和网络设备的缓冲区越做越大（内存便宜了），当链路开始拥塞时，数据包会在这些大缓冲区里排队等待很久，而不会立刻被丢弃。
+      基于丢包的算法会一直增大发送速率，直到缓冲区终于填满才后退——这段"排队等待"的时间里，<strong>延迟已经急剧升高，但因为没有丢包，算法却浑然不觉，还在继续加速加剧拥塞</strong>。
+    </li>
+    <li>
+      <strong>无线网络的随机丢包：</strong>WiFi、4G/5G 等无线链路的丢包很多时候是信号干扰、信号弱等物理层原因造成的，<strong>和网络是否拥塞毫无关系</strong>。
+      基于丢包的算法一旦检测到丢包就大幅度减速（cwnd 减半甚至打回 1），但网络其实一点都不拥堵，这种误判导致带宽被严重浪费，尤其在移动网络下表现得很明显。
+    </li>
+  </ul>
+  <div class="callout warn">
+    <strong>核心问题：</strong>"丢包"是一个滞后且有时会误导的信号——它要么来得太晚（缓冲膨胀让延迟先升高很久才丢包），要么根本不代表拥塞（无线网络随机丢包）。基于丢包的算法在这两种场景下都会做出错误决策。
+  </div>
+
+  <h2>BBR 的思路:直接测量带宽和延迟</h2>
+  <p>
+    BBR（Bottleneck Bandwidth and Round-trip propagation time，2016 年由 Google 提出）换了一个完全不同的判断依据：
+    <strong>不再等待丢包信号，而是持续、实时地测量两个物理量——瓶颈链路的带宽（BtlBw）和链路的最小往返传播时延（RTprop）</strong>，
+    用这两个值直接建模网络当前的真实承载能力，据此计算出应该用多快的速率发送数据。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>基于丢包的算法像是"蒙眼开车一直踩油门，直到撞墙才知道到头了，然后大幅刹车重新起步"；BBR 则像是"提前用雷达测出前方道路的实际限速和距离，全程保持在限速边缘匀速行驶，既不会撞墙也不会不必要地减速"。
+  </div>
+  <p>
+    BBR 的核心洞察是：<strong>当发送速率恰好等于瓶颈带宽时，数据包不会在任何缓冲区里排队等待，此时的往返时延就是链路的真实最小传播时延</strong>；
+    一旦发送速率超过瓶颈带宽，多余的数据就会开始在路由器缓冲区里堆积排队，往返时延会随之升高——但这个时候还远没有发生丢包。
+    BBR 正是抓住"时延开始升高"这个比"丢包"早得多的信号，在真正拥堵之前就主动把发送速率控制在恰到好处的水平，而不是一路狂奔到撞墙。
+  </p>
+
+  <h2>BBR 相比传统算法的优势</h2>
+  <table>
+    <thead><tr><th>场景</th><th>传统算法（CUBIC 等）</th><th>BBR</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>大缓冲区网络（缓冲膨胀）</td>
+        <td>持续加速直到缓冲区填满才后退，期间延迟大幅攀升</td>
+        <td>基于时延变化提前感知，把发送速率控制在缓冲区基本不排队的水平，延迟低且稳定</td>
+      </tr>
+      <tr>
+        <td>无线网络随机丢包</td>
+        <td>把随机丢包误判为拥塞，速率大幅跳水，带宽利用率低</td>
+        <td>不以丢包为主要判断依据，只要带宽和延迟测量正常就维持高速率，抗随机丢包干扰能力强</td>
+      </tr>
+      <tr>
+        <td>高带宽高时延网络（长肥管道，如跨洲际链路）</td>
+        <td>AIMD 线性增长爬升到最优速率需要很长时间，且丢包后减半代价很大</td>
+        <td>直接测算带宽后能更快收敛到接近最优的发送速率，恢复更快</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>与本 Tab 前面内容的呼应</h2>
+  <p>
+    BBR 依然是在 TCP（或者 QUIC）传输层框架内工作的算法——它替换的只是"拥塞窗口该设多大"这个决策逻辑，
+    并没有改变序号确认、滑动窗口这些基础可靠传输机制。事实上，<strong>Google 的 QUIC 实现默认就采用了 BBR 作为拥塞控制算法</strong>，
+    这也是上一篇讲 QUIC 时提到"协议运行在用户态、可以快速迭代"的一个具体体现——BBR 这种新算法能够快速在 QUIC 中落地并推广到生产环境，而 TCP 内核层面的算法升级往往要经历漫长得多的过程。
+  </p>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"BBR 完全不管丢包，只要没崩就疯狂发送。" 并不是。BBR 依然会周期性地主动探测网络是否有更多可用带宽（探测阶段短暂提高发送速率），也会响应持续的丢包和明显的拥塞信号进行调整；它的核心区别在于<strong>不把丢包当作唯一或主要的拥塞判断依据</strong>，而是把带宽和延迟的实时测量作为决策的核心输入，丢包只是辅助参考信号之一。
+  </div>
+  <div class="callout tip">
+    <strong>面试延伸：</strong>如果面试官问"了解新的拥塞控制算法吗"，可以从"传统算法以丢包为信号 → 缓冲膨胀和无线网络让这个信号变得不可靠 → BBR 改为直接测量带宽和时延"这条逻辑链条来回答，能体现出对拥塞控制本质问题的理解，而不只是死记硬背算法名字。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>传统拥塞控制算法的软肋：</strong>把"丢包"等同于"拥塞"，在缓冲膨胀和无线网络场景下这个等价关系不再成立。</li>
+    <li><strong>BBR 的创新：</strong>直接测量瓶颈带宽和最小往返时延，用真实的物理量建模网络容量，而不是被动等待丢包这个滞后信号。</li>
+    <li><strong>回顾整个传输层 Tab：</strong>从"TCP/UDP 该怎么选"到"连接怎么建立/关闭"，到"可靠性、流量控制、拥塞控制"三大机制，再到"QUIC 如何重新设计传输层"和"BBR 如何重新设计拥塞控制算法"——传输层的发展史，就是一部不断在可靠性、效率、公平性之间寻找更优解的历史。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./07-为什么HTTP3选择基于UDP的QUIC协议.html" class="nav-btn">← 为什么 HTTP/3 选择基于 UDP 的 QUIC 协议</a>
+    <a href="../network/01-IP协议与IP地址分类.html" class="nav-btn next">IP 协议与 IP 地址分类 →</a>
+  </div>
+
+</div>
+</body>
+</html>

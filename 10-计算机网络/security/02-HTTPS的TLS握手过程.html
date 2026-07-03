@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HTTPS 的 TLS 握手过程 — 计算机网络</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 安全与现代基础设施 / HTTPS 的 TLS 握手过程
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全与现代基础设施</div>
+    <h1>HTTPS 的 TLS 握手过程</h1>
+    <p>在 TCP 三次握手建立好可靠连接之上，TLS 还要再做一次"加密协商"的握手——这是面试中被问烂但很多人仍答不全的高频考点。以经典的 TLS 1.2 为例，逐步拆解。</p>
+  </div>
+
+  <h2>为什么 TCP 握手之后还要再握手一次</h2>
+  <p>
+    回顾传输层学过的内容：TCP 三次握手（<code>02-TCP三次握手</code>）只解决了"双方确认彼此在线、约定好初始序号"，
+    建立的是一条<strong>明文</strong>可靠通道。HTTPS 要在这条通道之上再加一层，双方必须先协商好：
+    用什么加密算法、以及最关键的——<strong>用哪把对称密钥加密后续数据</strong>（回顾上一篇《对称加密与非对称加密》）。
+    这个协商过程就是 <strong>TLS 握手</strong>，握手成功后 HTTP 报文才开始加密传输，也就是我们说的 HTTPS。
+  </p>
+
+  <h2>TLS 1.2 握手全流程（2-RTT）</h2>
+  <p>以下是经典 TLS 1.2 握手（RSA/ECDHE 密钥交换）的核心步骤：</p>
+
+  <div class="tree">
+    客户端                                          服务端<br>
+    <span class="hi">1. ClientHello</span> ────────────────────────▶<br>
+    &nbsp;&nbsp;(支持的 TLS 版本、加密套件列表、随机数 Client Random)<br>
+    <br>
+    ◀──────────────────────── <span class="hi">2. ServerHello</span><br>
+    &nbsp;&nbsp;(选定的 TLS 版本、加密套件、随机数 Server Random)<br>
+    ◀──────────────────────── <span class="hi">3. Certificate</span>（服务器数字证书，内含公钥）<br>
+    ◀──────────────────────── <span class="hi">4. ServerHelloDone</span><br>
+    <br>
+    &nbsp;&nbsp;(客户端校验证书合法性 —— 见下一篇 CA 信任链)<br>
+    &nbsp;&nbsp;(客户端生成 Pre-Master Secret，用服务器公钥加密)<br>
+    <span class="hi">5. ClientKeyExchange</span> ───────────────────▶<br>
+    &nbsp;&nbsp;(加密后的 Pre-Master Secret)<br>
+    <span class="hi">6. ChangeCipherSpec + Finished</span> ──────────▶<br>
+    &nbsp;&nbsp;(通知：接下来我发的都用协商好的密钥加密了)<br>
+    <br>
+    ◀──────────────────────── <span class="hi">7. ChangeCipherSpec + Finished</span><br>
+    &nbsp;&nbsp;(服务器也确认切换到加密通信)<br>
+    <br>
+    ============ 双方开始用会话密钥加密传输 HTTP 数据 ============
+  </div>
+
+  <h3>每一步在做什么、为什么这么设计</h3>
+  <ul>
+    <li><strong>ClientHello：</strong>客户端告诉服务器"我支持哪些 TLS 版本和加密套件（如 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256）"，并附带一个随机数 <strong>Client Random</strong>。这个随机数之后会参与生成会话密钥——单靠一个固定密钥交换过程容易被预测或重放，加入双方各自的随机数能让每次会话的密钥都不同。</li>
+    <li><strong>ServerHello + Certificate：</strong>服务器从客户端支持的套件里选一个（体现"双方协商"而非单方面决定），并返回自己的<strong>数字证书</strong>（内含公钥）和自己的随机数 <strong>Server Random</strong>。证书的作用是让客户端确信"这个公钥真的属于这个域名"，详见下一篇。</li>
+    <li><strong>ClientKeyExchange：</strong>客户端校验证书合法后，生成第三个随机数 <strong>Pre-Master Secret</strong>，用服务器公钥（非对称加密）加密后发给服务器。这一步是非对称加密登场的地方——只有服务器的私钥能解出这个 Pre-Master Secret。</li>
+    <li><strong>密钥生成：</strong>双方各自用 <code>Client Random + Server Random + Pre-Master Secret</code> 通过同样的算法推导出同一把<strong>会话密钥（Master Secret）</strong>。三个随机数缺一不可地混合，是为了保证密钥的不可预测性和唯一性。</li>
+    <li><strong>Finished：</strong>双方各自发一条用会话密钥加密的验证消息，对方能正确解密就说明密钥协商成功，可以正式开始加密通信了。</li>
+  </ul>
+
+  <h2>握手之后：切回对称加密</h2>
+  <p>
+    握手一结束，双方立刻抛开非对称加密（它已经完成使命——安全地协商出了会话密钥），改用<strong>对称加密</strong>加密所有后续 HTTP 报文。
+    这正是上一篇讲的"混合加密方案"在协议层面的具体落地：TLS 握手 = 用非对称加密走一遍密钥协商，握手结束后一路用对称加密。
+  </p>
+
+  <h2>握手的代价：额外的往返延迟</h2>
+  <p>
+    TLS 1.2 完整握手需要 <strong>2 个 RTT</strong>（往返时延）：先有 TCP 三次握手的 1 个 RTT，再加上 TLS 握手本身的 1 个 RTT（ClientHello 到 Finished 之间恰好来回一次）。
+    对首字节到达时间（TTFB）敏感的场景（比如首屏加载），这些额外的 RTT 累加起来很可观——这也是为什么 TLS 1.3 要专门优化握手轮数（见本 Tab 第 7 篇）。
+  </p>
+
+  <h2>常见误区与面试高频考点</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>"HTTPS 握手全程都在用非对称加密。" 非对称加密只用在协商 Pre-Master Secret 这一步，真正传输 HTTP 数据用的是对称加密，这是性能和安全的平衡点。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>"服务器的私钥参与生成会话密钥的过程，所以私钥泄露会暴露历史流量。" 在 RSA 密钥交换模式下确实如此——这正是它逐渐被淘汰的原因；而 <strong>ECDHE（椭圆曲线 Diffie-Hellman）</strong>模式下，每次握手都用临时密钥对，即使私钥事后泄露也无法解密之前录下的流量，这个特性叫<strong>前向保密（Forward Secrecy）</strong>，是现代 TLS 配置的标配。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"说一下 HTTPS 的握手过程" —— 按 ClientHello → ServerHello+证书 → 客户端验证证书并用公钥加密 Pre-Master Secret → 双方推导会话密钥 → Finished 确认 五步来说，再补一句"握手后切换成对称加密传输数据"，基本能覆盖考点。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>TLS 握手的本质是<strong>在不安全的信道上安全地协商出一把对称密钥</strong>。</li>
+    <li>三个随机数（Client Random、Server Random、Pre-Master Secret）共同推导出会话密钥，保证唯一性和不可预测性。</li>
+    <li>经典 TLS 1.2 握手需要额外 1 个 RTT，是后续协议优化（TLS 1.3、0-RTT）的直接动机。</li>
+    <li>握手中"如何证明服务器公钥的真实性"依赖数字证书体系，下一篇展开讲。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-对称加密与非对称加密.html" class="nav-btn">← 对称加密与非对称加密</a>
+    <a href="./03-数字证书与CA信任链.html" class="nav-btn next">数字证书与 CA 信任链 →</a>
+  </div>
+
+</div>
+</body>
+</html>
+</content>

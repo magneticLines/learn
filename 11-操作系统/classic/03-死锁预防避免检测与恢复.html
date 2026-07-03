@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>死锁预防 避免 检测与恢复 — 进程调度与经典理论</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #7c1d51; }
+  .nav-btn.next { color: #f472b6; border-color: #7c1d51; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 进程调度与经典理论 / 死锁预防 避免 检测与恢复
+  </div>
+
+  <div class="hero">
+    <div class="tag">进程调度与经典理论</div>
+    <h1>死锁预防 避免 检测与恢复</h1>
+    <p>知道了死锁的四个必要条件，接下来是"怎么办"——操作系统理论给出了三种思路完全不同的对策，还有一种"干脆不管"的现实选择。</p>
+  </div>
+
+  <h2>四种应对思路的全景</h2>
+  <p>
+    面对死锁，操作系统理论给出了四种层层递进的策略，从"事先杜绝"到"事后补救"，再到"干脆躺平"：
+  </p>
+  <table>
+    <thead>
+      <tr><th>策略</th><th>处理时机</th><th>核心思路</th><th>代价</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>死锁预防</strong></td>
+        <td>系统设计阶段</td>
+        <td>静态破坏四个必要条件之一，从根上让死锁不可能发生</td>
+        <td>限制太死，资源利用率低</td>
+      </tr>
+      <tr>
+        <td><strong>死锁避免</strong></td>
+        <td>每次分配资源时</td>
+        <td>动态判断"这次分配会不会导致系统进入危险状态"</td>
+        <td>需要预知资源最大需求量，计算开销大</td>
+      </tr>
+      <tr>
+        <td><strong>死锁检测与恢复</strong></td>
+        <td>死锁已经发生之后</td>
+        <td>定期检查资源分配图是否成环，发现了再处理</td>
+        <td>需要事后回滚或杀进程，有损失</td>
+      </tr>
+      <tr>
+        <td><strong>鸵鸟算法</strong></td>
+        <td>不处理</td>
+        <td>假装死锁不会发生</td>
+        <td>一旦发生，只能重启</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>死锁预防（Prevention）：事先破坏四个条件之一</h2>
+  <p>
+    思路很直接——上一篇讲过，四个必要条件同时满足才会死锁，那就<strong>在系统设计时就静态地让某一个条件永远不成立</strong>：
+  </p>
+  <ul>
+    <li><strong>破坏互斥：</strong>把互斥资源改造成可共享的（比如用 SPOOL 假脱机技术让多个进程"共享"打印机，实际上各自写入缓冲区排队打印）。但很多资源天生就是互斥的，改不了。</li>
+    <li><strong>破坏请求与保持：</strong>要求进程运行前一次性申请所有需要的资源，要么全给要么都不给。缺点是资源利用率低——进程可能一开始就占着后面很久才用到的资源。</li>
+    <li><strong>破坏不可剥夺：</strong>如果进程请求的资源得不到满足，就释放它已经占有的全部资源，需要时重新申请。代价是状态可能要保存和恢复，实现复杂。</li>
+    <li><strong>破坏循环等待：</strong>给所有资源类型编号，规定进程必须<strong>按编号递增的顺序</strong>申请资源，这样资源分配图不可能出现环。这是实践中最常用、代价相对最小的一种，前一篇 Java 死锁案例里"固定加锁顺序"就是这个思路的具体应用。</li>
+  </ul>
+
+  <h2>死锁避免（Avoidance）：银行家算法</h2>
+  <p>
+    死锁预防是"一刀切"式的静态限制，而死锁避免更聪明一点：<strong>允许四个必要条件都成立，但在每次分配资源之前，先算一算这次分配会不会让系统走向"死路"</strong>。
+  </p>
+  <p>
+    最经典的实现是 Dijkstra 提出的<strong>银行家算法（Banker's Algorithm）</strong>——名字来源于银行放贷的场景：银行有一笔总资金，多个客户会分批次来借钱，银行在每次放贷前都要确认"就算所有客户都借到自己声明的最大额度，银行仍然有办法让每个人都能按某种顺序全部还清"，如果做不到就拒绝这次放贷请求。
+  </p>
+  <ul>
+    <li>核心概念是<strong>安全状态（Safe State）</strong>：如果存在一个进程执行顺序，能让每个进程依次拿到所需的全部资源并顺利完成、归还资源，这个状态就是安全的。</li>
+    <li>每次有进程发出资源请求，系统先假设分配成功，检查系统是否仍处于安全状态，如果是就真正分配，否则让该进程等待。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>陷阱：</strong>"不安全状态"不等于"死锁状态"——不安全只是说存在死锁的风险（可能因为进程后续的资源申请顺序不巧而死锁），不是一定会死锁。银行家算法是保守策略，宁可拒绝一些原本不会出问题的请求，也要保证绝对安全。
+  </div>
+  <p>
+    银行家算法的现实局限也很明显：它要求提前知道每个进程<strong>未来可能申请的资源最大值</strong>，这在真实系统里几乎不现实——大多数程序运行前根本不知道自己最终会用多少资源。这也是它更多停留在教科书和面试题里、很少被操作系统直接采用的原因。
+  </p>
+
+  <h2>死锁检测与恢复（Detection & Recovery）：先发生，再补救</h2>
+  <p>
+    另一种完全不同的思路：<strong>不做任何预防和限制，允许死锁真实发生，但系统会定期检查是否出现了死锁，一旦发现就采取补救措施</strong>。
+  </p>
+  <ul>
+    <li><strong>检测：</strong>把资源分配关系画成资源分配图，定期检查图中是否存在环（对于每种资源只有一个实例的简化模型，有环即死锁；多实例情形需要更复杂的算法，本质思路类似银行家算法的安全性检测）。</li>
+    <li><strong>恢复：</strong>发现死锁后常见的做法有——① 剥夺资源：强行从某个进程手里抢走资源分配给别人；② 撤销进程：直接杀死死锁环中的一个或多个进程（代价小的原则，比如选运行时间最短、还没产生太多副作用的进程）；③ 让进程回滚到之前的某个检查点重新执行。</li>
+  </ul>
+  <p>
+    这种思路的优势是平时不设限制，资源利用率高；代价是死锁一旦发生，恢复往往有损失（工作被回滚、进程被强杀）。
+  </p>
+
+  <h2>鸵鸟算法（Ostrich Algorithm）：现实中的选择</h2>
+  <p>
+    《现代操作系统》里提到一个很实在的观点：<strong>大多数操作系统（包括 Unix、Linux、Windows）对死锁根本不做任何预防、避免或检测，就是完全忽略它</strong>——这就是所谓的"鸵鸟算法"，把头埋进沙子里假装看不见问题。
+  </p>
+  <div class="callout tip">
+    <strong>为什么现实中反而选择忽略？</strong>因为死锁预防和避免的代价（限制资源利用率、要求提前声明最大需求量）远大于死锁实际发生的概率和影响。操作系统设计者做了一个工程上的权衡：<strong>用户程序里真正因为多资源竞争产生死锁的情况很少见，一旦发生，重启进程或系统的成本，远低于时时刻刻为预防它而牺牲的性能和灵活性</strong>。这是一个"理论最优"向"工程实用"妥协的经典案例。
+  </div>
+  <p>
+    这也解释了为什么 Java 里遇到死锁，JVM 不会自动帮你解开——它只提供 <code>jstack</code> 这样的检测工具告诉你"这里死锁了"，剩下的（杀进程、重启应用）要靠开发者或运维手动介入，本质上也是鸵鸟算法思路在应用层的体现。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>预防是静态一刀切，避免是动态算安全性，检测恢复是先发生再补救：</strong>三种策略处理时机不同，代价也不同。</li>
+    <li><strong>银行家算法是死锁避免的代表，面试常考安全状态的判断过程</strong>，但要清楚它在现实中很少被直接采用。</li>
+    <li><strong>鸵鸟算法才是大多数操作系统的真实选择</strong>：完全预防死锁的代价往往比死锁本身更大，这是工程权衡而非理论缺陷。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-死锁的四个必要条件.html" class="nav-btn">← 死锁的四个必要条件</a>
+    <a href="./04-页面置换算法.html" class="nav-btn next">页面置换算法 →</a>
+  </div>
+
+</div>
+</body>
+</html>

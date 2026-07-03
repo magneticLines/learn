@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Socket 编程的基本模型 — 系统级IO与网络编程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #7c5e10; }
+  .nav-btn.next { color: #fbbf24; border-color: #7c5e10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 系统级IO与网络编程 / Socket 编程的基本模型
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">系统级IO与网络编程</div>
+    <h1>Socket 编程的基本模型</h1>
+    <p>Socket 是应用程序打开"网络通信"这扇门的钥匙——它把复杂的 TCP/IP 协议栈包装成了几个简单的系统调用，是从"单机 IO"迈向"网络 IO"的关键一步。</p>
+  </div>
+
+  <!-- 概念定位 -->
+  <h2>Socket 到底是什么</h2>
+  <p>
+    回顾第一篇"一切皆文件"的视角：<strong>Socket 本质上就是一种特殊的文件描述符</strong>，只不过它背后不是磁盘上的文件，而是一段"网络通信端点"——
+    一旦创建出来，就可以用统一的 <code>read/write</code>（或者专门的 <code>send/recv</code>）去读写它，数据会经过内核的 TCP/IP 协议栈被送到网络上，或者从网络上收进来。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>如果把"打电话"类比网络通信，Socket 就是那部电话机。你不需要懂电话线怎么布线、信号怎么调制解调（这些是传输层/物理层的事，对应 10-计算机网络 模块），
+    只需要"拨号（connect）"、"接听（accept）"、"说话（write）"、"听（read）"、"挂机（close）"——Socket API 就是这几个动作的编程接口。
+  </div>
+
+  <!-- 服务端流程 -->
+  <h2>服务端的经典流程</h2>
+  <p>服务端要先"占好位置"等别人连进来，流程是固定的五步：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="com">// 1. socket()：创建一个 socket，拿到一个 fd（此时还没和任何地址绑定）</span>
+<span class="kw">int</span> <span class="var">listenfd</span> = <span class="fn">socket</span>(<span class="var">AF_INET</span>, <span class="var">SOCK_STREAM</span>, <span class="num">0</span>);
+
+<span class="com">// 2. bind()：把这个 fd 绑定到具体的 IP + 端口上，相当于"占号"</span>
+<span class="kw">struct</span> <span class="ty">sockaddr_in</span> <span class="var">addr</span> = { .<span class="var">sin_family</span> = <span class="var">AF_INET</span>, .<span class="var">sin_port</span> = <span class="fn">htons</span>(<span class="num">8080</span>) };
+<span class="fn">bind</span>(<span class="var">listenfd</span>, (<span class="kw">struct</span> <span class="ty">sockaddr</span>*)&amp;<span class="var">addr</span>, <span class="kw">sizeof</span>(<span class="var">addr</span>));
+
+<span class="com">// 3. listen()：把 socket 切换为"监听模式"，开始接受连接请求，排队等待处理</span>
+<span class="fn">listen</span>(<span class="var">listenfd</span>, <span class="num">128</span>);  <span class="com">// 128 是全连接队列的最大长度</span>
+
+<span class="com">// 4. accept()：从连接队列里取出一个已完成三次握手的连接，返回一个新 fd</span>
+<span class="kw">int</span> <span class="var">connfd</span> = <span class="fn">accept</span>(<span class="var">listenfd</span>, <span class="var">NULL</span>, <span class="var">NULL</span>);
+
+<span class="com">// 5. read/write：用这个新 fd 与客户端通信，跟操作普通文件毫无区别</span>
+<span class="kw">char</span> <span class="var">buf</span>[<span class="num">1024</span>];
+<span class="kw">ssize_t</span> <span class="var">n</span> = <span class="fn">read</span>(<span class="var">connfd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>));
+<span class="fn">write</span>(<span class="var">connfd</span>, <span class="str">"HTTP/1.1 200 OK\r\n\r\n"</span>, <span class="num">19</span>);
+
+<span class="fn">close</span>(<span class="var">connfd</span>);   <span class="com">// 关闭这次连接</span></pre>
+  </div>
+  <div class="callout warn">
+    <strong>易混淆点：</strong><code>listenfd</code> 和 <code>connfd</code> 是两个不同的 fd！<code>listenfd</code> 只负责"接待新连接"，永远不会用来读写业务数据；
+    每来一个新连接，<code>accept()</code> 都会返回一个全新的 <code>connfd</code> 专门用于跟这个客户端通信。一个常见的服务端可以同时持有一个 <code>listenfd</code>
+    和成千上万个 <code>connfd</code>——这正是上一篇 epoll 要同时监控的那一大批 fd 的来源。
+  </div>
+
+  <!-- 客户端流程 -->
+  <h2>客户端的经典流程</h2>
+  <p>客户端不需要 bind/listen/accept，只需要主动发起连接：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>c</span></div>
+    <pre><span class="com">// 1. socket()：同样先创建一个 socket</span>
+<span class="kw">int</span> <span class="var">sockfd</span> = <span class="fn">socket</span>(<span class="var">AF_INET</span>, <span class="var">SOCK_STREAM</span>, <span class="num">0</span>);
+
+<span class="com">// 2. connect()：主动向服务端发起 TCP 三次握手</span>
+<span class="kw">struct</span> <span class="ty">sockaddr_in</span> <span class="var">server_addr</span> = { .<span class="var">sin_family</span> = <span class="var">AF_INET</span>, .<span class="var">sin_port</span> = <span class="fn">htons</span>(<span class="num">8080</span>) };
+<span class="fn">inet_pton</span>(<span class="var">AF_INET</span>, <span class="str">"127.0.0.1"</span>, &amp;<span class="var">server_addr</span>.<span class="var">sin_addr</span>);
+<span class="fn">connect</span>(<span class="var">sockfd</span>, (<span class="kw">struct</span> <span class="ty">sockaddr</span>*)&amp;<span class="var">server_addr</span>, <span class="kw">sizeof</span>(<span class="var">server_addr</span>));
+
+<span class="com">// 3. read/write：连接建立后，同样用统一的读写接口收发数据</span>
+<span class="fn">write</span>(<span class="var">sockfd</span>, <span class="str">"GET / HTTP/1.1\r\n\r\n"</span>, <span class="num">18</span>);
+<span class="kw">char</span> <span class="var">buf</span>[<span class="num">1024</span>];
+<span class="fn">read</span>(<span class="var">sockfd</span>, <span class="var">buf</span>, <span class="kw">sizeof</span>(<span class="var">buf</span>));
+
+<span class="fn">close</span>(<span class="var">sockfd</span>);</pre>
+  </div>
+
+  <!-- 对照表 -->
+  <h2>服务端 vs 客户端流程对照</h2>
+  <table>
+    <thead>
+      <tr><th>步骤</th><th>服务端</th><th>客户端</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td><code>socket()</code> 创建 fd</td><td><code>socket()</code> 创建 fd</td></tr>
+      <tr><td>2</td><td><code>bind()</code> 绑定 IP+端口</td><td>（无需，由内核自动分配临时端口）</td></tr>
+      <tr><td>3</td><td><code>listen()</code> 进入监听状态</td><td><code>connect()</code> 主动发起连接</td></tr>
+      <tr><td>4</td><td><code>accept()</code> 取出已建立的连接</td><td>-</td></tr>
+      <tr><td>5</td><td><code>read/write</code> 通信</td><td><code>read/write</code> 通信</td></tr>
+      <tr><td>6</td><td><code>close()</code> 关闭</td><td><code>close()</code> 关闭</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 与网络模块联系 -->
+  <h2>Socket 是应用层调用传输层服务的接口</h2>
+  <p>
+    在 OSI/TCP 四层模型里，Socket 本身不是一个"协议层"，而是操作系统提供给应用层的一套<strong>编程接口（API）</strong>，让应用程序能够使用下面传输层
+    （TCP 或 UDP）提供的能力。<code>SOCK_STREAM</code> 对应 TCP（面向连接、可靠传输、字节流），<code>SOCK_DGRAM</code> 对应 UDP（无连接、不保证送达、数据报）。
+  </p>
+  <div class="callout tip">
+    <strong>呼应 10-计算机网络模块：</strong>这里的 <code>connect()</code> 触发的正是 TCP 三次握手，<code>close()</code>（如果是主动关闭方）触发的是四次挥手——
+    Socket 编程只是给这些协议细节包了一层 API，理解了 TCP 状态机，再回头看 Socket 调用会豁然开朗：每一个系统调用背后都对应着协议层面的具体动作。
+  </div>
+
+  <!-- 与IO模型的联系 -->
+  <h2>与前两篇 IO 模型的联系</h2>
+  <p>
+    默认创建出来的 socket 是<strong>阻塞模式</strong>：<code>accept()</code> 在没有新连接时会挂起线程，<code>read()</code> 在没有数据时也会挂起线程。
+    如果要支撑高并发连接，通常会把 <code>listenfd</code> 和所有 <code>connfd</code> 设置为非阻塞模式，再配合 epoll 统一监控——
+    这正是把本篇讲的 Socket API 和前两篇讲的 IO 模型拼接起来的地方：<strong>Socket 提供"是什么"（通信端点），IO 模型决定"怎么等"（阻塞/非阻塞/多路复用）</strong>。
+  </p>
+  <div class="callout warn">
+    <strong>常见误区：</strong>初学者常把 Socket 和 TCP 划等号，其实 Socket 只是接口，TCP/UDP 才是背后真正干活的协议。同一套 <code>socket()/read()/write()</code>
+    调用形式，通过参数 <code>SOCK_STREAM</code> 还是 <code>SOCK_DGRAM</code> 就能选择完全不同的传输层协议，这也是"统一接口、不同实现"思想的又一体现。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>服务端五步：</strong><code>socket → bind → listen → accept → read/write</code>，客户端三步：<code>socket → connect → read/write</code>。</li>
+    <li><strong>Socket 是"网络版的文件描述符"</strong>，把网络通信统一到了和文件、管道一样的读写接口下。</li>
+    <li><strong>Socket 决定"和谁通信"，IO 模型决定"如何高效地等待和处理"</strong>——两者结合才是完整的高并发网络服务器。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-IO多路复用selectPollEpoll.html" class="nav-btn">← IO 多路复用(select / poll / epoll)</a>
+    <a href="./05-零拷贝技术.html" class="nav-btn next">零拷贝技术 →</a>
+  </div>
+
+</div>
+</body>
+</html>

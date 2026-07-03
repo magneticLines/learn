@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>静态链接与动态链接的区别 — 链接与异常控制流</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #92400e; }
+  .nav-btn.next { color: #fbbf24; border-color: #92400e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 链接与异常控制流 / 静态链接与动态链接的区别
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">链接与异常控制流</div>
+    <h1>静态链接与动态链接的区别</h1>
+    <p>你写的 <code>.java</code> 文件从来不是孤立运行的——它依赖 JDK 类库、依赖你引入的第三方 jar。"链接"就是把这些散落的代码片段拼装成一个能跑起来的整体的过程，而拼装的时机和方式，决定了程序的体积、启动速度和可维护性。</p>
+  </div>
+
+  <!-- 为什么需要链接 -->
+  <h2>为什么需要"链接"这一步</h2>
+  <p>
+    编译器（如 <code>gcc</code> 或 Java 里的 <code>javac</code>）只能<strong>按文件为单位</strong>处理代码：它编译你写的这一个 <code>.c</code> 或 <code>.java</code> 文件，把用到但没有在本文件定义的符号（比如调用了 <code>printf</code>、调用了别的类的方法）先标记为"未解析的引用"，生成一份不完整的目标文件。
+  </p>
+  <p>
+    <strong>链接器（Linker）</strong> 的工作就是把多个目标文件、以及它们各自依赖的库，按符号名字对应起来，拼接成一个完整、可以真正被加载执行的程序。这一步"把编译单元粘合成整体"的方式，主要有静态和动态两种，两者的核心分歧在于：<strong>粘合发生在什么时间点</strong>。
+  </p>
+
+  <!-- 静态链接 -->
+  <h2>静态链接：编译期就把代码焊死</h2>
+  <p>
+    <strong>静态链接（Static Linking）</strong>在生成可执行文件的阶段，就把程序用到的库函数代码<strong>原样拷贝</strong>进最终的可执行文件里。链接完成之后，这个可执行文件就是一个自给自足的整体，不再依赖外部的库文件——把它拷贝到另一台机器上，只要 CPU 架构和操作系统兼容，直接就能跑。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>静态链接示意</span></div>
+    <pre><span class="com">// main.o 里调用了 printf，但 printf 的实现在 libc.a 里</span>
+<span class="ty">gcc</span> main.o <span class="punct">-static</span> <span class="punct">-o</span> main_static
+
+<span class="com">// 链接完成后，libc 里 printf 相关的机器码</span>
+<span class="com">// 被原样拷贝进了 main_static 这个文件</span>
+<span class="com">// 该文件体积变大，但运行时不再需要 libc.so</span></pre>
+  </div>
+  <div class="callout tip">
+    <strong>类比 Java：</strong>静态链接就像打一个 <strong>fat jar / uber jar</strong>（用 Maven Shade 插件或 Spring Boot 的可执行 jar）——把所有依赖的 class 文件全部塞进同一个 jar 包，运行时用 <code>java -jar app.jar</code> 就能跑，不需要额外指定 classpath 去找依赖库。体积大，但"打包即完整"。
+  </div>
+
+  <!-- 动态链接 -->
+  <h2>动态链接：运行时才去加载共享库</h2>
+  <p>
+    <strong>动态链接（Dynamic Linking）</strong>在编译链接阶段，只在可执行文件里记录"我依赖哪些共享库、需要哪些符号"，并不把库代码拷贝进来。真正的代码拷贝和符号解析，推迟到<strong>程序加载运行时</strong>才由动态链接器（如 Linux 的 <code>ld.so</code>，Windows 的 DLL 加载机制）完成——把 <code>.so</code>（Linux）或 <code>.dll</code>（Windows）文件加载进程的地址空间，再把符号引用绑定到具体地址。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>动态链接示意</span></div>
+    <pre><span class="ty">gcc</span> main.o <span class="punct">-o</span> main_dynamic  <span class="com">// 默认就是动态链接</span>
+
+<span class="com">// main_dynamic 文件很小，里面只记录：</span>
+<span class="com">// "运行时请帮我加载 libc.so，并解析 printf 符号"</span>
+<span class="com">// 真正执行时，操作系统才把 libc.so 映射进进程地址空间</span></pre>
+  </div>
+  <p>
+    动态链接最大的好处是<strong>共享</strong>：如果机器上同时运行 100 个使用了 <code>libc.so</code> 的进程，物理内存里只需要保留<strong>一份</strong> <code>libc.so</code> 的代码段，所有进程通过虚拟内存映射共享它。这既节省磁盘空间（可执行文件本身小），也节省物理内存。
+  </p>
+  <div class="callout tip">
+    <strong>类比 Java：</strong>动态链接就像传统的"瘦 jar + classpath"模式——你的应用 jar 里只有自己的业务代码，运行时通过 <code>-cp</code> 或 <code>lib/</code> 目录去加载 Spring、Jackson 等依赖 jar。多个应用如果依赖同一个版本的 jar，理论上也可以共享同一份 jar 文件（虽然 JVM 层面不像 OS 共享库那样做进程间物理内存共享，但磁盘层面是复用的）。
+  </div>
+
+  <!-- 对比表 -->
+  <h2>取舍对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>静态链接</th><th>动态链接</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>链接时机</td>
+        <td>编译期（生成可执行文件时）</td>
+        <td>加载期 / 运行期</td>
+      </tr>
+      <tr>
+        <td>可执行文件体积</td>
+        <td>大（依赖代码全部拷贝进来）</td>
+        <td>小（只记录依赖关系）</td>
+      </tr>
+      <tr>
+        <td>运行时依赖</td>
+        <td>无需外部库，独立运行</td>
+        <td>必须能找到对应版本的共享库</td>
+      </tr>
+      <tr>
+        <td>内存占用（多进程）</td>
+        <td>每个进程各自占一份库代码</td>
+        <td>多进程共享同一份库的物理内存</td>
+      </tr>
+      <tr>
+        <td>库更新</td>
+        <td>库改了必须重新编译整个程序</td>
+        <td>只需替换 <code>.so</code>/<code>.dll</code> 文件，程序无需重编译</td>
+      </tr>
+      <tr>
+        <td>典型风险</td>
+        <td>体积膨胀，多个程序重复携带相同代码</td>
+        <td>"DLL 地狱"——版本不兼容、库缺失导致运行时报错</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"动态链接一定比静态链接好，因为它更省空间。"
+    这是只看到了共享的好处，忽略了<strong>部署环境的不确定性</strong>。动态链接要求目标机器上必须存在版本兼容的共享库，这正是经典的 "DLL 地狱" / "依赖地狱" 问题的根源——同一个符号在不同版本的库里可能行为不同，甚至签名都变了。这也是为什么 Docker 容器化流行起来后，很多场景反而更倾向于把依赖打包进镜像（本质上是把"动态依赖"问题转化成"构建期确定、运行期不变"的静态思路）。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么现代很多语言（Go、Rust）默认倾向静态链接？" 答案核心是<strong>部署简单性优先于磁盘/内存节省</strong>——一个自带全部依赖的二进制文件可以直接扔到任意机器上运行，不用担心目标环境缺库或库版本不对，这在容器化、云原生场景下是非常大的运维便利。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>链接的本质是符号解析 + 地址重定位</strong>，静态和动态的区别只是"在什么时间点做"。</li>
+    <li><strong>静态链接拿空间换独立性</strong>：体积大，但部署简单、不依赖外部环境。</li>
+    <li><strong>动态链接拿依赖换共享</strong>：体积小、内存可共享，但引入了运行时才会暴露的版本兼容风险。</li>
+    <li>理解这组权衡后再看 Java 的 fat jar vs 瘦 jar + classpath，会发现这其实是同一个底层问题在不同抽象层的重现。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../process/05-虚拟内存与JVM堆内存的关系.html" class="nav-btn">← 虚拟内存与 JVM 堆内存的关系</a>
+    <a href="./02-异常的四种类别.html" class="nav-btn next">异常的四种类别 →</a>
+  </div>
+
+</div>
+</body>
+</html>

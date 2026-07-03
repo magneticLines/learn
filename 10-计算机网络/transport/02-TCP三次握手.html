@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TCP 三次握手 — 传输层</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 传输层 / TCP 三次握手
+  </div>
+
+  <div class="hero">
+    <div class="tag">传输层</div>
+    <h1>TCP 三次握手</h1>
+    <p>上一篇说 TCP 是"面向连接"的，这个连接到底是怎么建立的？三次握手是面试必考题，但绝大多数人只背得出流程，答不出"为什么必须是三次"。</p>
+  </div>
+
+  <h2>先明确：这里的"连接"是什么</h2>
+  <p>
+    IP 层是无连接的，每个包独立寻路，互不知晓对方状态。TCP 要在这样的网络上模拟出一条"可靠的虚拟管道"，
+    双方就必须先就几个关键信息达成一致：<strong>各自的初始序号（ISN，Initial Sequence Number）</strong>、
+    <strong>对方是否真的存在并愿意通信</strong>、<strong>双方的最大报文段长度（MSS）等参数</strong>。
+    三次握手本质上就是"双方交换初始序号并确认对方收发能力正常"的过程。
+  </p>
+
+  <h2>完整过程：SYN → SYN-ACK → ACK</h2>
+  <div class="tree">
+客户端（Client）                      服务端（Server）
+     │                                       │
+     │   状态: CLOSED                状态: LISTEN
+     │                                       │
+     │──① SYN, seq=<span class="hi">x</span>─────────────────────▶│   状态: SYN-RCVD
+     │   状态: SYN-SENT                      │
+     │                                       │
+     │◀─────②SYN, ACK, seq=<span class="hi">y</span>, ack=<span class="hi">x+1</span>──│
+     │                                       │
+     │──③ACK, seq=<span class="hi">x+1</span>, ack=<span class="hi">y+1</span>─────────▶│   状态: ESTABLISHED
+     │   状态: ESTABLISHED                   │
+     │                                       │
+     │◀════════ 开始双向传输数据 ═══════════▶│
+  </div>
+  <ul>
+    <li><strong>第一次握手（SYN）：</strong>客户端发送一个 <code>SYN=1</code>、随机初始序号 <code>seq=x</code> 的报文，进入 <code>SYN-SENT</code> 状态，表示"我想和你建立连接"。</li>
+    <li><strong>第二次握手（SYN-ACK）：</strong>服务端收到后，回复 <code>SYN=1, ACK=1</code>，带上自己的初始序号 <code>seq=y</code> 和确认号 <code>ack=x+1</code>，进入 <code>SYN-RCVD</code> 状态，意思是"收到你的请求了，我也想建立连接，并确认收到了你的 SYN"。</li>
+    <li><strong>第三次握手（ACK）：</strong>客户端收到后回复 <code>ACK=1, ack=y+1</code>，双方都进入 <code>ESTABLISHED</code> 状态，连接正式建立，之后即可传输数据（第三次握手的 ACK 报文也可以顺带捎带业务数据）。</li>
+  </ul>
+
+  <h2>核心考点：为什么是三次，不是两次？</h2>
+  <p>
+    这是面试最爱追问的点。表面答案是"三次才能确认双方的收发能力都正常"，但更本质的原因是：
+    <strong>防止已经失效的连接请求报文突然又传送到了服务端，从而产生错误连接，浪费服务端资源</strong>。
+  </p>
+  <div class="callout warn">
+    <strong>具体场景：</strong>客户端发送了第一个 SYN 请求，因为网络拥塞在某个路由器里滞留了很久没有到达服务端。客户端等待超时后，以为这个包丢了，于是重新发送了第二个 SYN 并顺利完成两次握手、建立连接、传输数据、关闭连接。
+    <strong>这时，那个滞留很久的旧 SYN 报文终于姗姗来迟地到达了服务端。</strong>
+    如果只需要两次握手（服务端收到 SYN 就直接建立连接），服务端会误以为这是一个新的连接请求，立即分配资源建立连接并进入等待客户端发数据的状态——但客户端根本不知道有这个连接存在，永远不会发数据过来，服务端的资源就白白浪费在这个"僵尸连接"上了。
+    <strong>加上第三次握手后，服务端在收到 ACK 之前只是"半连接"状态，不会为一个孤立的旧 SYN 分配完整资源；即使服务端对这个旧 SYN 回复了 SYN-ACK，客户端因为并不认识这个连接，会回复 RST 拒绝，从而清除这个无效的半连接。</strong>
+  </div>
+  <div class="callout tip">
+    <strong>更本质的理解：</strong>握手次数的下限由"双方都要确认对方收到了自己发的确认"决定——A 发消息给 B，B 不知道 A 有没有收到自己的回复，所以 A 必须再发一次确认；这是分布式系统里经典的"两军问题（Two Generals' Problem）"，理论上永远无法 100% 确认，TCP 三次握手是工程上的实用折中：三次刚好能让双方都确信"我发的和收的都没问题"。
+  </div>
+
+  <h2>SYN Flood 攻击原理简介</h2>
+  <p>
+    利用的正是服务端在收到 SYN 后、收到最终 ACK 前的这段"半连接"等待期。
+    攻击者伪造大量不存在的源 IP，向服务端疯狂发送 SYN 报文。服务端对每一个 SYN 都回复 SYN-ACK，
+    并在<strong>半连接队列（SYN queue）</strong>里保留这个连接等待第三次握手，但由于源 IP 是伪造的，
+    ACK 永远不会到达。大量半连接迅速占满服务端的半连接队列和内存资源，导致正常用户的 SYN 请求被丢弃，无法建立新连接——这就是拒绝服务攻击（DoS）。
+  </p>
+  <p>
+    常见防御手段包括：<strong>SYN Cookies</strong>（服务端不为半连接分配真实资源，而是把连接信息编码进返回的 SYN-ACK 序号里，等收到合法 ACK 后再从中还原出连接状态，从而不需要维护半连接队列）、缩短半连接超时时间、增大半连接队列容量、结合防火墙做速率限制等。
+  </p>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"四次握手不是更安全吗，为什么不用？" 三次已经是能够可靠确认双方收发能力的最小次数，第四次握手不会带来额外的确认价值，纯属浪费一次 RTT，所以工程上没有采用的必要。这也是理解"四次挥手"时的重要参照——挥手多一次是因为业务语义不同（关闭连接双方可能不同步），不是握手不够可靠。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>三次握手的目的：</strong>确认双方收发能力正常 + 同步初始序号 + 防止旧的失效连接请求突然到达造成资源浪费。</li>
+    <li><strong>半连接队列是把双刃剑：</strong>它是三次握手机制的必然产物，也正是 SYN Flood 攻击可以利用的弱点。</li>
+    <li><strong>下一篇讲连接的另一端——四次挥手，会发现"关闭连接"比"建立连接"还要多一分谨慎。</strong></li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-TCP与UDP的本质区别.html" class="nav-btn">← TCP 与 UDP 的本质区别</a>
+    <a href="./03-TCP四次挥手.html" class="nav-btn next">TCP 四次挥手 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TCP 如何保证可靠传输 — 传输层</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 传输层 / TCP 如何保证可靠传输
+  </div>
+
+  <div class="hero">
+    <div class="tag">传输层</div>
+    <h1>TCP 如何保证可靠传输</h1>
+    <p>IP 层是"尽力而为"的：包可能丢失、重复、乱序、损坏，什么都不保证。TCP 却要在这样的地基上盖出"数据一定能完整、有序地到达"的大楼——靠的就是序号、确认应答和重传这三板斧。</p>
+  </div>
+
+  <h2>地基有多不可靠：IP 层的问题清单</h2>
+  <ul>
+    <li><strong>丢包：</strong>路由器缓冲区满了会直接丢弃报文。</li>
+    <li><strong>乱序：</strong>不同报文可能走不同路径，后发的可能先到。</li>
+    <li><strong>重复：</strong>网络重传机制可能导致同一个包被送达两次。</li>
+    <li><strong>损坏：</strong>物理链路噪声可能导致比特翻转。</li>
+  </ul>
+  <p>TCP 必须在传输层单独解决这些问题，因为下面的 IP 层完全不管。</p>
+
+  <h2>机制一：序号（Sequence Number）</h2>
+  <p>
+    TCP 把要发送的数据看作一条连续的字节流，<strong>每一个字节都有一个编号</strong>。
+    报文段首部里的 <code>seq</code> 字段，记录的是这个报文段第一个字节在整条流中的编号，而不是"这是第几个报文段"。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像寄一本厚书，不是按"第几页信封"编号，而是直接在每一页上标好在全书中的页码——即使信封顺序打乱了，收件人也能凭页码把整本书正确拼回去。
+  </div>
+  <p>有了序号，接收方就能做两件事：<strong>把乱序到达的数据重新排好顺序</strong>，以及<strong>发现重复的数据并丢弃</strong>。</p>
+
+  <h2>机制二：确认应答（ACK）</h2>
+  <p>
+    接收方每收到数据，会回复一个 <code>ACK</code> 报文，里面的确认号 <code>ack</code> 表示"我已经连续收到到编号 <code>ack-1</code> 为止的所有字节，请从 <code>ack</code> 开始发"。
+    这是一种<strong>累积确认（Cumulative ACK）</strong>——只确认"连续收到"的部分，中间如果有缺口（比如收到了 1-100 和 201-300，但 101-200 没到），ack 只能停在 101，不能跳过缺口去确认后面已经收到的字节。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>很多初学者以为 ACK 是"逐包确认"，其实 TCP 的 ACK 号代表的是"这个号之前的字节流全部连续收到"，这也是为什么后面"快速重传"要靠重复 ACK 来判断丢包位置。
+  </div>
+
+  <h2>机制三：超时重传（Timeout Retransmission）</h2>
+  <p>
+    发送方每发出一个报文段都会启动一个定时器，如果<strong>在超时时间（RTO, Retransmission TimeOut）内没有收到对应的 ACK</strong>，就认为这个报文段丢了，重新发送一次。
+  </p>
+  <p>
+    RTO 设多长是个技术活：太短会把正常延迟误判为丢包，造成不必要的重传，浪费带宽；太长又会在真正丢包时反应迟钝，拖累整体吞吐。
+    TCP 使用基于<strong>往返时间（RTT, Round-Trip Time）</strong>的动态估算算法（如经典的 Jacobson 算法），
+    实时采样 RTT 及其抖动（方差），让 RTO 能够自适应网络状况的变化。
+  </p>
+
+  <h2>机制四：快速重传（Fast Retransmit）</h2>
+  <p>
+    超时重传有一个明显缺点：<strong>要等到定时器超时才会发现丢包，这个等待时间通常比 RTT 长得多</strong>，对性能是很大的拖累。
+    快速重传是一种更灵敏的丢包检测机制：
+  </p>
+  <div class="tree">
+发送方发出: seq=1 seq=2(丢失) seq=3 seq=4 seq=5
+接收方收到:  1        (无)    3    4    5
+接收方回复: ACK=<span class="hi">2</span>          ACK=<span class="hi">2</span>  ACK=<span class="hi">2</span>  ACK=<span class="hi">2</span>  ← 连续 3 个重复 ACK
+发送方逻辑: 一旦收到 <span class="hi">3 个重复的 ACK</span>，不再等超时定时器，
+            立即重传 seq=2，无需等待 RTO 到期
+  </div>
+  <p>
+    当接收方发现收到的数据出现空缺（比如收到 3、4、5 但缺 2），它会针对每个新到的乱序报文<strong>重复发送同一个 ACK</strong>（都要求"从 2 开始发"）。
+    发送方一旦连续收到 <strong>3 个重复 ACK</strong>，就判定 seq=2 大概率丢了，不必等待超时定时器，立刻重传，大幅缩短了丢包恢复时间。
+  </p>
+
+  <h2>与本 Tab 前面知识点的联系</h2>
+  <p>
+    序号机制正是三次握手里"交换初始序号（ISN）"要做的事——双方从一开始就要就"字节流从哪个编号开始计数"达成一致，后续所有的确认应答才有意义。
+    而超时重传的存在，也解释了为什么四次挥手中的 <code>TIME_WAIT</code> 要等待 2MSL：如果最后一个 ACK 丢了，被动关闭方会因为超时重传 FIN，这本质上正是同一套"超时重传"机制在断连阶段的体现。
+  </p>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"TCP 可靠是因为它会一直重传直到成功，所以数据永远不会丢。"
+    重传次数是有上限的（由操作系统配置，如 Linux 的 <code>tcp_retries2</code>），超过上限后 TCP 会放弃并通知应用层"连接出错"。
+    TCP 保证的是"要么完整可靠地送达，要么明确地报告失败"，而不是"无论如何都能送达"——网络分区、对端宕机等情况下,可靠传输也无能为力，只能上报错误交给应用层处理。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>序号解决"顺序和去重"问题，确认应答解决"对方收到没有"问题，超时重传兜底"确认丢了怎么办"，快速重传则是给超时重传的一个更灵敏的加速版。</strong></li>
+    <li><strong>这四个机制组合在一起，才在不可靠的 IP 层之上撑起了"可靠传输"这四个字。</strong></li>
+    <li><strong>下一篇讲滑动窗口——它在这套可靠传输机制的基础上，进一步解决"一次能发多少数据"的效率问题。</strong></li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-TCP四次挥手.html" class="nav-btn">← TCP 四次挥手</a>
+    <a href="./05-TCP流量控制滑动窗口.html" class="nav-btn next">TCP 流量控制（滑动窗口） →</a>
+  </div>
+
+</div>
+</body>
+</html>

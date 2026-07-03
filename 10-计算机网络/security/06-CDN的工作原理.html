@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CDN 的工作原理 — 计算机网络</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #155e75; }
+  .nav-btn.next { color: #38bdf8; border-color: #155e75; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../network-roadmap.html">计算机网络 路线图</a> / 安全与现代基础设施 / CDN 的工作原理
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全与现代基础设施</div>
+    <h1>CDN 的工作原理</h1>
+    <p>为什么访问大网站的静态资源(图片、JS、CSS)总是特别快，不管你人在北京还是广州？答案是 CDN——把内容缓存到离用户最近的地方。</p>
+  </div>
+
+  <h2>问题：物理距离决定延迟下限</h2>
+  <p>
+    回顾传输层学过的内容，网络延迟很大一部分是<strong>光在光纤中传播的物理时间</strong>——这是硬性下限，再怎么优化协议也绕不开。
+    如果所有用户的请求都要打到部署在北京的源站服务器，广州用户访问，光是网络往返（RTT）就要比同城用户多出几十毫秒，
+    更别提如果源站服务器还有跨国用户。<strong>CDN（Content Delivery Network，内容分发网络）</strong>的核心思路就是：与其让用户舍近求远地跑到源站，不如把内容提前搬到用户"家门口"。
+  </p>
+
+  <h2>CDN 是怎么工作的：就近节点 + 缓存</h2>
+  <p>
+    CDN 服务商在全国乃至全球各地部署大量<strong>边缘节点（Edge Node）</strong>，把源站的静态资源（图片、CSS、JS、视频分片等）提前复制并缓存到这些节点上。
+    用户请求资源时，并不是直接打到源站，而是被<strong>调度到离用户地理位置最近（或网络质量最好）的边缘节点</strong>，由这个节点直接返回缓存的内容。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>与其让全国顾客都跑到总仓库（源站）取货，不如在各个城市开分仓（边缘节点），提前把热门商品铺货过去。顾客就近取货，物流时间大幅缩短，总仓库也不会被所有订单挤爆。
+  </div>
+
+  <h2>关键问题：怎么把用户路由到"最近"的节点</h2>
+  <p>常见的两种调度方式：</p>
+
+  <h3>1. DNS 调度</h3>
+  <p>
+    回顾 <code>07-DNS域名解析的完整过程</code>——CDN 服务商接管了域名的解析权，当用户查询 <code>cdn.example.com</code> 时，
+    CDN 的智能 DNS 服务器会根据<strong>用户的 IP 地址所属地理位置/运营商</strong>，返回离用户最近的边缘节点 IP，而不是固定返回同一个 IP。
+    不同地区的用户解析同一个域名，会得到完全不同的 IP 地址，这就是"就近调度"在 DNS 层面的实现。
+  </p>
+
+  <h3>2. Anycast（任播）</h3>
+  <p>
+    另一种更底层的方式是利用 <strong>IP 层的 Anycast 技术</strong>：多个地理位置不同的节点共享<strong>同一个 IP 地址</strong>，
+    通过 BGP 路由协议的特性，网络会自动把用户的请求路由到"网络路径上最近"的那个节点（本质是路由层面的最短路径选择，呼应网络层 Tab 学的路由选择原理）。
+    相比 DNS 调度需要额外一次域名解析，Anycast 在路由层面就完成了调度，更加透明。
+  </p>
+
+  <h2>缓存未命中怎么办：回源</h2>
+  <p>
+    边缘节点的存储空间有限，不可能缓存源站所有内容，也不是所有内容都适合缓存（比如高度个性化的动态数据）。
+    当用户请求的资源在边缘节点没有缓存（或缓存已过期）时，边缘节点会向源站发起请求把内容取回来，这个过程叫<strong>回源</strong>，
+    取回后既返回给用户，也在本地缓存一份供后续请求复用。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>CDN 主要适合缓存<strong>静态、变化不频繁</strong>的资源（图片、字体、JS/CSS、视频）。如果把频繁变化的动态接口数据也无脑塞进 CDN 缓存，容易导致用户看到过期数据；这类场景通常需要设置合理的缓存过期时间（TTL），或者用户主动发起<strong>缓存刷新（purge）</strong>来让边缘节点丢弃旧缓存。
+  </div>
+
+  <h2>CDN 带来的好处，不只是"快"</h2>
+  <ul>
+    <li><strong>降低延迟：</strong>就近访问，减少物理距离带来的传播时延。</li>
+    <li><strong>减轻源站压力：</strong>大部分请求在边缘节点就被缓存命中拦截了，真正打到源站的请求量大幅下降。</li>
+    <li><strong>提升可用性：</strong>即使源站短暂故障，边缘节点的缓存内容依然可以继续对外服务一段时间；同时 CDN 通常也具备一定的抗 DDoS 能力，因为攻击流量被分散到大量边缘节点上，而不是直接砸向源站。</li>
+  </ul>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"CDN 就是给网站加速的，什么内容都能放。" 动态、个性化、强一致性要求的数据并不适合直接放 CDN；CDN 的能力边界在"内容可以被多个用户复用"，一旦内容是"千人千面"的，缓存命中率会很低，价值也随之下降。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"CDN 是怎么让用户访问最近节点的？" 抓住两个关键词回答：<strong>DNS 调度</strong>（按用户 IP 归属地返回不同节点 IP）和 <strong>Anycast</strong>（路由层面自动选路到最近节点）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>CDN 通过在各地部署边缘节点缓存静态资源，用"就近访问"绕开物理距离带来的延迟下限。</li>
+    <li>DNS 调度和 Anycast 是把用户路由到最近节点的两种主流机制，分别工作在应用层和网络层。</li>
+    <li>CDN 不仅提速，还能显著减轻源站压力、提升整体可用性，是现代 Web 基础设施的标配一环。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-负载均衡的常见算法.html" class="nav-btn">← 负载均衡的常见算法</a>
+    <a href="./07-TLS13握手优化.html" class="nav-btn next">TLS 1.3 握手优化 →</a>
+  </div>
+
+</div>
+</body>
+</html>
+</content>

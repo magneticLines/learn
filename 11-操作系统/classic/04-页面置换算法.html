@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>页面置换算法 — 进程调度与经典理论</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #7c1d51; }
+  .nav-btn.next { color: #f472b6; border-color: #7c1d51; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../os-roadmap.html">操作系统 路线图</a> / 进程调度与经典理论 / 页面置换算法
+  </div>
+
+  <div class="hero">
+    <div class="tag">进程调度与经典理论</div>
+    <h1>页面置换算法</h1>
+    <p>process 篇讲过虚拟内存靠页表把虚拟地址映射到物理地址——但物理内存是有限的，装不下所有进程的所有页面时，谁该被换出去，就是页面置换算法要回答的问题。</p>
+  </div>
+
+  <h2>问题的本质：物理内存不够用怎么办</h2>
+  <p>
+    虚拟内存给了每个进程"独占一整片地址空间"的假象，但物理内存（RAM）是实打实有限的。当进程访问的页面不在物理内存里（<strong>缺页中断，Page Fault</strong>），操作系统要从磁盘把它调进来。如果物理内存已经满了，就必须先<strong>淘汰</strong>一个已经在内存里的页面腾出空间——选哪个页面淘汰，就是页面置换算法要解决的问题。
+  </p>
+  <div class="callout info">
+    <strong>本质是一个预测问题：</strong>页面置换算法要做的事情，说到底是回答"未来最长一段时间内不会被用到的是哪个页面"——但没人能真正预知未来，所以所有算法都只是在用不同的方式<strong>近似</strong>这个理想答案。选得越准，缺页中断越少，程序跑得越快；选错了，可能刚换出去的页面马上又要用，产生"抖动"（Thrashing）。
+  </div>
+
+  <h2>理论最优：最佳置换算法（OPT / Belady's Algorithm）</h2>
+  <p>
+    如果能预知未来，最优策略当然是：<strong>淘汰未来最长时间不会被访问的页面</strong>。这个算法叫 OPT，是所有页面置换算法效果的理论上限，但它需要"上帝视角"知道程序完整的未来访存序列，现实中不可能实现，只用来作为评价其他算法优劣的基准线。
+
+  </p>
+
+  <h2>先进先出（FIFO）</h2>
+  <p>
+    最朴素的思路：把页面按调入内存的先后顺序排成一个队列，需要淘汰时，永远淘汰<strong>最早调入</strong>的那个页面——不管它是不是刚被用过。
+  </p>
+  <p>
+    实现简单，但完全不考虑页面的实际使用情况，效果往往很差。更麻烦的是它有一个反直觉的现象：
+  </p>
+  <div class="callout warn">
+    <strong>Belady 异常（Belady's Anomaly）：</strong>正常来说，给进程分配更多的物理页框（内存更大）应该让缺页率下降或不变，但 FIFO 算法在某些访问序列下，<strong>物理页框数增加，缺页次数反而增多</strong>了。这是一个经典的反例，说明"直觉上更好的资源分配"在 FIFO 下不一定成立，也是 FIFO 被认为设计上有缺陷的重要原因。LRU 等基于栈结构实现的算法则不会出现这种异常。
+  </div>
+
+  <h2>最近最少使用（LRU，Least Recently Used）</h2>
+  <p>
+    LRU 的思路更贴近现实：<strong>淘汰最近一段时间里最久没有被访问过的页面</strong>。它的理论依据是<strong>局部性原理（Locality of Reference）</strong>——程序在某一时间段内，往往集中访问某一小部分数据和代码，"最近用过的，很可能马上还会再用"，反过来"最近没用过的，短期内大概率也不会用"。
+  </p>
+  <p>
+    LRU 比 FIFO 更接近 OPT 的效果，但代价是<strong>实现开销大</strong>：要精确知道"最近最少使用"，理论上需要在每次访存时都更新一个全局的访问时间戳或者维护一个双向链表把最近访问的页面移到头部，这在高频访存场景下的硬件和软件开销都无法接受。这也是为什么真实操作系统很少用严格意义上的 LRU，而是用近似算法。
+  </p>
+
+  <h2>Clock 算法（时钟算法，LRU 的近似实现）</h2>
+  <p>
+    Clock 算法用一个很巧妙的低成本方式去近似 LRU：
+  </p>
+  <ul>
+    <li>所有页框在逻辑上排成一个环形队列（像钟表一样），有一个指针依次扫描。</li>
+    <li>每个页面维护一个<strong>引用位（Reference Bit）</strong>，页面被访问时硬件自动把这一位置 1。</li>
+    <li>需要淘汰页面时，指针沿着环扫描：如果当前页面引用位是 1，说明它最近被用过，就把引用位清 0（给它一次"免死机会"），指针继续往前走；如果引用位是 0，说明它一轮扫描下来都没被访问过，就淘汰它。</li>
+  </ul>
+  <p>
+    这样只需要一个 bit 位加一个指针，就能获得"淘汰最近没怎么用的页面"的近似效果，硬件开销远小于维护精确的访问时间戳或链表。这是现实操作系统（包括 Linux 的 CLOCK-Pro 等变种）里被广泛采用的思路。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"LRU 和 Clock 算法的关系？" 一句话答案：<strong>Clock 是 LRU 的近似实现，用一个引用位 + 循环指针的低成本方式，逼近 LRU"淘汰最久未使用页面"的效果，同时避免了 LRU 精确实现的高昂开销。</strong>
+  </div>
+
+  <h2>三种算法对比</h2>
+  <table>
+    <thead>
+      <tr><th>算法</th><th>核心思路</th><th>优点</th><th>缺点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>FIFO</strong></td>
+        <td>淘汰最早调入的页面</td>
+        <td>实现极简单</td>
+        <td>不考虑使用频率，可能有 Belady 异常</td>
+      </tr>
+      <tr>
+        <td><strong>LRU</strong></td>
+        <td>淘汰最久未被访问的页面</td>
+        <td>符合局部性原理，效果接近最优</td>
+        <td>精确实现开销大（需要记录访问时序）</td>
+      </tr>
+      <tr>
+        <td><strong>Clock</strong></td>
+        <td>引用位 + 环形指针近似 LRU</td>
+        <td>开销小，效果接近 LRU</td>
+        <td>只是近似，精度不如严格 LRU</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>和缓存淘汰算法是同一个思路</h2>
+  <p>
+    页面置换算法要解决的问题——<strong>有限空间里，选谁淘汰以最大化命中率</strong>——本质上和应用层的缓存淘汰算法是完全一样的问题。比如 Redis 的 <code>maxmemory-policy</code> 里的 <code>allkeys-lru</code>/<code>volatile-lru</code>，用的就是 LRU 近似算法（Redis 实际用的是一种基于随机采样的近似 LRU，思路上和 Clock 算法"用低成本手段近似精确 LRU"是相通的，采样出几个 key 比较访问时间，淘汰其中最久未用的）。这一块在 12-缓存模块会详细展开，这里先建立起"操作系统页面置换"和"应用层缓存淘汰"是同一类问题在不同层次上的体现这个连接。
+  </p>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>页面置换本质是预测问题的近似解：</strong>OPT 是理论上限但不可实现，其余算法都是在效果和开销之间找平衡点。</li>
+    <li><strong>FIFO 简单但可能有 Belady 异常，LRU 效果好但开销大，Clock 是现实中的折中方案。</strong></li>
+    <li><strong>思路可以迁移：</strong>操作系统的页面置换和应用层的缓存淘汰（如 Redis LRU）解决的是同一类问题，理解了一层，另一层就是触类旁通。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-死锁预防避免检测与恢复.html" class="nav-btn">← 死锁预防 避免 检测与恢复</a>
+    <a href="./05-文件系统的基本实现.html" class="nav-btn next">文件系统的基本实现 →</a>
+  </div>
+
+</div>
+</body>
+</html>
