@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mock Stub Spy 的区别 — Mock与依赖隔离</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #34d399; }
+  p code, li code { color: #34d399; }
+  h2 { color: #34d399; border-left-color: #34d399; }
+  .hero .tag { color: #34d399; border-color: #166534; }
+  .nav-btn.next { color: #34d399; border-color: #166534; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../testing-roadmap.html">测试 路线图</a> / Mock与依赖隔离 / Mock Stub Spy 的区别
+  </div>
+
+  <div class="hero">
+    <div class="tag">Mock与依赖隔离</div>
+    <h1>Mock、Stub、Spy 的区别</h1>
+    <p>这三个词在日常交流中经常被混用（很多人把所有"假对象"统称为 Mock），但在测试理论里它们有精确的定义和不同的使用场景——分不清楚，写出来的测试意图会含糊不清，也是面试中的高频考点。</p>
+  </div>
+
+  <h2>为什么需要"假对象"</h2>
+  <p>
+    <code>basics/01</code> 提到过，被测代码如果直接依赖数据库、网络、文件系统这类外部资源，测试就会变慢、变得不稳定（违反 FIRST 的 Fast/Repeatable）。
+    解决方案是用一个"假对象"替代真实依赖，这类假对象在测试理论里统称为 <strong>Test Double</strong>（测试替身，类比电影里的替身演员）。Test Double 有好几种，Stub、Mock、Spy 是其中最常用的三种，本文重点讲清楚它们各自的定位。
+  </p>
+
+  <h2>Stub：提供预设返回值，不关心是否被调用</h2>
+  <p>
+    Stub（桩）的职责很单纯：<strong>当被测代码调用它时，返回一个预先设定好的值</strong>。它不关心自己有没有被调用、被调用了几次、调用时传了什么参数——它唯一的使命是让测试能跑起来，把不确定的外部依赖替换成确定的、可控的返回值。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Stub 用法示例</span></div>
+    <pre><span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">getDiscountPrice_vipUser_appliesTenPercentOff</span>() {
+    <span class="com">// UserRepository 是 Stub：只负责在被调用时返回预设的 VIP 用户，不关心调用细节</span>
+    <span class="ty">UserRepository</span> stubRepo = <span class="kw">mock</span>(<span class="ty">UserRepository</span>.<span class="kw">class</span>);
+    <span class="fn">when</span>(stubRepo.<span class="fn">findById</span>(<span class="num">1</span>)).<span class="fn">thenReturn</span>(<span class="kw">new</span> <span class="ty">User</span>(<span class="num">1</span>, <span class="str">"Tom"</span>, <span class="kw">true</span>));
+
+    <span class="ty">PriceCalculator</span> calculator = <span class="kw">new</span> <span class="ty">PriceCalculator</span>(stubRepo);
+    <span class="kw">double</span> price = calculator.<span class="fn">getDiscountPrice</span>(<span class="num">1</span>, <span class="num">100</span>);
+
+    <span class="com">// 关注点在"结果对不对"，而不是 stubRepo 有没有被调用</span>
+    <span class="fn">assertEquals</span>(<span class="num">90.0</span>, price);
+}</pre>
+  </div>
+
+  <h2>Mock：不仅提供预设行为，还能验证交互</h2>
+  <p>
+    Mock 在提供预设返回值的基础上，多了一层能力：<strong>验证被测代码是否按预期与依赖对象进行了交互</strong>——比如"某个方法确实被调用了一次"、"调用时传的参数是什么"。当你关心的不是返回值，而是"这个动作有没有发生"时，就该用 Mock。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Mock 用法示例</span></div>
+    <pre><span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">placeOrder_validOrder_sendsConfirmationEmail</span>() {
+    <span class="ty">EmailService</span> mockEmailService = <span class="kw">mock</span>(<span class="ty">EmailService</span>.<span class="kw">class</span>);
+    <span class="ty">OrderService</span> orderService = <span class="kw">new</span> <span class="ty">OrderService</span>(mockEmailService);
+
+    orderService.<span class="fn">placeOrder</span>(<span class="kw">new</span> <span class="ty">Order</span>(<span class="str">"a@b.com"</span>, <span class="num">100</span>));
+
+    <span class="com">// 关注点在"确认邮件的动作有没有发生"，而不是某个返回值</span>
+    <span class="fn">verify</span>(mockEmailService, times(<span class="num">1</span>)).<span class="fn">sendConfirmation</span>(<span class="str">"a@b.com"</span>);
+}</pre>
+  </div>
+
+  <h2>Spy：包装真实对象，默认走真实逻辑，可选择性打桩</h2>
+  <p>
+    Spy（间谍）包装的是一个<strong>真实对象</strong>，默认情况下调用它的方法会执行真实逻辑，但你可以选择性地对其中某些方法打桩，替换掉不想真实执行的部分。因此 Spy 常被称为"部分 Mock"（partial mock）。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Spy 用法示例</span></div>
+    <pre><span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">processList_usesRealLogicExceptOneMethod</span>() {
+    <span class="ty">List</span>&lt;<span class="ty">String</span>&gt; realList = <span class="kw">new</span> <span class="ty">ArrayList</span>&lt;&gt;(<span class="ty">List</span>.of(<span class="str">"a"</span>, <span class="str">"b"</span>));
+    <span class="ty">List</span>&lt;<span class="ty">String</span>&gt; spyList = spy(realList);
+
+    <span class="com">// size() 走真实逻辑，返回真实的 2</span>
+    <span class="fn">assertEquals</span>(<span class="num">2</span>, spyList.<span class="fn">size</span>());
+
+    <span class="com">// 但 get(0) 被选择性打桩，不再走真实逻辑</span>
+    doReturn(<span class="str">"mocked"</span>).when(spyList).<span class="fn">get</span>(<span class="num">0</span>);
+    <span class="fn">assertEquals</span>(<span class="str">"mocked"</span>, spyList.<span class="fn">get</span>(<span class="num">0</span>));
+}</pre>
+  </div>
+  <p>
+    Spy 常用于"老代码难以彻底重构成可测试结构，但又想局部隔离某个依赖"的过渡场景，或者需要验证真实对象某个方法调用次数、同时又需要其余方法保持真实行为的情况。
+  </p>
+
+  <h2>State Verification vs Behavior Verification</h2>
+  <p>
+    Stub 和 Mock 的差异背后，对应着两种不同的测试风格：
+  </p>
+  <table>
+    <thead>
+      <tr><th>测试风格</th><th>关注点</th><th>典型配合</th><th>断言方式</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>State Verification（状态验证）</strong></td>
+        <td>执行完动作后，对象的状态/返回值是否符合预期</td>
+        <td>Stub</td>
+        <td><code>assertEquals(expected, actual)</code></td>
+      </tr>
+      <tr>
+        <td><strong>Behavior Verification（行为验证）</strong></td>
+        <td>执行动作的过程中，是否与依赖对象发生了预期的交互</td>
+        <td>Mock</td>
+        <td><code>verify(mock).someMethod(args)</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    State Verification 更贴近"黑盒"思维——不关心内部怎么实现的，只看输入输出对不对，因此测试对实现细节的改动更宽容，重构时不容易误报。
+    Behavior Verification 则会绑定具体的交互细节（调用了哪个方法、调用几次、传了什么参数），当内部实现调整（哪怕功能没变）时，测试可能会跟着报错——这也是 Mock 容易被滥用的地方：<strong>过度使用行为验证会让测试变得脆弱，稍微重构一下实现就要跟着改一堆测试</strong>。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>把"能不能验证调用"当作 Stub 和 Mock 唯一的区别，然后不管什么场景都无脑用 Mock（包括 Mockito 的 <code>mock()</code> 方法既能造 Stub 也能造 Mock，这也加剧了混淆）。实际上应该按"我到底关心的是结果还是交互过程"来决定用状态验证还是行为验证，而不是工具用得顺手就固定一种风格。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"说说 Mock、Stub、Spy 的区别？" 标准答案框架：Stub 提供预设返回值、不关心调用与否；Mock 除了预设行为还能验证交互（是否被调用、调用几次、传参是什么）；Spy 包装真实对象，默认真实执行、可选择性打桩，是"部分 Mock"。再补一句"Stub 配合状态验证，Mock 配合行为验证"会显得理解更深入。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Stub</strong>：只提供数据，让测试跑起来，配合状态验证（断言返回值/结果状态）。</li>
+    <li><strong>Mock</strong>：提供数据的同时还能验证交互，配合行为验证（断言方法调用情况）。</li>
+    <li><strong>Spy</strong>：包装真实对象，默认真实执行，可选择性打桩，是"部分 Mock"，适合过渡场景。</li>
+    <li>选用哪种，取决于测试到底关心"结果对不对"还是"过程有没有按预期交互"——滥用行为验证会让测试和实现细节强耦合，牺牲了重构的自由度。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../basics/04-断言与测试用例的组织方式.html" class="nav-btn">← 断言与测试用例的组织方式</a>
+    <a href="./02-Mockito实战.html" class="nav-btn next">Mockito 实战 →</a>
+  </div>
+
+</div>
+</body>
+</html>

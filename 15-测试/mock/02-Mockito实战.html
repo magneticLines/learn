@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockito 实战 — Mock与依赖隔离</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #34d399; }
+  p code, li code { color: #34d399; }
+  h2 { color: #34d399; border-left-color: #34d399; }
+  .hero .tag { color: #34d399; border-color: #166534; }
+  .nav-btn.next { color: #34d399; border-color: #166534; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../testing-roadmap.html">测试 路线图</a> / Mock与依赖隔离 / Mockito 实战
+  </div>
+
+  <div class="hero">
+    <div class="tag">Mock与依赖隔离</div>
+    <h1>Mockito 实战</h1>
+    <p>Mockito 是 Java 生态最主流的 Mock 框架，把上一篇讲的 Mock/Stub 概念落地成几个简单好记的 API——用一个 Service 依赖 Repository 的真实场景，演示如何隔离掉数据库依赖来单独测试业务逻辑。</p>
+  </div>
+
+  <h2>场景：Service 依赖 Repository</h2>
+  <p>
+    假设有一个 <code>UserService</code>，依赖 <code>UserRepository</code> 从数据库查用户，业务逻辑是"给用户加积分，如果用户不存在则抛异常"：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>被测代码</span></div>
+    <pre><span class="kw">public</span> <span class="kw">class</span> <span class="ty">UserService</span> {
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">UserRepository</span> userRepository;
+
+    <span class="kw">public</span> <span class="ty">UserService</span>(<span class="ty">UserRepository</span> userRepository) { <span class="com">// 通过构造器注入，而不是内部 new</span>
+        <span class="kw">this</span>.userRepository = userRepository;
+    }
+
+    <span class="kw">public</span> <span class="kw">void</span> <span class="fn">addPoints</span>(<span class="kw">long</span> userId, <span class="kw">int</span> points) {
+        <span class="ty">User</span> user = userRepository.<span class="fn">findById</span>(userId)
+            .<span class="fn">orElseThrow</span>(() -&gt; <span class="kw">new</span> <span class="ty">UserNotFoundException</span>(userId));
+        user.<span class="fn">setPoints</span>(user.<span class="fn">getPoints</span>() + points);
+        userRepository.<span class="fn">save</span>(user);
+    }
+}</pre>
+  </div>
+  <p>
+    我们想测试 <code>addPoints</code> 的业务逻辑，但不想真的连数据库——这正是 Mockito 要解决的问题。<code>UserRepository</code> 之所以能被替换，前提是它通过构造器传入而不是在方法内部 <code>new</code> 出来，这一点在下一篇 <code>03-依赖注入对可测试性的帮助</code> 会展开讲。
+  </p>
+
+  <h2>@Mock / @InjectMocks：声明式创建测试替身</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>UserServiceTest.java</span></div>
+    <pre><span class="ann">@ExtendWith</span>(MockitoExtension.<span class="kw">class</span>) <span class="com">// JUnit5 里启用 Mockito 注解的扩展</span>
+<span class="kw">class</span> <span class="ty">UserServiceTest</span> {
+
+    <span class="ann">@Mock</span>
+    <span class="kw">private</span> <span class="ty">UserRepository</span> userRepository; <span class="com">// 自动创建一个 Mock 对象</span>
+
+    <span class="ann">@InjectMocks</span>
+    <span class="kw">private</span> <span class="ty">UserService</span> userService; <span class="com">// 自动把上面的 Mock 注入到 UserService 的构造器里</span>
+
+    <span class="ann">@Test</span>
+    <span class="kw">void</span> <span class="fn">addPoints_existingUser_increasesPointsAndSaves</span>() {
+        <span class="com">// Arrange</span>
+        <span class="ty">User</span> user = <span class="kw">new</span> <span class="ty">User</span>(<span class="num">1L</span>, <span class="str">"Tom"</span>, <span class="num">50</span>);
+        when(userRepository.<span class="fn">findById</span>(<span class="num">1L</span>)).<span class="fn">thenReturn</span>(<span class="ty">Optional</span>.<span class="fn">of</span>(user));
+
+        <span class="com">// Act</span>
+        userService.<span class="fn">addPoints</span>(<span class="num">1L</span>, <span class="num">30</span>);
+
+        <span class="com">// Assert：状态验证 + 行为验证 结合使用</span>
+        <span class="fn">assertEquals</span>(<span class="num">80</span>, user.<span class="fn">getPoints</span>());       <span class="com">// 状态验证：积分确实加对了</span>
+        verify(userRepository).<span class="fn">save</span>(user);              <span class="com">// 行为验证：确实调用了 save 持久化</span>
+    }
+
+    <span class="ann">@Test</span>
+    <span class="kw">void</span> <span class="fn">addPoints_userNotFound_throwsUserNotFoundException</span>() {
+        when(userRepository.<span class="fn">findById</span>(<span class="num">99L</span>)).<span class="fn">thenReturn</span>(<span class="ty">Optional</span>.<span class="fn">empty</span>());
+
+        <span class="fn">assertThrows</span>(<span class="ty">UserNotFoundException</span>.<span class="kw">class</span>,
+            () -&gt; userService.<span class="fn">addPoints</span>(<span class="num">99L</span>, <span class="num">30</span>));
+
+        <span class="com">// 用户不存在时，不应该调用 save —— 用 never() 验证某方法完全没被调用</span>
+        verify(userRepository, never()).<span class="fn">save</span>(any());
+    }
+}</pre>
+  </div>
+  <p>
+    <code>@Mock</code> 自动创建一个替身对象；<code>@InjectMocks</code> 自动识别 <code>UserService</code> 的构造器参数，把匹配类型的 <code>@Mock</code> 对象注入进去，省去手写 <code>new UserService(userRepository)</code> 的样板代码。
+  </p>
+
+  <h2>when().thenReturn()：打桩语法</h2>
+  <p>
+    <code>when(mock.method(args)).thenReturn(value)</code> 是 Mockito 最核心的打桩语法：告诉 Mock 对象"当你的某个方法被以特定参数调用时，返回指定的值"。还有几个常用变体：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>打桩变体</span></div>
+    <pre>when(repo.<span class="fn">findById</span>(<span class="num">1L</span>)).<span class="fn">thenReturn</span>(<span class="ty">Optional</span>.<span class="fn">of</span>(user));
+when(repo.<span class="fn">findById</span>(anyLong())).<span class="fn">thenThrow</span>(<span class="kw">new</span> <span class="ty">RuntimeException</span>(<span class="str">"db error"</span>)); <span class="com">// 模拟异常</span>
+when(repo.<span class="fn">count</span>()).<span class="fn">thenReturn</span>(<span class="num">1L</span>).<span class="fn">thenReturn</span>(<span class="num">2L</span>); <span class="com">// 连续调用返回不同结果，第一次1，之后都是2</span></pre>
+  </div>
+
+  <h2>verify()：验证调用情况</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>verify 常见用法</span></div>
+    <pre>verify(userRepository).<span class="fn">save</span>(user);                 <span class="com">// 验证被调用了恰好一次（默认）</span>
+verify(userRepository, times(<span class="num">2</span>)).<span class="fn">save</span>(user);      <span class="com">// 验证被调用了恰好两次</span>
+verify(userRepository, never()).<span class="fn">delete</span>(any());       <span class="com">// 验证从未被调用</span>
+verify(userRepository, atLeastOnce()).<span class="fn">findById</span>(<span class="num">1L</span>)); <span class="com">// 验证至少被调用一次</span></pre>
+  </div>
+
+  <h2>ArgumentCaptor：捕获调用时传入的参数</h2>
+  <p>
+    有时候我们不仅想验证"某方法被调用了"，还想验证"调用时传的参数具体长什么样"（比如验证保存前 user 对象的字段确实被正确修改了）。<code>ArgumentCaptor</code> 就是用来"截获"这个参数的：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>ArgumentCaptor 示例</span></div>
+    <pre><span class="ann">@Test</span>
+<span class="kw">void</span> <span class="fn">addPoints_existingUser_savesUserWithUpdatedPoints</span>() {
+    <span class="ty">User</span> user = <span class="kw">new</span> <span class="ty">User</span>(<span class="num">1L</span>, <span class="str">"Tom"</span>, <span class="num">50</span>);
+    when(userRepository.<span class="fn">findById</span>(<span class="num">1L</span>)).<span class="fn">thenReturn</span>(<span class="ty">Optional</span>.<span class="fn">of</span>(user));
+
+    userService.<span class="fn">addPoints</span>(<span class="num">1L</span>, <span class="num">30</span>);
+
+    <span class="ty">ArgumentCaptor</span>&lt;<span class="ty">User</span>&gt; captor = <span class="ty">ArgumentCaptor</span>.<span class="fn">forClass</span>(<span class="ty">User</span>.<span class="kw">class</span>);
+    verify(userRepository).<span class="fn">save</span>(captor.<span class="fn">capture</span>()); <span class="com">// 截获 save() 被调用时传入的真实参数</span>
+
+    <span class="fn">assertEquals</span>(<span class="num">80</span>, captor.<span class="fn">getValue</span>().<span class="fn">getPoints</span>()); <span class="com">// 对捕获到的参数做进一步断言</span>
+}</pre>
+  </div>
+  <p>
+    <code>ArgumentCaptor</code> 常用于依赖内部构造了新对象再传给 Mock 的场景——如果不捕获参数，你只能验证"save 被调用了"，却验证不了"传进去的 user 对象积分到底对不对"。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>Mockito 的 <code>mock()</code> 方法名字带"mock"，但它创建出来的对象既可以当 Stub 用（只打桩不验证调用），也可以当 Mock 用（打桩 + verify）。<strong>是 Stub 还是 Mock，取决于你怎么用它，而不是 API 的名字</strong>——这也是初学者容易搞混的地方。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>@Mock + @InjectMocks</strong> 用声明式注解代替手写样板代码，快速搭建测试替身。</li>
+    <li><strong>when().thenReturn()</strong> 负责打桩，<strong>verify()</strong> 负责验证交互，两者结合能同时覆盖状态验证和行为验证。</li>
+    <li><strong>ArgumentCaptor</strong> 在需要断言"调用时传的参数细节"时非常有用，弥补了 verify() 只能验证"是否调用"的局限。</li>
+    <li>所有这些技巧的前提是被测代码把依赖通过构造器/setter 注入进来，而不是内部 new 出来——下一篇详细展开这个设计原则。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-MockStubSpy的区别.html" class="nav-btn">← Mock Stub Spy 的区别</a>
+    <a href="./03-依赖注入对可测试性的帮助.html" class="nav-btn next">依赖注入对可测试性的帮助 →</a>
+  </div>
+
+</div>
+</body>
+</html>

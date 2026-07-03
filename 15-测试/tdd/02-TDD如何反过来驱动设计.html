@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TDD 如何反过来驱动设计 — TDD实践</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #34d399; }
+  p code, li code { color: #34d399; }
+  h2 { color: #34d399; border-left-color: #34d399; }
+  .hero .tag { color: #34d399; border-color: #0f5132; }
+  .nav-btn.next { color: #34d399; border-color: #0f5132; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../testing-roadmap.html">测试 路线图</a> / TDD实践 / TDD 如何反过来驱动设计
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">TDD实践</div>
+    <h1>TDD 如何反过来驱动设计</h1>
+    <p>"测试驱动开发"这个名字本身就是最大的误导——很多人以为它是"先写测试，保证质量"。但 Kent Beck 真正想强调的重点在"驱动"二字：测试反过来驱动了设计的形状。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>被误解的"驱动"</h2>
+  <p>
+    如果 TDD 只是"质量保证手段"，那把测试放在实现代码写完<strong>之后</strong>补上也一样能保证质量（覆盖率一样能做到很高）。但 Kent Beck 坚持要求测试写在实现<strong>之前</strong>，原因不是顺序上的仪式感，而是顺序本身会改变你思考问题的角度。
+  </p>
+  <p>
+    当你被迫先写测试，你没有任何实现代码可以参考，唯一能写的就是<strong>"如果我是这个功能的调用者，我希望怎么使用它"</strong>——方法叫什么名字、需要传几个参数、参数类型是什么、返回什么、异常怎么表达。这个视角天然是<strong>调用者视角 / 使用者视角</strong>，而不是"实现者觉得这样内部实现比较方便"的视角。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>装修房子时，如果先把水管、电线怎么走想好再问"客厅想怎么用"，往往会造出一个住着别扭的房子。反过来，先站在"我要怎么生活"的角度规划空间，再倒推水电怎么布，房子会更好住。TDD 就是先想清楚"这个接口要怎么被使用"，再倒推内部怎么实现。
+  </div>
+
+  <!-- 对比：先测试 vs 先实现 -->
+  <h2>对比：先写测试 vs 先写实现再补测试</h2>
+  <p>用一个具体例子说明两种顺序会导向截然不同的接口设计。需求：从订单列表中计算出"金额最大的前 N 个订单"。</p>
+
+  <h3>先写实现的路径：容易写出紧耦合的接口</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderRanker.java · 实现优先，事后补测试</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderRanker</span> {
+    <span class="com">// 实现者写代码时顺手就把数据库查询也糅了进来——反正内部拿数据方便</span>
+    <span class="kw">public</span> <span class="ty">List</span>&lt;<span class="ty">Order</span>&gt; <span class="fn">topN</span>(<span class="kw">int</span> n) {
+        <span class="ty">List</span>&lt;<span class="ty">Order</span>&gt; all = orderRepository.<span class="fn">findAll</span>(); <span class="com">// 直接依赖数据库</span>
+        all.<span class="fn">sort</span>(<span class="ty">Comparator</span>.<span class="fn">comparing</span>(<span class="ty">Order</span>::getAmount).<span class="fn">reversed</span>());
+        <span class="kw">return</span> all.<span class="fn">subList</span>(<span class="num">0</span>, n);
+    }
+}
+<span class="com">// 事后想补单元测试才发现：想测排序逻辑，必须先起一个真实数据库、插入数据
+// 排序算法本身的正确性，被"怎么连数据库"这件事绑架了</span></pre>
+  </div>
+
+  <h3>先写测试的路径：被迫得到更简洁的接口</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderRankerTest.java · 红（先站在调用者视角设计接口）</span></div>
+    <pre><span class="kw">@Test</span>
+<span class="kw">void</span> <span class="fn">topNReturnsHighestAmountOrdersDescending</span>() {
+    <span class="ty">List</span>&lt;<span class="ty">Order</span>&gt; orders = <span class="ty">List</span>.<span class="fn">of</span>(
+        <span class="kw">new</span> <span class="ty">Order</span>(<span class="str">"A"</span>, <span class="num">100</span>), <span class="kw">new</span> <span class="ty">Order</span>(<span class="str">"B"</span>, <span class="num">300</span>), <span class="kw">new</span> <span class="ty">Order</span>(<span class="str">"C"</span>, <span class="num">200</span>)
+    );
+    <span class="com">// 写测试时天然会问："这个方法凭空需要数据库连接吗？不需要，它只需要一个订单列表。"</span>
+    <span class="ty">List</span>&lt;<span class="ty">Order</span>&gt; top2 = <span class="ty">OrderRanker</span>.<span class="fn">topN</span>(orders, <span class="num">2</span>);
+    <span class="fn">assertEquals</span>(<span class="ty">List</span>.<span class="fn">of</span>(<span class="str">"B"</span>, <span class="str">"C"</span>), top2.<span class="fn">stream</span>().<span class="fn">map</span>(<span class="ty">Order</span>::getId).<span class="fn">toList</span>());
+}</pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderRanker.java · 绿</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderRanker</span> {
+    <span class="com">// 接口只接收纯数据，不关心数据从哪来——数据库查询是调用方的责任</span>
+    <span class="kw">public static</span> <span class="ty">List</span>&lt;<span class="ty">Order</span>&gt; <span class="fn">topN</span>(<span class="ty">List</span>&lt;<span class="ty">Order</span>&gt; orders, <span class="kw">int</span> n) {
+        <span class="kw">return</span> orders.<span class="fn">stream</span>()
+            .<span class="fn">sorted</span>(<span class="ty">Comparator</span>.<span class="fn">comparing</span>(<span class="ty">Order</span>::getAmount).<span class="fn">reversed</span>())
+            .<span class="fn">limit</span>(n)
+            .<span class="fn">toList</span>();
+    }
+}</pre>
+  </div>
+  <p>
+    两段代码实现的排序算法本身没有本质区别，但接口形状天差地别。<strong>先写测试的版本天然把"排序逻辑"和"数据来源"分开了</strong>——不是因为程序员刻意应用了什么设计模式，而是因为写测试时，你没法说服自己"这个测试需要连数据库才能跑"，那种别扭感会立刻倒逼你把依赖摘出去。这正是单一职责原则最朴素的来源：一个方法只做一件事，测试才好写；测试不好写，往往就是因为方法做的事情太多了。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么说难以测试的代码往往就是设计差的代码？"因为测试的本质是"以调用者身份使用这段代码"，如果调用它很痛苦（需要 mock 一堆东西、需要真实的外部环境、需要背后知道很多隐藏状态），那真正在生产环境里调用它的代码也一样痛苦——只是没人去正视这种痛苦，直到写测试的时候才被放大暴露出来。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>把 TDD 简单理解为"写代码之前先写一份测试用例清单，保证覆盖率"。这只学到了表面的顺序，没学到本质。TDD 真正要求的是：<strong>写测试的过程本身就是在设计接口</strong>——如果你发现某个测试很难写（要 mock 很多依赖、要构造很复杂的前置状态），这不是"测试框架不好用"，而是在提醒你"这段代码的设计有问题"，应该先改设计而不是硬着头皮把测试凑出来。
+  </div>
+  <div class="callout warn">
+    <strong>误区：</strong>认为"先写实现再补测试"和"先写测试"最终产出的代码质量应该差不多。实践中差别很大：后补的测试往往是"迁就已有实现"写出来的，会不自觉地暴露内部实现细节（比如直接测私有方法、直接操作内部状态），测试变得脆弱，实现一重构测试就跟着崩。先写测试因为看不到实现，只能面向公开行为断言，天然更稳健。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>TDD 的"驱动"指的是设计被测试倒逼</strong>，而不是"写完代码用测试兜底质量"这么简单。</li>
+    <li>先写测试强迫你站在<strong>调用者视角</strong>思考接口，天然导向简洁、低耦合、单一职责的设计。</li>
+    <li>"这段代码很难测"是一个设计信号，应该顺着它去改善接口，而不是想办法绕过去把测试写出来。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-红绿重构循环.html" class="nav-btn">← 红绿重构循环</a>
+    <a href="../pyramid/01-测试金字塔.html" class="nav-btn next">测试金字塔 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>红绿重构循环 — TDD实践</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #34d399; }
+  p code, li code { color: #34d399; }
+  h2 { color: #34d399; border-left-color: #34d399; }
+  .hero .tag { color: #34d399; border-color: #0f5132; }
+  .nav-btn.next { color: #34d399; border-color: #0f5132; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../testing-roadmap.html">测试 路线图</a> / TDD实践 / 红绿重构循环
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">TDD实践</div>
+    <h1>红绿重构循环</h1>
+    <p>TDD 的全部纪律都浓缩在这三个词里：<strong>红（写一个失败的测试）→ 绿（用最少的代码让它通过）→ 重构（在测试保护下改善结构）</strong>。看起来简单，但真正的难点在于"小步快跑"这四个字。</p>
+  </div>
+
+  <!-- 一句话讲清楚 -->
+  <h2>为什么要有这个循环</h2>
+  <p>
+    传统写法是"先想清楚整体设计，写完全部实现，最后补测试"。这条路看似高效，实际有个致命问题：<strong>你没有任何一个时刻能确认代码是对的</strong>。写了两百行代码才第一次运行，出了 bug 你很难定位是哪一步错了——因为改动面太大了。
+  </p>
+  <p>
+    Kent Beck 在《测试驱动开发》里提出的解法是：<strong>把"验证正确性"这件事切成无数个微小的、可以立刻确认的步骤</strong>。每次只往前迈一小步，迈完立刻验证，错了也只可能错在刚迈的这一小步里。这就是红绿重构循环存在的根本原因——它不是为了"多写测试"，而是为了<strong>把大风险拆成一串小风险，每个小风险都可控</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>走钢丝的人不会一步跨到对岸，而是小碎步挪，每一步都先感受重心稳不稳再迈下一步。红绿重构循环就是给写代码这件事装上"小碎步"——每次只解决一个最小的失败点，绝不在不稳的地基上继续叠代码。
+  </div>
+
+  <!-- 三个阶段 -->
+  <h2>三个阶段分别做什么</h2>
+  <div class="tree">
+    <span class="hi">红（Red）</span>：写一个新的测试，运行它，看着它失败<br>
+    &nbsp;&nbsp;├─ 失败是必须的——它证明这个测试真的在测东西，而不是一段永远为真的摆设<br>
+    &nbsp;&nbsp;└─ 此时代码还没实现功能，甚至方法都可以还不存在（编译不过也算"失败"）<br>
+    <br>
+    <span class="hi">绿（Green）</span>：写最少、最"丑"的代码，让测试通过<br>
+    &nbsp;&nbsp;├─ 不追求优雅，甚至可以硬编码返回值——只求测试变绿<br>
+    &nbsp;&nbsp;└─ 目的是尽快回到"有安全网保护"的状态，别在这一步纠结设计<br>
+    <br>
+    <span class="hi">重构（Refactor）</span>：在测试全绿的前提下，改善代码结构<br>
+    &nbsp;&nbsp;├─ 消除重复、拆分方法、去掉硬编码，但绝不改变外部行为<br>
+    &nbsp;&nbsp;└─ 每改一小步就重新跑测试，任何一次变红都意味着刚才的重构引入了问题
+  </div>
+  <p>
+    这三步循环往复，每一轮只解决一个最小的需求点。关键心法是<strong>"小步快跑"</strong>：步子迈得越小，出错时需要排查的范围就越小，"绿"的状态就是你随时可以退回去的存档点。
+  </p>
+
+  <!-- 完整案例 -->
+  <h2>完整案例：购物车计价</h2>
+  <p>需求：实现一个购物车，可以添加商品（单价 × 数量），并计算总价。我们用 TDD 的方式一小步一小步实现它，而不是先设计好整个 <code>Cart</code> 类。</p>
+
+  <h3>第一轮：空购物车总价为 0</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>CartTest.java · 红</span></div>
+    <pre><span class="kw">@Test</span>
+<span class="kw">void</span> <span class="fn">emptyCartTotalIsZero</span>() {
+    <span class="ty">Cart</span> cart = <span class="kw">new</span> <span class="ty">Cart</span>();
+    <span class="fn">assertEquals</span>(<span class="num">0</span>, cart.<span class="fn">total</span>());
+}
+<span class="com">// 此时 Cart 类还不存在，编译都过不了——这也是一种"红"</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>Cart.java · 绿</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Cart</span> {
+    <span class="kw">public</span> <span class="kw">int</span> <span class="fn">total</span>() {
+        <span class="kw">return</span> <span class="num">0</span>; <span class="com">// 最少的代码：硬编码返回 0，先让测试变绿</span>
+    }
+}</pre>
+  </div>
+  <p>此时没有需要重构的地方，直接进入下一轮。</p>
+
+  <h3>第二轮：加入一件商品，总价等于单价 × 数量</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>CartTest.java · 红</span></div>
+    <pre><span class="kw">@Test</span>
+<span class="kw">void</span> <span class="fn">totalReflectsAddedItem</span>() {
+    <span class="ty">Cart</span> cart = <span class="kw">new</span> <span class="ty">Cart</span>();
+    cart.<span class="fn">add</span>(<span class="kw">new</span> <span class="ty">Item</span>(<span class="str">"apple"</span>, <span class="num">10</span>, <span class="num">3</span>)); <span class="com">// 单价10，数量3</span>
+    <span class="fn">assertEquals</span>(<span class="num">30</span>, cart.<span class="fn">total</span>());
+}</pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>Cart.java · 绿</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">Cart</span> {
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">List</span>&lt;<span class="ty">Item</span>&gt; items = <span class="kw">new</span> <span class="ty">ArrayList</span>&lt;&gt;();
+
+    <span class="kw">public</span> <span class="kw">void</span> <span class="fn">add</span>(<span class="ty">Item</span> item) {
+        items.<span class="fn">add</span>(item);
+    }
+
+    <span class="kw">public</span> <span class="kw">int</span> <span class="fn">total</span>() {
+        <span class="kw">int</span> sum = <span class="num">0</span>;
+        <span class="kw">for</span> (<span class="ty">Item</span> item : items) {
+            sum += item.<span class="fn">unitPrice</span>() * item.<span class="fn">quantity</span>();
+        }
+        <span class="kw">return</span> sum; <span class="com">// 老测试(emptyCartTotalIsZero)依然通过：空列表求和自然是 0</span>
+    }
+}</pre>
+  </div>
+  <p>两个测试都是绿的，进入重构阶段：这里代码已经比较清晰，暂时不需要额外重构。</p>
+
+  <h3>第三轮：加入两件不同商品，总价累加</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>CartTest.java · 红</span></div>
+    <pre><span class="kw">@Test</span>
+<span class="kw">void</span> <span class="fn">totalSumsMultipleItems</span>() {
+    <span class="ty">Cart</span> cart = <span class="kw">new</span> <span class="ty">Cart</span>();
+    cart.<span class="fn">add</span>(<span class="kw">new</span> <span class="ty">Item</span>(<span class="str">"apple"</span>, <span class="num">10</span>, <span class="num">3</span>));
+    cart.<span class="fn">add</span>(<span class="kw">new</span> <span class="ty">Item</span>(<span class="str">"pen"</span>, <span class="num">5</span>, <span class="num">2</span>));
+    <span class="fn">assertEquals</span>(<span class="num">40</span>, cart.<span class="fn">total</span>()); <span class="com">// 30 + 10</span>
+}</pre>
+  </div>
+  <p>
+    运行发现——这个测试<strong>直接就是绿的</strong>，因为第二轮写的 <code>total()</code> 用循环累加，天然支持多件商品。这正说明了"最少代码"并不等于"偷懒的代码"：<code>for</code> 循环并不比硬编码复杂多少，但它是真正解决问题的最小实现，而不是只应付眼前这一个用例的临时补丁。
+  </p>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"绿阶段的代码为什么允许写得丑？"因为丑不丑是重构阶段解决的问题，绿阶段唯一的目标是"用最短路径拿到一个通过的测试"，把"让代码能跑"和"让代码好看"两个目标分开处理，你的注意力才不会被同时分散到两件事上。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>步子迈得太大，一次性把好几个断言、好几个分支都写进一个测试里。这样即使测试红了，你也不知道该实现哪一部分——等于把"大风险拆小"的初衷又合并回了大风险。正确做法是每次只加一个最小的、能失败的断言。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>跳过重构阶段，测试一变绿就急着写下一个测试。代码里的重复和坏味道会不断累积，到后期即使有测试保护也很难改——因为结构已经僵化。重构不是可选项，是循环里和红、绿同等重要的一环。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>红绿重构的本质是把"验证正确性"切成可控的小步</strong>，每一步都有明确的、可运行的反馈信号。</li>
+    <li><strong>红</strong>确认测试真的在测东西；<strong>绿</strong>用最短路径拿到安全网；<strong>重构</strong>在安全网保护下偿还设计债。</li>
+    <li>小步快跑不是慢，是把犯错的成本降到最低——出错时只需要审查刚迈的那一小步，而不是审查过去两百行代码。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../mock/03-依赖注入对可测试性的帮助.html" class="nav-btn">← 依赖注入对可测试性的帮助</a>
+    <a href="./02-TDD如何反过来驱动设计.html" class="nav-btn next">TDD 如何反过来驱动设计 →</a>
+  </div>
+
+</div>
+</body>
+</html>

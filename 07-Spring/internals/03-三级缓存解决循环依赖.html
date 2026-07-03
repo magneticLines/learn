@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>三级缓存解决循环依赖 — IoC/AOP 源码内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fcd34d; }
+  p code, li code { color: #fcd34d; }
+  h2 { color: #fcd34d; border-left-color: #fcd34d; }
+  .hero .tag { color: #fcd34d; border-color: #7c5f10; }
+  .nav-btn.next { color: #fcd34d; border-color: #7c5f10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / IoC/AOP 源码内核 / 三级缓存解决循环依赖
+  </div>
+
+  <div class="hero">
+    <div class="tag">IoC/AOP 源码内核</div>
+    <h1>三级缓存解决循环依赖</h1>
+    <p>上一篇提到"属性填充"和"实例化"分两步走，正是为了给循环依赖留一个"缓兵之计"的窗口。这一篇就来看 Spring 具体是怎么利用这个窗口，用三级缓存把循环依赖拆解开的。</p>
+  </div>
+
+  <h2>问题：A 依赖 B，B 又依赖 A</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>循环依赖示例</span></div>
+    <pre><span class="ann">@Component</span>
+<span class="kw">public class</span> <span class="ty">A</span> {
+    <span class="ann">@Autowired</span>
+    <span class="kw">private</span> <span class="ty">B</span> b;
+}
+
+<span class="ann">@Component</span>
+<span class="kw">public class</span> <span class="ty">B</span> {
+    <span class="ann">@Autowired</span>
+    <span class="kw">private</span> <span class="ty">A</span> a;
+}</pre>
+  </div>
+  <p>
+    创建 A 需要先注入 B，而创建 B 又需要先注入 A——如果严格按"创建完整对象后才能被别人引用"的规则，两边会互相等待，谁都无法完成。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>两个人交换礼物，都要求"你先把礼物包装完整给我，我才愿意包装我的礼物"，结果谁都不动手。Spring 的解法是：<strong>先给对方一张"提货凭证"（引用一个还没装满东西的空盒子），凭证可以先用来完成自己的包装，等真正需要打开盒子的时候，东西早已经放进去了</strong>——因为 Java 对象是引用传递，只要拿到的是同一个对象的引用，之后往里面塞多少属性，外部持有的引用看到的都是最新状态。
+  </div>
+
+  <h2>三级缓存分别是什么</h2>
+  <p>三级缓存都在 <code>DefaultSingletonBeanRegistry</code> 里，本质是三个 <code>Map</code>：</p>
+  <table>
+    <thead><tr><th>层级</th><th>字段名</th><th>存的是什么</th><th>作用</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>一级缓存</strong></td>
+        <td><code>singletonObjects</code></td>
+        <td>完全初始化好的单例 Bean</td>
+        <td>容器对外提供 Bean 的最终来源</td>
+      </tr>
+      <tr>
+        <td><strong>二级缓存</strong></td>
+        <td><code>earlySingletonObjects</code></td>
+        <td>提前暴露的"半成品"Bean（已实例化，属性还没填充完）</td>
+        <td>让其他 Bean 能提前拿到引用，打破循环等待</td>
+      </tr>
+      <tr>
+        <td><strong>三级缓存</strong></td>
+        <td><code>singletonFactories</code></td>
+        <td><code>ObjectFactory</code>（能生产 Bean 或其代理对象的工厂）</td>
+        <td>延迟决定"到底暴露原始对象还是代理对象"</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>创建流程：A 和 B 如何互相拿到对方</h2>
+  <div class="tree">
+    <span class="hi">1.</span> 容器要创建 A，调用构造器完成 <strong>实例化</strong>（此时 A 是个空对象）<br>
+    <span class="hi">2.</span> 实例化完成后，<strong>立刻</strong>把一个能生产 A（或 A 的代理）的 ObjectFactory 放进<strong>三级缓存</strong><br>
+    <span class="hi">3.</span> 开始给 A <strong>填充属性</strong>，发现需要注入 B，于是转去创建 B<br>
+    <span class="hi">4.</span> B 实例化完成，同样把 ObjectFactory 放进三级缓存，开始填充 B 的属性<br>
+    <span class="hi">5.</span> B 发现需要注入 A，去缓存里找 A：<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ 一级缓存没有（A 还没创建完）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ 二级缓存没有<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└─ <strong>三级缓存命中</strong>：调用 ObjectFactory.getObject()，拿到 A 的早期引用（如果 A 需要被代理，此时就生成代理），<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;把结果<strong>提升到二级缓存</strong>，同时从三级缓存移除<br>
+    <span class="hi">6.</span> B 拿着这个引用完成属性填充，顺利完成初始化，被放入<strong>一级缓存</strong><br>
+    <span class="hi">7.</span> 回到 A 的属性填充，此时 B 已经在一级缓存里，A 直接拿到完整的 B，完成初始化<br>
+    <span class="hi">8.</span> A 也被放入一级缓存，循环依赖问题解决
+  </div>
+
+  <h2>为什么两级缓存不够，非要第三级</h2>
+  <p>
+    如果只有一级 + 二级缓存（提前暴露原始对象），会遇到一个致命问题：<strong>AOP 代理是在初始化完成之后（postProcessAfterInitialization）才生成的</strong>，
+    但循环依赖要求在"属性填充阶段"就把引用提前暴露出去。如果这时候暴露的是原始对象，等 A 真正初始化完成、该生成代理时，
+    <strong>已经有 B 持有了 A 的原始对象引用</strong>——最终容器里是代理对象，B 手里却是原始对象，两者不是同一个实例，破坏了"单例"的语义。
+  </p>
+  <p>
+    三级缓存存的不是对象，而是一个 <strong>ObjectFactory（工厂）</strong>，把"到底返回原始对象还是代理对象"这个决定<strong>延迟到真正被取用的那一刻</strong>再做：
+    如果该 Bean 需要 AOP 代理，工厂内部会调用 <code>getEarlyBeanReference()</code> 提前触发代理逻辑，保证不管是谁提前拿到的引用，都和最终放入一级缓存的对象是同一个。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么要三级缓存，两级不行吗？" 标准答案：如果不涉及 AOP，两级缓存确实够用；<strong>三级缓存存在的唯一原因是要兼容 AOP 代理</strong>——用工厂模式把"生成代理"这个动作延迟到真正发生循环依赖、需要提前暴露引用的那一刻才执行，避免了"同一个 Bean 出现两个不同实例"的问题。
+  </div>
+
+  <h2>构造器循环依赖为什么无解</h2>
+  <p>
+    上面的方案能成立，前提是"实例化"和"属性填充"是分开的两步——实例化一结束，就能立刻拿到一个空对象的引用放进缓存。
+    但如果 A 和 B 都是通过<strong>构造器注入</strong>互相依赖（比如 <code>A(B b)</code> 和 <code>B(A a)</code>），那么<strong>实例化这一步本身就无法完成</strong>：
+    创建 A 需要先有一个完整的 B 作为构造参数，创建 B 又需要先有一个完整的 A——在对象连"空壳"都造不出来的阶段，压根没有引用可以提前暴露，三级缓存无从下手。
+  </p>
+  <div class="callout warn">
+    <strong>结论：</strong>Spring 只能解决 <strong>setter/字段注入</strong>的循环依赖，<strong>构造器注入的循环依赖会直接抛出 <code>BeanCurrentlyInCreationException</code></strong>。这也是为什么强依赖推荐用构造器注入（快速失败、暴露设计问题），而不是简单地为了"绕开循环依赖报错"就无脑改成字段注入掩盖问题。
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>以为三级缓存能解决"所有"循环依赖场景。实际上它只覆盖<strong>单例 + setter/字段注入</strong>这一种情况；<code>prototype</code>（原型）作用域的 Bean 每次都要创建新实例，Spring 压根不会缓存，一旦出现循环依赖会直接报错。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>问题的本质：</strong>循环依赖能被打破，靠的是 Java 对象"先分配内存、后填充状态"的特性——只要能提前拿到引用，之后填充什么内容外部都能感知到。</li>
+    <li><strong>三级缓存的分工：</strong>一级放成品、二级放半成品原始引用、三级放"决定要不要代理"的工厂，本质是用空间换时间，把"是否要代理"这个决策推迟到刚好够用的最后时刻。</li>
+    <li><strong>边界很清晰：</strong>只能救 setter/字段注入的单例循环依赖，构造器注入和原型作用域都救不了——理解这一点比背诵缓存层级更重要。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-Bean的完整生命周期.html" class="nav-btn">← Bean 的完整生命周期</a>
+    <a href="./04-BeanPostProcessor扩展点.html" class="nav-btn next">BeanPostProcessor 扩展点 →</a>
+  </div>
+
+</div>
+</body>
+</html>

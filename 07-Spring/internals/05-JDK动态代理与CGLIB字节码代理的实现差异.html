@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JDK 动态代理与 CGLIB 字节码代理的实现差异 — IoC/AOP 源码内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fcd34d; }
+  p code, li code { color: #fcd34d; }
+  h2 { color: #fcd34d; border-left-color: #fcd34d; }
+  .hero .tag { color: #fcd34d; border-color: #7c5f10; }
+  .nav-btn.next { color: #fcd34d; border-color: #7c5f10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / IoC/AOP 源码内核 / JDK 动态代理与 CGLIB 字节码代理的实现差异
+  </div>
+
+  <div class="hero">
+    <div class="tag">IoC/AOP 源码内核</div>
+    <h1>JDK 动态代理与 CGLIB 字节码代理的实现差异</h1>
+    <p>上一篇讲到自动代理创建器命中 Pointcut 后会调用 <code>createProxy()</code>——这一步具体是怎么"造出"一个代理对象的？Spring AOP 底层其实有两条完全不同的技术路线。</p>
+  </div>
+
+  <h2>代理的本质：换一个"接头人"</h2>
+  <p>
+    代理要解决的问题很简单：<strong>在不修改原始类代码的前提下，让方法调用先经过一层"拦截"逻辑，再决定要不要真正执行原方法</strong>。
+    实现方式无非两种思路：一是"造一个实现相同接口的新类"，二是"造一个继承目标类的子类"——这正好对应 JDK 动态代理和 CGLIB 两条路线。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>你想找人代收快递又不想暴露自己的联系方式。方案一（JDK 动态代理）：找一个"和你签了同一份委托协议"的代收点，快递员只认协议，不关心背后具体是谁在处理——前提是必须有这份协议（接口）存在。方案二（CGLIB）：直接"克隆"你的身份信息造一个几乎一样的分身，分身长得和你一模一样（继承你的类），能处理你能处理的所有事情，但如果你是"绝密身份、禁止复制"（final 类），这个方案就行不通。
+  </div>
+
+  <h2>JDK 动态代理：基于接口</h2>
+  <p>
+    JDK 动态代理要求目标类必须实现至少一个接口，代理类在运行时动态生成，<strong>实现和目标类相同的接口</strong>，内部持有一个 <code>InvocationHandler</code>，所有接口方法的调用都会被转发到 <code>invoke()</code> 方法。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>JDK 动态代理示例</span></div>
+    <pre><span class="ty">UserService</span> target = <span class="kw">new</span> <span class="ty">UserServiceImpl</span>();
+
+<span class="ty">UserService</span> proxy = (<span class="ty">UserService</span>) <span class="ty">Proxy</span>.<span class="fn">newProxyInstance</span>(
+    target.<span class="fn">getClass</span>().<span class="fn">getClassLoader</span>(),
+    target.<span class="fn">getClass</span>().<span class="fn">getInterfaces</span>(),   <span class="com">// 关键：要求目标类实现了接口</span>
+    (proxyObj, method, args) -> {
+        <span class="com">// 前置增强逻辑</span>
+        <span class="ty">Object</span> result = method.<span class="fn">invoke</span>(target, args);  <span class="com">// 反射调用真实方法</span>
+        <span class="com">// 后置增强逻辑</span>
+        <span class="kw">return</span> result;
+    }
+);</pre>
+  </div>
+  <p>
+    生成的代理类和 <code>target</code> 是<strong>平级兄弟关系</strong>——两者都实现 <code>UserService</code> 接口，代理类本身并不是 <code>UserServiceImpl</code> 的子类。这就意味着：如果代码里用 <code>UserServiceImpl</code>（具体类）而不是 <code>UserService</code>（接口）来接收这个代理对象，会直接抛 <code>ClassCastException</code>。
+  </p>
+
+  <h2>CGLIB：基于继承的字节码增强</h2>
+  <p>
+    CGLIB（Code Generation Library）不依赖接口，而是用 ASM 字节码技术，在运行时动态生成一个<strong>目标类的子类</strong>，重写所有可以被重写的方法，
+    在重写的方法里插入拦截逻辑（<code>MethodInterceptor</code>），再调用父类（也就是原始目标类）的方法。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>CGLIB 示例</span></div>
+    <pre><span class="ty">Enhancer</span> enhancer = <span class="kw">new</span> <span class="ty">Enhancer</span>();
+enhancer.<span class="fn">setSuperclass</span>(<span class="ty">UserServiceImpl</span>.<span class="kw">class</span>);  <span class="com">// 关键：以继承方式生成子类</span>
+enhancer.<span class="fn">setCallback</span>((<span class="ty">MethodInterceptor</span>) (obj, method, args, proxy) -> {
+    <span class="com">// 前置增强逻辑</span>
+    <span class="ty">Object</span> result = proxy.<span class="fn">invokeSuper</span>(obj, args);  <span class="com">// 调用父类（原始类）的方法</span>
+    <span class="com">// 后置增强逻辑</span>
+    <span class="kw">return</span> result;
+});
+<span class="ty">UserServiceImpl</span> proxy = (<span class="ty">UserServiceImpl</span>) enhancer.<span class="fn">create</span>();</pre>
+  </div>
+  <p>
+    正因为是继承关系，<strong>目标类不能是 final</strong>（final 类不能被继承），<strong>目标方法也不能是 final 或 private</strong>（无法被子类重写），否则该方法不会被增强，调用时会绕过代理逻辑直接执行原始实现——这是一个非常容易踩的坑。
+  </p>
+
+  <h2>两者对比</h2>
+  <table>
+    <thead><tr><th>维度</th><th>JDK 动态代理</th><th>CGLIB</th></tr></thead>
+    <tbody>
+      <tr><td>实现方式</td><td>实现同样的接口</td><td>生成目标类的子类（继承）</td></tr>
+      <tr><td>前提条件</td><td>目标类必须实现至少一个接口</td><td>目标类不能是 final，方法不能是 final/private</td></tr>
+      <tr><td>依赖</td><td>JDK 原生 <code>java.lang.reflect.Proxy</code>，无需额外依赖</td><td>需要引入 CGLIB 库（Spring 已内置）</td></tr>
+      <tr><td>性能（历史印象）</td><td>早期版本创建代理较快，调用稍慢</td><td>早期版本创建代理较慢，调用较快</td></tr>
+      <tr><td>类型转换</td><td>只能转换成接口类型，不能转换成实现类</td><td>可以直接转换成目标类的类型（因为是子类）</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>关于性能的误区：</strong>网上很多资料还在说"CGLIB 创建代理慢、调用快，JDK 相反"，这是基于很老的 JDK/CGLIB 版本得出的结论。现代 JDK（尤其是 JDK 8+ 之后）动态代理的性能已经大幅优化，两者性能差异在实际业务场景中基本可以忽略，<strong>不应该把性能作为选择依据</strong>，选择的关键还是"有没有接口"和团队的一致性偏好。
+  </div>
+
+  <h2>Spring AOP 的选择策略</h2>
+  <p>Spring 在 <code>DefaultAopProxyFactory</code> 里决定用哪种方式创建代理，核心逻辑（简化）：</p>
+  <div class="tree">
+    <span class="hi">if</span> (目标类实现了至少一个接口 <span class="hi">&&</span> 没有强制要求使用 CGLIB) {<br>
+    &nbsp;&nbsp;使用 <span class="hi">JDK 动态代理</span><br>
+    } <span class="hi">else</span> {<br>
+    &nbsp;&nbsp;使用 <span class="hi">CGLIB</span>（目标类没有接口，或显式配置了 proxyTargetClass=true）<br>
+    }
+  </div>
+  <p>
+    这是传统 Spring（Spring MVC 时代）的默认策略：<strong>有接口优先用 JDK 动态代理</strong>。但从 <strong>Spring Boot 2.x 开始，默认把 <code>spring.aop.proxy-target-class</code> 设为 <code>true</code></strong>，
+    也就是说<strong>不管目标类有没有接口，一律使用 CGLIB</strong>。这么改的原因是为了<strong>行为一致性</strong>：如果同一个项目里，有接口的类走 JDK 代理、没接口的类走 CGLIB 代理，
+    会导致"能不能强转成实现类"这种细节行为在不同 Bean 上表现不一致，增加了心智负担；统一用 CGLIB 可以消除这种不一致，代价是牺牲了一点"面向接口编程"的纯粹性。
+  </p>
+  <p>该行为可以通过配置显式关闭，回退到"有接口用 JDK、无接口用 CGLIB"的传统策略：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>application.yml</span></div>
+    <pre><span class="var">spring</span>:
+  <span class="var">aop</span>:
+    <span class="var">proxy-target-class</span>: <span class="kw">false</span>  <span class="com"># 关闭后恢复"有接口优先 JDK 代理"的旧策略</span></pre>
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>在 <code>@Transactional</code>、<code>@Async</code> 等注解生效失败时，没意识到很可能是"同类内部方法互相调用"——因为代理对象是在外部包了一层，<strong>类内部 this.method() 的调用不会经过代理</strong>，不管是 JDK 代理还是 CGLIB 都存在这个问题，是 AOP 领域公认的高频坑。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"JDK 动态代理和 CGLIB 的区别？" 从三个维度答：<strong>实现原理</strong>（接口 vs 继承）、<strong>使用前提</strong>（必须有接口 vs 不能是 final）、<strong>Spring 的默认策略</strong>（Spring Boot 2.x 后默认统一用 CGLIB）。这道题几乎是 Spring 面试必考。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>两条路线本质是"接口 vs 继承"的取舍：</strong>JDK 代理轻量但要求接口，CGLIB 灵活但受 final 限制，没有绝对的优劣，只有适用场景的不同。</li>
+    <li><strong>Spring Boot 默认统一 CGLIB 是工程权衡：</strong>为了消除"不同 Bean 代理行为不一致"带来的心智负担，宁可牺牲一点点性能和"纯接口编程"的洁癖。</li>
+    <li><strong>下一篇继续深入：</strong>不管用哪种代理技术生成了对象，代理内部要执行的"具体逻辑"从哪来、"匹配哪些方法"怎么判断，这就是 Pointcut / Advice / Advisor 三者的分工，也是最后一篇要讲的内容。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-BeanPostProcessor扩展点.html" class="nav-btn">← BeanPostProcessor 扩展点</a>
+    <a href="./06-AdvisorAdvicePointcut的关系.html" class="nav-btn next">Advisor / Advice / Pointcut 的关系 →</a>
+  </div>
+
+</div>
+</body>
+</html>

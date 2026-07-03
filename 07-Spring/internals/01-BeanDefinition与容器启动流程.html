@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BeanDefinition 与容器启动流程 — IoC/AOP 源码内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fcd34d; }
+  p code, li code { color: #fcd34d; }
+  h2 { color: #fcd34d; border-left-color: #fcd34d; }
+  .hero .tag { color: #fcd34d; border-color: #7c5f10; }
+  .nav-btn.next { color: #fcd34d; border-color: #7c5f10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / IoC/AOP 源码内核 / BeanDefinition 与容器启动流程
+  </div>
+
+  <div class="hero">
+    <div class="tag">IoC/AOP 源码内核</div>
+    <h1>BeanDefinition 与容器启动流程</h1>
+    <p>04-工程实战 讲过"IoC 是什么、为什么要用它"，这里往下钻一层：Spring 容器启动时到底做了什么？答案的核心只有一句话——<strong>先造元数据，再造对象</strong>。</p>
+  </div>
+
+  <h2>为什么不能"读到 Bean 定义就直接 new"</h2>
+  <p>
+    最朴素的想法是：解析 XML/注解，读到一个 Bean 的配置，立刻 <code>new</code> 出来放进容器。但这样做不通，原因是 <strong>Bean 之间有依赖关系，而配置的加载顺序是不可控的</strong>。
+    如果 A 依赖 B，但 A 的配置先被解析到，此时 B 还没被创建，A 就无法完成实例化。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>盖房子之前，工地不会一边挖地基一边现场设计图纸——而是先把整栋楼的<strong>设计图纸（图纸上标注每个房间的用途、面积、装修材料）</strong>画完、评审完，再统一开工。图纸阶段和施工阶段是分离的：图纸可以互相引用（"客厅的门通向厨房"），施工时才按依赖顺序把墙砌起来。
+  </div>
+  <p>
+    Spring 的解法是把"配置解析"和"实例化"拆成两个独立阶段，中间插入一层元数据——<strong>BeanDefinition</strong>。
+  </p>
+
+  <h2>BeanDefinition：Bean 的"设计图纸"</h2>
+  <p>
+    <code>BeanDefinition</code> 是一个接口，描述了创建一个 Bean 所需要的<strong>全部元信息</strong>，但它本身<strong>不是 Bean 实例</strong>，只是一份"待办清单"：
+  </p>
+  <ul>
+    <li><code>beanClassName</code> —— 这个 Bean 是哪个类</li>
+    <li><code>scope</code> —— 单例（singleton）还是原型（prototype）</li>
+    <li><code>propertyValues</code> —— 属性要注入什么值（依赖哪些其他 Bean）</li>
+    <li><code>constructorArgumentValues</code> —— 构造器参数</li>
+    <li><code>lazyInit</code> —— 是否懒加载</li>
+    <li><code>initMethodName</code> / <code>destroyMethodName</code> —— 自定义初始化/销毁方法名</li>
+  </ul>
+  <p>
+    不管你写的是 XML 的 <code>&lt;bean&gt;</code> 标签、<code>@Component</code> 注解，还是 <code>@Bean</code> 方法，Spring 解析配置的第一步，都是把它们统一"翻译"成 <code>BeanDefinition</code> 对象，
+    塞进一个叫 <code>BeanDefinitionRegistry</code> 的注册表里（本质是一个 <code>Map&lt;String, BeanDefinition&gt;</code>，key 是 beanName）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BeanDefinition 核心方法（简化）</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">BeanDefinition</span> {
+    <span class="ty">String</span> <span class="fn">getBeanClassName</span>();
+    <span class="ty">String</span> <span class="fn">getScope</span>();          <span class="com">// singleton / prototype</span>
+    <span class="kw">boolean</span> <span class="fn">isLazyInit</span>();
+    <span class="ty">ConstructorArgumentValues</span> <span class="fn">getConstructorArgumentValues</span>();
+    <span class="ty">MutablePropertyValues</span> <span class="fn">getPropertyValues</span>();
+    <span class="ty">String</span> <span class="fn">getInitMethodName</span>();
+    <span class="ty">String</span> <span class="fn">getDestroyMethodName</span>();
+}</pre>
+  </div>
+
+  <h2>容器启动的三个阶段</h2>
+  <p>以 <code>AnnotationConfigApplicationContext</code> / <code>ClassPathXmlApplicationContext</code> 为例，启动过程可以概括为三步：</p>
+
+  <div class="tree">
+    <span class="hi">① 加载配置 → 生成 BeanDefinition</span><br>
+    &nbsp;&nbsp;├─ XML：BeanDefinitionReader 解析 &lt;bean&gt; 标签<br>
+    &nbsp;&nbsp;├─ 注解：ClassPathBeanDefinitionScanner 扫描 @Component/@Service 等<br>
+    &nbsp;&nbsp;├─ Java Config：ConfigurationClassPostProcessor 解析 @Configuration/@Bean<br>
+    &nbsp;&nbsp;└─ 统一注册进 BeanDefinitionRegistry（DefaultListableBeanFactory 内部的 Map）<br>
+    <span class="hi">② 执行 BeanFactoryPostProcessor → 修改 BeanDefinition</span><br>
+    &nbsp;&nbsp;└─ 容器在实例化任何 Bean 之前，把已注册的 BeanDefinition 全部暴露出来，<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;允许开发者在这一步"手术"式地修改元数据（比如替换占位符 ${}）<br>
+    <span class="hi">③ 实例化单例 Bean → BeanDefinition 变成真正的对象</span><br>
+    &nbsp;&nbsp;└─ preInstantiateSingletons()：遍历所有非懒加载单例的 BeanDefinition，<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;逐个调用 getBean() 触发真正的实例化（下一篇细讲这条链）
+  </div>
+
+  <div class="callout tip">
+    <strong>核心结论（面试高频）：</strong>Spring 容器的启动过程本质上是"两阶段"的——<strong>第一阶段只造元数据（BeanDefinition），不涉及任何业务类的构造器调用；第二阶段才真正 new 对象</strong>。
+    这也是为什么 <code>BeanFactoryPostProcessor</code>（操作 BeanDefinition）永远先于 <code>BeanPostProcessor</code>（操作 Bean 实例）执行——它们分别工作在两个不同的阶段。
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为 <code>@Component</code> 标注的类在"被扫描到"的那一刻就已经被实例化了。实际上扫描阶段只生成 <code>BeanDefinition</code> 并注册，真正的 <code>new</code> 要等到容器刷新流程走到"实例化单例"这一步（甚至更晚，如果是懒加载或原型 Bean）。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>混淆 <code>BeanFactoryPostProcessor</code> 和 <code>BeanPostProcessor</code>。前者操作的是 <strong>BeanDefinition（配置元数据）</strong>，在所有 Bean 实例化之前执行一次；后者操作的是 <strong>Bean 实例本身</strong>，在每个 Bean 的生命周期中穿插执行。名字像双胞胎，作用对象完全不同，是非常经典的面试题。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>元数据与实例分离：</strong>BeanDefinition 让 Spring 可以在真正创建对象之前，统一处理依赖关系、修改配置，而不用担心"创建顺序"带来的死锁式依赖问题。</li>
+    <li><strong>可扩展的处理管道：</strong>BeanDefinitionRegistryPostProcessor → BeanFactoryPostProcessor → 实例化，每一步都是可插拔的扩展点，这也是 Spring 生态里各种"魔法"（如 @ConfigurationProperties、条件装配）得以实现的地基。</li>
+    <li><strong>为下一篇做铺垫：</strong>"实例化单例 Bean"这一步具体展开，就是下一篇要讲的完整生命周期。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../ops/07-云原生与Kubernetes概览.html" class="nav-btn">← 云原生与 Kubernetes 概览</a>
+    <a href="./02-Bean的完整生命周期.html" class="nav-btn next">Bean 的完整生命周期 →</a>
+  </div>
+
+</div>
+</body>
+</html>

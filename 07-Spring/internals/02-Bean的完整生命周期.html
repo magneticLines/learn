@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bean 的完整生命周期 — IoC/AOP 源码内核</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fcd34d; }
+  p code, li code { color: #fcd34d; }
+  h2 { color: #fcd34d; border-left-color: #fcd34d; }
+  .hero .tag { color: #fcd34d; border-color: #7c5f10; }
+  .nav-btn.next { color: #fcd34d; border-color: #7c5f10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / IoC/AOP 源码内核 / Bean 的完整生命周期
+  </div>
+
+  <div class="hero">
+    <div class="tag">IoC/AOP 源码内核</div>
+    <h1>Bean 的完整生命周期</h1>
+    <p>上一篇讲到"实例化单例 Bean"是容器启动的最后一步——这一步展开来看，是一条环环相扣的链条，链条上的每一环都是 Spring 留给开发者的扩展点。</p>
+  </div>
+
+  <h2>为什么生命周期要设计得这么长</h2>
+  <p>
+    如果 Spring 只是简单地 <code>new</code> 一个对象然后塞进容器，那开发者就没有机会在"对象造好之后、真正对外提供服务之前"做点什么——比如注入依赖、校验配置、包装代理。
+    Spring 的做法是把"造一个可用的 Bean"拆解成多个明确的阶段，<strong>每个阶段之间都开放回调接口</strong>，让框架和开发者都能在合适的时机介入。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>新员工入职不是"签完合同就直接上岗"，而是：入职登记（实例化）→ 领工位电脑（属性填充）→ 被系统识别工号（Aware 回调）→ 入职培训前的材料准备（前置处理）→ 正式培训并考核合格（初始化）→ 培训后颁发工牌（后置处理，AOP 代理就发生在这里）→ 正式上岗工作（使用）→ 离职交接（销毁）。
+  </div>
+
+  <h2>完整链条</h2>
+  <div class="tree">
+    <span class="hi">1. 实例化（Instantiation）</span> —— 调用构造器，此时对象内存已分配，但属性全是默认值<br>
+    <span class="hi">2. 属性填充（Populate）</span> —— 依赖注入，把 @Autowired / &lt;property&gt; 指定的依赖设置进去<br>
+    <span class="hi">3. Aware 接口回调</span> —— BeanNameAware / BeanFactoryAware / ApplicationContextAware ...<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;让 Bean 有机会拿到自己在容器中的名字、甚至容器本身的引用<br>
+    <span class="hi">4. BeanPostProcessor.postProcessBeforeInitialization()</span> —— 初始化前置处理<br>
+    <span class="hi">5. 初始化（Initialization）</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ @PostConstruct 标注的方法<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ InitializingBean.afterPropertiesSet()<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└─ 自定义 init-method<br>
+    <span class="hi">6. BeanPostProcessor.postProcessAfterInitialization()</span> —— 初始化后置处理（<strong>AOP 代理在这里生成</strong>）<br>
+    <span class="hi">7. 使用（In Use）</span> —— Bean 正式对外提供服务，放入单例池<br>
+    <span class="hi">8. 销毁（Destruction）</span> —— 容器关闭时触发<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ @PreDestroy 标注的方法<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├─ DisposableBean.destroy()<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└─ 自定义 destroy-method
+  </div>
+
+  <h3>为什么"属性填充"和"实例化"必须分开两步</h3>
+  <p>
+    构造器只负责"分配内存 + 执行构造代码"，但 Java 语法要求构造器参数必须在调用时就确定——而 Spring 的依赖注入经常涉及<strong>循环引用</strong>（A 依赖 B、B 又依赖 A），
+    如果所有依赖都必须通过构造器注入，循环依赖就无解（下一篇会详细展开）。所以 Spring 默认走的是"先造出一个光秃秃的空对象，再通过 setter/字段反射把依赖灌进去"的两阶段方式，这也是三级缓存能生效的前提。
+  </p>
+
+  <h3>AOP 代理为什么恰好在 postProcessAfterInitialization 生成</h3>
+  <p>
+    代理的本质是"包一层"——原始对象必须先完整地初始化好（属性齐全、<code>afterPropertiesSet()</code> 跑完），代理才有意义。
+    如果在实例化阶段就生成代理，代理内部包裹的其实是个半成品对象。所以 Spring 选择在<strong>初始化完全结束之后</strong>的这个后置钩子里，判断该 Bean 是否命中某个切面的 Pointcut，命中则用代理对象替换原始对象放入容器（细节见第 4 篇）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BeanPostProcessor 接口</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">BeanPostProcessor</span> {
+    <span class="ty">Object</span> <span class="fn">postProcessBeforeInitialization</span>(<span class="ty">Object</span> bean, <span class="ty">String</span> beanName);
+    <span class="ty">Object</span> <span class="fn">postProcessAfterInitialization</span>(<span class="ty">Object</span> bean, <span class="ty">String</span> beanName);
+    <span class="com">// 返回值可以是原对象，也可以替换成一个全新的对象（代理正是靠这一点实现）</span>
+}</pre>
+  </div>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区一：</strong>以为 <code>@PostConstruct</code> 和 <code>InitializingBean.afterPropertiesSet()</code> 是互斥的两种方案随便选一个。实际上如果同时存在，<strong>@PostConstruct 先执行，afterPropertiesSet() 后执行，最后才是自定义 init-method</strong>——三者可以同时生效，顺序是固定的。
+  </div>
+  <div class="callout warn">
+    <strong>误区二：</strong>在构造函数或字段初始化时就想拿到被 @Autowired 注入的其他 Bean，结果拿到 <code>null</code>。原因是构造阶段属性还没填充，正确做法是在实现了 <code>InitializingBean</code> 或标注 <code>@PostConstruct</code> 的方法里使用注入的依赖。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"Spring Bean 的生命周期有哪些阶段？" 按"实例化 → 属性填充 → Aware 回调 → 初始化前置处理 → 初始化 → 初始化后置处理 → 销毁"这条主线回答，并强调 <strong>AOP 代理生成于 postProcessAfterInitialization</strong>，这是加分点。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>每一环都是扩展点：</strong>Aware 接口让 Bean 感知容器，BeanPostProcessor 让框架/开发者能介入任意 Bean 的初始化前后，InitializingBean 让 Bean 自己声明"准备好了"的时机。</li>
+    <li><strong>顺序不是随意的：</strong>先填充属性再初始化，是为了保证初始化逻辑能安全使用依赖；先初始化完成再生成代理，是为了保证代理包裹的是"成品"而非"半成品"。</li>
+    <li><strong>为后两篇做铺垫：</strong>属性填充阶段的循环依赖问题（第 3 篇）、以及 postProcessAfterInitialization 里生成 AOP 代理的具体机制（第 4 篇），都是在这条链条基础上的深入展开。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-BeanDefinition与容器启动流程.html" class="nav-btn">← BeanDefinition 与容器启动流程</a>
+    <a href="./03-三级缓存解决循环依赖.html" class="nav-btn next">三级缓存解决循环依赖 →</a>
+  </div>
+
+</div>
+</body>
+</html>
