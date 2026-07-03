@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>自定义 UserDetailsService — 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7f1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 安全 / 自定义 UserDetailsService
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全</div>
+    <h1>自定义 UserDetailsService</h1>
+    <p>上一篇的内存用户只能应付本地测试——生产环境的用户信息必须来自数据库，UserDetailsService 就是"去哪查用户"这一步的可插拔接口。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong><code>UserDetailsService</code></strong> 是 Spring Security 认证流程里唯一负责"根据用户名去查用户"的接口，
+    它只有一个方法：<code>UserDetails loadUserByUsername(String username)</code>。
+    默认实现（<code>InMemoryUserDetailsManager</code>）把用户写死在内存里，生产环境要自己实现这个接口，从数据库查出用户名、密码哈希、角色列表，包装成 <code>UserDetails</code> 交还给框架。
+  </p>
+
+  <div class="callout info">
+    这一步只负责"查到用户是谁、他有什么权限"，<strong>不负责比对密码是否正确</strong>——密码比对是 <code>DaoAuthenticationProvider</code> 拿到 <code>UserDetails</code> 后，配合下一篇要讲的 <code>PasswordEncoder</code> 完成的。把"查用户"和"验密码"拆成两个独立职责，正是接口抽象的意义：换数据源不影响密码校验逻辑，反之亦然。
+  </div>
+
+  <h2>UserDetails 接口封装了什么</h2>
+  <p>
+    <code>loadUserByUsername</code> 返回的 <code>UserDetails</code> 不是简单的用户 DTO，而是 Spring Security 内部认证流程需要的"标准用户视图"，主要包含四类信息：
+  </p>
+  <table>
+    <thead>
+      <tr><th>方法</th><th>含义</th><th>典型用途</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>getUsername()</code></td><td>用户名</td><td>身份标识，和请求携带的用户名比对</td></tr>
+      <tr><td><code>getPassword()</code></td><td>密码<strong>哈希</strong>（不是明文）</td><td>交给 PasswordEncoder 比对</td></tr>
+      <tr><td><code>getAuthorities()</code></td><td>权限 / 角色集合</td><td>后续 <code>hasRole</code>/<code>hasAuthority</code> 授权判断的数据来源</td></tr>
+      <tr><td><code>isAccountNonExpired()</code> 等四个布尔标志位</td><td>账号是否过期 / 锁定 / 凭证过期 / 是否启用</td><td>账号封禁、密码过期强制改密等业务场景</td></tr>
+    </tbody>
+  </table>
+
+  <h2>正例：从数据库查询用户</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>CustomUserDetailsService.java</span></div>
+    <pre><span class="ann">@Service</span>
+<span class="ann">@RequiredArgsConstructor</span>
+<span class="kw">public class</span> <span class="ty">CustomUserDetailsService</span> <span class="kw">implements</span> <span class="ty">UserDetailsService</span> <span class="punct">{</span>
+
+    <span class="com">// 复用自己的用户仓储，和业务代码共享同一张 user 表</span>
+    <span class="kw">private final</span> <span class="ty">UserRepository</span> <span class="var">userRepository</span><span class="punct">;</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">public</span> <span class="ty">UserDetails</span> <span class="fn">loadUserByUsername</span><span class="punct">(</span><span class="ty">String</span> <span class="var">username</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">UsernameNotFoundException</span> <span class="punct">{</span>
+        <span class="ty">AppUser</span> <span class="var">user</span> <span class="punct">=</span> <span class="var">userRepository</span><span class="punct">.</span><span class="fn">findByUsername</span><span class="punct">(</span><span class="var">username</span><span class="punct">)</span>
+                <span class="punct">.</span><span class="fn">orElseThrow</span><span class="punct">(() -&gt;</span>
+                    <span class="kw">new</span> <span class="ty">UsernameNotFoundException</span><span class="punct">(</span><span class="str">"用户不存在: "</span> <span class="punct">+</span> <span class="var">username</span><span class="punct">));</span>
+
+        <span class="com">// 把角色转换成 Spring Security 认识的 GrantedAuthority</span>
+        <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">GrantedAuthority</span><span class="punct">&gt;</span> <span class="var">authorities</span> <span class="punct">=</span> <span class="var">user</span><span class="punct">.</span><span class="fn">getRoles</span><span class="punct">().</span><span class="fn">stream</span><span class="punct">()</span>
+                <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="var">role</span> <span class="punct">-&gt;</span> <span class="kw">new</span> <span class="ty">SimpleGrantedAuthority</span><span class="punct">(</span><span class="str">"ROLE_"</span> <span class="punct">+</span> <span class="var">role</span><span class="punct">))</span>
+                <span class="punct">.</span><span class="fn">collect</span><span class="punct">(</span><span class="ty">Collectors</span><span class="punct">.</span><span class="fn">toList</span><span class="punct">());</span>
+
+        <span class="com">// org.springframework.security.core.userdetails.User 是官方内置的 UserDetails 实现</span>
+        <span class="kw">return new</span> <span class="ty">org.springframework.security.core.userdetails.User</span><span class="punct">(</span>
+                <span class="var">user</span><span class="punct">.</span><span class="fn">getUsername</span><span class="punct">(),</span>
+                <span class="var">user</span><span class="punct">.</span><span class="fn">getPasswordHash</span><span class="punct">(),</span>       <span class="com">// 数据库里存的是哈希，不是明文</span>
+                <span class="var">user</span><span class="punct">.</span><span class="fn">isEnabled</span><span class="punct">(),</span>            <span class="com">// enabled</span>
+                <span class="kw">true</span><span class="punct">,</span>                            <span class="com">// accountNonExpired</span>
+                <span class="kw">true</span><span class="punct">,</span>                            <span class="com">// credentialsNonExpired</span>
+                <span class="punct">!</span><span class="var">user</span><span class="punct">.</span><span class="fn">isLocked</span><span class="punct">(),</span>          <span class="com">// accountNonLocked</span>
+                <span class="var">authorities</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    只要容器里存在一个实现了 <code>UserDetailsService</code> 的 <code>@Service</code> Bean，Spring Boot 的自动配置就会检测到它，
+    <strong>不再</strong>生成上一篇讲的那个内存随机密码用户——这同样是 <code>@ConditionalOnMissingBean</code> 在起作用。
+  </p>
+
+  <h2>原理走一遍：认证流程里它处在哪一步</h2>
+  <div class="tree">
+    <span class="hi">① 用户提交用户名密码</span><br>
+    &nbsp;&nbsp;封装成 UsernamePasswordAuthenticationToken<br>
+    <br>
+    <span class="hi">② AuthenticationManager 委派给 DaoAuthenticationProvider</span><br>
+    &nbsp;&nbsp;调用 <span class="hi">UserDetailsService.loadUserByUsername(username)</span><br>
+    &nbsp;&nbsp;→ 只根据用户名查库，此时还没碰密码校验<br>
+    <br>
+    <span class="hi">③ 拿到 UserDetails 后校验密码</span><br>
+    &nbsp;&nbsp;PasswordEncoder.matches(用户输入的密码, UserDetails.getPassword())<br>
+    &nbsp;&nbsp;→ 匹配成功才生成已认证的 Authentication 对象
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>不少新手会在 <code>loadUserByUsername</code> 里顺手做密码比对，然后自己抛异常判断"密码错误"。
+    这违背了接口的单一职责——密码校验应该完全交给 <code>PasswordEncoder</code>，<code>UserDetailsService</code> 只管"查到用户就返回，查不到就抛 <code>UsernameNotFoundException</code>"。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"UserDetailsService 和 UserDetailsManager 的区别？" —— <code>UserDetailsManager</code> 是 <code>UserDetailsService</code> 的子接口，多了 <code>createUser</code>/<code>updateUser</code>/<code>deleteUser</code> 等写操作，<code>InMemoryUserDetailsManager</code> 就是它的一个实现。生产环境自定义时通常只需要实现只读的 <code>UserDetailsService</code>，用户的增删改由自己的业务代码管理。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>职责单一：</strong><code>UserDetailsService</code> 只负责"根据用户名查用户"，密码比对是下一层的事。</li>
+    <li><strong>可替换：</strong>换成从数据库、LDAP、第三方系统查用户，只需重新实现这一个接口，认证流程的其余部分完全不用动。</li>
+    <li><strong>UserDetails 是标准契约：</strong>用户名、密码哈希、权限集合、四个状态标志位，构成了框架能理解的"用户视图"。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-SpringSecurity自动配置默认行为.html" class="nav-btn">← Spring Security 自动配置的默认行为</a>
+    <a href="./03-密码编码PasswordEncoder.html" class="nav-btn next">密码编码 PasswordEncoder →</a>
+  </div>
+
+</div>
+</body>
+</html>

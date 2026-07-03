@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RSocket 四种交互模型（进阶） — 响应式编程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 响应式编程 / RSocket 四种交互模型（进阶）
+  </div>
+
+  <div class="hero">
+    <div class="tag">响应式编程</div>
+    <h1>RSocket 四种交互模型（进阶）</h1>
+    <p>本组最后一篇，介绍一个相对小众但值得知道存在的技术：HTTP 的"请求-响应"模型并不是唯一选择，RSocket 天生支持四种交互方式。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>HTTP 协议的通信模式本质上只有一种：请求-响应（Request-Response）。</strong>
+    客户端发一个请求，服务端必须返回恰好一个响应，这个假设在很多场景下并不贴合实际需求——比如你只是想"通知一下"不需要回应，或者你想"订阅一个会持续更新的数据流"。
+    工程师们过去只能在 HTTP 之上"曲线救国"（轮询、长轮询、WebSocket、SSE 分别应对不同场景，彼此互不兼容）。
+  </p>
+  <p>
+    <strong>RSocket</strong> 是一个应用层协议，从设计之初就原生支持<strong>四种</strong>交互模型，并且天然内置背压支持（呼应第 2 篇讲的背压概念），Spring Framework 提供了对它的原生支持。
+  </p>
+
+  <!-- 2. 四种模型对比表 -->
+  <h2>四种交互模型</h2>
+  <table>
+    <thead>
+      <tr><th>模型</th><th>行为</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Request-Response</strong><br>请求-响应</td>
+        <td>发一个请求，等一个响应</td>
+        <td>和 HTTP 语义等价，常规的"查一条数据"场景</td>
+      </tr>
+      <tr>
+        <td><strong>Fire-and-Forget</strong><br>发了不管</td>
+        <td>发一个请求，不等待也不关心响应</td>
+        <td>日志上报、埋点、通知类场景——发送方不需要知道对方是否处理完成</td>
+      </tr>
+      <tr>
+        <td><strong>Request-Stream</strong><br>请求-流</td>
+        <td>发一次请求，换回一个持续的数据流</td>
+        <td>订阅股票行情、订阅日志流——一次订阅，服务端持续推送</td>
+      </tr>
+      <tr>
+        <td><strong>Channel</strong><br>双向通道</td>
+        <td>双方都能持续互相发送数据流，全双工</td>
+        <td>实时协作场景，比如双向语音/视频信令交换、多人协同编辑</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="tree">
+    <span class="hi">HTTP</span>：只有 Request-Response 一种模式<br>
+    &nbsp;&nbsp;想做流式推送 → 只能用 WebSocket / SSE 这类"补丁方案"，协议层面各自独立<br>
+    <br>
+    <span class="hi">RSocket</span>：Request-Response / Fire-and-Forget / Request-Stream / Channel<br>
+    &nbsp;&nbsp;四种模型统一在同一套协议、同一条连接之上，按场景直接选用对应模型
+  </div>
+
+  <!-- 3. 简单代码示意 -->
+  <h2>Spring 中的基本用法（了解即可）</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>RSocketController.java（示意，四种模型对应的注解）</span></div>
+    <pre><span class="ann">@Controller</span>
+<span class="kw">public class</span> <span class="ty">RSocketController</span> <span class="punct">{</span>
+
+    <span class="com">// Request-Response：一次请求换一次响应，和 @GetMapping 语义类似</span>
+    <span class="ann">@MessageMapping</span><span class="punct">(</span><span class="str">"request-response"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Mono</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="fn">requestResponse</span><span class="punct">(</span><span class="ty">String</span> <span class="var">request</span><span class="punct">) { </span><span class="punct">...</span> <span class="punct">}</span>
+
+    <span class="com">// Fire-and-Forget：返回 Mono&lt;Void&gt;，调用方发完即走</span>
+    <span class="ann">@MessageMapping</span><span class="punct">(</span><span class="str">"fire-and-forget"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Mono</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="fn">fireAndForget</span><span class="punct">(</span><span class="ty">String</span> <span class="var">request</span><span class="punct">) { </span><span class="punct">...</span> <span class="punct">}</span>
+
+    <span class="com">// Request-Stream：一次请求，返回持续的 Flux 数据流</span>
+    <span class="ann">@MessageMapping</span><span class="punct">(</span><span class="str">"request-stream"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Flux</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="fn">requestStream</span><span class="punct">(</span><span class="ty">String</span> <span class="var">request</span><span class="punct">) { </span><span class="punct">...</span> <span class="punct">}</span>
+
+    <span class="com">// Channel：入参和返回值都是 Flux，双向持续通信</span>
+    <span class="ann">@MessageMapping</span><span class="punct">(</span><span class="str">"channel"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Flux</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="fn">channel</span><span class="punct">(</span><span class="ty">Flux</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">requests</span><span class="punct">) { </span><span class="punct">...</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>了解到什么程度就够了：</strong>RSocket 是一个相对新颖、相对小众的技术，绝大多数业务系统用 HTTP + WebSocket 的组合已经能覆盖所有场景。
+    这一篇的目标只是知道"RSocket 解决了 HTTP 交互模型太单一这个问题，原生支持四种交互模型且内置背压"——面试或技术选型讨论时能说清楚这个概念即可，不需要深入实践或在生产项目里落地。
+  </div>
+
+  <!-- 4. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>HTTP 天生只有请求-响应一种交互模式，流式推送等场景只能靠 WebSocket/SSE 这类"外挂方案"打补丁。</li>
+    <li>RSocket 原生支持 Request-Response / Fire-and-Forget / Request-Stream / Channel 四种交互模型，统一在同一套协议之上。</li>
+    <li>RSocket 内置背压支持，理念上和 Reactor/Reactive Streams 是同一套哲学的延伸。</li>
+    <li>这是一个进阶、小众的知识点，掌握"它解决了什么问题"这个概念层面即可，不必深入实践。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-R2DBC概览.html" class="nav-btn">← R2DBC 概览（进阶）</a>
+    <a href="../ops/01-SpringBootActuator端点.html" class="nav-btn next">下一篇:Spring Boot Actuator 端点 →</a>
+  </div>
+
+</div>
+</body>
+</html>

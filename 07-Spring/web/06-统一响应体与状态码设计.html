@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>统一响应体与状态码设计 — Web 开发与 REST</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb"><a href="../spring-roadmap.html">Spring 路线图</a> / Web 开发与 REST / 统一响应体与状态码设计</div>
+
+  <div class="hero">
+    <div class="tag">Web 开发与 REST</div>
+    <h1>统一响应体与状态码设计</h1>
+    <p>上一篇让 Controller 能返回 JSON 了，但如果每个接口返回的数据结构五花八门，前端会陷入"每个接口写一套处理逻辑"的噩梦。这一篇讲清楚如何设计一份让前端能"一招通吃"的响应结构。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>统一响应体</strong>的核心目的不是好看，而是让前端可以用<strong>一套通用的拦截器逻辑</strong>处理所有接口的返回结果——不管调用的是订单接口、用户接口还是商品接口，
+    前端只需要判断响应体里固定的 <code>code</code> 字段，就能决定走"成功分支"还是"失败分支"，不需要为每个接口单独写不同的判断逻辑。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>快递单号查询系统。不管你寄的是文件还是包裹，物流公司都用同一套"已揽收 / 运输中 / 已签收 / 异常"状态码体系。如果每个快递公司自己定义一套状态描述，你的快递查询 App 就要为每家公司单独适配，维护成本爆炸。
+  </div>
+
+  <h2>反例：每个接口自成一派</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderController.java（反例 — 响应结构不统一）</span></div>
+    <pre><span class="ann">@RestController</span>
+<span class="ann">@RequestMapping</span><span class="punct">(</span><span class="str">"/api/orders"</span><span class="punct">)</span>
+<span class="kw">public class</span> <span class="ty">OrderController</span> <span class="punct">{</span>
+
+    <span class="ann">@GetMapping</span><span class="punct">(</span><span class="str">"/{id}"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">OrderDTO</span> <span class="fn">getOrder</span><span class="punct">(</span><span class="ann">@PathVariable</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="var">orderService</span><span class="punct">.</span><span class="fn">findById</span><span class="punct">(</span><span class="var">id</span><span class="punct">);</span>
+        <span class="com">// 裸露的业务对象，成功时长这样：{"id":1,"amount":99.9}</span>
+        <span class="com">// 那失败时呢？订单不存在应该返回什么？前端完全猜不到</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@PostMapping</span>
+    <span class="kw">public void</span> <span class="fn">createOrder</span><span class="punct">(</span><span class="ann">@RequestBody</span> <span class="ty">OrderDTO</span> <span class="var">dto</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">dto</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">() <=</span> <span class="num">0</span><span class="punct">) {</span>
+            <span class="kw">throw new</span> <span class="ty">ResponseStatusException</span><span class="punct">(</span><span class="ty">HttpStatus</span><span class="punct">.</span><span class="var">BAD_REQUEST</span><span class="punct">,</span> <span class="str">"金额非法"</span><span class="punct">);</span>
+            <span class="com">// 这里抛 400，报错信息格式又和上面 GET 接口不一样</span>
+        <span class="punct">}</span>
+        <span class="var">orderService</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="var">dto</span><span class="punct">);</span>
+        <span class="com">// 成功时啥也不返回，200 空响应体</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>这段代码里，"成功"和"失败"分别长什么样，完全取决于写这个方法的程序员当天心情。前端要处理这个模块的接口，得先逐个读源码或者文档，猜每个接口失败时到底返回什么结构——多人协作的项目里，这种混乱会随着接口数量线性放大。</p>
+
+  <h2>正例：统一响应包装类</h2>
+  <p>设计一个泛型响应类 <code>Result&lt;T&gt;</code>，所有接口无论成功失败都返回这个结构，用静态工厂方法屏蔽构造细节：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Result.java（通用响应包装）</span></div>
+    <pre><span class="ann">@Data</span>
+<span class="kw">public class</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt; {</span>
+
+    <span class="kw">private int</span> <span class="var">code</span><span class="punct">;</span>       <span class="com">// 业务状态码，0 或 200 代表成功，其余代表各类失败</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">message</span><span class="punct">;</span> <span class="com">// 给人看的提示信息，失败时用于前端弹窗展示</span>
+    <span class="kw">private</span> <span class="ty">T</span> <span class="var">data</span><span class="punct">;</span>         <span class="com">// 真正的业务数据，失败时通常为 null</span>
+
+    <span class="kw">private</span> <span class="fn">Result</span><span class="punct">(</span><span class="kw">int</span> <span class="var">code</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">message</span><span class="punct">,</span> <span class="ty">T</span> <span class="var">data</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">code</span> <span class="punct">=</span> <span class="var">code</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">message</span> <span class="punct">=</span> <span class="var">message</span><span class="punct">;</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">data</span> <span class="punct">=</span> <span class="var">data</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 静态工厂方法：调用方不需要关心构造细节，语义一目了然</span>
+    <span class="kw">public static</span> <span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="fn">success</span><span class="punct">(</span><span class="ty">T</span> <span class="var">data</span><span class="punct">) {</span>
+        <span class="kw">return new</span> <span class="ty">Result</span><span class="punct">&lt;&gt;(</span><span class="num">200</span><span class="punct">,</span> <span class="str">"success"</span><span class="punct">,</span> <span class="var">data</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">public static</span> <span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">T</span><span class="punct">&gt;</span> <span class="fn">fail</span><span class="punct">(</span><span class="kw">int</span> <span class="var">code</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">message</span><span class="punct">) {</span>
+        <span class="kw">return new</span> <span class="ty">Result</span><span class="punct">&lt;&gt;(</span><span class="var">code</span><span class="punct">,</span> <span class="var">message</span><span class="punct">,</span> <span class="kw">null</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderController.java（正例 — 统一响应结构）</span></div>
+    <pre><span class="ann">@RestController</span>
+<span class="ann">@RequestMapping</span><span class="punct">(</span><span class="str">"/api/orders"</span><span class="punct">)</span>
+<span class="kw">public class</span> <span class="ty">OrderController</span> <span class="punct">{</span>
+
+    <span class="ann">@GetMapping</span><span class="punct">(</span><span class="str">"/{id}"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">OrderDTO</span><span class="punct">&gt;</span> <span class="fn">getOrder</span><span class="punct">(</span><span class="ann">@PathVariable</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">) {</span>
+        <span class="ty">OrderDTO</span> <span class="var">order</span> <span class="punct">=</span> <span class="var">orderService</span><span class="punct">.</span><span class="fn">findById</span><span class="punct">(</span><span class="var">id</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">success</span><span class="punct">(</span><span class="var">order</span><span class="punct">);</span>
+        <span class="com">// {"code":200,"message":"success","data":{"id":1,"amount":99.9}}</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@PostMapping</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="fn">createOrder</span><span class="punct">(</span><span class="ann">@RequestBody</span> <span class="ty">OrderDTO</span> <span class="var">dto</span><span class="punct">) {</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">dto</span><span class="punct">.</span><span class="fn">getAmount</span><span class="punct">() <=</span> <span class="num">0</span><span class="punct">) {</span>
+            <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">4001</span><span class="punct">,</span> <span class="str">"金额非法"</span><span class="punct">);</span>
+            <span class="com">// {"code":4001,"message":"金额非法","data":null}</span>
+        <span class="punct">}</span>
+        <span class="var">orderService</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="var">dto</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">success</span><span class="punct">(</span><span class="kw">null</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>前端拦截器（伪代码 — 一套逻辑处理所有接口）</span></div>
+    <pre><span class="com">// axios 响应拦截器，所有接口共用这一份逻辑</span>
+<span class="var">axios</span><span class="punct">.</span><span class="var">interceptors</span><span class="punct">.</span><span class="var">response</span><span class="punct">.</span><span class="fn">use</span><span class="punct">(</span><span class="var">response</span> <span class="punct">=></span> <span class="punct">{</span>
+    <span class="kw">const</span> <span class="punct">{</span> <span class="var">code</span><span class="punct">,</span> <span class="var">message</span><span class="punct">,</span> <span class="var">data</span> <span class="punct">}</span> <span class="punct">=</span> <span class="var">response</span><span class="punct">.</span><span class="var">data</span><span class="punct">;</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">code</span> <span class="punct">===</span> <span class="num">200</span><span class="punct">) {</span> <span class="kw">return</span> <span class="var">data</span><span class="punct">;</span> <span class="punct">}</span>       <span class="com">// 成功：直接把 data 抛给业务代码</span>
+    <span class="var">message</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="var">message</span><span class="punct">);</span>                    <span class="com">// 失败：统一弹窗提示，业务代码无需关心</span>
+    <span class="kw">return</span> <span class="ty">Promise</span><span class="punct">.</span><span class="fn">reject</span><span class="punct">(</span><span class="var">message</span><span class="punct">);</span>
+<span class="punct">});</span></pre>
+  </div>
+
+  <h2>取舍讨论：HTTP 状态码 vs 自定义业务码</h2>
+  <p>上面的例子里，HTTP 层永远返回 200，真正的成功/失败语义放在响应体的 <code>code</code> 字段里。这是业界一直存在争议的两种流派，没有绝对的对错，只有取舍：</p>
+
+  <table>
+    <thead><tr><th>流派</th><th>做法</th><th>优点</th><th>缺点</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>严格 REST 语义</strong></td>
+        <td>用标准 HTTP 状态码表达结果：200 成功、400 参数错误、404 资源不存在、500 服务端异常</td>
+        <td>符合 REST 规范；网关、监控系统、CDN 可以直接基于状态码做熔断/告警/缓存策略；对外开放 API 更专业</td>
+        <td>前端要针对不同状态码写不同分支处理；浏览器/部分 HTTP 客户端库对非 2xx 响应默认当成"错误"处理，需要额外配置才能拿到响应体里的详细信息</td>
+      </tr>
+      <tr>
+        <td><strong>自定义业务码</strong></td>
+        <td>HTTP 层永远 200，成功/失败靠响应体里的 <code>code</code> 字段区分</td>
+        <td>前端统一拦截器一套逻辑处理所有接口，业务代码里不需要关心 HTTP 细节；调试时 Network 面板不会出现一堆"报错"的红色请求，视觉上更清爽</td>
+        <td>对网关层、APM 监控不友好——监控系统只看 HTTP 状态码，会把大量业务失败误判为"全部成功"；不符合 REST 规范，语义上"越权"了 HTTP 协议本该表达的内容</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>实践建议：</strong>国内中后台/移动端项目里"自定义业务码 + HTTP 永远 200"更常见，因为前端团队话语权大、更看重开发效率；
+    对外开放的公有 API（尤其面向国际开发者）则更倾向遵循标准 HTTP 语义。<strong>面试时能说出这个取舍权衡，比死记硬背某一种"标准答案"更加分。</strong>
+    另外注意：即使采用自定义业务码，像 401（未登录）、403（无权限）这类横切关注点，很多项目仍然会用真实的 HTTP 状态码表达，因为网关层的鉴权拦截往往发生在业务代码之前，天然就该用标准状态码。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>统一结构让前端可以复用一套处理逻辑：</strong>不用为每个接口单独写成功/失败判断代码。</li>
+    <li><strong>用静态工厂方法封装构造细节：</strong><code>Result.success()</code> / <code>Result.fail()</code> 让 Controller 代码语义清晰，不暴露内部字段拼装过程。</li>
+    <li><strong>HTTP 状态码 vs 业务码没有标准答案：</strong>要结合团队习惯、是否对外开放、监控体系成熟度综合判断，关键是团队内部统一并写进规范。</li>
+    <li><strong>这只是"手工返回 Result"的阶段：</strong>下一篇会看到，真正规模化的项目会把"异常自动转成 Result"这件事交给全局异常处理器统一完成，Controller 里可以直接抛异常。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-RestController与ResponseBody.html" class="nav-btn">← @RestController 与 @ResponseBody</a>
+    <a href="./07-全局异常处理.html" class="nav-btn next">全局异常处理 →</a>
+  </div>
+
+</div>
+</body>
+</html>

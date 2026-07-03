@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>无状态会话与 JWT 整合（承接 04-工程实战）— 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7f1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 安全 / 无状态会话与 JWT 整合（承接 04-工程实战）
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全</div>
+    <h1>无状态会话与 JWT 整合（承接 04-工程实战）</h1>
+    <p>前面几篇讲的 formLogin + Session 是有状态认证——真正的前后端分离项目通常要换成 JWT，这一篇聚焦"在 Spring Security 里具体怎么接入"。</p>
+  </div>
+
+  <h2>承接：JWT 原理回顾</h2>
+  <p>
+    JWT（JSON Web Token）本身的结构、签名原理、为什么能做到"无状态"，在 <a href="../../04-工程实战/auth/01-JWT.html">04-工程实战/auth/01-JWT.html</a> 已经详细讲过，这里不重复展开。
+    核心结论回顾一句话：<strong>JWT 把用户身份信息和签名一起编码进一个字符串里，服务端不需要存 Session，只要验证签名没被篡改，就能相信 Token 里的内容</strong>——这正是"无状态"三个字的含义：服务端不再需要为每个登录用户保存一份会话状态。
+  </p>
+  <div class="callout info">
+    这一篇要解决的问题是：Spring Security 默认的认证机制是围绕 <strong>Session</strong> 设计的（登录成功后把 <code>Authentication</code> 存进 <code>HttpSession</code>，后续请求靠 <code>JSESSIONID</code> Cookie 识别身份）。要换成 JWT，需要关掉这套默认机制，自己在过滤器链里插入一段"解析 JWT、还原登录状态"的逻辑。
+  </div>
+
+  <h2>第一步：关闭 Session 机制</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>SecurityConfig.java（声明无状态）</span></div>
+    <pre><span class="ann">@Configuration</span>
+<span class="kw">public class</span> <span class="ty">SecurityConfig</span> <span class="punct">{</span>
+
+    <span class="ann">@Bean</span>
+    <span class="kw">public</span> <span class="ty">SecurityFilterChain</span> <span class="fn">filterChain</span><span class="punct">(</span><span class="ty">HttpSecurity</span> <span class="var">http</span><span class="punct">,</span>
+                                           <span class="ty">JwtAuthenticationFilter</span> <span class="var">jwtFilter</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="var">http</span>
+            <span class="com">// 关键一：关闭 CSRF（下一篇详细讲原因），JWT 场景下不需要</span>
+            <span class="punct">.</span><span class="fn">csrf</span><span class="punct">(</span><span class="ty">AbstractHttpConfigurer</span><span class="punct">::</span><span class="fn">disable</span><span class="punct">)</span>
+            <span class="com">// 关键二：告诉容器不要创建、也不要使用 HttpSession</span>
+            <span class="punct">.</span><span class="fn">sessionManagement</span><span class="punct">(</span><span class="var">session</span> <span class="punct">-&gt;</span> <span class="var">session</span>
+                <span class="punct">.</span><span class="fn">sessionCreationPolicy</span><span class="punct">(</span><span class="ty">SessionCreationPolicy</span><span class="punct">.</span><span class="var">STATELESS</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">authorizeHttpRequests</span><span class="punct">(</span><span class="var">auth</span> <span class="punct">-&gt;</span> <span class="var">auth</span>
+                <span class="punct">.</span><span class="fn">requestMatchers</span><span class="punct">(</span><span class="str">"/api/auth/login"</span><span class="punct">).</span><span class="fn">permitAll</span><span class="punct">()</span>
+                <span class="punct">.</span><span class="fn">anyRequest</span><span class="punct">().</span><span class="fn">authenticated</span><span class="punct">())</span>
+            <span class="com">// 关键三：把自定义的 JWT 过滤器插入到框架默认认证过滤器之前</span>
+            <span class="punct">.</span><span class="fn">addFilterBefore</span><span class="punct">(</span><span class="var">jwtFilter</span><span class="punct">,</span> <span class="ty">UsernamePasswordAuthenticationFilter</span><span class="punct">.</span><span class="kw">class</span><span class="punct">);</span>
+
+        <span class="kw">return</span> <span class="var">http</span><span class="punct">.</span><span class="fn">build</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    <code>SessionCreationPolicy.STATELESS</code> 意味着 Spring Security <strong>永远不会</strong>调用 <code>request.getSession()</code> 去创建 Session，也不会去读已存在的 Session——每一次请求都被当成"全新的、未知身份"，必须靠请求本身携带的凭证（也就是 JWT）重新证明身份。
+  </p>
+
+  <h2>第二步：自定义过滤器解析 JWT</h2>
+  <p>
+    <code>OncePerRequestFilter</code> 是 Spring 提供的一个基类，保证同一个请求在一次转发链路里<strong>只会被这个过滤器处理一次</strong>（避免 forward/include 场景下重复执行）。
+    在这里解析请求头里的 JWT，验证签名通过后，手动构造一个 <code>Authentication</code> 对象塞进 <code>SecurityContext</code>——效果等价于"告诉框架：这个请求已经登录过了，登录的人是谁"。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JwtAuthenticationFilter.java</span></div>
+    <pre><span class="ann">@Component</span>
+<span class="ann">@RequiredArgsConstructor</span>
+<span class="kw">public class</span> <span class="ty">JwtAuthenticationFilter</span> <span class="kw">extends</span> <span class="ty">OncePerRequestFilter</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">JwtTokenProvider</span> <span class="var">jwtTokenProvider</span><span class="punct">;</span>       <span class="com">// 校验签名、解析 claims，复用 JWT 篇讲过的工具类</span>
+    <span class="kw">private final</span> <span class="ty">UserDetailsService</span> <span class="var">userDetailsService</span><span class="punct">;</span>
+
+    <span class="ann">@Override</span>
+    <span class="kw">protected void</span> <span class="fn">doFilterInternal</span><span class="punct">(</span><span class="ty">HttpServletRequest</span> <span class="var">request</span><span class="punct">,</span>
+                                    <span class="ty">HttpServletResponse</span> <span class="var">response</span><span class="punct">,</span>
+                                    <span class="ty">FilterChain</span> <span class="var">chain</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">ServletException</span><span class="punct">,</span> <span class="ty">IOException</span> <span class="punct">{</span>
+
+        <span class="ty">String</span> <span class="var">header</span> <span class="punct">=</span> <span class="var">request</span><span class="punct">.</span><span class="fn">getHeader</span><span class="punct">(</span><span class="str">"Authorization"</span><span class="punct">);</span>
+
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">header</span> <span class="punct">!=</span> <span class="kw">null</span> <span class="punct">&amp;&amp;</span> <span class="var">header</span><span class="punct">.</span><span class="fn">startsWith</span><span class="punct">(</span><span class="str">"Bearer "</span><span class="punct">)) {</span>
+            <span class="ty">String</span> <span class="var">token</span> <span class="punct">=</span> <span class="var">header</span><span class="punct">.</span><span class="fn">substring</span><span class="punct">(</span><span class="num">7</span><span class="punct">);</span>
+
+            <span class="kw">if</span> <span class="punct">(</span><span class="var">jwtTokenProvider</span><span class="punct">.</span><span class="fn">validate</span><span class="punct">(</span><span class="var">token</span><span class="punct">)) {</span>
+                <span class="ty">String</span> <span class="var">username</span> <span class="punct">=</span> <span class="var">jwtTokenProvider</span><span class="punct">.</span><span class="fn">getUsername</span><span class="punct">(</span><span class="var">token</span><span class="punct">);</span>
+                <span class="ty">UserDetails</span> <span class="var">userDetails</span> <span class="punct">=</span> <span class="var">userDetailsService</span><span class="punct">.</span><span class="fn">loadUserByUsername</span><span class="punct">(</span><span class="var">username</span><span class="punct">);</span>
+
+                <span class="com">// 手动构造已认证的 Authentication，塞进当前线程的 SecurityContext</span>
+                <span class="ty">UsernamePasswordAuthenticationToken</span> <span class="var">authentication</span> <span class="punct">=</span>
+                    <span class="kw">new</span> <span class="ty">UsernamePasswordAuthenticationToken</span><span class="punct">(</span>
+                        <span class="var">userDetails</span><span class="punct">,</span> <span class="kw">null</span><span class="punct">,</span> <span class="var">userDetails</span><span class="punct">.</span><span class="fn">getAuthorities</span><span class="punct">());</span>
+
+                <span class="ty">SecurityContextHolder</span><span class="punct">.</span><span class="fn">getContext</span><span class="punct">().</span><span class="fn">setAuthentication</span><span class="punct">(</span><span class="var">authentication</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+
+        <span class="var">chain</span><span class="punct">.</span><span class="fn">doFilter</span><span class="punct">(</span><span class="var">request</span><span class="punct">,</span> <span class="var">response</span><span class="punct">);</span>  <span class="com">// 无论是否认证成功都要放行给下一个过滤器</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="tree">
+    <span class="hi">STATELESS 模式下每个请求的处理流程</span><br>
+    请求到达 → JwtAuthenticationFilter 解析 Authorization 头<br>
+    &nbsp;&nbsp;→ Token 合法：SecurityContextHolder 里放入 Authentication（当前请求"临时登录"）<br>
+    &nbsp;&nbsp;→ Token 缺失/非法：SecurityContext 里没有 Authentication，继续走后续流程<br>
+    → authorizeHttpRequests 检查 SecurityContext 里有没有已认证的用户<br>
+    &nbsp;&nbsp;→ 没有 → 401；有 → 放行进入 Controller<br>
+    → <span class="hi">请求处理完毕，SecurityContext 随线程结束自动清空，下一个请求重新来过</span>
+  </div>
+
+  <div class="callout warn">
+    <strong>常见坑：</strong>忘记在 <code>authorizeHttpRequests</code> 里放行登录接口本身（比如 <code>/api/auth/login</code>），导致"要登录才能访问登录接口"的死循环；
+    或者过滤器抛出的异常没有被正确处理，导致 Token 过期时返回的是 500 而不是清晰的 401，前端无法据此触发重新登录逻辑。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>STATELESS 是开关：</strong>一行 <code>sessionCreationPolicy(STATELESS)</code> 就让 Spring Security 彻底放弃 Session 机制。</li>
+    <li><strong>自定义过滤器是桥梁：</strong>JWT 校验的产出（用户名/权限）通过手动构造 <code>Authentication</code> 对象，"翻译"成框架认识的格式放进 <code>SecurityContext</code>。</li>
+    <li><strong>过滤器顺序很关键：</strong><code>addFilterBefore</code> 必须插在 <code>UsernamePasswordAuthenticationFilter</code> 之前，保证后续的授权检查能读到已经填好的登录状态。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-方法级安全PreAuthorize.html" class="nav-btn">← 方法级安全 @PreAuthorize（进阶）</a>
+    <a href="./07-CORS跨域配置.html" class="nav-btn next">CORS 跨域配置 →</a>
+  </div>
+
+</div>
+</body>
+</html>

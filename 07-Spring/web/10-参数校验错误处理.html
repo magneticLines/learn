@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>参数校验错误处理 — Web 开发与 REST</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb"><a href="../spring-roadmap.html">Spring 路线图</a> / Web 开发与 REST / 参数校验错误处理</div>
+
+  <div class="hero">
+    <div class="tag">Web 开发与 REST</div>
+    <h1>参数校验错误处理</h1>
+    <p>上一篇让 @Valid 帮我们自动拦下了不合法的数据，但它抛出的异常长什么样？前端能直接用吗？这一篇把校验失败对接到第 7 篇讲过的全局异常处理器上，产出真正对前端友好的错误响应。</p>
+  </div>
+
+  <!-- 1. 承接上文 -->
+  <h2>问题：校验失败的默认响应很不友好</h2>
+  <p>
+    上一篇讲到，<code>@Valid</code> 校验不通过时 Spring 会抛出 <code>MethodArgumentNotValidException</code>。
+    如果项目里没有专门处理这个异常，Spring Boot 的默认异常处理机制会接管它，返回类似下面这样的响应：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>默认错误响应（未处理时）</span></div>
+    <pre><span class="punct">{</span>
+  <span class="str">"timestamp"</span><span class="punct">:</span> <span class="str">"2026-07-03T02:00:00.000+00:00"</span><span class="punct">,</span>
+  <span class="str">"status"</span><span class="punct">:</span> <span class="num">400</span><span class="punct">,</span>
+  <span class="str">"error"</span><span class="punct">:</span> <span class="str">"Bad Request"</span><span class="punct">,</span>
+  <span class="str">"trace"</span><span class="punct">:</span> <span class="str">"org.springframework.web.bind.MethodArgumentNotValidException: ...(一大段内部堆栈)..."</span><span class="punct">,</span>
+  <span class="str">"message"</span><span class="punct">:</span> <span class="str">"Validation failed for object='userCreateDTO'. Error count: 2"</span><span class="punct">,</span>
+  <span class="str">"path"</span><span class="punct">:</span> <span class="str">"/api/users"</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h3>这个响应对前端来说几乎没法用</h3>
+  <ul>
+    <li><strong>暴露内部实现：</strong>完整的异常堆栈（<code>trace</code> 字段）直接暴露给客户端，是安全隐患。</li>
+    <li><strong>没有结构化的字段级信息：</strong>前端要在表单里把"用户名不能为空"标红显示在用户名输入框下面，但响应里根本没有"哪个字段、什么错误"这种结构化数据，只有一句笼统的英文提示。</li>
+    <li><strong>响应格式和项目其他接口不一致：</strong>正常接口用的是第 6 篇讲过的统一响应体 <code>Result</code>，而这个错误响应完全是另一套格式，前端要为它单独写一套解析逻辑。</li>
+  </ul>
+
+  <!-- 2. 正例：接入全局异常处理器 -->
+  <h2>正例：用全局异常处理器接管校验异常</h2>
+  <p>
+    思路很直接：复用第 7 篇搭好的 <code>@RestControllerAdvice</code> 全局异常处理器，专门给 <code>MethodArgumentNotValidException</code> 加一个
+    <code>@ExceptionHandler</code>，把异常里的字段错误信息提取出来，用 <code>Result</code> 统一包装后返回。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>GlobalExceptionHandler.java（在第 7 篇基础上新增一个处理方法）</span></div>
+    <pre><span class="ann">@RestControllerAdvice</span>
+<span class="kw">public class</span> <span class="ty">GlobalExceptionHandler</span> <span class="punct">{</span>
+
+    <span class="com">// 第 7 篇已有：处理自定义业务异常</span>
+    <span class="ann">@ExceptionHandler</span><span class="punct">(</span><span class="ty">BusinessException</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="fn">handleBusinessException</span><span class="punct">(</span><span class="ty">BusinessException</span> <span class="var">ex</span><span class="punct">) {</span>
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="var">ex</span><span class="punct">.</span><span class="fn">getCode</span><span class="punct">(),</span> <span class="var">ex</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 新增：专门处理 @Valid / @RequestBody 校验失败</span>
+    <span class="ann">@ExceptionHandler</span><span class="punct">(</span><span class="ty">MethodArgumentNotValidException</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">FieldErrorVO</span><span class="punct">&gt;&gt;</span> <span class="fn">handleValidException</span><span class="punct">(</span><span class="ty">MethodArgumentNotValidException</span> <span class="var">ex</span><span class="punct">) {</span>
+        <span class="com">// BindingResult 里装着这次校验所有失败的字段信息</span>
+        <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">FieldErrorVO</span><span class="punct">&gt;</span> <span class="var">errors</span> <span class="punct">=</span> <span class="var">ex</span><span class="punct">.</span><span class="fn">getBindingResult</span><span class="punct">()</span>
+                <span class="punct">.</span><span class="fn">getFieldErrors</span><span class="punct">()</span>   <span class="com">// List&lt;FieldError&gt;，每个元素对应一个校验失败的字段</span>
+                <span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
+                <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="var">fieldError</span> <span class="punct">-&gt;</span> <span class="kw">new</span> <span class="ty">FieldErrorVO</span><span class="punct">(</span>
+                        <span class="var">fieldError</span><span class="punct">.</span><span class="fn">getField</span><span class="punct">(),</span>            <span class="com">// 出错的字段名，如 "email"</span>
+                        <span class="var">fieldError</span><span class="punct">.</span><span class="fn">getDefaultMessage</span><span class="punct">()</span> <span class="com">// 注解上 message 属性的内容</span>
+                <span class="punct">))</span>
+                <span class="punct">.</span><span class="fn">toList</span><span class="punct">();</span>
+
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">400</span><span class="punct">,</span> <span class="str">"参数校验失败"</span><span class="punct">,</span> <span class="var">errors</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 字段错误信息载体，专门给前端表单定位错误用</span>
+<span class="kw">public record</span> <span class="ty">FieldErrorVO</span><span class="punct">(</span><span class="ty">String</span> <span class="var">field</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">message</span><span class="punct">) {}</span></pre>
+  </div>
+
+  <p>接管之后，同样的校验失败场景，前端拿到的响应变成了这样——和项目里其他接口用同一套 <code>Result</code> 外壳，还带上了结构化的字段级信息：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>处理后的错误响应</span></div>
+    <pre><span class="punct">{</span>
+  <span class="str">"code"</span><span class="punct">:</span> <span class="num">400</span><span class="punct">,</span>
+  <span class="str">"message"</span><span class="punct">:</span> <span class="str">"参数校验失败"</span><span class="punct">,</span>
+  <span class="str">"data"</span><span class="punct">:</span> <span class="punct">[</span>
+    <span class="punct">{</span> <span class="str">"field"</span><span class="punct">:</span> <span class="str">"username"</span><span class="punct">,</span> <span class="str">"message"</span><span class="punct">:</span> <span class="str">"用户名不能为空"</span> <span class="punct">},</span>
+    <span class="punct">{</span> <span class="str">"field"</span><span class="punct">:</span> <span class="str">"email"</span><span class="punct">,</span>    <span class="str">"message"</span><span class="punct">:</span> <span class="str">"邮箱格式不正确"</span> <span class="punct">}</span>
+  <span class="punct">]</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>前端拿到 <code>data</code> 数组后，遍历一下就能把每条错误精确标注到对应的输入框下面——这才是校验失败信息真正该有的样子。</p>
+
+  <!-- 3. 流程图 -->
+  <h2>整体流程走一遍</h2>
+  <div class="tree">
+    <span class="hi">① 请求到达</span> → DTO 绑定 → @Valid 触发校验<br>
+    <span class="hi">② 校验失败</span> → 抛出 MethodArgumentNotValidException<br>
+    <span class="hi">③ 全局异常处理器拦截</span> → @RestControllerAdvice 里匹配到对应 @ExceptionHandler<br>
+    &nbsp;&nbsp;遍历 BindingResult.getFieldErrors()，组装 FieldErrorVO 列表<br>
+    <span class="hi">④ 统一响应体包装</span> → Result.fail(400, "参数校验失败", errors)<br>
+    <span class="hi">⑤ 前端收到结构化 JSON</span> → 按 field 精确定位到表单控件展示 message
+  </div>
+
+  <!-- 4. 陷阱 -->
+  <h2>生产环境常见坑</h2>
+
+  <h3>坑 1：忘记自定义 message，返回一堆英文默认提示</h3>
+  <div class="callout warn">
+    如果注解不写 <code>message</code> 属性，比如只写 <code>@NotBlank</code> 而不是 <code>@NotBlank(message = "用户名不能为空")</code>，
+    <code>getDefaultMessage()</code> 拿到的会是 Hibernate Validator 内置的英文默认提示，例如 <code>"must not be blank"</code>——
+    这种提示直接展示给中文用户体验很差。<strong>凡是校验注解，都应该显式指定 message。</strong>
+  </div>
+
+  <h3>坑 2：BindingResult 参数 vs 全局异常处理，两种处理方式的取舍</h3>
+  <p>
+    还有一种更"手动"的处理方式：在 Controller 方法参数里，紧跟在 <code>@Valid</code> 校验对象后面直接声明一个 <code>BindingResult</code> 参数。
+    这样 Spring <strong>不会抛出异常</strong>，而是把校验错误收集进这个 <code>BindingResult</code>，由你自己在方法体里手动判断并处理：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>手动处理 BindingResult（对比写法）</span></div>
+    <pre><span class="ann">@PostMapping</span>
+<span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="fn">createUser</span><span class="punct">(</span><span class="ann">@Valid</span> <span class="ann">@RequestBody</span> <span class="ty">UserCreateDTO</span> <span class="var">dto</span><span class="punct">,</span>
+                                <span class="ty">BindingResult</span> <span class="var">bindingResult</span><span class="punct">) {</span> <span class="com">// 必须紧跟在校验对象后面</span>
+    <span class="kw">if</span> <span class="punct">(</span><span class="var">bindingResult</span><span class="punct">.</span><span class="fn">hasErrors</span><span class="punct">()) {</span>
+        <span class="com">// 需要在这里手动组装错误信息并返回，异常根本不会被抛出</span>
+        <span class="ty">String</span> <span class="var">msg</span> <span class="punct">=</span> <span class="var">bindingResult</span><span class="punct">.</span><span class="fn">getFieldError</span><span class="punct">().</span><span class="fn">getDefaultMessage</span><span class="punct">();</span>
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">400</span><span class="punct">,</span> <span class="var">msg</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">success</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>方式</th><th>触发机制</th><th>优点</th><th>缺点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>全局异常处理器</strong><br>（推荐）</td>
+        <td>校验失败自动抛异常，全局统一拦截</td>
+        <td>业务代码零侵入；所有接口错误格式统一；集中维护</td>
+        <td>需要提前搭好 @RestControllerAdvice 基础设施</td>
+      </tr>
+      <tr>
+        <td><strong>BindingResult 手动处理</strong></td>
+        <td>不抛异常，错误收集进参数对象</td>
+        <td>可以在方法体里做更灵活的定制判断（比如结合业务状态决定要不要继续走）</td>
+        <td>每个方法都要重复写 if 判断和错误处理逻辑，容易漏写；违背声明式校验的初衷</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"@Valid 校验失败后怎么统一处理？"——标准答案就是本篇讲的这套：全局异常处理器捕获 <code>MethodArgumentNotValidException</code>，
+    遍历 <code>BindingResult.getFieldErrors()</code> 组装结构化响应。能进一步说出 <code>BindingResult</code> 手动模式作为对比，会显得对细节掌握更扎实。
+  </div>
+
+  <!-- 5. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>统一出口：</strong>所有校验失败都走同一个全局异常处理器，响应格式和其他业务异常保持一致，前端只需一套解析逻辑。</li>
+    <li><strong>结构化：</strong>把字段名和错误信息拆开返回，前端可以精确地把错误定位到具体输入框，而不是弹一个笼统的提示框。</li>
+    <li><strong>业务代码零侵入：</strong>Controller 方法体里不需要任何 if 判断，校验和业务逻辑彻底解耦。</li>
+    <li><strong>message 属性不能省：</strong>每个校验注解都应该显式写中文提示，否则用户看到的是 Hibernate Validator 内置的英文默认消息。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./09-BeanValidation数据校验.html" class="nav-btn">← Bean Validation 数据校验</a>
+    <a href="./11-Jackson序列化定制.html" class="nav-btn next">Jackson 序列化定制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

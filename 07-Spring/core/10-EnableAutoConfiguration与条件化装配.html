@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>@EnableAutoConfiguration 与条件化装配 — IoC 核心与自动配置</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #6db33f; }
+  p code, li code { color: #6db33f; }
+  h2 { color: #6db33f; border-left-color: #6db33f; }
+  .hero .tag { color: #6db33f; border-color: #1e3a2f; }
+  .nav-btn.next { color: #6db33f; border-color: #1e3a2f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / IoC 核心与自动配置 / @EnableAutoConfiguration 与条件化装配
+  </div>
+
+  <div class="hero">
+    <div class="tag">IoC 核心与自动配置</div>
+    <h1>@EnableAutoConfiguration 与条件化装配</h1>
+    <p>本组的重点：拆开"约定优于配置"这句口号背后的真实机制——Spring Boot 到底怎么知道该帮你配哪些 Bean。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>自动配置的本质是：容器启动时批量加载一份"候选配置类清单"，然后逐个用条件注解判断"要不要真正生效"。</strong>
+    这份清单是静态的、写死在 jar 包里的文本文件；真正决定某个配置类生不生效的，是运行时的条件判断（下一篇细讲）。
+  </p>
+
+  <h2>触发入口：@EnableAutoConfiguration</h2>
+  <p>
+    第 5 篇讲过，<code>@SpringBootApplication</code> 内部组合了 <code>@EnableAutoConfiguration</code>。这个注解真正做的事情，是注册了一个特殊的组件
+    <code>AutoConfigurationImportSelector</code>，容器启动扫描到它时，会触发"加载自动配置候选类清单"的逻辑。
+  </p>
+
+  <h2>清单存在哪：AutoConfiguration.imports</h2>
+  <p>
+    Spring Boot 3 开始，这份清单的位置是每个 jar 包里的固定路径：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports（片段）</span></div>
+    <pre>org.springframework.boot.autoconfigure.web.servlet.<span class="ty">DispatcherServletAutoConfiguration</span>
+org.springframework.boot.autoconfigure.web.servlet.<span class="ty">WebMvcAutoConfiguration</span>
+org.springframework.boot.autoconfigure.jackson.<span class="ty">JacksonAutoConfiguration</span>
+org.springframework.boot.autoconfigure.jdbc.<span class="ty">DataSourceAutoConfiguration</span>
+org.springframework.boot.autoconfigure.orm.jpa.<span class="ty">HibernateJpaAutoConfiguration</span>
+<span class="com">... 还有上百个 XxxAutoConfiguration</span></pre>
+  </div>
+  <p>
+    这就是一份纯文本文件，每行一个全限定类名。容器启动时会扫描 classpath 下<strong>所有 jar 包里</strong>符合这个路径的文件，把内容全部汇总成一份完整的候选清单——
+    这也是为什么"只要引入某个 Starter 依赖，相关的自动配置就自动生效"：Starter 依赖的那个 jar 包里带着这份清单，清单里的类被自动加载了。
+  </p>
+
+  <div class="callout warn">
+    <strong>版本坑（面试常问）：</strong>Spring Boot 2.x 及更早版本，这份清单写在 <code>META-INF/spring.factories</code> 文件里，
+    格式是 <code>key=value</code>（key 固定是 <code>org.springframework.boot.autoconfigure.EnableAutoConfiguration</code>）。
+    Spring Boot 3 把它拆分成了独立的 <code>AutoConfiguration.imports</code> 文件，好处是职责更单一、加载解析更快。
+    如果你在网上搜到的教程还在讲 <code>spring.factories</code>，那大概率是针对 Spring Boot 2.x 的旧文章。
+  </div>
+
+  <h2>光"加载"还不够：为什么需要"条件"</h2>
+  <p>
+    上百个 <code>XxxAutoConfiguration</code> 类会被<strong>全部加载进候选清单</strong>，但显然不能全部生效——没有引入数据库驱动的项目，
+    没道理去创建一个 <code>DataSource</code> Bean。这就是为什么每个自动配置类上都密密麻麻标注了条件注解：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>DataSourceAutoConfiguration（简化示意）</span></div>
+    <pre><span class="ann">@AutoConfiguration</span>
+<span class="ann">@ConditionalOnClass</span><span class="punct">(</span>DataSource<span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>          <span class="com">// classpath 里得有 DataSource 这个类</span>
+<span class="ann">@ConditionalOnMissingBean</span><span class="punct">(</span>DataSource<span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>   <span class="com">// 用户没有自己定义 DataSource 时才生效</span>
+<span class="kw">public class</span> <span class="ty">DataSourceAutoConfiguration</span> <span class="punct">{</span>
+    <span class="ann">@Bean</span>
+    <span class="kw">public</span> <span class="ty">DataSource</span> <span class="fn">dataSource</span><span class="punct">(</span><span class="ty">DataSourceProperties</span> <span class="var">props</span><span class="punct">) {</span> <span class="punct">...</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>整个流程可以画成一张图：</p>
+  <div class="tree">
+    <span class="hi">① 扫描清单</span>：读取 classpath 下所有 jar 包的 AutoConfiguration.imports<br>
+    &nbsp;&nbsp;→ 汇总成一份包含上百个 XxxAutoConfiguration 类名的候选列表<br>
+    <br>
+    <span class="hi">② 条件过滤</span>：逐个类检查其上的 @ConditionalOnXxx 注解<br>
+    &nbsp;&nbsp;classpath 没相关依赖 → 跳过<br>
+    &nbsp;&nbsp;用户已自定义同类型 Bean → 跳过<br>
+    &nbsp;&nbsp;配置文件没打开对应开关 → 跳过<br>
+    <br>
+    <span class="hi">③ 真正生效</span>：条件全部满足的配置类，其中的 @Bean 方法才会被执行<br>
+    &nbsp;&nbsp;→ 汇入普通的 IoC 容器 Bean 创建流程（复用 04-工程实战讲过的"扫描 → 实例化注入 → 初始化"三阶段）
+  </div>
+
+  <div class="callout tip">
+    <strong>"约定优于配置"的技术本质到这里就讲清楚了：</strong>不是 Spring Boot 有什么"智能推断"的魔法，而是<strong>把所有可能用到的配置都提前写好、放进候选清单，
+    再用一堆条件注解做"运行时筛选"</strong>——本质上是一次性穷举 + 条件裁剪，而不是某种动态推理。理解了这点，遇到自动配置没生效的问题时，
+    第一反应就应该是"去看这个 AutoConfiguration 类上标了什么条件，是不是有条件没满足"，而不是当成黑盒排查。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>自动配置分两步：先加载候选清单（AutoConfiguration.imports），再用条件注解逐个筛选是否生效。</li>
+    <li>Spring Boot 3 用 <code>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</code>，取代了 2.x 的 <code>spring.factories</code>。</li>
+    <li>"约定优于配置"不是玄学，是"穷举所有可能配置 + 条件注解运行时裁剪"这套朴素机制的效果。</li>
+    <li>下一篇具体展开 @ConditionalOnClass / @ConditionalOnMissingBean / @ConditionalOnProperty 这几个最常用的条件注解。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./09-Bean作用域.html" class="nav-btn">← Bean 作用域（singleton / prototype 等）</a>
+    <a href="./11-ConditionalOnXxx系列注解.html" class="nav-btn next">@ConditionalOnXxx 系列注解 →</a>
+  </div>
+
+</div>
+</body>
+</html>

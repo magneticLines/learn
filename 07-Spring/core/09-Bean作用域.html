@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bean 作用域（singleton / prototype 等） — IoC 核心与自动配置</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #6db33f; }
+  p code, li code { color: #6db33f; }
+  h2 { color: #6db33f; border-left-color: #6db33f; }
+  .hero .tag { color: #6db33f; border-color: #1e3a2f; }
+  .nav-btn.next { color: #6db33f; border-color: #1e3a2f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / IoC 核心与自动配置 / Bean 作用域（singleton / prototype 等）
+  </div>
+
+  <div class="hero">
+    <div class="tag">IoC 核心与自动配置</div>
+    <h1>Bean 作用域（singleton / prototype 等）</h1>
+    <p>容器管理的每个 Bean 并不都是"独一份"——作用域决定了 getBean 每次拿到的是同一个实例，还是全新的实例。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>作用域（Scope）定义了容器对一个 Bean 实例的"生产和复用策略"。</strong>默认是 <code>singleton</code>（单例）——整个容器里这个 Bean 只有一个实例，
+    所有注入点共享同一份；而 <code>prototype</code>（原型）则相反——每次向容器请求这个 Bean，都会创建一个全新实例。
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>作用域</th><th>生命周期</th><th>典型场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>singleton</code>（默认）</td><td>容器启动时创建一次，跟随容器销毁</td><td>无状态的 Service、Repository——绝大多数 Bean</td></tr>
+      <tr><td><code>prototype</code></td><td>每次 <code>getBean()</code> 都新建，容器不负责销毁</td><td>有状态、非线程安全的对象，比如一次性使用的上下文/构建器</td></tr>
+      <tr><td><code>request</code>（Web）</td><td>每个 HTTP 请求一个实例，请求结束即销毁</td><td>需要在一次请求内共享、但不同请求间隔离的数据</td></tr>
+      <tr><td><code>session</code>（Web）</td><td>每个会话一个实例</td><td>购物车、用户会话级别的状态</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>为什么默认是 singleton：</strong>大多数 Service/Repository 都是无状态的（不持有可变的实例字段，只是一堆方法的集合），
+    多个请求共享同一个实例完全没有线程安全问题，还能节省对象创建开销。只有当 Bean <strong>确实持有跟"一次使用"绑定的可变状态</strong>时，才需要考虑非单例作用域。
+  </div>
+
+  <h2>陷阱：prototype 注入到 singleton 里会失效</h2>
+  <p>
+    04-工程实战/mechanism/01-IoC-DI.html 里已经点出过这个坑的现象：把一个 <code>prototype</code> Bean 通过字段注入到一个 <code>singleton</code> Bean 里，
+    本意是"每次用都是新实例"，但实际上<strong>注入只发生一次</strong>（容器创建 singleton Bean 时注入的那个实例，会被一直复用），完全违背了 prototype 的初衷。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ReportService.java（陷阱复现）</span></div>
+    <pre><span class="ann">@Service</span>                              <span class="com">// singleton，容器只创建一次</span>
+<span class="kw">public class</span> <span class="ty">ReportService</span> <span class="punct">{</span>
+
+    <span class="ann">@Autowired</span>
+    <span class="kw">private</span> <span class="ty">ReportContext</span> <span class="var">ctx</span><span class="punct">;</span>       <span class="com">// ReportContext 声明为 @Scope("prototype")</span>
+
+    <span class="com">// ReportService 只在启动时被创建一次，ctx 也只在那一刻被注入一次</span>
+    <span class="com">// 之后 generate() 被调用一万次，拿到的都是同一个 ctx —— prototype 名存实亡</span>
+    <span class="kw">public void</span> <span class="fn">generate</span><span class="punct">() {</span> <span class="var">ctx</span><span class="punct">.</span><span class="fn">doWork</span><span class="punct">();</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>正确做法：用 ObjectProvider 延迟获取</h2>
+  <p>
+    真正想要"每次调用方法都拿到一个新的 prototype 实例"，不能在字段注入阶段就把依赖"定死"，而要<strong>在每次方法调用时，主动向容器再要一次</strong>。
+    Spring 提供的标准方式是注入 <code>ObjectProvider&lt;T&gt;</code>（比早期直接注入 <code>ApplicationContext</code> 手动 <code>getBean()</code> 更轻量、更符合依赖注入的语义）：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ReportService.java（正例 — ObjectProvider 按需获取新实例）</span></div>
+    <pre><span class="ann">@Service</span>
+<span class="ann">@RequiredArgsConstructor</span>
+<span class="kw">public class</span> <span class="ty">ReportService</span> <span class="punct">{</span>
+
+    <span class="com">// 注入的不是 ReportContext 本身，而是"获取 ReportContext 的能力"</span>
+    <span class="kw">private final</span> <span class="ty">ObjectProvider</span><span class="punct">&lt;</span><span class="ty">ReportContext</span><span class="punct">&gt;</span> <span class="var">ctxProvider</span><span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">generate</span><span class="punct">() {</span>
+        <span class="com">// 每次调用方法时才向容器要一个新实例，这才是 prototype 该有的效果</span>
+        <span class="ty">ReportContext</span> <span class="var">ctx</span> <span class="punct">=</span> <span class="var">ctxProvider</span><span class="punct">.</span><span class="fn">getObject</span><span class="punct">();</span>
+        <span class="var">ctx</span><span class="punct">.</span><span class="fn">doWork</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>ObjectProvider 相比直接注入 ApplicationContext 的优势：</strong>类型安全（不需要 <code>getBean(ReportContext.class)</code> 强转）、
+    还提供 <code>getIfAvailable()</code>/<code>getIfUnique()</code> 等方法优雅处理"Bean 不存在"或"有多个候选"的情况，代码意图比裸用 <code>ApplicationContext</code> 更清晰，也更容易 Mock 测试。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>作用域决定容器对 Bean 的"生产和复用策略"，默认 singleton 适合绝大多数无状态 Bean。</li>
+    <li>prototype 注入到 singleton 里会失效——注入只发生一次，后续复用的还是那一个实例。</li>
+    <li>正确做法是注入 <code>ObjectProvider&lt;T&gt;</code>，在真正需要的时刻再向容器请求新实例。</li>
+    <li>Web 场景下的 request/session 作用域本质是同一套思路的延伸：把 Bean 的生命周期和某种边界（请求/会话）绑定。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./08-Bean与Configuration显式装配.html" class="nav-btn">← @Bean 与 @Configuration 显式装配</a>
+    <a href="./10-EnableAutoConfiguration与条件化装配.html" class="nav-btn next">@EnableAutoConfiguration 与条件化装配 →</a>
+  </div>
+
+</div>
+</body>
+</html>

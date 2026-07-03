@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jackson 序列化定制 — Web 开发与 REST</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb"><a href="../spring-roadmap.html">Spring 路线图</a> / Web 开发与 REST / Jackson 序列化定制</div>
+
+  <div class="hero">
+    <div class="tag">Web 开发与 REST</div>
+    <h1>Jackson 序列化定制</h1>
+    <p>Controller 返回一个 Java 对象，浏览器收到的却是一段 JSON 文本——这个"变身"过程完全没让你手写代码，都是 Jackson 在背后默默做的。这一篇聊聊怎么按需定制它的行为。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    Spring Boot 的 <code>spring-boot-starter-web</code> 会自动引入 <code>spring-boot-starter-json</code>，
+    底层依赖 <strong>Jackson</strong>（核心是 <code>jackson-databind</code> 库）。当 Controller 方法标了 <code>@RestController</code>
+    或返回值标了 <code>@ResponseBody</code> 时，Spring MVC 会用注册好的 <code>MappingJackson2HttpMessageConverter</code>
+    自动把返回的 Java 对象序列化成 JSON 字符串写入响应体——<strong>整个过程你不需要写一行手动转换代码</strong>，这就是"约定优于配置"在 Spring Boot 里的又一处体现。
+  </p>
+  <div class="callout info">
+    <strong>反过来也一样：</strong>当 Controller 方法参数标了 <code>@RequestBody</code> 时，Jackson 负责把请求体的 JSON <strong>反序列化</strong>成 Java 对象——序列化和反序列化是同一套机制的一体两面。
+  </div>
+
+  <!-- 2. 场景1: @JsonIgnore -->
+  <h2>场景一：@JsonIgnore 忽略敏感字段</h2>
+  <p>最常见的需求：数据库实体里有密码字段，绝不能原样序列化返回给前端。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>User.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">User</span> <span class="punct">{</span>
+
+    <span class="kw">private</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">;</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">username</span><span class="punct">;</span>
+
+    <span class="ann">@JsonIgnore</span> <span class="com">// 序列化时直接跳过这个字段，JSON 里根本不会出现 password</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">password</span><span class="punct">;</span>
+
+    <span class="com">// getter / setter 省略</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>坑：</strong><code>@JsonIgnore</code> 标在实体类字段上会<strong>同时影响序列化和反序列化</strong>——如果前端注册时确实需要传密码给后端，反序列化也会被一并忽略。
+    更严谨的做法是分别用 <code>@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)</code>（只能反序列化写入，不能序列化输出），
+    或者更推荐的方式：<strong>直接用一个不含 password 字段的 DTO 做返回值</strong>，从源头上避免实体类直接暴露给前端。
+  </div>
+
+  <!-- 3. 场景2: @JsonFormat -->
+  <h2>场景二：@JsonFormat 定制日期时间格式</h2>
+  <p>
+    Java 8 引入的 <code>java.time</code> 包（<code>LocalDateTime</code> / <code>LocalDate</code> 等，见 00-Java 基础模块）默认被 Jackson 序列化成数组或 ISO 格式，
+    不是前端习惯的 <code>yyyy-MM-dd HH:mm:ss</code> 这种可读格式，需要显式指定：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderVO.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderVO</span> <span class="punct">{</span>
+
+    <span class="kw">private</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">;</span>
+
+    <span class="ann">@JsonFormat</span><span class="punct">(</span><span class="var">pattern</span> <span class="punct">=</span> <span class="str">"yyyy-MM-dd HH:mm:ss"</span><span class="punct">)</span>
+    <span class="kw">private</span> <span class="ty">LocalDateTime</span> <span class="var">createTime</span><span class="punct">;</span>
+
+    <span class="com">// getter / setter 省略</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>加上这个注解后，<code>createTime</code> 序列化出来就是 <code>"2026-07-03 10:30:00"</code> 这样的字符串，前端可以直接展示，不需要再做格式转换。</p>
+
+  <!-- 4. 场景3: @JsonProperty -->
+  <h2>场景三：@JsonProperty 重命名字段</h2>
+  <p>
+    Java 端习惯用驼峰命名（<code>userName</code>），但有的前端团队或第三方接口约定用下划线命名（<code>user_name</code>）。
+    不想为了适配命名风格而破坏 Java 代码规范，可以用 <code>@JsonProperty</code> 单独指定 JSON 字段名：
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UserVO.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">UserVO</span> <span class="punct">{</span>
+
+    <span class="ann">@JsonProperty</span><span class="punct">(</span><span class="str">"user_name"</span><span class="punct">)</span> <span class="com">// Java 端仍用驼峰，JSON 输出/解析时用下划线</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">userName</span><span class="punct">;</span>
+
+    <span class="ann">@JsonProperty</span><span class="punct">(</span><span class="var">access</span> <span class="punct">=</span> <span class="ty">JsonProperty</span><span class="punct">.</span><span class="ty">Access</span><span class="punct">.</span><span class="var">WRITE_ONLY</span><span class="punct">)</span> <span class="com">// 只能反序列化写入，序列化时隐藏</span>
+    <span class="kw">private</span> <span class="ty">String</span> <span class="var">internalToken</span><span class="punct">;</span>
+
+    <span class="com">// getter / setter 省略</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 5. 反例 -->
+  <h2>反例：每个字段都重复标注 @JsonFormat</h2>
+  <p>项目里实体类一多，日期字段往往几十上百个，如果每个都手写一遍 <code>@JsonFormat</code>，会出现两个问题：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例 — 重复且格式不统一</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">OrderVO</span> <span class="punct">{</span>
+    <span class="ann">@JsonFormat</span><span class="punct">(</span><span class="var">pattern</span> <span class="punct">=</span> <span class="str">"yyyy-MM-dd HH:mm:ss"</span><span class="punct">)</span>
+    <span class="kw">private</span> <span class="ty">LocalDateTime</span> <span class="var">createTime</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="kw">public class</span> <span class="ty">UserVO</span> <span class="punct">{</span>
+    <span class="com">// 另一个开发者写的，格式变成了 yyyy/MM/dd —— 团队风格不统一</span>
+    <span class="ann">@JsonFormat</span><span class="punct">(</span><span class="var">pattern</span> <span class="punct">=</span> <span class="str">"yyyy/MM/dd HH:mm"</span><span class="punct">)</span>
+    <span class="kw">private</span> <span class="ty">LocalDateTime</span> <span class="var">registerTime</span><span class="punct">;</span>
+<span class="punct">}</span>
+
+<span class="com">// ... 项目里还有几十个类，每个都要重复写一遍，还容易写漏</span></pre>
+  </div>
+
+  <ul>
+    <li><strong>啰嗦重复：</strong>字段一多，注解写到手软，还容易漏标导致格式不一致。</li>
+    <li><strong>团队风格不统一：</strong>没有强约束的话，不同人写的日期格式五花八门，前端要为每个接口单独适配。</li>
+  </ul>
+
+  <!-- 6. 正例：全局配置 -->
+  <h2>正例：全局配置 ObjectMapper，一处生效</h2>
+  <p>更好的做法是<strong>统一在一个地方配置全局日期格式</strong>，具体字段不再需要重复标注。Spring Boot 推荐用 <code>Jackson2ObjectMapperBuilderCustomizer</code>：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JacksonConfig.java（正例 — 全局统一配置）</span></div>
+    <pre><span class="ann">@Configuration</span>
+<span class="kw">public class</span> <span class="ty">JacksonConfig</span> <span class="punct">{</span>
+
+    <span class="kw">private static final</span> <span class="ty">String</span> <span class="var">DATETIME_PATTERN</span> <span class="punct">=</span> <span class="str">"yyyy-MM-dd HH:mm:ss"</span><span class="punct">;</span>
+    <span class="kw">private static final</span> <span class="ty">String</span> <span class="var">DATE_PATTERN</span>     <span class="punct">=</span> <span class="str">"yyyy-MM-dd"</span><span class="punct">;</span>
+
+    <span class="com">// Spring Boot 会自动应用这个 Customizer 到全局唯一的 ObjectMapper 上</span>
+    <span class="ann">@Bean</span>
+    <span class="kw">public</span> <span class="ty">Jackson2ObjectMapperBuilderCustomizer</span> <span class="fn">jacksonCustomizer</span><span class="punct">() {</span>
+        <span class="kw">return</span> <span class="var">builder</span> <span class="punct">-&gt; {</span>
+            <span class="var">builder</span><span class="punct">.</span><span class="fn">simpleDateFormat</span><span class="punct">(</span><span class="var">DATETIME_PATTERN</span><span class="punct">);</span>
+            <span class="com">// 分别注册 LocalDateTime / LocalDate 的序列化与反序列化规则</span>
+            <span class="var">builder</span><span class="punct">.</span><span class="fn">serializers</span><span class="punct">(</span>
+                    <span class="kw">new</span> <span class="ty">LocalDateTimeSerializer</span><span class="punct">(</span><span class="ty">DateTimeFormatter</span><span class="punct">.</span><span class="fn">ofPattern</span><span class="punct">(</span><span class="var">DATETIME_PATTERN</span><span class="punct">)),</span>
+                    <span class="kw">new</span> <span class="ty">LocalDateSerializer</span><span class="punct">(</span><span class="ty">DateTimeFormatter</span><span class="punct">.</span><span class="fn">ofPattern</span><span class="punct">(</span><span class="var">DATE_PATTERN</span><span class="punct">))</span>
+            <span class="punct">);</span>
+            <span class="var">builder</span><span class="punct">.</span><span class="fn">deserializers</span><span class="punct">(</span>
+                    <span class="kw">new</span> <span class="ty">LocalDateTimeDeserializer</span><span class="punct">(</span><span class="ty">DateTimeFormatter</span><span class="punct">.</span><span class="fn">ofPattern</span><span class="punct">(</span><span class="var">DATETIME_PATTERN</span><span class="punct">)),</span>
+                    <span class="kw">new</span> <span class="ty">LocalDateDeserializer</span><span class="punct">(</span><span class="ty">DateTimeFormatter</span><span class="punct">.</span><span class="fn">ofPattern</span><span class="punct">(</span><span class="var">DATE_PATTERN</span><span class="punct">))</span>
+            <span class="punct">);</span>
+            <span class="var">builder</span><span class="punct">.</span><span class="fn">timeZone</span><span class="punct">(</span><span class="ty">TimeZone</span><span class="punct">.</span><span class="fn">getTimeZone</span><span class="punct">(</span><span class="str">"Asia/Shanghai"</span><span class="punct">));</span> <span class="com">// 顺手统一时区</span>
+        <span class="punct">};</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    配置好之后，全项目所有 <code>LocalDateTime</code> 字段（只要没有被单独的 <code>@JsonFormat</code> 覆盖）都自动按统一格式序列化，
+    <strong>不需要再逐个字段标注注解</strong>。字段级的 <code>@JsonFormat</code> 依然可以对个别字段做特殊覆盖，两者并不冲突——字段级注解优先级更高。
+  </p>
+
+  <div class="callout tip">
+    也可以直接自定义 <code>@Bean public ObjectMapper objectMapper() { ... }</code> 完全替换 Spring Boot 自动配置的 ObjectMapper，
+    但这样容易漏配一些 Spring Boot 默认已经处理好的细节（比如对 <code>Optional</code>、Bean Validation 结合场景的支持）。
+    官方更推荐用 <code>Jackson2ObjectMapperBuilderCustomizer</code> 这种"在默认配置基础上增量定制"的方式，风险更小。
+  </div>
+
+  <!-- 7. 对比表格 -->
+  <h2>字段级注解 vs 全局配置</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>字段级注解（@JsonFormat 等）</th><th>全局 ObjectMapper 配置</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>生效范围</td>
+        <td>仅标注的这一个字段</td>
+        <td>项目内所有同类型字段（除非被字段级注解覆盖）</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>个别字段有特殊需求，比如这一个日期字段就是要用不同于团队规范的格式</td>
+        <td>统一团队规范，比如"所有日期时间字段都用 yyyy-MM-dd HH:mm:ss"</td>
+      </tr>
+      <tr>
+        <td>维护成本</td>
+        <td>字段越多越啰嗦，容易漏标、写法不统一</td>
+        <td>一处配置，全局生效，新增字段自动遵循规范，无需额外操作</td>
+      </tr>
+      <tr>
+        <td>优先级</td>
+        <td>更高，会覆盖全局配置</td>
+        <td>作为兜底默认值</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>最佳实践：</strong>全局配置负责统一大多数字段的默认行为，字段级注解只用来处理少数确实需要"特殊对待"的例外情况——这和很多框架里"约定优于配置、异常再显式覆盖"的设计思路是一致的。
+  </div>
+
+  <!-- 8. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>自动化：</strong>Spring Boot 已经把 Jackson 集成到位，Controller 返回对象就自动变成 JSON，不需要手写序列化代码。</li>
+    <li><strong>字段级注解处理个例：</strong><code>@JsonIgnore</code> 隐藏敏感字段、<code>@JsonFormat</code> 定制单个字段格式、<code>@JsonProperty</code> 重命名字段。</li>
+    <li><strong>全局配置统一规范：</strong>用 <code>Jackson2ObjectMapperBuilderCustomizer</code> 统一日期格式、时区等团队级约定，避免每个字段重复标注、风格不统一。</li>
+    <li><strong>两者互补：</strong>字段级注解优先级更高，可以在全局默认行为之上对个别字段做精确覆盖。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./10-参数校验错误处理.html" class="nav-btn">← 参数校验错误处理</a>
+    <a href="../data/01-Repository接口与方法命名查询.html" class="nav-btn next">下一篇:Repository 接口与方法命名查询 →</a>
+  </div>
+
+</div>
+</body>
+</html>

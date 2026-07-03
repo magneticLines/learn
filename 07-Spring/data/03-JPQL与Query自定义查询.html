@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JPQL 与 @Query 自定义查询 — Spring Data JPA</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁（数据访问组 · 琥珀色） */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 数据访问 / JPQL 与 @Query 自定义查询
+  </div>
+
+  <div class="hero">
+    <div class="tag">数据访问</div>
+    <h1>JPQL 与 @Query 自定义查询</h1>
+    <p>方法命名查询很优雅，但一旦条件超过三四个，方法名就会变成一行无法直视的天书。是时候祭出更强力的武器：直接写查询语句。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong><code>@Query</code> 注解允许你在 Repository 方法上直接写查询语句，绕开方法命名规则的解析，换来更强的表达能力。</strong>
+    默认写的是 <strong>JPQL</strong>（Java Persistence Query Language）——一种语法像 SQL、但操作对象是<strong>实体和实体属性</strong>而不是表和列的查询语言；如果需要用到数据库特有的函数或极致的性能优化，也可以加 <code>nativeQuery = true</code> 直接写原生 SQL。
+  </p>
+
+  <h2>问题：方法命名查询失控</h2>
+  <p>当查询条件变多，方法命名查询会变成这样：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>UserRepository.java（反例 — 方法名已经失控）</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">UserRepository</span> <span class="kw">extends</span> <span class="ty">JpaRepository</span><span class="punct">&lt;</span><span class="ty">User</span><span class="punct">,</span> <span class="ty">Long</span><span class="punct">&gt;</span> <span class="punct">{</span>
+
+    <span class="com">// 5 个条件叠加，方法名已经没人愿意读第二遍了</span>
+    <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">User</span><span class="punct">&gt;</span> <span class="fn">findByStatusAndDepartmentIdAndCreatedAtBetweenAndNicknameContainingOrderByCreatedAtDesc</span><span class="punct">(</span>
+        <span class="ty">Status</span> <span class="var">status</span><span class="punct">,</span> <span class="ty">Long</span> <span class="var">deptId</span><span class="punct">,</span> <span class="ty">LocalDateTime</span> <span class="var">start</span><span class="punct">,</span> <span class="ty">LocalDateTime</span> <span class="var">end</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">keyword</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>正例：@Query 直接写 JPQL</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>UserRepository.java（正例 — JPQL 清晰可读）</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">UserRepository</span> <span class="kw">extends</span> <span class="ty">JpaRepository</span><span class="punct">&lt;</span><span class="ty">User</span><span class="punct">,</span> <span class="ty">Long</span><span class="punct">&gt;</span> <span class="punct">{</span>
+
+    <span class="ann">@Query</span><span class="punct">(</span><span class="str">"SELECT u FROM User u "</span> <span class="punct">+</span>
+           <span class="str">"WHERE u.status = :status AND u.department.id = :deptId "</span> <span class="punct">+</span>
+           <span class="str">"AND u.createdAt BETWEEN :start AND :end "</span> <span class="punct">+</span>
+           <span class="str">"AND u.nickname LIKE %:keyword% "</span> <span class="punct">+</span>
+           <span class="str">"ORDER BY u.createdAt DESC"</span><span class="punct">)</span>
+    <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">User</span><span class="punct">&gt;</span> <span class="fn">searchUsers</span><span class="punct">(</span>
+        <span class="ann">@Param</span><span class="punct">(</span><span class="str">"status"</span><span class="punct">)</span> <span class="ty">Status</span> <span class="var">status</span><span class="punct">,</span>
+        <span class="ann">@Param</span><span class="punct">(</span><span class="str">"deptId"</span><span class="punct">)</span> <span class="ty">Long</span> <span class="var">deptId</span><span class="punct">,</span>
+        <span class="ann">@Param</span><span class="punct">(</span><span class="str">"start"</span><span class="punct">)</span> <span class="ty">LocalDateTime</span> <span class="var">start</span><span class="punct">,</span>
+        <span class="ann">@Param</span><span class="punct">(</span><span class="str">"end"</span><span class="punct">)</span> <span class="ty">LocalDateTime</span> <span class="var">end</span><span class="punct">,</span>
+        <span class="ann">@Param</span><span class="punct">(</span><span class="str">"keyword"</span><span class="punct">)</span> <span class="ty">String</span> <span class="var">keyword</span><span class="punct">);</span>
+
+    <span class="com">// 更新 / 删除语句需要额外加 @Modifying，并且通常要在事务方法里调用</span>
+    <span class="ann">@Modifying</span>
+    <span class="ann">@Query</span><span class="punct">(</span><span class="str">"UPDATE User u SET u.status = :status WHERE u.id = :id"</span><span class="punct">)</span>
+    <span class="kw">int</span> <span class="fn">updateStatus</span><span class="punct">(</span><span class="ann">@Param</span><span class="punct">(</span><span class="str">"id"</span><span class="punct">)</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">,</span> <span class="ann">@Param</span><span class="punct">(</span><span class="str">"status"</span><span class="punct">)</span> <span class="ty">Status</span> <span class="var">status</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>常见坑：忘记加 <code>@Modifying</code>。</strong>普通 <code>@Query</code> 默认只能执行查询语句，如果用 <code>UPDATE</code>/<code>DELETE</code>，必须搭配 <code>@Modifying</code> 注解，否则会抛 <code>InvalidDataAccessApiUsageException</code>。另外，这类批量更新会绕过持久化上下文的一级缓存，执行后建议用 <code>clearAutomatically = true</code> 清空缓存，避免读到内存中的旧数据。
+  </div>
+
+  <h2>需要数据库特性时：原生 SQL</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>UserRepository.java（nativeQuery — 用到 MySQL 特有函数）</span></div>
+    <pre><span class="ann">@Query</span><span class="punct">(</span><span class="var">value</span> <span class="punct">=</span> <span class="str">"SELECT * FROM t_user WHERE MATCH(nickname) AGAINST(:keyword IN BOOLEAN MODE)"</span><span class="punct">,</span>
+       <span class="var">nativeQuery</span> <span class="punct">=</span> <span class="kw">true</span><span class="punct">)</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">User</span><span class="punct">&gt;</span> <span class="fn">fullTextSearch</span><span class="punct">(</span><span class="ann">@Param</span><span class="punct">(</span><span class="str">"keyword"</span><span class="punct">)</span> <span class="ty">String</span> <span class="var">keyword</span><span class="punct">);</span></pre>
+  </div>
+
+  <h2>JPQL 与 SQL 的区别</h2>
+  <table>
+    <thead><tr><th>维度</th><th>JPQL</th><th>原生 SQL</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>操作对象</td>
+        <td><strong>实体和属性</strong>（<code>User</code>、<code>u.email</code>）</td>
+        <td><strong>表和列</strong>（<code>t_user</code>、<code>email</code>）</td>
+      </tr>
+      <tr>
+        <td>数据库依赖</td>
+        <td>数据库无关，由 Hibernate 翻译成目标方言 SQL</td>
+        <td>强绑定具体数据库方言（MySQL 函数换到 Oracle 可能直接报错）</td>
+      </tr>
+      <tr>
+        <td>关联查询写法</td>
+        <td><code>JOIN u.department</code>（走对象引用，不用手写外键条件）</td>
+        <td><code>JOIN department d ON u.dept_id = d.id</code>（手写外键关联）</td>
+      </tr>
+      <tr>
+        <td>返回结果</td>
+        <td>直接映射成实体对象</td>
+        <td>需要 <code>nativeQuery=true</code> 手动指定返回实体，或返回 <code>Object[]</code>/投影接口</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>绝大多数业务查询，享受面向对象和数据库无关性</td>
+        <td>复杂报表、全文检索、窗口函数等 ORM 表达力不够的场景</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"JPQL 和 SQL 的本质区别是什么？"——JPQL 面向的是<strong>持久化的对象模型</strong>，你写的 <code>SELECT u FROM User u WHERE u.department.name = 'RD'</code> 中的 <code>User</code>、<code>department</code>、<code>name</code> 都是 Java 类和属性名，Hibernate 在执行前会把它们翻译成实际的表名和列名。这也是 JPQL 能做到"数据库无关"的原因——换数据库时只需要换 Hibernate 的方言配置，业务查询语句一行不用改。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>方法命名查询处理简单条件，@Query 处理复杂查询</strong>——不是替代关系，而是互补，简单场景没必要为了"统一风格"强行写 JPQL。</li>
+    <li><strong>JPQL 操作实体属性，SQL 操作表列</strong>，这是理解两者所有差异的根源。</li>
+    <li><strong>更新删除记得加 <code>@Modifying</code></strong>，并且要在事务方法内调用，否则不会生效或抛异常。</li>
+    <li><strong>原生 SQL 是最后的逃生舱</strong>：用于 JPQL 表达力不够的场景，但代价是牺牲数据库无关性，谨慎使用。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-Entity映射与关系.html" class="nav-btn">← @Entity 映射与关系（一对多 / 多对多）</a>
+    <a href="./04-事务管理Transactional.html" class="nav-btn next">事务管理 @Transactional →</a>
+  </div>
+
+</div>
+</body>
+</html>

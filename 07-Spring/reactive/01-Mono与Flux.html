@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mono 与 Flux — 响应式编程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 响应式编程 / Mono 与 Flux
+  </div>
+
+  <div class="hero">
+    <div class="tag">响应式编程</div>
+    <h1>Mono 与 Flux</h1>
+    <p>为什么一个已经用了十几年、性能足够好的 Spring MVC 之外，还需要一整套新的响应式技术栈？先搞清楚这个根本问题，再看 Reactor 提供的两个核心类型。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>响应式编程（Reactive Programming）解决的是"高并发下线程资源不够用"的问题。</strong>
+    传统同步阻塞模型下，一个请求占用一个线程，线程在等待 I/O（查数据库、调下游接口）时什么都不做，纯粹在"占着茅坑不拉屎"；
+    响应式模型让少量线程通过<strong>事件循环（Event Loop）</strong>处理海量并发连接——发起 I/O 后线程立刻被释放去处理别的请求，I/O 完成时通过回调通知，再把结果继续往下传。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>传统模型像餐厅里"一个服务员从点菜守到上菜全程盯着一桌客人"，客人在厨房等菜的这段时间服务员完全闲置却不能去服务别桌；
+    响应式模型像"一个服务员同时观察十桌客人，谁的菜好了就去谁那上菜，中间空闲时间用来招呼别的桌"——同样一个服务员，吞吐量高了一个数量级。
+  </div>
+
+  <!-- 2. 和线程模型的联系 -->
+  <h2>和你已经学过的线程模型对比</h2>
+  <p>
+    在 02-并发模块你学过：Java 线程是操作系统线程的封装，创建和上下文切换都有真实开销（栈内存、内核调度）。
+    传统 Tomcat（Spring MVC 用的默认容器）是<strong>"一个请求一个线程"（Thread-per-Request）</strong>模型：
+  </p>
+  <div class="tree">
+    <span class="hi">Spring MVC（阻塞模型）</span><br>
+    &nbsp;&nbsp;请求进来 → 从线程池取一个线程 → 该线程独占处理整个请求<br>
+    &nbsp;&nbsp;遇到查数据库 → 线程<span class="hi">阻塞等待</span>，什么都不做<br>
+    &nbsp;&nbsp;数据库返回 → 线程继续执行 → 返回响应 → 线程归还线程池<br>
+    &nbsp;&nbsp;<span class="hi">并发数 = 线程池大小</span>，线程池撑满了新请求只能排队<br>
+    <br>
+    <span class="hi">WebFlux（响应式 / 事件循环模型）</span><br>
+    &nbsp;&nbsp;请求进来 → 少量固定线程（通常等于 CPU 核数）轮询事件<br>
+    &nbsp;&nbsp;遇到查数据库 → 注册回调，线程立刻<span class="hi">释放</span>去处理别的事件<br>
+    &nbsp;&nbsp;数据库返回数据 → 触发回调 → 换一个空闲线程继续处理<br>
+    &nbsp;&nbsp;<span class="hi">并发数不受线程数限制</span>，只受内存和连接数限制
+  </div>
+  <p>
+    这和 Node.js 单线程却能扛住海量并发的哲学完全一致：<strong>不是用更多线程堆吞吐量，而是让每个线程永远不空闲等待</strong>。
+    Netty（WebFlux 默认的服务器）本质上就是 Java 版的事件循环实现。
+  </p>
+
+  <!-- 3. Reactor 两个核心类型 -->
+  <h2>Reactor 的两个核心类型</h2>
+  <p>
+    Spring WebFlux 底层用的响应式库是 <strong>Project Reactor</strong>（Spring 官方主导），它只提供两个核心类型，比 RxJava 简单得多：
+  </p>
+  <table>
+    <thead>
+      <tr><th>类型</th><th>含义</th><th>类比</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Mono&lt;T&gt;</code></td>
+        <td>异步返回 <strong>0 或 1</strong> 个元素的序列</td>
+        <td>类似 <code>CompletableFuture&lt;T&gt;</code>，"未来某个时刻会给我一个结果（或没有结果、或报错）"</td>
+      </tr>
+      <tr>
+        <td><code>Flux&lt;T&gt;</code></td>
+        <td>异步返回 <strong>0 到 N</strong> 个元素的序列</td>
+        <td>类似异步版的 <code>Stream&lt;T&gt;</code>，"未来会陆续给我一批结果"</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    两者都是<strong>"发布者"（Publisher）</strong>：在没有人订阅（<code>subscribe</code>）之前，它们只是一份"待执行的计划"，什么都不会发生——这叫<strong>惰性求值（Lazy）</strong>，是响应式编程的一大特点，也是初学者最容易忽略的一点。
+  </p>
+
+  <div class="callout warn">
+    <strong>陷阱：</strong>创建了 <code>Mono</code>/<code>Flux</code> 但没有调用 <code>subscribe()</code>（或被框架自动订阅，比如作为 Controller 返回值），整条链路<strong>根本不会执行</strong>。
+    新手常见的"我这段代码怎么没反应"，十有八九是漏了订阅。
+  </div>
+
+  <!-- 4. 基本创建和操作符 -->
+  <h2>创建 Mono / Flux</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>MonoFluxDemo.java（创建）</span></div>
+    <pre><span class="com">// Mono：0-1 个元素</span>
+<span class="ty">Mono</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">mono1</span> <span class="punct">=</span> <span class="ty">Mono</span><span class="punct">.</span><span class="fn">just</span><span class="punct">(</span><span class="str">"hello"</span><span class="punct">);</span>          <span class="com">// 直接包装一个值</span>
+<span class="ty">Mono</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">mono2</span> <span class="punct">=</span> <span class="ty">Mono</span><span class="punct">.</span><span class="fn">empty</span><span class="punct">();</span>               <span class="com">// 0 个元素</span>
+<span class="ty">Mono</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">mono3</span> <span class="punct">=</span> <span class="ty">Mono</span><span class="punct">.</span><span class="fn">fromCallable</span><span class="punct">(() -&gt;</span> <span class="fn">queryFromDb</span><span class="punct">());</span> <span class="com">// 包装一个耗时调用</span>
+
+<span class="com">// Flux：0-N 个元素</span>
+<span class="ty">Flux</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">flux1</span> <span class="punct">=</span> <span class="ty">Flux</span><span class="punct">.</span><span class="fn">just</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">,</span> <span class="num">3</span><span class="punct">);</span>
+<span class="ty">Flux</span><span class="punct">&lt;</span><span class="ty">Integer</span><span class="punct">&gt;</span> <span class="var">flux2</span> <span class="punct">=</span> <span class="ty">Flux</span><span class="punct">.</span><span class="fn">fromIterable</span><span class="punct">(</span><span class="var">list</span><span class="punct">);</span>
+<span class="ty">Flux</span><span class="punct">&lt;</span><span class="ty">Long</span><span class="punct">&gt;</span>    <span class="var">flux3</span> <span class="punct">=</span> <span class="ty">Flux</span><span class="punct">.</span><span class="fn">interval</span><span class="punct">(</span><span class="ty">Duration</span><span class="punct">.</span><span class="fn">ofSeconds</span><span class="punct">(</span><span class="num">1</span><span class="punct">));</span> <span class="com">// 每秒发一个递增数字，无限流</span></pre>
+  </div>
+
+  <h3>常用操作符：map / filter / flatMap</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>MonoFluxDemo.java（操作符）</span></div>
+    <pre><span class="ty">Flux</span><span class="punct">.</span><span class="fn">just</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="num">2</span><span class="punct">,</span> <span class="num">3</span><span class="punct">,</span> <span class="num">4</span><span class="punct">)</span>
+    <span class="punct">.</span><span class="fn">filter</span><span class="punct">(</span><span class="var">n</span> <span class="punct">-&gt;</span> <span class="var">n</span> <span class="punct">%</span> <span class="num">2</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">)</span>          <span class="com">// 同步转换：偶数过滤</span>
+    <span class="punct">.</span><span class="fn">map</span><span class="punct">(</span><span class="var">n</span> <span class="punct">-&gt;</span> <span class="var">n</span> <span class="punct">*</span> <span class="num">10</span><span class="punct">)</span>              <span class="com">// 同步转换：值本身做变换</span>
+    <span class="punct">.</span><span class="fn">flatMap</span><span class="punct">(</span><span class="var">n</span> <span class="punct">-&gt;</span> <span class="fn">callRemoteApi</span><span class="punct">(</span><span class="var">n</span><span class="punct">))</span> <span class="com">// 异步转换：每个元素换成一个新的 Mono/Flux 并"拍平"</span>
+    <span class="punct">.</span><span class="fn">subscribe</span><span class="punct">(</span><span class="var">result</span> <span class="punct">-&gt;</span> <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">result</span><span class="punct">));</span> <span class="com">// 订阅后整条链才会真正执行</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>map vs flatMap：</strong><code>map</code> 是"同步变换值"（<code>T -&gt; R</code>），<code>flatMap</code> 是"异步变换并展开"（<code>T -&gt; Mono&lt;R&gt;</code> / <code>T -&gt; Flux&lt;R&gt;</code>）。
+    这和 Java Stream 里 <code>map</code>/<code>flatMap</code> 的关系是同一套思路，唯一区别是这里每一步都可能是异步的。<strong>面试高频：</strong>能不能说清楚这两者的区别，是判断是否真正理解响应式操作符链的分水岭。
+  </div>
+
+  <!-- 5. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>响应式编程的本质：</strong>用少量线程通过事件循环处理海量并发连接，遇到 I/O 不阻塞而是注册回调，把"等待"的时间让给别的任务。</li>
+    <li><strong>Mono</strong> 是 0-1 个元素的异步序列（类似 <code>CompletableFuture</code>），<strong>Flux</strong> 是 0-N 个元素的异步序列（类似异步 <code>Stream</code>）。</li>
+    <li>Mono/Flux 是<strong>惰性</strong>的，不订阅就不会执行，这是和普通对象/集合最大的思维差异。</li>
+    <li><code>map</code> 做同步值变换，<code>flatMap</code> 做异步变换并展开，是最常用也最容易混淆的两个操作符。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../config/08-任务调度Scheduled与Async.html" class="nav-btn">← 任务调度 @Scheduled 与 @Async</a>
+    <a href="./02-响应式流背压概念.html" class="nav-btn next">响应式流背压概念 →</a>
+  </div>
+
+</div>
+</body>
+</html>

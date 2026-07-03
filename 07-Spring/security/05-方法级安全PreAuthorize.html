@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>方法级安全 @PreAuthorize（进阶）— 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7f1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 安全 / 方法级安全 @PreAuthorize（进阶）
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全</div>
+    <h1>方法级安全 @PreAuthorize（进阶）</h1>
+    <p>URL 级别的角色控制只能挡住"整个接口"，挡不住"同一个接口里，用户只能改自己的订单，不能改别人的"——这需要精确到参数级别的判断。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong><code>@PreAuthorize</code></strong> 是标注在 Service 方法（也可以是 Controller 方法）上的注解，
+    在方法真正执行<strong>之前</strong>用 <strong>SpEL 表达式</strong>做一次权限判断，表达式返回 <code>false</code> 就直接抛出 <code>AccessDeniedException</code>，方法体一行代码都不会执行。
+    相比上一篇的 URL 级别控制，它的粒度可以精确到"某个方法 + 方法参数 + 当前登录用户"的组合判断。
+  </p>
+
+  <div class="callout info">
+    先决条件：必须在配置类上加 <code>@EnableMethodSecurity</code>（Spring Security 6 的新注解，替代了旧版的 <code>@EnableGlobalMethodSecurity</code>），否则 <code>@PreAuthorize</code> 完全不生效，方法照常执行，这是最容易被忽略的一步。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>MethodSecurityConfig.java</span></div>
+    <pre><span class="ann">@Configuration</span>
+<span class="ann">@EnableMethodSecurity</span>  <span class="com">// 开启 @PreAuthorize / @PostAuthorize / @Secured 支持</span>
+<span class="kw">public class</span> <span class="ty">MethodSecurityConfig</span> <span class="punct">{</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>正例：参数级别的权限判断</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java</span></div>
+    <pre><span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+
+    <span class="com">// 粗粒度：URL 级别做不到的角色判断，方法级别可以直接写</span>
+    <span class="ann">@PreAuthorize</span><span class="punct">(</span><span class="str">"hasRole('ADMIN')"</span><span class="punct">)</span>
+    <span class="kw">public void</span> <span class="fn">deleteAnyOrder</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">orderId</span><span class="punct">) { </span><span class="punct">...</span> <span class="punct">}</span>
+
+    <span class="com">// 细粒度：只能修改自己的订单——#userId 引用方法参数，authentication.principal 是当前登录用户</span>
+    <span class="ann">@PreAuthorize</span><span class="punct">(</span><span class="str">"#userId == authentication.principal.id"</span><span class="punct">)</span>
+    <span class="kw">public void</span> <span class="fn">updateOwnOrder</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">,</span> <span class="ty">OrderDTO</span> <span class="var">dto</span><span class="punct">) { </span><span class="punct">...</span> <span class="punct">}</span>
+
+    <span class="com">// 也可以组合：管理员放行，或者是本人操作也放行</span>
+    <span class="ann">@PreAuthorize</span><span class="punct">(</span><span class="str">"hasRole('ADMIN') or #userId == authentication.principal.id"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Order</span> <span class="fn">getOrderDetail</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">,</span> <span class="ty">Long</span> <span class="var">orderId</span><span class="punct">) { </span><span class="punct">...</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>
+    <code>authentication.principal</code> 就是上一篇讲过的 <code>UserDetails</code> 对象——如果你自定义的 <code>UserDetails</code> 实现类里暴露了 <code>getId()</code> 方法，SpEL 表达式就能直接调用 <code>authentication.principal.id</code> 拿到当前登录用户的主键。
+  </p>
+
+  <h2>原理走一遍：同样是 AOP 代理机制</h2>
+  <p>
+    <code>@PreAuthorize</code> 能生效，靠的不是什么"运行时反射扫描注解"，而是和事务管理 <code>@Transactional</code> 完全一样的 <strong>AOP 代理</strong>机制——
+    容器给标了 <code>@PreAuthorize</code> 方法所在的 Bean 生成一个代理对象，方法调用先被代理对象拦截，代理逻辑里执行 SpEL 表达式判断权限，通过了才调用真正的目标方法。
+  </p>
+
+  <div class="tree">
+    <span class="hi">外部调用 orderService.updateOwnOrder(...)</span><br>
+    &nbsp;&nbsp;→ 实际拿到的是 <span class="hi">代理对象</span>，不是 OrderService 原始实例<br>
+    &nbsp;&nbsp;→ 代理对象里的 MethodSecurityInterceptor 先执行<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;解析 @PreAuthorize 的 SpEL 表达式<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;→ 通过：放行，调用真正的 updateOwnOrder()<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;→ 不通过：抛 AccessDeniedException，目标方法根本不会被执行
+  </div>
+
+  <div class="callout warn">
+    <strong>AOP 自调用失效陷阱，这里同样适用：</strong>
+    在 <code>data</code> 组讲事务管理时提到过，<code>@Transactional</code> 方法如果被同一个类里的另一个方法直接 <code>this.xxx()</code> 调用，会绕开代理直接调用原始对象，导致事务失效。
+    <code>@PreAuthorize</code> 是同一套 AOP 机制，踩的坑一模一样：
+  </div>
+  <div class="code-block" style="margin-top:10px;">
+    <div class="cb-header"><span>自调用导致 @PreAuthorize 失效</span></div>
+    <pre><span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+
+    <span class="ann">@PreAuthorize</span><span class="punct">(</span><span class="str">"#userId == authentication.principal.id"</span><span class="punct">)</span>
+    <span class="kw">public void</span> <span class="fn">updateOwnOrder</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">userId</span><span class="punct">,</span> <span class="ty">OrderDTO</span> <span class="var">dto</span><span class="punct">) { </span><span class="punct">...</span> <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">batchUpdate</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderDTO</span><span class="punct">&gt;</span> <span class="var">dtos</span><span class="punct">) {</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="ty">OrderDTO</span> <span class="var">dto</span> <span class="punct">:</span> <span class="var">dtos</span><span class="punct">) {</span>
+            <span class="com">// this.updateOwnOrder() 是类内部直接调用，绕过代理对象，@PreAuthorize 完全不会执行！</span>
+            <span class="kw">this</span><span class="punct">.</span><span class="fn">updateOwnOrder</span><span class="punct">(</span><span class="var">dto</span><span class="punct">.</span><span class="fn">getUserId</span><span class="punct">(),</span> <span class="var">dto</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>解决方式和事务失效问题一样：把被调用方法拆到另一个 Bean 里，或者注入自身的代理对象（<code>AopContext.currentProxy()</code>）再调用。</p>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th>URL 级别（authorizeHttpRequests）</th><th>方法级别（@PreAuthorize）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>粒度</td><td>接口路径</td><td>方法 + 参数 + 当前用户</td></tr>
+      <tr><td>判断能力</td><td>只能判断角色/权限字符串</td><td>SpEL 表达式，能引用方法参数和返回值</td></tr>
+      <tr><td>生效前提</td><td>SecurityFilterChain 生效即可</td><td>必须额外加 <code>@EnableMethodSecurity</code></td></tr>
+      <tr><td>典型场景</td><td>整个模块只有管理员能访问</td><td>用户只能操作自己的数据</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"@PreAuthorize 和 @PostAuthorize 的区别？" —— <code>@PreAuthorize</code> 在方法执行前判断（判断依据只能是参数），<code>@PostAuthorize</code> 在方法执行后判断（可以用 <code>returnObject</code> 引用方法的返回值做判断，比如"只有订单归属人才能看到查询结果"，但代价是即便权限不通过，方法体也已经执行完了，不适合有副作用的写操作）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>细粒度授权：</strong>SpEL 表达式能引用方法参数和当前登录用户，弥补 URL 级别控制做不到的"数据归属"判断。</li>
+    <li><strong>前提条件：</strong>必须加 <code>@EnableMethodSecurity</code> 才生效，这是最容易漏掉的一步。</li>
+    <li><strong>本质是 AOP 代理：</strong>和 <code>@Transactional</code> 一样存在自调用失效问题，排查思路可以完全复用。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-基于角色的访问控制配置.html" class="nav-btn">← 基于角色的访问控制配置</a>
+    <a href="./06-无状态会话与JWT整合.html" class="nav-btn next">无状态会话与 JWT 整合 →</a>
+  </div>
+
+</div>
+</body>
+</html>

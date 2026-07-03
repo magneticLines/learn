@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>@Autowired 注入方式（构造器 / Setter / 字段） — IoC 核心与自动配置</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #6db33f; }
+  p code, li code { color: #6db33f; }
+  h2 { color: #6db33f; border-left-color: #6db33f; }
+  .hero .tag { color: #6db33f; border-color: #1e3a2f; }
+  .nav-btn.next { color: #6db33f; border-color: #1e3a2f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / IoC 核心与自动配置 / @Autowired 注入方式（构造器 / Setter / 字段）
+  </div>
+
+  <div class="hero">
+    <div class="tag">IoC 核心与自动配置</div>
+    <h1>@Autowired 注入方式（构造器 / Setter / 字段）</h1>
+    <p>三种注入方式的优劣对比已经在工程实战模块讲过，这篇聚焦几个实操细节：什么时候能省略 @Autowired、多个同类型 Bean 怎么消歧义。</p>
+  </div>
+
+  <h2>已经讲过的部分（直接复用）</h2>
+  <p>
+    构造器注入 / Setter 注入 / 字段注入的优缺点对比表，以及"为什么构造器注入是官方推荐方式"，已经在
+    <a href="../../04-工程实战/mechanism/01-IoC-DI.html">04-工程实战/mechanism/01-IoC-DI.html</a> 的"三种注入方式对比"一节讲透了，这里不再重复画表格。
+  </p>
+
+  <h2>实操细节 1：单构造器可以省略 @Autowired</h2>
+  <p>
+    Spring 4.3 之后有一个很实用的简化：<strong>如果一个类只有一个构造器，Spring 会自动把它当作注入点使用，不需要再显式标注 <code>@Autowired</code></strong>。
+    如果有多个构造器，则必须在其中一个上标 <code>@Autowired</code> 明确告诉容器用哪个。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java（单构造器，省略 @Autowired）</span></div>
+    <pre><span class="ann">@Service</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">OrderRepository</span> <span class="var">orderRepo</span><span class="punct">;</span>
+
+    <span class="com">// 只有一个构造器，Spring 4.3+ 自动识别为注入点，@Autowired 可省略</span>
+    <span class="kw">public</span> <span class="fn">OrderService</span><span class="punct">(</span><span class="ty">OrderRepository</span> <span class="var">orderRepo</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">orderRepo</span> <span class="punct">=</span> <span class="var">orderRepo</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>这也是配合 Lombok <code>@RequiredArgsConstructor</code> 的写法在实际项目里几乎看不到 <code>@Autowired</code> 字样的原因——单构造器场景下它已经变成了可选项。</p>
+
+  <h2>实操细节 2：required = false</h2>
+  <p><code>@Autowired</code> 默认要求依赖必须存在，找不到就直接启动失败。如果这个依赖是可选的，用 <code>required = false</code> 声明：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>可选依赖</span></div>
+    <pre><span class="ann">@Autowired</span><span class="punct">(</span><span class="var">required</span> <span class="punct">=</span> <span class="kw">false</span><span class="punct">)</span>
+<span class="kw">private</span> <span class="ty">MetricsCollector</span> <span class="var">metrics</span><span class="punct">;</span>  <span class="com">// 容器里没有这个 Bean 也能正常启动，metrics 为 null</span></pre>
+  </div>
+  <div class="callout warn">
+    用了 <code>required = false</code> 就必须在使用前做<strong>判空处理</strong>，否则一旦这个可选依赖真的缺失，NPE 会在运行时才暴露，比启动期失败更难排查。这是新手常忽略的连带责任。
+  </div>
+
+  <h2>实操细节 3：多个同类型 Bean 的歧义问题</h2>
+  <p>当容器里有多个同类型的 Bean（比如 <code>PaymentService</code> 的多个实现），直接 <code>@Autowired</code> 会因为"不知道注入哪一个"而启动失败，报 <code>NoUniqueBeanDefinitionException</code>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：歧义注入，启动报错</span></div>
+    <pre><span class="ann">@Service</span> <span class="kw">class</span> <span class="ty">AlipayPaymentService</span> <span class="kw">implements</span> <span class="ty">PaymentService</span> <span class="punct">{</span> <span class="punct">...</span> <span class="punct">}</span>
+<span class="ann">@Service</span> <span class="kw">class</span> <span class="ty">WechatPaymentService</span> <span class="kw">implements</span> <span class="ty">PaymentService</span> <span class="punct">{</span> <span class="punct">...</span> <span class="punct">}</span>
+
+<span class="ann">@Service</span>
+<span class="kw">class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="ann">@Autowired</span>
+    <span class="kw">private</span> <span class="ty">PaymentService</span> <span class="var">payService</span><span class="punct">;</span> <span class="com">// 报错：两个实现，容器不知道选哪个</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>两种解决方式，各自适用场景不同：</p>
+  <table>
+    <thead>
+      <tr><th>方式</th><th>用法</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>@Qualifier</code></td>
+        <td>按 Bean 名称精确指定要注入哪一个</td>
+        <td>需要明确区分"就是要这一个"，比如按支付渠道分别注入不同实现</td>
+      </tr>
+      <tr>
+        <td><code>@Primary</code></td>
+        <td>标在某个实现类上，声明它是"默认优先"的那个</td>
+        <td>大多数地方都用同一个默认实现，只有极少数地方需要例外指定（用 <code>@Qualifier</code> 覆盖）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例：@Qualifier + @Primary 配合使用</span></div>
+    <pre><span class="ann">@Service</span>
+<span class="ann">@Primary</span>  <span class="com">// 大多数场景默认用支付宝，作为兜底选择</span>
+<span class="kw">class</span> <span class="ty">AlipayPaymentService</span> <span class="kw">implements</span> <span class="ty">PaymentService</span> <span class="punct">{</span> <span class="punct">...</span> <span class="punct">}</span>
+
+<span class="ann">@Service</span><span class="punct">(</span><span class="str">"wechatPay"</span><span class="punct">)</span>  <span class="com">// 显式指定 Bean 名称</span>
+<span class="kw">class</span> <span class="ty">WechatPaymentService</span> <span class="kw">implements</span> <span class="ty">PaymentService</span> <span class="punct">{</span> <span class="punct">...</span> <span class="punct">}</span>
+
+<span class="ann">@Service</span>
+<span class="kw">class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="ann">@Autowired</span>
+    <span class="kw">private</span> <span class="ty">PaymentService</span> <span class="var">defaultPay</span><span class="punct">;</span> <span class="com">// 无歧义时自动选 @Primary 的 AlipayPaymentService</span>
+
+    <span class="ann">@Autowired</span> <span class="ann">@Qualifier</span><span class="punct">(</span><span class="str">"wechatPay"</span><span class="punct">)</span>
+    <span class="kw">private</span> <span class="ty">PaymentService</span> <span class="var">wechatPay</span><span class="punct">;</span> <span class="com">// 显式指定，绕过 @Primary</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"@Autowired 找到多个同类型 Bean 怎么办？"——按优先级依次是：先看有没有 <code>@Qualifier</code> 精确指定名称；没有的话看是否有 <code>@Primary</code> 标记的默认实现；都没有就直接抛 <code>NoUniqueBeanDefinitionException</code>。
+    另外如果注入类型是 <code>List&lt;PaymentService&gt;</code>，则不存在歧义问题——Spring 会把所有实现都收集进列表，这是策略模式常用写法。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li>三种注入方式的优劣对比复用 04-工程实战/mechanism/01-IoC-DI.html 的结论，不重复展开。</li>
+    <li>单构造器场景下 <code>@Autowired</code> 可省略（Spring 4.3+），多构造器必须显式标注。</li>
+    <li><code>required = false</code> 声明可选依赖，但必须配合判空处理，否则风险从启动期推迟到运行期。</li>
+    <li>多个同类型 Bean 的歧义问题：<code>@Qualifier</code> 精确指定，<code>@Primary</code> 设默认优先，两者可以配合使用。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-组件扫描注解.html" class="nav-btn">← @Component / @Service / @Repository / @Controller</a>
+    <a href="./08-Bean与Configuration显式装配.html" class="nav-btn next">@Bean 与 @Configuration 显式装配 →</a>
+  </div>
+
+</div>
+</body>
+</html>

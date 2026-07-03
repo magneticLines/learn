@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CSRF 防护及何时禁用 — 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7f1d1d; }
+  .nav-btn.next { color: #f87171; border-color: #7f1d1d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 安全 / CSRF 防护及何时禁用
+  </div>
+
+  <div class="hero">
+    <div class="tag">安全</div>
+    <h1>CSRF 防护及何时禁用</h1>
+    <p>上一篇整合 JWT 时代码里悄悄写了一行 <code>csrf(AbstractHttpConfigurer::disable)</code>——这一篇讲清楚 CSRF 防护是什么，以及为什么在 JWT 架构下关掉它反而是对的。</p>
+  </div>
+
+  <h2>攻击原理：借用户的手打枪</h2>
+  <p>
+    <strong>CSRF（Cross-Site Request Forgery，跨站请求伪造）</strong>的核心利用点是：<strong>浏览器发请求时会自动携带目标网站的 Cookie</strong>，而攻击者根本不需要知道这个 Cookie 的内容，只需要"诱导"用户的浏览器发出请求即可。
+  </p>
+  <div class="tree">
+    <span class="hi">典型攻击场景</span><br>
+    ① 用户正常登录了 bank.com，浏览器保存了登录 Cookie<br>
+    ② 用户在没有登出的情况下，访问了攻击者精心构造的恶意页面 evil.com<br>
+    ③ evil.com 页面里藏着一个自动提交的表单：<br>
+    &nbsp;&nbsp;&lt;form action="https://bank.com/transfer" method="POST"&gt;<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&lt;input name="to" value="attacker-account"&gt;<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&lt;input name="amount" value="10000"&gt;<br>
+    &nbsp;&nbsp;&lt;/form&gt;&lt;script&gt;document.forms[0].submit()&lt;/script&gt;<br>
+    ④ 浏览器提交这个表单时，<span class="hi">自动带上了 bank.com 的登录 Cookie</span><br>
+    ⑤ bank.com 服务端一看 Cookie 合法，以为是用户本人发起的转账请求，直接执行
+  </div>
+  <p>
+    整个过程中，攻击者<strong>完全不需要偷到用户的 Cookie</strong>，只是"借用"了浏览器自动携带 Cookie 这个机制，伪造了一个看起来"来自合法用户"的请求。
+  </p>
+
+  <h2>Spring Security 默认的 CSRF Token 机制</h2>
+  <p>
+    Spring Security 默认对所有非 GET 请求（POST/PUT/DELETE 等）开启 CSRF 防护：服务端生成一个随机的 <strong>CSRF Token</strong>，
+    要求每次提交表单/发起写请求时都必须在请求参数或请求头里带上这个 Token。因为这个 Token 存在页面里（不是 Cookie），恶意网站的表单没有渠道能拿到它，构造出来的伪造请求会因为缺少合法 Token 被服务端拒绝。
+  </p>
+
+  <h2>一句话讲清楚：为什么 JWT 架构下通常可以禁用 CSRF</h2>
+  <p>
+    <strong>CSRF 攻击的前提是"浏览器自动携带凭证"，而这个前提对 JWT 不成立。</strong>
+    JWT 通常存放在前端的内存变量或 <code>localStorage</code> 里，每次请求需要前端 JS <strong>显式</strong>把它放进 <code>Authorization</code> 请求头——浏览器不会像对待 Cookie 那样自动附加这个头。
+    攻击者构造的恶意页面即使能诱导用户浏览器发出请求，也没办法让浏览器"自动"带上存在别的网站 <code>localStorage</code> 里的 JWT（何况跨域也读不到），所以这类请求到达服务端时根本没有合法的 <code>Authorization</code> 头，会被认证层直接拒绝，天然免疫 CSRF。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>SecurityConfig.java（纯 JWT 架构下禁用 CSRF）</span></div>
+    <pre><span class="var">http</span>
+    <span class="punct">.</span><span class="fn">csrf</span><span class="punct">(</span><span class="ty">AbstractHttpConfigurer</span><span class="punct">::</span><span class="fn">disable</span><span class="punct">)</span>  <span class="com">// JWT 不走 Cookie，天然免疫 CSRF，无需再加一层防护</span>
+    <span class="punct">.</span><span class="fn">sessionManagement</span><span class="punct">(</span><span class="var">s</span> <span class="punct">-&gt;</span> <span class="var">s</span><span class="punct">.</span><span class="fn">sessionCreationPolicy</span><span class="punct">(</span><span class="ty">SessionCreationPolicy</span><span class="punct">.</span><span class="var">STATELESS</span><span class="punct">));</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>关键前提，容易被忽略：</strong>上面这个结论只在"纯前后端分离 + JWT 放在请求头"的架构下成立。
+    如果项目里<strong>用 Cookie 存储 Session ID</strong>（传统的服务端渲染，或者把 JWT 存进 <code>HttpOnly</code> Cookie 里给浏览器自动携带），
+    那么浏览器一样会自动带上这个 Cookie，CSRF 攻击的前提重新成立，<strong>这种情况下必须保留 CSRF 防护</strong>，禁用会直接留下真实漏洞。
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>架构</th><th>凭证存储方式</th><th>浏览器是否自动携带</th><th>CSRF 要不要开启</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>传统服务端渲染</td>
+        <td>Session ID 存 Cookie</td>
+        <td>是（浏览器自动带）</td>
+        <td><strong>必须开启</strong></td>
+      </tr>
+      <tr>
+        <td>前后端分离 + JWT 存请求头</td>
+        <td>JWT 存内存/localStorage，手动放进 Authorization 头</td>
+        <td>否（需要 JS 显式设置）</td>
+        <td>可以安全禁用</td>
+      </tr>
+      <tr>
+        <td>前后端分离 + JWT 存 HttpOnly Cookie</td>
+        <td>JWT 存 Cookie（为了防 XSS 读取）</td>
+        <td>是（浏览器自动带）</td>
+        <td><strong>必须开启</strong>（或用 SameSite=Strict 等额外手段替代）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"前后端分离项目为什么可以关闭 CSRF？" —— 不要死记"前后端分离就可以关"，正确的回答逻辑是：判断依据是"凭证是否被浏览器自动携带"，如果 Token 存在需要 JS 显式处理的地方（请求头/内存），CSRF 的攻击前提就不成立；反之只要用了 Cookie 自动携带凭证，不管是不是前后端分离架构，CSRF 防护都不能省。这也侧面呼应了 <code>04-工程实战/auth</code> 里讲过的 AAA 基础——认证凭证的存储方式，直接决定了要防御哪一类攻击。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>CSRF 利用的是"自动携带"：</strong>攻击者不需要偷到 Cookie，只需要借用浏览器自动附带 Cookie 这个默认行为。</li>
+    <li><strong>Token 机制的本质：</strong>要求请求携带一个恶意页面拿不到的额外凭证，打破"仅凭 Cookie 就能伪造合法请求"的前提。</li>
+    <li><strong>禁用与否看凭证存储方式，不看是否前后端分离：</strong>JWT 放请求头可以安全禁用；一旦凭证进了 Cookie，不管什么架构都必须开启（或采取等效防护）。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./07-CORS跨域配置.html" class="nav-btn">← CORS 跨域配置</a>
+    <a href="../config/01-applicationProperties与yml.html" class="nav-btn next">下一篇:application.properties / yml →</a>
+  </div>
+
+</div>
+</body>
+</html>

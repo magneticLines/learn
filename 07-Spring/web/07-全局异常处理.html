@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>全局异常处理（@ExceptionHandler / @ControllerAdvice） — Web 开发与 REST</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb"><a href="../spring-roadmap.html">Spring 路线图</a> / Web 开发与 REST / 全局异常处理（@ExceptionHandler / @ControllerAdvice）</div>
+
+  <div class="hero">
+    <div class="tag">Web 开发与 REST</div>
+    <h1>全局异常处理（@ExceptionHandler / @ControllerAdvice）</h1>
+    <p>上一篇统一了成功/失败的响应结构，但如果每个 Controller 方法都要手写 try-catch 去构造失败的 Result，代码依然又臭又长。这一篇讲清楚如何让异常处理"自动化"。</p>
+  </div>
+
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>@ControllerAdvice</strong>（Web 场景通常用它的子集 <strong>@RestControllerAdvice</strong> = @ControllerAdvice + @ResponseBody）
+    是一个"全局拦截层"，配合 <strong>@ExceptionHandler</strong> 可以把散落在各个 Controller 里的异常处理逻辑，集中收敛到一个类里统一管理。
+    Controller 方法本身不再需要 try-catch，只管抛异常，剩下的事情交给全局处理器。
+  </p>
+
+  <h2>反例：每个方法都写 try-catch</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderController.java（反例 — 异常处理散落各处）</span></div>
+    <pre><span class="ann">@RestController</span>
+<span class="ann">@RequestMapping</span><span class="punct">(</span><span class="str">"/api/orders"</span><span class="punct">)</span>
+<span class="kw">public class</span> <span class="ty">OrderController</span> <span class="punct">{</span>
+
+    <span class="ann">@GetMapping</span><span class="punct">(</span><span class="str">"/{id}"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">OrderDTO</span><span class="punct">&gt;</span> <span class="fn">getOrder</span><span class="punct">(</span><span class="ann">@PathVariable</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">) {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">success</span><span class="punct">(</span><span class="var">orderService</span><span class="punct">.</span><span class="fn">findById</span><span class="punct">(</span><span class="var">id</span><span class="punct">));</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">OrderNotFoundException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">4041</span><span class="punct">,</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">500</span><span class="punct">,</span> <span class="str">"服务器开小差了"</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="ann">@PostMapping</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="fn">createOrder</span><span class="punct">(</span><span class="ann">@RequestBody</span> <span class="ty">OrderDTO</span> <span class="var">dto</span><span class="punct">) {</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="com">// 又要重复一遍一模一样的 try-catch 结构……</span>
+            <span class="var">orderService</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="var">dto</span><span class="punct">);</span>
+            <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">success</span><span class="punct">(</span><span class="kw">null</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">InsufficientStockException</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">4002</span><span class="punct">,</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+            <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">500</span><span class="punct">,</span> <span class="str">"服务器开小差了"</span><span class="punct">);</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <ul>
+    <li><strong>代码重复：</strong>兜底的 <code>catch (Exception e)</code> 逻辑在每个方法里都要抄一遍。</li>
+    <li><strong>容易遗漏：</strong>新加一个方法时，程序员一忙忘了写 try-catch，异常就直接抛到用户面前，暴露堆栈信息（安全隐患）。</li>
+    <li><strong>修改成本高：</strong>某天想给所有失败响应加一个 <code>traceId</code> 字段方便排查问题，得把每个方法的 catch 块全部改一遍。</li>
+  </ul>
+
+  <h2>正例：全局异常处理器集中兜底</h2>
+  <p>先定义一个业务异常类，带上错误码字段，语义上区别于系统级异常（如 NPE、数据库连接失败）：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BusinessException.java（自定义业务异常）</span></div>
+    <pre><span class="ann">@Getter</span>
+<span class="kw">public class</span> <span class="ty">BusinessException</span> <span class="kw">extends</span> <span class="ty">RuntimeException</span> <span class="punct">{</span>
+
+    <span class="kw">private final int</span> <span class="var">code</span><span class="punct">;</span>  <span class="com">// 携带业务错误码，抛到全局处理器时直接拿来用</span>
+
+    <span class="kw">public</span> <span class="fn">BusinessException</span><span class="punct">(</span><span class="kw">int</span> <span class="var">code</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">message</span><span class="punct">) {</span>
+        <span class="kw">super</span><span class="punct">(</span><span class="var">message</span><span class="punct">);</span>       <span class="com">// message 交给父类 Throwable 存储，getMessage() 可直接取</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">code</span> <span class="punct">=</span> <span class="var">code</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>GlobalExceptionHandler.java（全局异常处理器）</span></div>
+    <pre><span class="ann">@Slf4j</span>
+<span class="ann">@RestControllerAdvice</span>  <span class="com">// = @ControllerAdvice + @ResponseBody，处理结果直接序列化成 JSON</span>
+<span class="kw">public class</span> <span class="ty">GlobalExceptionHandler</span> <span class="punct">{</span>
+
+    <span class="com">// 精确匹配：专门处理业务异常，错误码和信息都来自异常本身</span>
+    <span class="ann">@ExceptionHandler</span><span class="punct">(</span><span class="ty">BusinessException</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="fn">handleBusinessException</span><span class="punct">(</span><span class="ty">BusinessException</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="var">log</span><span class="punct">.</span><span class="fn">warn</span><span class="punct">(</span><span class="str">"业务异常: {}"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="var">e</span><span class="punct">.</span><span class="fn">getCode</span><span class="punct">(),</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">());</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 精确匹配：参数校验失败（配合 Bean Validation，下一篇会展开）</span>
+    <span class="ann">@ExceptionHandler</span><span class="punct">(</span><span class="ty">MethodArgumentNotValidException</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="fn">handleValidException</span><span class="punct">(</span><span class="ty">MethodArgumentNotValidException</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="ty">String</span> <span class="var">msg</span> <span class="punct">=</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getBindingResult</span><span class="punct">().</span><span class="fn">getFieldError</span><span class="punct">().</span><span class="fn">getDefaultMessage</span><span class="punct">();</span>
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">400</span><span class="punct">,</span> <span class="var">msg</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 兜底匹配：其余所有未被上面精确捕获的异常，防止堆栈信息泄露给用户</span>
+    <span class="ann">@ExceptionHandler</span><span class="punct">(</span><span class="ty">Exception</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">Void</span><span class="punct">&gt;</span> <span class="fn">handleUnknown</span><span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">) {</span>
+        <span class="var">log</span><span class="punct">.</span><span class="fn">error</span><span class="punct">(</span><span class="str">"未捕获的系统异常"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>  <span class="com">// 系统异常必须打全量堆栈，方便排查</span>
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">fail</span><span class="punct">(</span><span class="num">500</span><span class="punct">,</span> <span class="str">"服务器开小差了"</span><span class="punct">);</span>  <span class="com">// 但给用户的提示要脱敏，不能暴露内部细节</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderController.java（正例 — Controller 直接抛异常，不再 try-catch）</span></div>
+    <pre><span class="ann">@RestController</span>
+<span class="ann">@RequestMapping</span><span class="punct">(</span><span class="str">"/api/orders"</span><span class="punct">)</span>
+<span class="ann">@RequiredArgsConstructor</span>
+<span class="kw">public class</span> <span class="ty">OrderController</span> <span class="punct">{</span>
+
+    <span class="kw">private final</span> <span class="ty">OrderService</span> <span class="var">orderService</span><span class="punct">;</span>
+
+    <span class="ann">@GetMapping</span><span class="punct">(</span><span class="str">"/{id}"</span><span class="punct">)</span>
+    <span class="kw">public</span> <span class="ty">Result</span><span class="punct">&lt;</span><span class="ty">OrderDTO</span><span class="punct">&gt;</span> <span class="fn">getOrder</span><span class="punct">(</span><span class="ann">@PathVariable</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">) {</span>
+        <span class="com">// 找不到订单就直接抛异常，Controller 方法本身干净得像"正常流程代码"</span>
+        <span class="kw">return</span> <span class="ty">Result</span><span class="punct">.</span><span class="fn">success</span><span class="punct">(</span><span class="var">orderService</span><span class="punct">.</span><span class="fn">findById</span><span class="punct">(</span><span class="var">id</span><span class="punct">));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderService.java（业务层照常抛异常，无需关心怎么响应给前端）</span></div>
+    <pre><span class="kw">public</span> <span class="ty">OrderDTO</span> <span class="fn">findById</span><span class="punct">(</span><span class="ty">Long</span> <span class="var">id</span><span class="punct">) {</span>
+    <span class="kw">return</span> <span class="var">orderRepo</span><span class="punct">.</span><span class="fn">findById</span><span class="punct">(</span><span class="var">id</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">orElseThrow</span><span class="punct">(() -></span> <span class="kw">new</span> <span class="ty">BusinessException</span><span class="punct">(</span><span class="num">4041</span><span class="punct">,</span> <span class="str">"订单不存在: "</span> <span class="punct">+</span> <span class="var">id</span><span class="punct">));</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>原理走一遍：Spring 如何选中最匹配的处理器方法</h2>
+  <div class="tree">
+    <span class="hi">① Controller 方法执行时抛出异常</span><br>
+    &nbsp;&nbsp;例如 OrderService 抛出 BusinessException<br>
+    <br>
+    <span class="hi">② DispatcherServlet 捕获异常，交给 HandlerExceptionResolver 处理链</span><br>
+    &nbsp;&nbsp;其中 ExceptionHandlerExceptionResolver 会去找所有 @RestControllerAdvice Bean<br>
+    <br>
+    <span class="hi">③ 按异常类型的继承层级匹配最精确的 @ExceptionHandler</span><br>
+    &nbsp;&nbsp;BusinessException → 精确匹配 handleBusinessException()<br>
+    &nbsp;&nbsp;NullPointerException（没有专门处理方法）→ 沿继承链向上找，最终匹配 handleUnknown(Exception e)<br>
+    &nbsp;&nbsp;→ <span class="hi">"最具体优先"原则，和 Java 方法重载解析的直觉一致</span><br>
+    <br>
+    <span class="hi">④ 处理器方法返回值当作响应体（因为类上有 @ResponseBody）</span><br>
+    &nbsp;&nbsp;序列化成 JSON 写回，前端收到的依然是统一的 Result 结构
+  </div>
+
+  <h2>生产环境常见坑</h2>
+  <div class="callout warn">
+    <strong>陷阱：</strong><code>@ExceptionHandler</code> 只能捕获<strong>Controller 方法执行过程中</strong>抛出的异常，也就是请求已经进入 DispatcherServlet 分发链路之后发生的异常。
+    但 <strong>Filter（过滤器）</strong> 在 DispatcherServlet 之前执行，如果 Filter 里抛异常（比如自定义的 Token 校验 Filter 解析 JWT 失败），
+    这个异常压根不会进入 Spring MVC 的异常处理链，<code>@ExceptionHandler</code> 完全捕获不到，最终会变成容器默认的错误页面或裸露的堆栈信息。
+  </div>
+  <p>解决办法通常有两种：一是在 Filter 内部自己 try-catch，手动构造 Result 写入响应（<code>response.getWriter().write(...)</code>）；二是让 Filter 把异常信息存入 request 属性，转发给一个专门的错误处理 Controller 处理，Spring Boot 默认的 <code>/error</code> 端点就是这个思路的体现。</p>
+
+  <table>
+    <thead><tr><th>处理方式</th><th>执行时机</th><th>@ExceptionHandler 能否捕获</th></tr></thead>
+    <tbody>
+      <tr><td>Filter 抛异常</td><td>DispatcherServlet 之前</td><td>不能，需要 Filter 自行处理</td></tr>
+      <tr><td>拦截器 preHandle 抛异常</td><td>DispatcherServlet 内部，Controller 方法执行前</td><td>能，因为已进入 MVC 异常处理链</td></tr>
+      <tr><td>Controller / Service 方法抛异常</td><td>DispatcherServlet 内部，请求处理过程中</td><td>能，最常见的场景</td></tr>
+      <tr><td>异步线程池内抛异常</td><td>脱离当前请求线程</td><td>不能，需要用 <code>@Async</code> 的异常处理器或线程内自行捕获</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"@ControllerAdvice 和 @ExceptionHandler 的关系？"——@ControllerAdvice 标注一个类，声明"这是一个全局增强器"；
+    @ExceptionHandler 标注类里的具体方法，声明"这个方法专门处理某种类型的异常"。两者配合才能生效，@ExceptionHandler 也可以单独写在某个 Controller 内部，只对该 Controller 生效（局部异常处理）。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>关注点分离：</strong>Controller/Service 只管抛异常表达"发生了什么"，全局处理器统一决定"怎么把异常翻译成用户能看懂的响应"。</li>
+    <li><strong>集中管理，一处修改全局生效：</strong>想统一加日志、加 traceId、脱敏错误信息，只需要改 GlobalExceptionHandler 一个地方。</li>
+    <li><strong>按异常类型精确路由：</strong>业务异常和系统异常可以给出完全不同粒度的响应和日志级别。</li>
+    <li><strong>覆盖范围有边界：</strong>Filter、异步线程等 DispatcherServlet 之外的异常需要单独处理，不能指望 @ExceptionHandler 包打天下。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./06-统一响应体与状态码设计.html" class="nav-btn">← 统一响应体与状态码设计</a>
+    <a href="./08-HATEOAS超媒体链接.html" class="nav-btn next">HATEOAS 超媒体链接 →</a>
+  </div>
+
+</div>
+</body>
+</html>

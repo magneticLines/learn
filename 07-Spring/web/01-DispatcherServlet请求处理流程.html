@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DispatcherServlet 请求处理流程 — Web 开发与 REST</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / Web 开发与 REST / DispatcherServlet 请求处理流程
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Web 开发与 REST</div>
+    <h1>DispatcherServlet 请求处理流程</h1>
+    <p>Spring MVC 的所有魔法都始于一个"前端控制器"——搞懂请求从进来到响应返回中间经过了哪些角色，是理解整个 Web 层的地基。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong>DispatcherServlet</strong> 是 Spring MVC 里<strong>唯一的 Servlet 入口</strong>：所有 HTTP 请求先统一打到它这里，
+    再由它<strong>委托</strong>给一系列协作组件（HandlerMapping、HandlerAdapter、ViewResolver）完成"找方法 → 执行方法 → 渲染视图"的全过程。
+    你写的 <code>@Controller</code> 从来不会被 Servlet 容器直接调用，全部是 DispatcherServlet 在背后转发。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>公司前台总机（DispatcherServlet）接到所有外部电话，查花名册找到该转给哪个员工（HandlerMapping 匹配 Controller），
+    再让对应部门的人来处理（HandlerAdapter 执行），最后把结果整理成一份文档回复对方（ViewResolver 渲染 / 直接写 JSON）。
+    你不会指望客户直接拨每个员工的分机——那样公司电话本会无限膨胀，换人还要通知所有客户。
+  </div>
+
+  <!-- 2. 反例 → 问题 -->
+  <h2>反例：Servlet 时代"一个 URL 一个 Servlet"</h2>
+  <p>在 Spring MVC 出现之前（或者不用框架的原生 Servlet 开发），每新增一个接口就要新建一个 Servlet 类，并在 <code>web.xml</code> 里手工登记映射关系。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>web.xml（反例 — 每个接口一条配置，规模变大后难以维护）</span></div>
+    <pre><span class="punct">&lt;</span><span class="ty">web-app</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">servlet</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">servlet-name</span><span class="punct">&gt;</span>getUserServlet<span class="punct">&lt;/</span><span class="ty">servlet-name</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">servlet-class</span><span class="punct">&gt;</span>com.demo.GetUserServlet<span class="punct">&lt;/</span><span class="ty">servlet-class</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;/</span><span class="ty">servlet</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">servlet-mapping</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">servlet-name</span><span class="punct">&gt;</span>getUserServlet<span class="punct">&lt;/</span><span class="ty">servlet-name</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">url-pattern</span><span class="punct">&gt;</span>/api/users<span class="punct">&lt;/</span><span class="ty">url-pattern</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;/</span><span class="ty">servlet-mapping</span><span class="punct">&gt;</span>
+
+    <span class="com">&lt;!-- 每加一个接口，就要再复制一份 servlet + servlet-mapping --&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">servlet</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">servlet-name</span><span class="punct">&gt;</span>createUserServlet<span class="punct">&lt;/</span><span class="ty">servlet-name</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">servlet-class</span><span class="punct">&gt;</span>com.demo.CreateUserServlet<span class="punct">&lt;/</span><span class="ty">servlet-class</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;/</span><span class="ty">servlet</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;</span><span class="ty">servlet-mapping</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">servlet-name</span><span class="punct">&gt;</span>createUserServlet<span class="punct">&lt;/</span><span class="ty">servlet-name</span><span class="punct">&gt;</span>
+        <span class="punct">&lt;</span><span class="ty">url-pattern</span><span class="punct">&gt;</span>/api/users/create<span class="punct">&lt;/</span><span class="ty">url-pattern</span><span class="punct">&gt;</span>
+    <span class="punct">&lt;/</span><span class="ty">servlet-mapping</span><span class="punct">&gt;</span>
+<span class="punct">&lt;/</span><span class="ty">web-app</span><span class="punct">&gt;</span></pre>
+  </div>
+
+  <h3>这种写法的工程问题</h3>
+  <ul>
+    <li><strong>类爆炸：</strong>接口数量和 Servlet 类数量 1:1 增长，几百个接口就是几百个类和几百段 XML 配置。</li>
+    <li><strong>横切逻辑无处安放：</strong>登录校验、日志、异常处理这些每个接口都要做的事，只能在每个 Servlet 里重复写，或者手工套一层 Filter 链，非常笨重。</li>
+    <li><strong>没有统一的参数绑定 / 视图渲染机制：</strong>所有请求参数解析、类型转换、JSON 序列化都要自己在 <code>doGet</code>/<code>doPost</code> 里手写，重复劳动。</li>
+    <li><strong>路由能力弱：</strong><code>url-pattern</code> 只支持简单通配符，做不到 <code>@PathVariable</code> 这种路径变量提取。</li>
+  </ul>
+
+  <!-- 3. 正例 / 原理 -->
+  <h2>正例：中央调度层 —— DispatcherServlet</h2>
+  <p>
+    Spring MVC 反过来做：<strong>只注册一个 Servlet</strong>（DispatcherServlet），映射 <code>/</code> 或 <code>/api/*</code>，
+    所有请求都先经过它。它不自己处理业务，而是查询一份"路由表"（由 <code>@RequestMapping</code> 等注解构建），
+    找到该由哪个 Controller 的哪个方法来处理，然后把请求"转交"过去。
+  </p>
+  <p>
+    这就是为什么新增一个接口只需要在 Controller 类里加一个方法、标一个注解，<strong>不需要碰任何配置文件</strong>——
+    因为路由表是应用启动时通过扫描注解<strong>自动生成</strong>的，而不是手工登记的。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UserController.java（正例 — 只需声明方法，不用配置 Servlet）</span></div>
+    <pre><span class="ann">@RestController</span>
+<span class="ann">@RequestMapping</span><span class="punct">(</span><span class="str">"/api/users"</span><span class="punct">)</span>
+<span class="kw">public class</span> <span class="ty">UserController</span> <span class="punct">{</span>
+
+    <span class="ann">@GetMapping</span>
+    <span class="kw">public</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">User</span><span class="punct">&gt;</span> <span class="fn">list</span><span class="punct">() {</span> <span class="punct">...</span> <span class="punct">}</span>
+
+    <span class="com">// 新增一个接口，只是多一个方法——DispatcherServlet 会自动把它纳入路由表</span>
+    <span class="ann">@PostMapping</span>
+    <span class="kw">public</span> <span class="ty">User</span> <span class="fn">create</span><span class="punct">(</span><span class="ann">@RequestBody</span> <span class="ty">User</span> <span class="var">user</span><span class="punct">) {</span> <span class="punct">...</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 4. 原理走一遍 -->
+  <h2>一次请求的完整流程（原理走一遍）</h2>
+
+  <div class="tree">
+    <span class="hi">① DispatcherServlet 接收请求</span><br>
+    &nbsp;&nbsp;Servlet 容器（Tomcat）把所有匹配 / 的请求交给唯一的 DispatcherServlet<br>
+    <br>
+    <span class="hi">② HandlerMapping 匹配 Controller 方法</span><br>
+    &nbsp;&nbsp;根据请求的 URL + HTTP 方法，在启动时构建好的路由表里查找<br>
+    &nbsp;&nbsp;找到对应的 <span class="hi">HandlerMethod</span>（Controller 实例 + 目标方法）<br>
+    &nbsp;&nbsp;同时找出该请求要经过哪些 <span class="hi">拦截器（Interceptor）</span><br>
+    <br>
+    <span class="hi">③ HandlerAdapter 执行（含拦截器前置处理）</span><br>
+    &nbsp;&nbsp;依次执行 Interceptor.preHandle()（登录校验、日志埋点等横切逻辑）<br>
+    &nbsp;&nbsp;HandlerAdapter 负责解析方法参数（@RequestParam / @RequestBody 等）<br>
+    &nbsp;&nbsp;反射调用 Controller 方法，拿到返回值<br>
+    &nbsp;&nbsp;执行 Interceptor.postHandle()<br>
+    <br>
+    <span class="hi">④ 返回 ModelAndView 或直接写响应体</span><br>
+    &nbsp;&nbsp;若方法标了 @ResponseBody（或类标了 @RestController）→ HttpMessageConverter 直接把返回值序列化成 JSON 写入响应<br>
+    &nbsp;&nbsp;否则返回值被包装成 ModelAndView，进入下一步视图解析<br>
+    <br>
+    <span class="hi">⑤ ViewResolver 解析视图（仅当需要渲染页面时）</span><br>
+    &nbsp;&nbsp;根据视图名找到对应模板（如 Thymeleaf 模板文件）<br>
+    &nbsp;&nbsp;结合 Model 数据渲染成完整 HTML，写入响应<br>
+    <br>
+    <span class="hi">⑥ Interceptor.afterCompletion() 收尾</span> → 请求处理完成
+  </div>
+
+  <div class="callout info">
+    <strong>关键认知：</strong>REST 接口（返回 JSON）走 ①②③④ 就结束了，根本不会经过 ⑤ 视图解析。
+    只有传统的服务端渲染页面（返回视图名字符串）才会走到 ViewResolver 这一步——这也是后面 <code>@RestController</code> 与
+    传统 <code>@Controller</code> 的本质区别。
+  </div>
+
+  <!-- 5. 对比表格 -->
+  <h2>Servlet 原生开发 vs Spring MVC</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>原生 Servlet</th><th>Spring MVC（DispatcherServlet）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>路由注册方式</td>
+        <td>web.xml 手工配置，每接口一条</td>
+        <td>注解扫描自动生成路由表，零 XML</td>
+      </tr>
+      <tr>
+        <td>横切逻辑（登录/日志）</td>
+        <td>每个 Servlet 重复写，或叠 Filter 链</td>
+        <td>统一在 Interceptor / AOP 中处理一次</td>
+      </tr>
+      <tr>
+        <td>参数绑定</td>
+        <td>手动 <code>request.getParameter()</code> 逐个解析</td>
+        <td>HandlerAdapter 自动绑定到方法参数</td>
+      </tr>
+      <tr>
+        <td>JSON 序列化</td>
+        <td>手写 <code>ObjectMapper</code> 转换</td>
+        <td>HttpMessageConverter 自动完成</td>
+      </tr>
+      <tr>
+        <td>扩展点</td>
+        <td>基本没有，改动即改代码</td>
+        <td>HandlerInterceptor、HandlerMethodArgumentResolver 等丰富的 SPI</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>面试高频坑：</strong>不少人会误以为"每个 <code>@Controller</code> 都是一个 Servlet"。事实上整个应用生命周期内通常只有<strong>一个</strong> DispatcherServlet 实例，
+    所有 Controller 只是被它管理的普通 Spring Bean，本身并不实现 <code>Servlet</code> 接口。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>统一入口：</strong>所有请求收敛到一个 DispatcherServlet，路由逻辑集中管理，不再散落在配置文件里。</li>
+    <li><strong>职责分离：</strong>路由匹配（HandlerMapping）、方法执行（HandlerAdapter）、视图渲染（ViewResolver）各司其职，可以独立扩展替换。</li>
+    <li><strong>横切能力插拔：</strong>Interceptor 提供统一的请求前后置钩子，登录校验、日志、限流等横切逻辑不再侵入业务代码。</li>
+    <li><strong>为后续注解打基础：</strong>理解了这条主干流程，再学 <code>@RequestMapping</code>、参数绑定、视图解析时，就知道它们分别插在流程的哪一环。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../core/12-自定义Starter.html" class="nav-btn">← 自定义 Starter</a>
+    <a href="./02-Controller与RequestMapping.html" class="nav-btn next">@Controller 与 @RequestMapping →</a>
+  </div>
+
+</div>
+</body>
+</html>

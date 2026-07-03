@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>N+1 查询问题回顾（承接 04-工程实战） — Spring Data JPA</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁（数据访问组 · 琥珀色） */
+  .tree .hi { color: #fbbf24; }
+  p code, li code { color: #fbbf24; }
+  h2 { color: #fbbf24; border-left-color: #fbbf24; }
+  .hero .tag { color: #fbbf24; border-color: #78350f; }
+  .nav-btn.next { color: #fbbf24; border-color: #78350f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 数据访问 / N+1 查询问题回顾（承接 04-工程实战）
+  </div>
+
+  <div class="hero">
+    <div class="tag">数据访问</div>
+    <h1>N+1 查询问题回顾（承接 04-工程实战）</h1>
+    <p>原理已经在工程实战篇讲透了，这里不再重复"为什么会发生"，只聚焦一件事：在 Spring Data JPA 里，到底该用哪个注解去解决它。</p>
+  </div>
+
+  <h2>核心结论回顾</h2>
+  <p>
+    N+1 查询问题的本质，是 ORM 把"访问关联对象属性"这个看似廉价的对象导航操作，悄悄伪装成了一次远程数据库查询——一个无害的 <code>for</code> 循环访问懒加载集合，会在背后触发 <strong>1 次主查询 + N 次关联查询</strong>，这正是本篇 <code>@Entity</code> 映射篇里提到的 <code>FetchType.LAZY</code> 默认行为在循环场景下的放大效应。
+    完整的原理分析、SQL 日志示例、四种通用解法的详细对比，已经在 <a href="../../04-工程实战/db/01-N+1查询问题.html">04-工程实战/db/01-N+1查询问题.html</a> 讲过，这里不再重复展开。本篇聚焦一个更具体的问题：<strong>在 Spring Data JPA 里，具体该怎么写代码解决它。</strong>
+  </p>
+
+  <h2>方案一：@EntityGraph（声明式，最适合复用 Repository 方法）</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderRepository.java（@EntityGraph）</span></div>
+    <pre><span class="kw">public interface</span> <span class="ty">OrderRepository</span> <span class="kw">extends</span> <span class="ty">JpaRepository</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">,</span> <span class="ty">Long</span><span class="punct">&gt;</span> <span class="punct">{</span>
+
+    <span class="com">// 声明这次查询要一并加载 items 关联，不用改动方法签名和返回类型</span>
+    <span class="ann">@EntityGraph</span><span class="punct">(</span><span class="var">attributePaths</span> <span class="punct">=</span> <span class="punct">{</span><span class="str">"items"</span><span class="punct">})</span>
+    <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="fn">findAll</span><span class="punct">();</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>方案二：JOIN FETCH（JPQL 显式声明，不分页场景首选）</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>OrderRepository.java（JOIN FETCH）</span></div>
+    <pre><span class="ann">@Query</span><span class="punct">(</span><span class="str">"SELECT DISTINCT o FROM Order o JOIN FETCH o.items"</span><span class="punct">)</span>
+<span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Order</span><span class="punct">&gt;</span> <span class="fn">findAllWithItems</span><span class="punct">();</span></pre>
+  </div>
+  <p>一条 SQL 用 <code>JOIN</code> 把关联数据一次性拉回来，<code>DISTINCT</code> 用于去掉一对多 JOIN 产生的重复主对象行。<strong>注意：不能和分页一起使用</strong>——Hibernate 会把全表数据拉进内存再分页，数据量大时直接 OOM。</p>
+
+  <h2>方案三：@BatchSize（折中方案，兼容分页，推荐做全局兜底）</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>Order.java（@BatchSize）</span></div>
+    <pre><span class="ann">@OneToMany</span><span class="punct">(</span><span class="var">mappedBy</span> <span class="punct">=</span> <span class="str">"order"</span><span class="punct">)</span>
+<span class="ann">@BatchSize</span><span class="punct">(</span><span class="var">size</span> <span class="punct">=</span> <span class="num">100</span><span class="punct">)</span>                <span class="com">// 关键：把 N 次单条查询合并成 IN 查询</span>
+<span class="kw">private</span> <span class="ty">List</span><span class="punct">&lt;</span><span class="ty">OrderItem</span><span class="punct">&gt;</span> <span class="var">items</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ArrayList</span><span class="punct">&lt;&gt;();</span>
+<span class="com">// 也可以在 application.yml 里配置全局默认值，兜底所有没显式处理的懒加载集合：</span>
+<span class="com">// spring.jpa.properties.hibernate.default_batch_fetch_size=100</span></pre>
+  </div>
+  <p>不消灭懒加载本身，而是把"访问时触发的 N 条单查"合并成"1 条 <code>IN</code> 查询"——原本 <code>1 + N</code> 条 SQL 降到 <code>1 + ⌈N/size⌉</code> 条，天然兼容分页，也不会产生 JOIN FETCH 的笛卡尔积问题。</p>
+
+  <h2>三种方案取舍对比</h2>
+  <table>
+    <thead><tr><th>方案</th><th>SQL 数量</th><th>是否兼容分页</th><th>笛卡尔积</th><th>适用场景</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>@EntityGraph</code></td>
+        <td>1</td>
+        <td>❌ 失效（同 JOIN 一次性拉全部数据）</td>
+        <td>⚠️ 一对多时存在，需注意</td>
+        <td>想复用已有 Repository 方法，不改查询语句本身</td>
+      </tr>
+      <tr>
+        <td>JOIN FETCH</td>
+        <td>1</td>
+        <td>❌ 失效</td>
+        <td>⚠️ 需要 <code>DISTINCT</code></td>
+        <td>确定不分页的小结果集，一次性把关联全部拉出来</td>
+      </tr>
+      <tr>
+        <td><strong>@BatchSize</strong></td>
+        <td>1 + ⌈N/size⌉</td>
+        <td>✅ 完全兼容</td>
+        <td>✅ 无</td>
+        <td><strong>需要分页、或作为全局默认兜底策略，推荐优先考虑</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>常见坑：</strong><code>@EntityGraph</code> 和 <code>JOIN FETCH</code> 本质都是"一次性 JOIN 拉全部数据"，一旦这条查询后面还接了分页参数（<code>Pageable</code>），Hibernate 就没法在 SQL 层做 <code>LIMIT/OFFSET</code>，只能先把全部数据加载进内存再做分页，并打印一条容易被忽视的警告日志。<strong>只要业务接口涉及分页，就应该优先用 <code>@BatchSize</code>，而不是 <code>@EntityGraph</code>/<code>JOIN FETCH</code>。</strong>
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>N+1 的原理不再重复</strong>——它是懒加载在循环场景下的放大效应，详见 <a href="../../04-工程实战/db/01-N+1查询问题.html">04-工程实战/db/01-N+1查询问题.html</a>。</li>
+    <li><strong>@EntityGraph 和 JOIN FETCH 适合不分页的场景</strong>，一次性把关联数据拉全，但要小心笛卡尔积和分页失效。</li>
+    <li><strong>@BatchSize 是最稳妥的默认选择</strong>，兼容分页、无笛卡尔积风险，建议在项目里配置全局默认值做兜底。</li>
+    <li><strong>判断标准很简单</strong>：这个查询要不要分页？要分页选 <code>@BatchSize</code>，不分页且结果集小可以考虑 <code>JOIN FETCH</code>/<code>@EntityGraph</code>。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./07-连接池HikariCP.html" class="nav-btn">← 连接池 HikariCP</a>
+    <a href="../security/01-SpringSecurity自动配置默认行为.html" class="nav-btn next">下一篇:Spring Security 自动配置的默认行为 →</a>
+  </div>
+
+</div>
+</body>
+</html>

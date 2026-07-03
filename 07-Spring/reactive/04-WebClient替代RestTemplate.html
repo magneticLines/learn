@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WebClient 替代 RestTemplate — 响应式编程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../spring-roadmap.html">Spring 路线图</a> / 响应式编程 / WebClient 替代 RestTemplate
+  </div>
+
+  <div class="hero">
+    <div class="tag">响应式编程</div>
+    <h1>WebClient 替代 RestTemplate</h1>
+    <p>调第三方接口时线程该不该"傻等"？这一篇讲清楚 RestTemplate 的历史局限，以及新手最容易在 WebClient 上犯的一个致命错误。</p>
+  </div>
+
+  <!-- 1. 一句话讲清楚 -->
+  <h2>一句话讲清楚</h2>
+  <p>
+    <strong><code>RestTemplate</code> 是同步阻塞式 HTTP 客户端：</strong>调用它发起请求后，当前线程会一直卡在那里，直到对方接口返回响应才能继续往下执行。
+    Spring 官方从 5.0 起已将 <code>RestTemplate</code> 标记为<strong>维护模式（maintenance mode）</strong>——不再新增功能，只做必要修复——推荐用 <strong><code>WebClient</code></strong> 作为替代品：非阻塞、响应式，同时也能兼容传统同步调用方式。
+  </p>
+  <div class="callout info">
+    <strong>类比上一篇：</strong>如果说 Controller 层从阻塞变非阻塞是"接单员不再傻等厨房出餐"，那么这一篇讲的是"接单员打电话问供应商要货时，是守着电话等对方说完，还是挂了电话该干嘛干嘛、等对方回电"。<code>RestTemplate</code> 是前者，<code>WebClient</code> 是后者。
+  </div>
+
+  <!-- 2. 两种用法对比 -->
+  <h2>WebClient 的两种用法</h2>
+  <p><code>WebClient</code> 本质上返回的也是 <code>Mono</code>/<code>Flux</code>，怎么用取决于你调用它的位置在不在响应式链路里。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>用法一：.block() 同步获取（在非响应式代码中使用）</span></div>
+    <pre><span class="ty">WebClient</span> <span class="var">client</span> <span class="punct">=</span> <span class="ty">WebClient</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="str">"https://api.example.com"</span><span class="punct">);</span>
+
+<span class="com">// block() 会把异步结果强行转成同步——当前线程在这里等待，直到拿到结果</span>
+<span class="com">// 只应该在普通同步方法里、明确不在响应式调用链上时使用</span>
+<span class="ty">User</span> <span class="var">user</span> <span class="punct">=</span> <span class="var">client</span><span class="punct">.</span><span class="fn">get</span><span class="punct">()</span>
+        <span class="punct">.</span><span class="fn">uri</span><span class="punct">(</span><span class="str">"/users/{id}"</span><span class="punct">,</span> <span class="var">id</span><span class="punct">)</span>
+        <span class="punct">.</span><span class="fn">retrieve</span><span class="punct">()</span>
+        <span class="punct">.</span><span class="fn">bodyToMono</span><span class="punct">(</span><span class="ty">User</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>
+        <span class="punct">.</span><span class="fn">block</span><span class="punct">();</span> <span class="com">// 阻塞等待，效果等同于旧的 RestTemplate</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>用法二：整条响应式链路，配合 Controller 一路异步到底</span></div>
+    <pre><span class="ann">@GetMapping</span><span class="punct">(</span><span class="str">"/orders/{id}/user"</span><span class="punct">)</span>
+<span class="kw">public</span> <span class="ty">Mono</span><span class="punct">&lt;</span><span class="ty">User</span><span class="punct">&gt;</span> <span class="fn">getOrderUser</span><span class="punct">(</span><span class="ann">@PathVariable</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">) {</span>
+    <span class="com">// 不调用 block()，而是把 Mono 继续往下传</span>
+    <span class="com">// 线程发起请求后立刻释放，数据到达时由事件循环触发后续处理</span>
+    <span class="kw">return</span> <span class="var">client</span><span class="punct">.</span><span class="fn">get</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">uri</span><span class="punct">(</span><span class="str">"/users/{id}"</span><span class="punct">,</span> <span class="var">id</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">retrieve</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">bodyToMono</span><span class="punct">(</span><span class="ty">User</span><span class="punct">.</span><span class="kw">class</span><span class="punct">);</span> <span class="com">// 直接返回 Mono，交给 WebFlux 容器订阅</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <!-- 3. 最容易犯的错误 -->
+  <h2>最容易犯的错误：在响应式链里调用 .block()</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>反例：在 WebFlux Controller 里混用阻塞调用</span></div>
+    <pre><span class="ann">@GetMapping</span><span class="punct">(</span><span class="str">"/orders/{id}/user"</span><span class="punct">)</span>
+<span class="kw">public</span> <span class="ty">Mono</span><span class="punct">&lt;</span><span class="ty">User</span><span class="punct">&gt;</span> <span class="fn">getOrderUser</span><span class="punct">(</span><span class="ann">@PathVariable</span> <span class="ty">Long</span> <span class="var">id</span><span class="punct">) {</span>
+    <span class="com">// 危险！这里的 block() 会让当前的事件循环线程真正"卡住"</span>
+    <span class="com">// 而事件循环线程数量极少（通常 = CPU 核数），一旦被占住</span>
+    <span class="com">// 这个线程能处理的其它所有并发请求全部跟着被拖慢</span>
+    <span class="ty">User</span> <span class="var">user</span> <span class="punct">=</span> <span class="var">client</span><span class="punct">.</span><span class="fn">get</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">uri</span><span class="punct">(</span><span class="str">"/users/{id}"</span><span class="punct">,</span> <span class="var">id</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">retrieve</span><span class="punct">()</span>
+            <span class="punct">.</span><span class="fn">bodyToMono</span><span class="punct">(</span><span class="ty">User</span><span class="punct">.</span><span class="kw">class</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">block</span><span class="punct">();</span>
+    <span class="kw">return</span> <span class="ty">Mono</span><span class="punct">.</span><span class="fn">just</span><span class="punct">(</span><span class="var">user</span><span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱（面试高频）：</strong>Spring MVC 里线程池有几十上百个线程，一个线程阻塞几十毫秒无伤大雅；但 WebFlux 的事件循环线程通常只有几个（等于 CPU 核数），
+    <strong>阻塞其中一个，就等于让一部分并发请求集体排队等待</strong>。这相当于开着跑车却把手刹一直拉着——响应式带来的全部吞吐量优势被这一次 <code>block()</code> 抵消得一干二净。
+    Reactor 甚至会在检测到某些场景下的阻塞调用时主动抛出 <code>BlockingOperationError</code> 来提醒你。
+  </div>
+
+  <p><strong>原则：</strong>一旦进入响应式调用链（Controller 返回 <code>Mono</code>/<code>Flux</code>），链路上的每一步都应该保持非阻塞，用 <code>map</code>/<code>flatMap</code> 组合下去，而不是中途调用 <code>.block()</code> 把异步"拉回"同步。<code>.block()</code> 只应该出现在你确定自己身处普通同步方法、并且能接受这次调用付出线程等待代价的地方（比如程序 <code>main</code> 方法、定时任务里的一次性调用）。</p>
+
+  <!-- 4. 对比表 -->
+  <h2>RestTemplate vs WebClient</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>RestTemplate</th><th>WebClient</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>调用模型</td>
+        <td>同步阻塞</td>
+        <td>非阻塞，返回 <code>Mono</code>/<code>Flux</code>；也可通过 <code>.block()</code> 兼容同步用法</td>
+      </tr>
+      <tr>
+        <td>官方状态</td>
+        <td>维护模式，不再新增功能</td>
+        <td>官方推荐，持续迭代</td>
+      </tr>
+      <tr>
+        <td>底层依赖</td>
+        <td>阻塞式 HTTP 客户端（如 JDK HttpURLConnection / Apache HttpClient）</td>
+        <td>默认基于 Reactor Netty，也可切换其它响应式 HTTP 客户端</td>
+      </tr>
+      <tr>
+        <td>适用场景</td>
+        <td>传统 Spring MVC 项目里的存量代码</td>
+        <td>新项目首选；尤其是 WebFlux 项目里必须用它，否则前功尽弃</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><code>RestTemplate</code> 已进入维护模式，新项目应默认选择 <code>WebClient</code>。</li>
+    <li><code>WebClient</code> 同时支持 <code>.block()</code>（同步获取，兼容传统写法）和 <code>subscribe()</code>/继续链式组合（异步非阻塞）两种用法。</li>
+    <li><strong>最容易踩的坑：</strong>在响应式 Controller 内部调用 <code>.block()</code>，会阻塞宝贵的事件循环线程，抵消响应式编程的全部收益。</li>
+    <li>原则：一旦身处响应式链路，就把非阻塞坚持到底；<code>.block()</code> 只用在确定处于普通同步上下文的地方。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-响应式Controller.html" class="nav-btn">← 响应式 Controller</a>
+    <a href="./05-R2DBC概览.html" class="nav-btn next">R2DBC 概览（进阶） →</a>
+  </div>
+
+</div>
+</body>
+</html>
