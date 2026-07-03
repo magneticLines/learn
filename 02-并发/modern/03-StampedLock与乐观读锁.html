@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StampedLock 与乐观读锁 — 现代并发工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e6f80; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e6f80; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">Java 并发 路线图</a> / 现代并发工具 / StampedLock 与乐观读锁
+  </div>
+
+  <div class="hero">
+    <div class="tag">现代并发工具</div>
+    <h1>StampedLock 与乐观读锁</h1>
+    <p>ReadWriteLock 已经让"读读不互斥"，但读线程之间获取共享锁时仍然要维护一套状态、存在轻量竞争。StampedLock 更进一步：读的时候干脆不加锁，读完再校验有没有被写过。</p>
+  </div>
+
+  <h2>回顾：ReadWriteLock 还差在哪</h2>
+  <p>
+    前面讲过 <code>ReentrantReadWriteLock</code>：读锁之间共享，写锁独占，读写互斥。这在"读多写少"场景下已经比 <code>synchronized</code> 好很多，但读锁本质上还是"锁"——多个读线程去获取共享读锁时，仍然需要维护读者计数这类共享状态，在读线程非常多、竞争很激烈时，这个计数的维护本身也会成为瓶颈。
+  </p>
+  <p>
+    <strong>StampedLock</strong>（JDK 8 引入）在读写锁的悲观读、独占写之上，新增了第三种模式——<strong>乐观读（Optimistic Read）</strong>：读线程完全不加锁，就像什么都没发生一样直接读数据。
+  </p>
+
+  <h2>核心原理：戳（Stamp）与乐观读校验</h2>
+  <p>StampedLock 的每次加锁操作都会返回一个 <code>long</code> 类型的"戳"（stamp），可以理解成一个版本号：</p>
+  <ul>
+    <li><strong>乐观读 <code>tryOptimisticRead()</code></strong>：不加任何锁，仅仅记录下当前的戳，然后直接去读共享变量。</li>
+    <li><strong>读完之后 <code>validate(stamp)</code></strong>：检查这期间戳有没有变化。如果没有写操作发生过，戳不变，说明刚才读到的数据是有效、一致的；如果戳变了（说明中途有写线程修改了数据），刚才读到的值可能是脏的，就要<strong>升级为悲观读锁</strong>重新读一遍。</li>
+  </ul>
+  <div class="tree">
+    <span class="hi">乐观读流程</span>：<br>
+    1. stamp = lock.tryOptimisticRead()   <span class="hi">// 不加锁，只记录版本号</span><br>
+    2. 读取共享变量到局部变量               <span class="hi">// 这期间完全没有加锁开销</span><br>
+    3. if (!lock.validate(stamp)) {        <span class="hi">// 校验：期间是否有写操作介入</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;// 校验失败，说明数据可能被改过，升级悲观读锁重新读<br>
+    &nbsp;&nbsp;}
+  </div>
+  <div class="callout info">
+    <strong>生活类比：</strong>乐观读像是路过公告栏"扫一眼"记下内容，出来后再回头看一眼公告栏有没有被换过——没换过就放心用刚才看到的内容，换过了就重新走近去仔细看（悲观读）。而悲观读锁像是直接把公告栏锁起来看，别人这段时间读不了。
+  </div>
+  <p>
+    这跟我们在 CAS 一章讲过的"乐观锁"思想是同一套哲学：<strong>假设冲突很少发生，先不加锁去做，事后校验，冲突了再退化成加锁重试</strong>。区别是 CAS 校验的是一个变量的值，StampedLock 校验的是一个代表"是否发生过写"的版本戳。
+  </p>
+
+  <h2>为什么比 ReadWriteLock 更快</h2>
+  <p>
+    <code>ReentrantReadWriteLock</code> 的读锁虽然读读共享，但多个读线程仍然要竞争同一把锁对象内部的状态（AQS 的 state 字段，用 CAS 维护读者计数），高并发读时这个计数本身会成为热点。而 StampedLock 的乐观读<strong>完全不修改任何共享状态</strong>，多个读线程之间连"读读竞争"都不存在了，真正做到了"读不加锁"。
+  </p>
+  <table>
+    <thead><tr><th>方案</th><th>读读之间</th><th>读写之间</th><th>是否可重入</th></tr></thead>
+    <tbody>
+      <tr><td>synchronized</td><td>互斥</td><td>互斥</td><td>可重入</td></tr>
+      <tr><td>ReentrantReadWriteLock</td><td>共享（仍需维护计数）</td><td>互斥</td><td>可重入</td></tr>
+      <tr><td>StampedLock（乐观读）</td><td>无锁，互不影响</td><td>不阻塞写，事后校验</td><td><strong>不可重入</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h2>陷阱：不可重入，容易死锁</h2>
+  <div class="callout warn">
+    <strong>陷阱：</strong>StampedLock <strong>不支持重入</strong>！如果一个线程已经持有写锁，在同一个线程里再次调用 <code>writeLock()</code> 获取锁，会因为等待自己释放而永久阻塞——直接死锁。这一点跟 <code>ReentrantReadWriteLock</code>（顾名思义，可重入）形成鲜明对比，从别的锁迁移过来的开发者极易忽视。此外，StampedLock 也不支持 <code>Condition</code>，功能上是"读写锁的性能特化版"，不是"读写锁的超集"。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"StampedLock 比 ReadWriteLock 好在哪？" 答：多了乐观读模式，读线程完全不加锁，读完校验戳是否变化，适合读多写少且读操作耗时短的场景；代价是不可重入、API 更复杂、用错了容易死锁。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>乐观读：</strong>不加锁，先读后验，验证失败再升级悲观读，进一步消除了"读读"之间的隐性竞争。</li>
+    <li><strong>适用场景：</strong>读远多于写、读操作耗时很短（校验失败重读代价小）的高并发场景。</li>
+    <li><strong>代价：</strong>不可重入、不支持 Condition，用错容易死锁，须谨慎评估是否真的需要这份极致性能。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-ForkJoinTask的分治式任务拆分.html" class="nav-btn">← ForkJoinTask 的分治式任务拆分</a>
+    <a href="./04-LongAdder与LongAccumulator高并发计数.html" class="nav-btn next">LongAdder 与 LongAccumulator 高并发计数 →</a>
+  </div>
+
+</div>
+</body>
+</html>

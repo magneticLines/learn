@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ForkJoinPool 与工作窃取算法 — 现代并发工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e6f80; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e6f80; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">Java 并发 路线图</a> / 现代并发工具 / ForkJoinPool 与工作窃取算法
+  </div>
+
+  <div class="hero">
+    <div class="tag">现代并发工具</div>
+    <h1>ForkJoinPool 与工作窃取算法</h1>
+    <p>普通线程池擅长处理一堆互不相关的任务，但如果一个任务本身可以"拆成子任务，子任务再拆成孙任务"呢？ForkJoinPool 就是为这种分治式计算量身定做的执行引擎。</p>
+  </div>
+
+  <h2>为什么普通线程池不够用</h2>
+  <p>
+    回忆一下前面讲过的 <strong>ThreadPoolExecutor</strong>：它维护一个共享的任务队列，所有线程从同一个队列里 <code>take()</code> 任务。这个模型处理"提交一批独立任务"非常合适——比如处理 100 个互不相关的 HTTP 请求。
+  </p>
+  <p>
+    但如果任务是<strong>递归可拆分</strong>的呢？比如"计算一个 1000 万长度数组的和"，直觉的并行做法是：拆成两半，各自求和，再把两个结果相加；每一半又可以继续往下拆，直到拆成足够小的一段直接顺序计算。这类任务如果丢给 <code>ThreadPoolExecutor</code>，会出现一个大麻烦：
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong>用普通线程池做递归拆分时，子任务在 <code>run()</code> 内部又通过 <code>executor.submit()</code> 提交新任务并 <code>get()</code> 等待结果——如果线程池核心线程数有限，父任务占着线程等子任务，子任务却排在队列里等不到空闲线程执行，就会造成<strong>线程饥饿式死锁</strong>。
+  </div>
+  <p>
+    ForkJoinPool 正是为了解决"递归拆分 + 结果合并"这种计算密集型场景而生的专用线程池，JDK 7 引入，Java 8 的 <code>Stream.parallelStream()</code>、<code>CompletableFuture</code> 默认的公共线程池（<code>ForkJoinPool.commonPool()</code>）背后都是它。
+  </p>
+
+  <h2>核心原理：工作窃取（Work-Stealing）算法</h2>
+  <p>
+    如果 ForkJoinPool 也用一个共享队列，那么每次线程 fork 出子任务、或者去 join 子任务结果时都要抢这一把公共锁，任务拆分得越细，锁竞争越激烈——这正是我们在"锁竞争与可伸缩性"里讲过的<strong>热点竞争问题</strong>。ForkJoinPool 的解法是彻底放弃共享队列：
+  </p>
+  <ul>
+    <li><strong>每个工作线程都有自己的双端队列（deque）</strong>，线程 fork 出子任务时，把子任务压入<strong>自己队列的队头</strong>，自己也优先从队头取任务执行（后进先出，局部性好，符合分治"先拆的后合并"的天然顺序）。</li>
+    <li>当某个线程<strong>把自己的队列处理完、变得空闲</strong>时，不会傻等，而是随机挑一个其他线程，从它<strong>队列的队尾</strong>"偷"一个任务过来执行（先进先出，偷最老、通常也是最大的任务，减少下次还要偷的次数）。</li>
+    <li>自己操作自己的队头、别人偷队尾，两端操作互不冲突，<strong>绝大多数时候完全不需要加锁</strong>，只有队列里剩最后一个元素时才需要 CAS 竞争。</li>
+  </ul>
+  <div class="tree">
+    <span class="hi">线程 A 的双端队列</span>：[任务4] [任务3] [任务2] [任务1] ← A 从队头 pop 执行<br>
+    <span class="hi">线程 B（队列已空，太闲了）</span>：────────偷──────→ 从 A 的<span class="hi">队尾</span> steal 任务4<br><br>
+    A 和 B 分别操作队列两端，天然减少了竞争
+  </div>
+  <div class="callout info">
+    <strong>生活类比：</strong>就像几个人分头去搬一堆箱子，每人面前有自己的一摞箱子，先搬完的人不会闲着，而是走到最慢那个人的箱子堆<strong>最底下</strong>抽几个来搬——不会跟对方抢他手头正在搬的那几个（队头），减少了争抢。
+  </div>
+
+  <h2>ForkJoinPool vs ThreadPoolExecutor：怎么选</h2>
+  <table>
+    <thead><tr><th>维度</th><th>ThreadPoolExecutor</th><th>ForkJoinPool</th></tr></thead>
+    <tbody>
+      <tr><td>任务特征</td><td>互相独立、不可再拆分</td><td>可以递归拆分为子任务的分治任务</td></tr>
+      <tr><td>典型场景</td><td>IO 密集型（数据库查询、HTTP 请求）</td><td>CPU 密集型（数值计算、大数组/大集合处理）</td></tr>
+      <tr><td>队列模型</td><td>1 个共享阻塞队列</td><td>每线程 1 个双端队列 + 工作窃取</td></tr>
+      <tr><td>任务提交方</td><td>外部线程统一提交</td><td>任务内部可以继续 fork 出子任务</td></tr>
+      <tr><td>线程数设置</td><td>常配合 IO 等待，可以多于 CPU 核数</td><td>默认等于 CPU 核数（<code>Runtime.availableProcessors()</code>）</td></tr>
+    </tbody>
+  </table>
+  <p>
+    一句话记忆：<strong>ThreadPoolExecutor 管"一堆互不相关的任务"，ForkJoinPool 管"一个任务拆出来的一棵任务树"</strong>。如果拿 ForkJoinPool 去跑一堆阻塞 IO 任务，少数几个核心线程数会成为瓶颈；反过来拿 ThreadPoolExecutor 做递归分治，则容易踩到前面说的线程饥饿死锁。
+  </p>
+
+  <h2>常见误区 &amp; 面试高频</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>以为工作窃取能保证任务"公平"分配。恰恰相反，工作窃取的设计目标是<strong>整体吞吐量最大化</strong>，而不是公平——空闲线程主动找活干，忙的线程完全不受打扰，这与 AQS 公平锁"先来后到"的设计哲学是相反的取向。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"ForkJoinPool 和普通线程池的区别？" 答题要点：① 每线程独立双端队列 + 工作窃取，减少竞争；② 面向可递归拆分的计算密集型任务；③ Java 8 的并行流、CompletableFuture 默认都用 <code>ForkJoinPool.commonPool()</code>。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>问题：</strong>递归分治任务用普通线程池容易死锁，共享队列在任务拆分很细时锁竞争严重。</li>
+    <li><strong>方案：</strong>每线程一个双端队列，自己走队头，被偷走队尾，把锁竞争降到最低。</li>
+    <li><strong>适用边界：</strong>CPU 密集、可递归拆分的计算任务，不要用来跑阻塞 IO。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../advanced/11-锁竞争与可伸缩性.html" class="nav-btn">← 锁竞争与可伸缩性</a>
+    <a href="./02-ForkJoinTask的分治式任务拆分.html" class="nav-btn next">ForkJoinTask 的分治式任务拆分 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Boyer-Moore 字符串匹配算法 — 字符串与网络流</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c3f10; }
+  .nav-btn.next { color: #fb923c; border-color: #7c3f10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../ds-roadmap.html">数据结构与算法 路线图</a> / 字符串与网络流 / Boyer-Moore 字符串匹配算法
+  </div>
+
+  <div class="hero">
+    <div class="tag">字符串与网络流</div>
+    <h1>Boyer-Moore 字符串匹配算法</h1>
+    <p>进阶内容。反其道而行之：从模式串的尾部往前比较，利用"未匹配的信息"实现比 KMP 更大步幅的跳跃。</p>
+  </div>
+
+  <h2>换个方向比较：从后往前</h2>
+  <p>
+    KMP 无论主串还是模式串，都是<strong>从左往右</strong>逐字符比较。Boyer-Moore（BM）算法反其道而行之：
+    <strong>把模式串和主串对齐后，从模式串的最后一个字符开始，从右往左比较</strong>。
+  </p>
+  <p>
+    这个反直觉的设计带来一个好处：一旦在模式串末尾附近就发现字符不匹配，往往能立刻判断出"这个对齐位置根本不可能匹配"，
+    从而一次性跳过一大段距离，而不用像从左往右比较那样，要先匹配掉前面一堆字符才能发现问题。
+  </p>
+
+  <h2>规则一：坏字符规则（Bad Character Rule）</h2>
+  <p>
+    从右往左比较时，如果在某个位置失配，主串上这个导致失配的字符称为"坏字符"。
+    <strong>坏字符规则</strong>：查看模式串中坏字符最后一次出现的位置，把模式串滑动，让模式串中的这个字符对齐到坏字符上
+    （如果模式串里根本没有这个字符，直接把模式串滑到坏字符后面，跳过更大一截）。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>在书架上找一本书名叫"数据结构"的书，你从书脊的最后一个字"构"开始看起。如果当前这本书最后一个字是"网"，
+    而你知道"数据结构"这四个字里根本没有"网"这个字，那么这本书、以及紧挨着后面凡是包含"网"这个字位置对应重叠的可能，都可以直接跳过，
+    不用一本一本翻。
+  </div>
+
+  <h2>规则二：好后缀规则（Good Suffix Rule）</h2>
+  <p>
+    如果失配发生在模式串中间（前面已经有一段后缀成功匹配，称为"好后缀"），
+    <strong>好后缀规则</strong>：利用这段已匹配的后缀信息，找模式串中是否有别的位置也能匹配这段后缀（或它的一部分），
+    将模式串滑动对齐到那个位置，跳过不可能成功的中间地带。
+  </p>
+  <p>
+    实际实现中，BM 算法在每一步会分别计算坏字符规则和好后缀规则各自建议的滑动距离，<strong>取两者中较大的一个</strong>，
+    以获得最大的跳跃步幅。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BoyerMoore.java</span><span>简化版：仅演示坏字符规则</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">BoyerMooreSimple</span> {
+
+    <span class="com">// 记录模式串中每个字符最后一次出现的位置，找不到则为 -1</span>
+    <span class="kw">private static</span> <span class="ty">int</span>[] <span class="fn">buildBadCharTable</span>(<span class="ty">String</span> pattern) {
+        <span class="ty">int</span>[] table = <span class="kw">new</span> <span class="ty">int</span>[<span class="num">256</span>]; <span class="com">// 按 ASCII 字符集大小建表</span>
+        <span class="ty">java.util.Arrays</span>.<span class="fn">fill</span>(table, -<span class="num">1</span>);
+        <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i < pattern.length(); i++) {
+            table[pattern.<span class="fn">charAt</span>(i)] = i; <span class="com">// 后出现的位置覆盖前面的，天然记录"最后一次出现"</span>
+        }
+        <span class="kw">return</span> table;
+    }
+
+    <span class="kw">public static</span> <span class="ty">int</span> <span class="fn">search</span>(<span class="ty">String</span> text, <span class="ty">String</span> pattern) {
+        <span class="ty">int</span> n = text.length(), m = pattern.length();
+        <span class="kw">if</span> (m == <span class="num">0</span>) <span class="kw">return</span> <span class="num">0</span>;
+        <span class="ty">int</span>[] badChar = <span class="fn">buildBadCharTable</span>(pattern);
+
+        <span class="ty">int</span> shift = <span class="num">0</span>; <span class="com">// 模式串相对主串的偏移量</span>
+        <span class="kw">while</span> (shift <= n - m) {
+            <span class="ty">int</span> j = m - <span class="num">1</span>;
+            <span class="com">// 从右往左比较</span>
+            <span class="kw">while</span> (j >= <span class="num">0</span> && pattern.<span class="fn">charAt</span>(j) == text.<span class="fn">charAt</span>(shift + j)) {
+                j--;
+            }
+            <span class="kw">if</span> (j < <span class="num">0</span>) <span class="kw">return</span> shift; <span class="com">// 全部匹配成功</span>
+
+            <span class="com">// 失配：坏字符在模式串中最后出现的位置，决定滑动多远</span>
+            <span class="ty">char</span> badCharInText = text.<span class="fn">charAt</span>(shift + j);
+            <span class="ty">int</span> lastOccurrence = badChar[badCharInText];
+            <span class="com">// 保证 shift 至少前进 1，避免坏字符位置在 j 右边导致死循环</span>
+            shift += <span class="ty">Math</span>.<span class="fn">max</span>(<span class="num">1</span>, j - lastOccurrence);
+        }
+        <span class="kw">return</span> -<span class="num">1</span>;
+    }
+}</pre>
+  </div>
+  <p>
+    实际工业级实现（比如 Java <code>String.indexOf</code> 某些 JDK 版本、grep、文本编辑器的查找）通常会同时结合坏字符规则和好后缀规则，
+    这里为了讲清楚核心思路，只演示了坏字符规则部分。
+  </p>
+
+  <h2>KMP vs Boyer-Moore：利用信息的方向不同</h2>
+  <table>
+    <thead><tr><th>维度</th><th>KMP</th><th>Boyer-Moore</th></tr></thead>
+    <tbody>
+      <tr><td>比较方向</td><td>从左往右</td><td>从右往左</td></tr>
+      <tr><td>利用的信息</td><td>利用<strong>已经匹配成功</strong>的部分（模式串自身的最长相同前后缀）</td><td>利用<strong>未匹配 / 刚失配</strong>的信息（坏字符、好后缀）</td></tr>
+      <tr><td>跳跃步幅</td><td>较小，一次通常前进 1 到几个字符</td><td>较大，常能一次跳过一大段，实际应用中平均性能通常更优</td></tr>
+      <tr><td>最坏时间复杂度</td><td>严格 O(n+m)，稳定</td><td>朴素版本最坏情况可能退化到 O(n·m)，需要配合好后缀规则才能保证 O(n+m)</td></tr>
+      <tr><td>典型应用</td><td>需要严格保证最坏情况性能的场景（如网络入侵检测的确定性匹配）</td><td>文本编辑器查找、grep 等追求平均性能的场景</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"为什么文本编辑器的查找功能大多用 Boyer-Moore 而不是 KMP？"
+    因为实际文本中大多数位置很快就能通过坏字符规则判断"根本不可能匹配"，从而实现远大于 1 的跳跃步幅，
+    平均性能通常优于 KMP；而 KMP 的优势在于严格保证 O(n+m) 的最坏情况，适合对最坏情况敏感的场景。
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>认为 Boyer-Moore "一定比" KMP 快。这是对平均情况和最坏情况的混淆——
+    如果模式串和主串的字符集非常小（比如只有 DNA 序列的 4 种碱基），坏字符规则的区分度会大打折扣，
+    退化情况下 BM 的优势并不明显，此时 KMP 稳定的 O(n+m) 反而更有保障。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>Boyer-Moore 的核心创新：</strong>从右往左比较，利用"未匹配"的坏字符/好后缀信息实现大步幅跳跃。</li>
+    <li><strong>与 KMP 的本质区别：</strong>KMP 利用已匹配信息稳步前进，BM 利用未匹配信息大跳步，两者是同一问题的两种不同视角的解法。</li>
+    <li><strong>取舍依据：</strong>字符集大、追求平均性能选 BM；需要保证最坏情况稳定选 KMP。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./02-KMP字符串匹配算法.html" class="nav-btn">← KMP 字符串匹配算法</a>
+    <a href="./04-最大流最小割定理简介.html" class="nav-btn next">最大流最小割定理简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

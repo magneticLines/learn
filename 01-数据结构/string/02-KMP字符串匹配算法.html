@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KMP 字符串匹配算法 — 字符串与网络流</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c3f10; }
+  .nav-btn.next { color: #fb923c; border-color: #7c3f10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../ds-roadmap.html">数据结构与算法 路线图</a> / 字符串与网络流 / KMP 字符串匹配算法
+  </div>
+
+  <div class="hero">
+    <div class="tag">字符串与网络流</div>
+    <h1>KMP 字符串匹配算法</h1>
+    <p>核心考点。失配之后不回退主串指针——把"已经匹配过的信息"利用起来，是 KMP 算法效率飞跃的关键。</p>
+  </div>
+
+  <h2>朴素字符串匹配的问题</h2>
+  <p>
+    字符串匹配问题：在主串（文本）中查找模式串（要找的子串）第一次出现的位置。最朴素的做法是暴力匹配：
+    从主串的每个位置开始，逐字符比较模式串，一旦失配就把起始位置右移一位，重新从头比较。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>NaiveMatch.java</span><span>朴素匹配：失配就整体右移一位重来</span></div>
+    <pre><span class="kw">public static</span> <span class="ty">int</span> <span class="fn">naiveMatch</span>(<span class="ty">String</span> text, <span class="ty">String</span> pattern) {
+    <span class="ty">int</span> n = text.length(), m = pattern.length();
+    <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i <= n - m; i++) {
+        <span class="ty">int</span> j = <span class="num">0</span>;
+        <span class="kw">while</span> (j < m && text.<span class="fn">charAt</span>(i + j) == pattern.<span class="fn">charAt</span>(j)) j++;
+        <span class="kw">if</span> (j == m) <span class="kw">return</span> i; <span class="com">// 完全匹配</span>
+        <span class="com">// 失配：i 右移一位，j 归零，之前比较过的信息全部丢弃，重新开始</span>
+    }
+    <span class="kw">return</span> -<span class="num">1</span>;
+}</pre>
+  </div>
+  <p>
+    问题在于：一旦在模式串第 j 位失配，主串指针 <code>i</code> 只能右移一位，<strong>之前已经匹配成功的 j 个字符信息被完全丢弃</strong>，
+    最坏情况下时间复杂度是 O(n·m)——比如主串是"AAAAAAAAAB"，模式串是"AAAB"，每次都要比较到快结尾才失配，效率很低。
+  </p>
+
+  <h2>KMP 的核心思路：利用已匹配信息，不回退主串指针</h2>
+  <p>
+    KMP（Knuth-Morris-Pratt）算法的关键洞察是：<strong>失配发生时，主串中已经比对过的那一段字符是已知的
+    （因为它们等于模式串前面的一段），没必要把主串指针 <code>i</code> 往回退</strong>——
+    只需要调整模式串指针 <code>j</code>，跳到一个合理的位置继续比较，让"已经匹配上的部分"尽量不被浪费。
+  </p>
+  <p>
+    具体跳到哪里，取决于模式串自身的结构——这正是 <strong>next 数组（部分匹配表）</strong>要解决的问题。
+  </p>
+
+  <h2>next 数组的核心概念：最长相同前后缀</h2>
+  <p>
+    <code>next[j]</code> 记录的是：<strong>模式串前 j 个字符组成的子串，其"最长相同前后缀"的长度</strong>。
+  </p>
+  <p>
+    "相同前后缀"指的是一个字符串的前缀子串和后缀子串内容完全相同（但不能是字符串本身）。比如字符串 "ABAB"：
+  </p>
+  <ul>
+    <li>前缀有 "A"、"ABA"，后缀有 "B"、"BAB"、"AB"……</li>
+    <li>其中 "AB"（前缀）等于 "AB"（后缀），长度为 2，是最长的相同前后缀。</li>
+  </ul>
+  <p>
+    这个长度的意义是：如果模式串匹配到某个位置失配了，"最长相同前后缀"告诉我们<strong>模式串自身有一段前缀和当前已匹配部分的后缀是重复的</strong>，
+    可以直接把模式串滑动到这个位置对齐，跳过一定重新比较那些必然会匹配成功的字符，而不用把 <code>j</code> 归零重新开始。
+  </p>
+
+  <div class="callout info">
+    <strong>类比：</strong>假设你在拼一句歌词"我爱你我爱他"，唱到"我爱你我爱"时发现下一个字对不上（应该是"他"却唱成别的），
+    但你注意到已经唱出的"我爱你我爱"里，开头"我爱"和结尾"我爱"是重复的——那么与其从头重新对齐，
+    不如直接把"新的一轮"对齐到那个重复的"我爱"上继续往下唱，因为你已经知道这部分肯定是对的。
+  </div>
+
+  <h2>next 数组的构造思路</h2>
+  <p>
+    next 数组本质上是<strong>模式串在和自己做字符串匹配</strong>——用双指针 <code>i</code>（当前构造到的位置）和
+    <code>j</code>（当前最长相同前后缀的长度）逐步递推：如果 <code>pattern[i] == pattern[j]</code>，说明前后缀可以再延长一位；
+    否则 <code>j</code> 回退到 <code>next[j-1]</code>（复用之前已经算出的结果），直到找到匹配或 <code>j</code> 归零。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>KMP.java</span><span>构造 next 数组 + 匹配主逻辑</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">KMP</span> {
+
+    <span class="com">// 构造 next 数组：next[j] = 模式串 pattern[0..j] 的最长相同前后缀长度</span>
+    <span class="kw">private static</span> <span class="ty">int</span>[] <span class="fn">buildNext</span>(<span class="ty">String</span> pattern) {
+        <span class="ty">int</span> m = pattern.length();
+        <span class="ty">int</span>[] next = <span class="kw">new</span> <span class="ty">int</span>[m];
+        <span class="ty">int</span> j = <span class="num">0</span>; <span class="com">// j 表示当前已确定的最长相同前后缀长度</span>
+        <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">1</span>; i < m; i++) {
+            <span class="com">// 失配时，j 回退到 next[j-1]，复用已经算过的匹配信息</span>
+            <span class="kw">while</span> (j > <span class="num">0</span> && pattern.<span class="fn">charAt</span>(i) != pattern.<span class="fn">charAt</span>(j)) {
+                j = next[j - <span class="num">1</span>];
+            }
+            <span class="kw">if</span> (pattern.<span class="fn">charAt</span>(i) == pattern.<span class="fn">charAt</span>(j)) j++;
+            next[i] = j;
+        }
+        <span class="kw">return</span> next;
+    }
+
+    <span class="com">// 主匹配逻辑：失配时不回退 i，只把 j 跳到 next[j-1]</span>
+    <span class="kw">public static</span> <span class="ty">int</span> <span class="fn">search</span>(<span class="ty">String</span> text, <span class="ty">String</span> pattern) {
+        <span class="kw">if</span> (pattern.isEmpty()) <span class="kw">return</span> <span class="num">0</span>;
+        <span class="ty">int</span>[] next = <span class="fn">buildNext</span>(pattern);
+        <span class="ty">int</span> j = <span class="num">0</span>;
+        <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i < text.length(); i++) {
+            <span class="kw">while</span> (j > <span class="num">0</span> && text.<span class="fn">charAt</span>(i) != pattern.<span class="fn">charAt</span>(j)) {
+                j = next[j - <span class="num">1</span>]; <span class="com">// 利用 next 数组跳转，主串指针 i 全程不回退</span>
+            }
+            <span class="kw">if</span> (text.<span class="fn">charAt</span>(i) == pattern.<span class="fn">charAt</span>(j)) j++;
+            <span class="kw">if</span> (j == pattern.length()) <span class="kw">return</span> i - j + <span class="num">1</span>; <span class="com">// 完全匹配，返回起始位置</span>
+        }
+        <span class="kw">return</span> -<span class="num">1</span>;
+    }
+}</pre>
+  </div>
+  <p>
+    因为主串指针 <code>i</code> 从头到尾只前进不回退，模式串指针 <code>j</code> 的跳转也有均摊上界，
+    KMP 的整体时间复杂度稳定在 <strong>O(n + m)</strong>——构造 next 数组是 O(m)，主匹配过程是 O(n)，
+    相比朴素匹配的 O(n·m) 是质的飞跃。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"next 数组是什么？" 记住核心表述："<code>next[j]</code> 表示模式串前 j+1 个字符中，
+    最长相同前后缀的长度"。面试中不需要默写完整的递推证明，但一定要能解释清楚"为什么失配后可以直接跳到 next[j-1] 而不用整体重来"——
+    因为这段前缀已知会和主串当前位置往前的一段字符相同，不必重新比较。
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>很多人记不住 next 数组的下标含义，容易把"前 j 个字符"和"前 j+1 个字符"弄混，
+    导致实现时下标错位。不同教材对 next 数组的定义（是否整体右移一位、是否单独处理 next[0]=-1）略有差异，
+    关键是自己选定一种定义后，插入匹配逻辑时要保持前后一致。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>KMP 解决的核心问题：</strong>失配时避免主串指针回退，把朴素匹配的 O(n·m) 降到 O(n+m)。</li>
+    <li><strong>next 数组的本质：</strong>预处理模式串自身的"最长相同前后缀"，把"已经匹配的信息"转化为下次比较该从哪里继续的依据。</li>
+    <li><strong>适用场景：</strong>大文本中查找固定模式串、判断字符串是否为另一字符串的循环移位等，是字符串处理的基础工具。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-字典树Trie的结构与应用.html" class="nav-btn">← 字典树 Trie 的结构与应用</a>
+    <a href="./03-BoyerMoore字符串匹配算法.html" class="nav-btn next">Boyer-Moore 字符串匹配算法 →</a>
+  </div>
+
+</div>
+</body>
+</html>

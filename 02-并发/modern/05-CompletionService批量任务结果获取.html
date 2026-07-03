@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CompletionService 批量任务结果获取 — 现代并发工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e6f80; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e6f80; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">Java 并发 路线图</a> / 现代并发工具 / CompletionService 批量任务结果获取
+  </div>
+
+  <div class="hero">
+    <div class="tag">现代并发工具</div>
+    <h1>CompletionService 批量任务结果获取</h1>
+    <p>提交一批异步任务后，"谁先做完就先给我谁的结果"听起来是理所应当的需求，但用 Future.get() 挨个等，反而会被排在前面、还没做完的任务拖慢整体进度。</p>
+  </div>
+
+  <h2>问题：Future.get() 的"排队等待"陷阱</h2>
+  <p>
+    假设你用线程池提交了 5 个耗时不同的任务，拿到 5 个 <code>Future</code>，最直接的写法是：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>朴素写法：按提交顺序 get()</span></div>
+    <pre><span class="ty">List</span>&lt;<span class="ty">Future</span>&lt;<span class="ty">Result</span>&gt;&gt; <span class="var">futures</span> = <span class="kw">new</span> <span class="ty">ArrayList</span>&lt;&gt;();
+<span class="kw">for</span> (<span class="ty">Task</span> <span class="var">task</span> : <span class="var">tasks</span>) {
+    <span class="var">futures</span>.<span class="fn">add</span>(<span class="var">executor</span>.<span class="fn">submit</span>(<span class="var">task</span>));
+}
+<span class="kw">for</span> (<span class="ty">Future</span>&lt;<span class="ty">Result</span>&gt; <span class="var">f</span> : <span class="var">futures</span>) {
+    <span class="ty">Result</span> <span class="var">r</span> = <span class="var">f</span>.<span class="fn">get</span>(); <span class="com">// 阻塞等待：哪怕任务5早就做完了，也要先等任务1</span>
+    <span class="fn">process</span>(<span class="var">r</span>);
+}</pre>
+  </div>
+  <p>
+    问题很明显：<code>futures</code> 列表里的任务 1 如果恰好最慢，即使任务 2、3、4、5 早就跑完了，主线程依然卡在 <code>futures.get(0).get()</code> 上干等，<strong>已经完成的结果没能被第一时间处理</strong>，整体的"结果消费"被最慢的那个任务拖累。这跟前面 <code>CompletableFuture</code> 那一节里讲的"避免不必要的阻塞等待"是同一个思路的延伸。
+  </p>
+
+  <h2>CompletionService 的设计：BlockingQueue + Executor</h2>
+  <p>
+    <code>CompletionService</code> 不是一种新的线程池，而是把<strong>任务执行</strong>和<strong>结果获取</strong>解耦的一层封装。它的标准实现 <code>ExecutorCompletionService</code> 内部很简单：
+  </p>
+  <ul>
+    <li>持有一个真正的 <code>Executor</code>（比如你已有的线程池）来执行任务；</li>
+    <li>额外维护一个 <code>BlockingQueue&lt;Future&lt;V&gt;&gt;</code>；</li>
+    <li>每个任务提交时，包一层：<strong>任务一旦执行完成，就自动把对应的 Future 放进这个队列</strong>；</li>
+    <li>你调用 <code>take()</code> 或 <code>poll()</code> 时，直接从队列里拿——<strong>谁先完成，谁的 Future 就先出现在队列里</strong>，跟提交顺序无关。</li>
+  </ul>
+  <div class="tree">
+    <span class="hi">提交</span>：task1(慢) task2(快) task3(中等) → 线程池并发执行<br>
+    <span class="hi">完成顺序</span>：task2 完成 → task3 完成 → task1 完成<br>
+    <span class="hi">take() 依次返回</span>：task2 的 Future → task3 的 Future → task1 的 Future<br>
+    （完全按"谁先做完"排列，而不是"谁先提交"）
+  </div>
+
+  <h2>代码示例</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>用 CompletionService 按完成顺序处理结果</span></div>
+    <pre><span class="ty">ExecutorService</span> <span class="var">pool</span> = <span class="ty">Executors</span>.<span class="fn">newFixedThreadPool</span>(<span class="num">4</span>);
+<span class="ty">CompletionService</span>&lt;<span class="ty">Result</span>&gt; <span class="var">cs</span> = <span class="kw">new</span> <span class="ty">ExecutorCompletionService</span>&lt;&gt;(<span class="var">pool</span>);
+
+<span class="kw">for</span> (<span class="ty">Task</span> <span class="var">task</span> : <span class="var">tasks</span>) {
+    <span class="var">cs</span>.<span class="fn">submit</span>(<span class="var">task</span>); <span class="com">// 提交，内部自动包装完成回调</span>
+}
+
+<span class="kw">for</span> (<span class="kw">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="var">tasks</span>.<span class="fn">size</span>(); <span class="var">i</span>++) {
+    <span class="ty">Result</span> <span class="var">r</span> = <span class="var">cs</span>.<span class="fn">take</span>().<span class="fn">get</span>(); <span class="com">// 谁先完成先拿到谁，不再空等最慢的任务</span>
+    <span class="fn">process</span>(<span class="var">r</span>); <span class="com">// 立即处理，缩短整体的"结果消费"延迟</span>
+}</pre>
+  </div>
+  <div class="callout tip">
+    <strong>典型场景：</strong>同时向多个数据源发起查询，谁先返回就先展示谁的结果（比如比价系统同时查多个供应商报价）；或者一批子任务里只要有一个失败就要尽快感知、终止其他任务——都不适合"按提交顺序死等"。
+  </div>
+
+  <h2>和 CompletableFuture 的关系：不是竞争，是不同粒度的工具</h2>
+  <p>
+    <code>CompletableFuture</code> 更适合表达"任务之间有依赖关系的编排"（先做 A，再基于 A 的结果做 B，或者等多个都完成后再合并），也提供了 <code>anyOf()</code> 应对"谁先完成就用谁"的单点场景。而 <code>CompletionService</code> 更适合"一批同构、独立、数量不确定的任务，按完成顺序批量消费结果"这种场景，写法更直接，不需要写一堆 <code>thenApply/thenCombine</code> 的链式回调。
+  </p>
+
+  <h2>常见误区 &amp; 面试高频</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>以为 CompletionService 是一种新的线程池实现。它本质上只是"Executor + BlockingQueue"的组合封装，真正执行任务的还是你传进去的那个 <code>Executor</code>。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"CompletionService 解决了什么问题？" 一句话：<strong>让结果按完成顺序而不是提交顺序被取走，避免快任务的结果被慢任务阻塞。</strong> 底层实现关键词：内部维护 BlockingQueue，任务完成后自动把 Future 放入队列。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>问题：</strong>按提交顺序 <code>Future.get()</code> 会被排在前面但还没完成的慢任务阻塞。</li>
+    <li><strong>方案：</strong>CompletionService 内部用 BlockingQueue 收集"已完成"的 Future，<code>take()</code> 按完成顺序返回。</li>
+    <li><strong>适用场景：</strong>一批独立同构任务，需要"谁先完成谁先处理"的批量消费模式。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./04-LongAdder与LongAccumulator高并发计数.html" class="nav-btn">← LongAdder 与 LongAccumulator 高并发计数</a>
+    <a href="./06-虚拟线程VirtualThreads简介.html" class="nav-btn next">虚拟线程 Virtual Threads 简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

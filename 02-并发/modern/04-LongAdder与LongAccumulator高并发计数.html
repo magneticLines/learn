@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LongAdder 与 LongAccumulator 高并发计数 — 现代并发工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e6f80; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e6f80; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">Java 并发 路线图</a> / 现代并发工具 / LongAdder 与 LongAccumulator 高并发计数
+  </div>
+
+  <div class="hero">
+    <div class="tag">现代并发工具</div>
+    <h1>LongAdder 与 LongAccumulator 高并发计数</h1>
+    <p>AtomicLong 用 CAS 做无锁计数已经很快了，但当成百上千个线程同时抢着自增同一个变量时，CAS 也会失守。LongAdder 给出的答案是：别抢了，各写各的。</p>
+  </div>
+
+  <h2>回顾：AtomicLong 的瓶颈在哪</h2>
+  <p>
+    前面在 CAS 一章讲过，<code>AtomicLong.incrementAndGet()</code> 底层是"读取当前值 → 计算新值 → CAS 写回，失败就自旋重试"。这在竞争不激烈时确实比加锁快得多。但注意 CAS 的本质：<strong>所有线程都在竞争同一个内存地址</strong>。
+  </p>
+  <p>
+    当线程数远超 CPU 核数、并且都在高频修改同一个 <code>AtomicLong</code> 时，会出现大量 CAS 失败——一个线程 CAS 成功，其他所有正在自旋的线程读到的"旧值"瞬间作废，只能继续重试。这就是所谓的<strong>热点数据竞争</strong>：本质原因不是"锁"，而是"太多线程盯着同一个值"。这跟"锁竞争与可伸缩性"里讲的锁竞争问题是同一类瓶颈，只是这里连锁都没有，纯粹是 CAS 自旋的浪费。
+  </p>
+
+  <h2>核心思路：化整为零（分段累加）</h2>
+  <p>
+    <code>LongAdder</code>（JDK 8 引入）的解法非常直接：<strong>既然大家抢一个变量会冲突，那就拆成多个变量，每个线程尽量写不同的那份</strong>。
+  </p>
+  <ul>
+    <li>内部维护一个 <code>base</code> 值和一个 <code>Cell[]</code> 数组，每个 <code>Cell</code> 内部包着一个独立的、经过缓存行填充（避免伪共享）的 <code>long</code>。</li>
+    <li>低竞争时直接 CAS 更新 <code>base</code>，跟 AtomicLong 一样快。</li>
+    <li>一旦检测到 CAS 冲突，就会给当前线程"哈希"到某个 <code>Cell</code> 上，之后这个线程优先更新自己命中的 <code>Cell</code>，而不是所有线程挤到同一个 <code>base</code> 上竞争。</li>
+    <li>调用 <code>sum()</code> 汇总结果时，把 <code>base</code> 和所有 <code>Cell</code> 的值加起来返回。</li>
+  </ul>
+  <div class="tree">
+    <span class="hi">AtomicLong</span>：所有线程 ──CAS──→ [ 同一个 value ]  （竞争激烈时大量自旋失败）<br><br>
+    <span class="hi">LongAdder</span>： 线程A ──→ [Cell 0]<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 线程B ──→ [Cell 1]<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 线程C ──→ [Cell 2]<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; sum() = base + Cell0 + Cell1 + Cell2 + ...
+  </div>
+  <div class="callout info">
+    <strong>生活类比：</strong>就像超市结账，一个收银台排长队（AtomicLong 单点竞争），不如多开几个收银台分流（LongAdder 多 Cell 分散），最后对账时把每个收银台的流水加起来就是总数。
+  </div>
+
+  <h2>取舍：牺牲了什么换来了性能</h2>
+  <p>
+    这是一次典型的<strong>空间换时间</strong>，以及更关键的——<strong>用弱一致性换取高并发写入性能</strong>：
+  </p>
+  <div class="callout warn">
+    <strong>陷阱：</strong><code>sum()</code> 的过程中，如果其他线程仍在并发写入不同的 Cell，<code>sum()</code> 读到的是"遍历过程中的一个快照拼凑值"，<strong>不保证绝对精确</strong>——它没有把所有 Cell 都锁住再求和。对于统计 QPS、埋点计数这类"最终一致、允许短暂误差"的场景完全没问题；但如果你需要每一次 <code>sum()</code> 都绝对精确（比如库存扣减这种强一致场景），LongAdder 并不适合。
+  </div>
+
+  <h2>LongAdder vs AtomicLong：怎么选</h2>
+  <table>
+    <thead><tr><th>维度</th><th>AtomicLong</th><th>LongAdder</th></tr></thead>
+    <tbody>
+      <tr><td>低并发场景</td><td>性能好，实现简单</td><td>性能相当，但多了 Cell 数组的空间开销</td></tr>
+      <tr><td>高并发写场景</td><td>大量 CAS 自旋失败，性能骤降</td><td>分散到多个 Cell，性能远超 AtomicLong</td></tr>
+      <tr><td>读取实时性</td><td>get() 绝对精确</td><td>sum() 是弱一致的近似值</td></tr>
+      <tr><td>典型用途</td><td>需要精确值的计数器（如库存、余额）</td><td>高并发下的统计计数（QPS、访问量、埋点）</td></tr>
+    </tbody>
+  </table>
+  <p>
+    <code>LongAccumulator</code> 是 <code>LongAdder</code> 的泛化版：<code>LongAdder</code> 本质上是 <code>LongAccumulator</code> 在"求和"这个特定运算上的特化。<code>LongAccumulator</code> 允许你传入任意一个 <code>LongBinaryOperator</code>（比如求最大值 <code>Long::max</code>），思路完全一样——分散到多个 Cell 各自应用这个运算，最终再把所有 Cell 结果按同一运算聚合。
+  </p>
+
+  <h2>常见误区 &amp; 面试高频</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>认为 LongAdder 可以完全取代 AtomicLong。不是取代关系，而是场景互补——LongAdder 用弱一致性换取高并发写性能，只适合"最终求和、允许统计过程中的瞬时误差"的计数场景。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"LongAdder 为什么比 AtomicLong 快？" 答题要点：① AtomicLong 高并发下所有线程竞争同一个值，CAS 自旋失败率高；② LongAdder 用多个 Cell 分散热点，每个线程尽量写不同的 Cell，减少了 CAS 冲突；③ 代价是 sum() 不保证强一致、有额外内存占用。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>问题根源：</strong>高并发下所有线程 CAS 同一个变量，本质是"热点竞争"，而不是加锁开销。</li>
+    <li><strong>解法：</strong>化整为零，用 Cell 数组分散写入压力，读取时再汇总。</li>
+    <li><strong>取舍：</strong>空间换时间 + 最终一致性换并发性能，不适合要求绝对精确的强一致场景。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./03-StampedLock与乐观读锁.html" class="nav-btn">← StampedLock 与乐观读锁</a>
+    <a href="./05-CompletionService批量任务结果获取.html" class="nav-btn next">CompletionService 批量任务结果获取 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>按秩合并与路径压缩 — 算法设计范式</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #832850; }
+  .nav-btn.next { color: #f472b6; border-color: #832850; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../ds-roadmap.html">数据结构与算法 路线图</a> / 算法设计范式 / 按秩合并与路径压缩
+  </div>
+
+  <div class="hero">
+    <div class="tag">算法设计范式</div>
+    <h1>按秩合并与路径压缩</h1>
+    <p>两个各自独立、组合起来威力倍增的优化手段，把并查集的操作效率从"可能退化成 O(n)"提升到"均摊接近 O(1)"。</p>
+  </div>
+
+  <h2>问题回顾：树为什么会退化</h2>
+  <p>
+    上一篇的朴素实现里，<code>union(x, y)</code> 总是把 <code>x</code> 的根接到 <code>y</code> 的根下面，完全不管两棵树谁大谁小。
+    如果不断执行 <code>union(1,2)、union(2,3)、union(3,4)...</code>，树会变成一条长链，<code>find</code> 操作要一路爬到根，退化成 O(n)。
+  </p>
+
+  <h2>优化一：按秩合并（Union by Rank）</h2>
+  <p>
+    思路很直接：<strong>合并时，把矮的树接到高的树下面，而不是随意指定方向</strong>。这样树的高度增长会慢很多——
+    只有当两棵"一样高"的树合并时，高度才会 +1，否则高度不变。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>两个小部落合并，让人数少（或者说"辈分浅"）的部落酋长认人数多的酋长做上级，而不是随便谁认谁——这样整个部落的"层级链条"不会无谓变长。
+  </div>
+  <p>
+    这里的"秩"（rank）通常记录的是<strong>树高的上界</strong>（严格算法分析中不是精确树高，因为路径压缩会改变高度但不更新 rank，所以叫"秩"而非"高度"）。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UnionFind.java</span><span>按秩合并</span></div>
+    <pre><span class="ty">int</span>[] parent, rank;
+
+<span class="kw">public</span> <span class="ty">void</span> <span class="fn">union</span>(<span class="ty">int</span> x, <span class="ty">int</span> y) {
+    <span class="ty">int</span> rootX = <span class="fn">find</span>(x), rootY = <span class="fn">find</span>(y);
+    <span class="kw">if</span> (rootX == rootY) <span class="kw">return</span>;
+
+    <span class="com">// 秩小的树接到秩大的树下面，谁当"儿子"由树的规模决定</span>
+    <span class="kw">if</span> (rank[rootX] < rank[rootY]) {
+        parent[rootX] = rootY;
+    } <span class="kw">else if</span> (rank[rootX] > rank[rootY]) {
+        parent[rootY] = rootX;
+    } <span class="kw">else</span> {
+        <span class="com">// 秩相同，谁当根都行，但树高会 +1</span>
+        parent[rootY] = rootX;
+        rank[rootX]++;
+    }
+}</pre>
+  </div>
+
+  <h2>优化二：路径压缩（Path Compression）</h2>
+  <p>
+    按秩合并控制了树"长高"的速度，但没有解决已经存在的长路径问题。路径压缩的思路是：
+    <strong>既然 find 已经把从 x 到根的整条路径都走了一遍，不如顺手把路径上所有节点直接指向根</strong>，这样下次查询这些节点就是 O(1)。
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UnionFind.java</span><span>路径压缩（递归写法）</span></div>
+    <pre><span class="kw">public</span> <span class="ty">int</span> <span class="fn">find</span>(<span class="ty">int</span> x) {
+    <span class="kw">if</span> (parent[x] != x) {
+        <span class="com">// 递归找到根之后，把 x 直接挂到根上，压平路径</span>
+        parent[x] = <span class="fn">find</span>(parent[x]);
+    }
+    <span class="kw">return</span> parent[x];
+}</pre>
+  </div>
+  <p>
+    效果非常直观：一条长链在做过一次 <code>find</code> 之后，链上所有节点都会变成直接挂在根下面的"扁平结构"，
+    后续对这些节点的查询全部变成 O(1)。
+  </p>
+
+  <h2>两者结合：均摊复杂度 O(α(n))</h2>
+  <p>
+    单独使用路径压缩，或单独使用按秩合并，都能把复杂度改善到 O(log n)。但<strong>两者结合使用</strong>之后，
+    经过严格的摊还分析（下一个 Tab 会讲摊还分析的通用方法），n 次操作的总时间复杂度是 O(n · α(n))，
+    其中 α(n) 是<strong>反阿克曼函数（inverse Ackermann function）</strong>，增长极其缓慢——
+    对于宇宙中原子数量级的 n，α(n) 也不超过 5。因此实践中普遍认为并查集的每次操作是<strong>均摊 O(1)</strong>。
+  </p>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"并查集的时间复杂度是多少？" 标准答案是 O(α(n))，接近但不严格等于 O(1)。
+    能说出"反阿克曼函数"、"按秩合并 + 路径压缩缺一不可才能达到这个复杂度"，是加分项。
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>只写路径压缩、不写按秩合并（或者反过来）也能让代码正确运行，很多人因此偷懒只写一个。
+    虽然单独一个优化在大多数测试用例下也表现不错，但为了拿到理论上最优的均摊复杂度保证，两者都应该实现——面试和实际工程中都建议两个都写。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>按秩合并：</strong>从"合并方向"上控制树高增长，避免树退化成链。</li>
+    <li><strong>路径压缩：</strong>从"查询过程"顺手优化树结构，越查树越扁平。</li>
+    <li><strong>两者互补：</strong>合并使用后均摊复杂度趋近 O(1)，是并查集能被广泛应用（如 Kruskal 算法判环）的关键。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-并查集UnionFind的抽象.html" class="nav-btn">← 并查集 Union-Find 的抽象</a>
+    <a href="./03-贪心算法的适用条件.html" class="nav-btn next">贪心算法的适用条件 →</a>
+  </div>
+
+</div>
+</body>
+</html>

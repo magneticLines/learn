@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>并查集 Union-Find 的抽象 — 算法设计范式</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f472b6; }
+  p code, li code { color: #f472b6; }
+  h2 { color: #f472b6; border-left-color: #f472b6; }
+  .hero .tag { color: #f472b6; border-color: #832850; }
+  .nav-btn.next { color: #f472b6; border-color: #832850; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../ds-roadmap.html">数据结构与算法 路线图</a> / 算法设计范式 / 并查集 Union-Find 的抽象
+  </div>
+
+  <div class="hero">
+    <div class="tag">算法设计范式</div>
+    <h1>并查集 Union-Find 的抽象</h1>
+    <p>一种专门用来维护"分组关系"的数据结构——不关心组内元素的顺序，只关心"谁和谁是一伙的"。</p>
+  </div>
+
+  <h2>要解决的问题</h2>
+  <p>
+    生活中有大量"动态分组"的场景：班级里同学结成朋友圈，公司里部门合并，社交网络里判断两个人是否间接认识。
+    这些问题的共同点是：<strong>一开始每个元素各自成组，随着关系不断建立，组会不断合并</strong>，我们只需要能随时回答两个问题：
+  </p>
+  <ul>
+    <li><strong>Find（查找）：</strong>某个元素属于哪个组？（用来判断两个元素是否同组）</li>
+    <li><strong>Union（合并）：</strong>把两个元素所在的组合并成一个组。</li>
+  </ul>
+  <p>
+    并查集（Union-Find，也叫 Disjoint Set，不相交集合）就是为这两个操作量身定做的数据结构。
+    它不是为了"存储"数据本身，而是为了<strong>高效维护元素之间的等价关系</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>把每个人想象成一个部落成员，部落有一个"酋长"（代表整个部落）。判断两个人是否同部落，只需要看他们的酋长是不是同一个人；两个部落联姻合并，就让其中一个酋长认另一个酋长做"上级"。
+  </div>
+
+  <h2>朴素实现：树森林</h2>
+  <p>
+    并查集最经典的实现方式是<strong>用树来表示集合，用森林（多棵树）表示多个集合</strong>：
+  </p>
+  <ul>
+    <li>每个元素对应一个节点，节点里存一个 <code>parent</code> 指针（用数组下标模拟）指向它的父节点。</li>
+    <li><strong>根节点的 parent 指向自己</strong>，根节点就代表整个集合的"身份标识"。</li>
+    <li>初始化时，每个元素自成一组，也就是每个节点的 parent 都指向自己（n 棵只有一个节点的树）。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>UnionFind.java</span><span>朴素实现（未优化）</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">UnionFind</span> {
+    <span class="kw">private final</span> <span class="ty">int</span>[] parent;
+
+    <span class="kw">public</span> <span class="fn">UnionFind</span>(<span class="ty">int</span> n) {
+        parent = <span class="kw">new</span> <span class="ty">int</span>[n];
+        <span class="com">// 初始时每个元素是自己的根，即 n 个独立集合</span>
+        <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i < n; i++) parent[i] = i;
+    }
+
+    <span class="com">// 查找 x 所在集合的根节点（沿着 parent 指针一路往上走）</span>
+    <span class="kw">public</span> <span class="ty">int</span> <span class="fn">find</span>(<span class="ty">int</span> x) {
+        <span class="kw">while</span> (parent[x] != x) {
+            x = parent[x];
+        }
+        <span class="kw">return</span> x;
+    }
+
+    <span class="com">// 合并 x、y 所在的两个集合：把 x 的根挂到 y 的根下面</span>
+    <span class="kw">public</span> <span class="ty">void</span> <span class="fn">union</span>(<span class="ty">int</span> x, <span class="ty">int</span> y) {
+        <span class="ty">int</span> rootX = <span class="fn">find</span>(x);
+        <span class="ty">int</span> rootY = <span class="fn">find</span>(y);
+        <span class="kw">if</span> (rootX != rootY) parent[rootX] = rootY;
+    }
+
+    <span class="com">// 判断两个元素是否属于同一集合</span>
+    <span class="kw">public</span> <span class="ty">boolean</span> <span class="fn">connected</span>(<span class="ty">int</span> x, <span class="ty">int</span> y) {
+        <span class="kw">return</span> <span class="fn">find</span>(x) == <span class="fn">find</span>(y);
+    }
+}</pre>
+  </div>
+
+  <p>
+    这个朴素版本已经能正确工作，但有一个致命缺陷：<strong>合并时完全不考虑树的形状</strong>。
+    如果一直把新元素的根接到某个固定元素下面，树会退化成一条链，<code>find</code> 操作就会退化成 O(n)——
+    这正是下一篇要解决的问题。
+  </p>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>不要把并查集和"图的连通分量"搞混。并查集本身不存储边的具体连接方式，它只回答"是否连通"这个粗粒度问题，
+    并且是<strong>动态</strong>的——可以随时插入新的合并操作。而如果只是静态地求一次连通分量，用 DFS/BFS 遍历图也能做到，不一定非要并查集。
+    并查集的价值在于"边一条一条到来、需要频繁判断连通性"的动态场景，比如 Kruskal 算法（后面 Ⅳ Tab 已经用过）判断加入一条边是否会成环。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>专注于分组关系：</strong>并查集不存储元素的顺序或具体值，只维护"谁跟谁一伙"这一件事，接口极简（find + union）。</li>
+    <li><strong>树森林是天然的表示方式：</strong>根节点即集合标识，合并操作只需改一个指针，天然支持动态合并。</li>
+    <li><strong>朴素实现有隐患：</strong>树可能退化成链，下一篇的按秩合并 + 路径压缩会把它优化到接近 O(1)。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="../sort/14-Kruskal算法.html" class="nav-btn">← 最小生成树 · Kruskal 算法</a>
+    <a href="./02-按秩合并与路径压缩.html" class="nav-btn next">按秩合并与路径压缩 →</a>
+  </div>
+
+</div>
+</body>
+</html>

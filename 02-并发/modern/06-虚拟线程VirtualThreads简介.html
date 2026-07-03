@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>虚拟线程 Virtual Threads 简介 — 现代并发工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e6f80; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e6f80; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">Java 并发 路线图</a> / 现代并发工具 / 虚拟线程 Virtual Threads 简介
+  </div>
+
+  <div class="hero">
+    <div class="tag">现代并发工具</div>
+    <h1>虚拟线程 Virtual Threads 简介</h1>
+    <p>本模块的收官内容：Project Loom 带来的虚拟线程，Java 21 正式发布。它没有发明新的并发原语，而是重新定义了"线程"本身的成本，让"一个请求一个线程"这种最朴素的写法重新变得可行。</p>
+  </div>
+
+  <h2>回顾：传统平台线程的成本问题</h2>
+  <p>
+    我们在本模块最开始学 <code>ThreadPoolExecutor</code> 时就强调过：<strong>线程是昂贵的资源</strong>。每个 Java 线程（即"平台线程"，Platform Thread）背后对应一个操作系统线程，创建时要分配几百 KB 到几 MB 的栈内存，操作系统内核态的线程调度、上下文切换也有实打实的开销。这就是为什么我们要用线程池复用线程，而不是来一个请求就 <code>new Thread()</code>。
+  </p>
+  <p>
+    但线程池治标不治本：<strong>如果任务本身是阻塞 IO（等数据库、等下游 HTTP 响应）</strong>，那么占用的这个平台线程在等待期间什么也干不了，纯粹是"占着茅坑"。要提升吞吐量，要么加大线程池（受限于内存和调度开销，不可能无限加），要么改写成异步回调风格（比如 <code>CompletableFuture</code> 链式调用）——但异步代码的可读性、调试难度都远不如同步阻塞写法直观。
+  </p>
+
+  <h2>虚拟线程：JVM 用户态调度的轻量级线程</h2>
+  <p>
+    <strong>虚拟线程（Virtual Thread）</strong>是 JDK 21（Project Loom 成果）引入的一种全新线程实现：它不再一对一绑定操作系统线程，而是由 <strong>JVM 自己在用户态调度</strong>，多个（成千上万个）虚拟线程共享、复用少量几个真正的操作系统线程——这些被复用的操作系统线程称为<strong>载体线程（Carrier Thread）</strong>。
+  </p>
+  <div class="tree">
+    <span class="hi">传统模型</span>：请求1 → 平台线程1（阻塞等IO时，线程整个被占用，白白闲置）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 请求2 → 平台线程2<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ...（线程数量受操作系统资源限制，加不上去）<br><br>
+    <span class="hi">虚拟线程模型</span>：请求1 → 虚拟线程1 ─┐<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 请求2 → 虚拟线程2 ─┼─→ 少量载体线程（如 CPU 核数个）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 请求N → 虚拟线程N ─┘   （阻塞时自动让出，去跑别的虚拟线程）
+  </div>
+  <p>
+    核心机制：当虚拟线程执行到阻塞 IO 操作（比如 <code>Socket</code> 读写、<code>Thread.sleep()</code>）时，JVM 会自动把这个虚拟线程从载体线程上"卸下来"（挂起并保存其调用栈状态到堆内存），让载体线程立刻去执行另一个就绪的虚拟线程；等 IO 就绪后，这个虚拟线程再被重新挂载到某个空闲的载体线程上继续执行。这个"卸下—挂载"的调度全程发生在 JVM 内部，<strong>完全不需要陷入操作系统内核态</strong>，开销极小。
+  </p>
+  <div class="callout info">
+    <strong>生活类比：</strong>载体线程像餐厅里的服务员，虚拟线程像顾客的点单。传统模型是"一个服务员死守一桌，等顾客点完菜、吃完饭全程不能去伺候别桌"；虚拟线程模型是"顾客点完菜进入等待（阻塞 IO）时，服务员立刻转身去伺候下一桌，等这桌菜做好了再随便找个空闲服务员端过去"——服务员（载体线程）的数量远小于顾客（虚拟线程）数量，但整体翻台率（吞吐量）反而更高。
+  </div>
+
+  <h2>最大的意义：用同步写法获得异步的吞吐量</h2>
+  <p>
+    虚拟线程最打动人心的地方，不是"更快"，而是<strong>写法不用变</strong>：你依然写最朴素的同步阻塞代码——<code>InputStream.read()</code>、<code>ReentrantLock.lock()</code>、普通的 <code>for</code> 循环顺序调用——不需要改成 <code>CompletableFuture</code> 的链式回调或响应式编程的 <code>Mono/Flux</code>，JVM 在底层帮你把"阻塞等待"自动转换成了"高效调度"。这大幅降低了高并发服务端编程的心智负担和调试难度（同步代码的堆栈、断点调试远比异步回调直观）。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>创建虚拟线程：API 和平台线程几乎一样</span></div>
+    <pre><span class="com">// 每个任务开一个虚拟线程，哪怕有 10 万个任务也毫无压力</span>
+<span class="kw">try</span> (<span class="ty">ExecutorService</span> <span class="var">executor</span> = <span class="ty">Executors</span>.<span class="fn">newVirtualThreadPerTaskExecutor</span>()) {
+    <span class="kw">for</span> (<span class="kw">int</span> <span class="var">i</span> = <span class="num">0</span>; <span class="var">i</span> &lt; <span class="num">100_000</span>; <span class="var">i</span>++) {
+        <span class="var">executor</span>.<span class="fn">submit</span>(() -&gt; {
+            <span class="fn">callBlockingHttpApi</span>(); <span class="com">// 同步阻塞写法，底层自动让出载体线程</span>
+        });
+    }
+} <span class="com">// try-with-resources 会等待所有任务完成</span></pre>
+  </div>
+
+  <h2>虚拟线程 vs 平台线程</h2>
+  <table>
+    <thead><tr><th>维度</th><th>平台线程（Platform Thread）</th><th>虚拟线程（Virtual Thread）</th></tr></thead>
+    <tbody>
+      <tr><td>与 OS 线程关系</td><td>一对一绑定</td><td>多对少，动态复用载体线程</td></tr>
+      <tr><td>创建/调度成本</td><td>高（内核态调度、MB 级栈）</td><td>极低（用户态调度，栈按需增长，占堆内存）</td></tr>
+      <tr><td>可创建数量</td><td>几千个就吃紧</td><td>可轻松创建成千上万甚至百万个</td></tr>
+      <tr><td>适用任务</td><td>CPU 密集型计算（虚拟线程反而没有优势）</td><td>IO 密集、大量阻塞等待的任务（网络调用、数据库访问）</td></tr>
+      <tr><td>线程池化</td><td>需要，创建代价高必须复用</td><td>不建议池化，即用即抛，一任务一虚拟线程</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <strong>陷阱：</strong>虚拟线程不是万能加速器。对<strong>CPU 密集型任务</strong>（比如前面讲的 ForkJoinPool 数组求和），瓶颈是计算本身而不是阻塞等待，虚拟线程并不能提升吞吐量，该用 ForkJoinPool/并行流的场景仍然应该用。另外，如果代码里用了 <code>synchronized</code> 块做同步，虚拟线程在早期版本中执行到 <code>synchronized</code> 内部的阻塞操作时会被"钉住"（pinned）在载体线程上，无法让出，需要注意用 <code>ReentrantLock</code> 替代以获得虚拟线程的完整收益。
+  </div>
+
+  <h2>与操作系统"用户级线程"思想的呼应</h2>
+  <p>
+    如果你学过操作系统模块里"并发"那部分讲的<strong>用户级线程（User-Level Thread）vs 内核级线程（Kernel-Level Thread）</strong>，会发现虚拟线程的设计思路正是"用户级线程"理念在 JVM 里的现代复兴：调度逻辑完全在用户态（这里是 JVM 内部）完成，不需要每次都陷入内核态，从而把线程的创建和切换成本降到极低。只是当年操作系统层面的用户级线程因为"一个线程阻塞、内核不知道整个进程都卡住"的老问题（M:1 模型的缺陷）没有大规模流行起来；而虚拟线程站在 JVM 这一层，天然掌控了所有阻塞点（IO、锁等待都会经过 JDK 自己的类库），得以精确地做"阻塞时自动让出"，绕开了这个历史难题。
+  </p>
+
+  <h2>常见误区 &amp; 面试高频</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>以为虚拟线程能让 CPU 密集型代码变快，或者认为虚拟线程数量越多性能越好。虚拟线程解决的是"阻塞 IO 浪费线程资源"的问题，不改变 CPU 总算力这个硬约束。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"虚拟线程和平台线程的本质区别？" 答题要点：① 虚拟线程由 JVM 在用户态调度，多个虚拟线程复用少量载体线程；② 阻塞 IO 时自动让出载体线程，不浪费操作系统线程资源；③ 让开发者能用同步阻塞的简单写法写出异步级别的高吞吐服务；④ 只对 IO 密集型任务有意义，不适合 CPU 密集型计算。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>问题：</strong>传统"一个请求一个平台线程"模型下，阻塞 IO 会白白占用宝贵的操作系统线程资源，线程数量存在硬上限。</li>
+    <li><strong>方案：</strong>虚拟线程由 JVM 用户态调度，阻塞时自动让出载体线程，实现少量物理线程支撑海量并发任务。</li>
+    <li><strong>价值：</strong>用最朴素的同步阻塞写法，获得接近异步编程的吞吐量，大幅降低高并发服务端编程的复杂度。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./05-CompletionService批量任务结果获取.html" class="nav-btn">← CompletionService 批量任务结果获取</a>
+    <a href="../concurrency-roadmap.html" class="nav-btn next">🎉 已完成，返回路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

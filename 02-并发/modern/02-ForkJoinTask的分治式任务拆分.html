@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ForkJoinTask 的分治式任务拆分 — 现代并发工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #0e6f80; }
+  .nav-btn.next { color: #22d3ee; border-color: #0e6f80; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="../concurrency-roadmap.html">Java 并发 路线图</a> / 现代并发工具 / ForkJoinTask 的分治式任务拆分
+  </div>
+
+  <div class="hero">
+    <div class="tag">现代并发工具</div>
+    <h1>ForkJoinTask 的分治式任务拆分</h1>
+    <p>上一篇讲了 ForkJoinPool 底层怎么调度，这一篇讲你实际要写的代码：怎么把一个大任务表达成"拆到足够小就直接算，否则 fork 出子任务再 join 合并"。</p>
+  </div>
+
+  <h2>两个抽象基类：RecursiveTask vs RecursiveAction</h2>
+  <p>
+    <code>ForkJoinTask</code> 是提交给 <code>ForkJoinPool</code> 的任务基类，日常使用它的两个子类就够了：
+  </p>
+  <ul>
+    <li><strong><code>RecursiveTask&lt;V&gt;</code></strong>：需要返回结果的任务，重写 <code>compute()</code> 返回 <code>V</code>，比如"求数组和"要返回一个 <code>Long</code>。</li>
+    <li><strong><code>RecursiveAction</code></strong>：不需要返回结果的任务，重写 <code>compute()</code> 无返回值，比如"把数组每个元素原地加一"。</li>
+  </ul>
+  <p>
+    二者的区别仅仅是有没有返回值，分治的套路完全一样，可以类比之前学过的 <code>Callable</code>（有返回值）和 <code>Runnable</code>（无返回值）的关系。
+  </p>
+
+  <h2>经典写法：判断阈值 → 直接算 or fork/join</h2>
+  <p>每个 <code>compute()</code> 方法都遵循同一个模板：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>分治任务的通用骨架</span></div>
+    <pre><span class="kw">protected</span> V <span class="fn">compute</span>() {
+    <span class="kw">if</span> (<span class="var">任务规模</span> &lt;= <span class="var">阈值</span>) {
+        <span class="com">// 足够小，直接顺序计算，不再往下拆</span>
+        <span class="kw">return</span> <span class="var">直接计算结果</span>;
+    }
+    <span class="com">// 还不够小，拆成左右两半</span>
+    <span class="ty">SubTask</span> <span class="var">left</span>  = <span class="kw">new</span> <span class="ty">SubTask</span>(<span class="var">左半部分</span>);
+    <span class="ty">SubTask</span> <span class="var">right</span> = <span class="kw">new</span> <span class="ty">SubTask</span>(<span class="var">右半部分</span>);
+    <span class="var">left</span>.<span class="fn">fork</span>();              <span class="com">// 异步提交左任务（压入自己队列队头）</span>
+    V <span class="var">rightResult</span> = <span class="var">right</span>.<span class="fn">compute</span>(); <span class="com">// 右任务直接在当前线程算，省一次调度</span>
+    V <span class="var">leftResult</span> = <span class="var">left</span>.<span class="fn">join</span>();   <span class="com">// 等左任务结果（可能被别的线程偷去执行了）</span>
+    <span class="kw">return</span> <span class="fn">merge</span>(<span class="var">leftResult</span>, <span class="var">rightResult</span>);
+}</pre>
+  </div>
+  <div class="callout tip">
+    <strong>小技巧：</strong>右边直接调用 <code>compute()</code> 而不是 <code>fork()</code>，只对左边 <code>fork()</code>，这是官方推荐的写法——能省下一次任务提交和窃取的开销，因为反正当前线程也要执行一个任务，不如让它直接算右边，别浪费。
+  </div>
+
+  <h2>代码示例：并行求数组和</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>SumTask.java</span></div>
+    <pre><span class="kw">class</span> <span class="ty">SumTask</span> <span class="kw">extends</span> <span class="ty">RecursiveTask</span>&lt;<span class="ty">Long</span>&gt; {
+    <span class="kw">private static final</span> <span class="kw">int</span> <span class="var">THRESHOLD</span> = <span class="num">1000</span>; <span class="com">// 阈值：低于这个规模就不再拆</span>
+    <span class="kw">private final</span> <span class="kw">int</span>[] <span class="var">arr</span>;
+    <span class="kw">private final</span> <span class="kw">int</span> <span class="var">start</span>, <span class="var">end</span>;
+
+    <span class="ty">SumTask</span>(<span class="kw">int</span>[] <span class="var">arr</span>, <span class="kw">int</span> <span class="var">start</span>, <span class="kw">int</span> <span class="var">end</span>) {
+        <span class="kw">this</span>.<span class="var">arr</span> = <span class="var">arr</span>; <span class="kw">this</span>.<span class="var">start</span> = <span class="var">start</span>; <span class="kw">this</span>.<span class="var">end</span> = <span class="var">end</span>;
+    }
+
+    <span class="ann">@Override</span>
+    <span class="kw">protected</span> <span class="ty">Long</span> <span class="fn">compute</span>() {
+        <span class="kw">if</span> (<span class="var">end</span> - <span class="var">start</span> &lt;= <span class="var">THRESHOLD</span>) {
+            <span class="kw">long</span> <span class="var">sum</span> = <span class="num">0</span>;
+            <span class="kw">for</span> (<span class="kw">int</span> <span class="var">i</span> = <span class="var">start</span>; <span class="var">i</span> &lt; <span class="var">end</span>; <span class="var">i</span>++) <span class="var">sum</span> += <span class="var">arr</span>[<span class="var">i</span>];
+            <span class="kw">return</span> <span class="var">sum</span>; <span class="com">// 足够小，直接顺序求和</span>
+        }
+        <span class="kw">int</span> <span class="var">mid</span> = (<span class="var">start</span> + <span class="var">end</span>) &gt;&gt;&gt; <span class="num">1</span>;
+        <span class="ty">SumTask</span> <span class="var">left</span>  = <span class="kw">new</span> <span class="ty">SumTask</span>(<span class="var">arr</span>, <span class="var">start</span>, <span class="var">mid</span>);
+        <span class="ty">SumTask</span> <span class="var">right</span> = <span class="kw">new</span> <span class="ty">SumTask</span>(<span class="var">arr</span>, <span class="var">mid</span>, <span class="var">end</span>);
+        <span class="var">left</span>.<span class="fn">fork</span>();                     <span class="com">// 左边扔给其他线程（或被偷走）</span>
+        <span class="kw">return</span> <span class="var">right</span>.<span class="fn">compute</span>() + <span class="var">left</span>.<span class="fn">join</span>(); <span class="com">// 右边自己算，再等左边结果合并</span>
+    }
+}
+
+<span class="com">// 提交任务</span>
+<span class="ty">ForkJoinPool</span> <span class="var">pool</span> = <span class="kw">new</span> <span class="ty">ForkJoinPool</span>();
+<span class="kw">long</span> <span class="var">total</span> = <span class="var">pool</span>.<span class="fn">invoke</span>(<span class="kw">new</span> <span class="ty">SumTask</span>(<span class="var">arr</span>, <span class="num">0</span>, <span class="var">arr</span>.<span class="fn">length</span>));</pre>
+  </div>
+
+  <h2>阈值怎么定：拆得太细 vs 太粗</h2>
+  <table>
+    <thead><tr><th>阈值设置</th><th>后果</th></tr></thead>
+    <tbody>
+      <tr><td>太小（拆得太细）</td><td>任务对象创建、fork/join 调度开销远超实际计算量，反而比单线程慢</td></tr>
+      <tr><td>太大（拆得太粗）</td><td>并行度不够，没能充分利用多核，退化成接近串行</td></tr>
+    </tbody>
+  </table>
+  <p>实践中阈值需要结合数据规模和 CPU 核数做压测调优，没有放之四海而皆准的固定值。</p>
+
+  <h2>常见误区 &amp; 面试高频</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>在 <code>compute()</code> 里对左右两个子任务都调用 <code>fork()</code> 再分别 <code>join()</code>。这样写不算错，但比"左 fork、右直接 compute"多了一次不必要的任务提交/窃取开销，属于能省则省的细节，但不理解原理容易在面试中说不清楚为什么官方样例这么写。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"RecursiveTask 和 RecursiveAction 的区别？" 一句话：<strong>有没有返回值</strong>，套路完全一样。再追问"分治的终止条件怎么定？" 答：设定一个阈值，任务规模小于阈值就直接算，否则继续 fork 拆分。
+  </div>
+
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>RecursiveTask/RecursiveAction</strong> 只是"有无返回值"的区别，分治套路一致。</li>
+    <li><strong>核心模板：</strong>够小就直接算，否则拆成两半，一半 fork 异步执行，另一半当前线程直接算，最后 join 合并。</li>
+    <li>阈值的选择直接决定并行收益，是这类算法调优的关键手段。</li>
+  </ul>
+
+  <hr />
+
+  <div class="nav-footer">
+    <a href="./01-ForkJoinPool与工作窃取算法.html" class="nav-btn">← ForkJoinPool 与工作窃取算法</a>
+    <a href="./03-StampedLock与乐观读锁.html" class="nav-btn next">StampedLock 与乐观读锁 →</a>
+  </div>
+
+</div>
+</body>
+</html>
