@@ -27,3 +27,8 @@
 - 每个文件只讲一个知识点，内容聚焦，不合并多个节点
 - 写完一个文件后，立即将路线图中对应的 `<span class="leaf">` 改为 `<a class="leaf" href="./react/NN-xxx.html">`，保持路线图与文件同步
 - 前后导航（nav-footer）：上一篇指向编号 -1 的文件，下一篇指向编号 +1 的文件，首尾分别链回路线图
+
+## Git 工作流
+
+- 本项目直接在 `main` 分支上进行日常开发，不使用 feature 分支/PR 流程。所有提交直接 commit 到 `main` 并推送。
+- `main` 分支已配置 GitHub Pages（Source: `main` / root），每次推送到 `main` 都会自动触发一次部署，网站地址：https://magneticlines.github.io/learn/
