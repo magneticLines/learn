@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>文件上传漏洞 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c4a10; }
+  .nav-btn.next { color: #fb923c; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 常见攻击 / 文件上传漏洞
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">常见攻击</div>
+    <h1>文件上传漏洞 <span style="color:#f87171;font-size:1rem;">[核心]</span></h1>
+    <p>把一个文件上传功能想象成一扇"只收快递、不开门"的传达室——真正的危险不是收了一个伪装成水果的包裹，而是传达室自己把包裹拆开、按包裹里的指令去执行。本篇内容参考《黑客攻防技术宝典：Web 实战篇》第 2 版。</p>
+  </div>
+
+  <!-- 核心问题 -->
+  <h2>核心问题：上传 ≠ 危险，上传 + 能被执行 = 危险</h2>
+  <p>
+    很多人以为"文件上传漏洞"就是"服务器允许上传恶意文件"，其实这只说对了一半。如果一个上传功能不严格校验文件的<strong>真实类型/内容</strong>，
+    攻击者确实可以上传一个伪装成图片的文件（比如文件名是 <code>shell.jpg</code>，但内容其实是一段可执行的脚本代码）——但<strong>光是这一步并不足以造成危害</strong>，
+    因为服务器如果只是把这个文件当成静态图片存起来、原样返回给浏览器，它就只是一张"打不开的图片"而已，没有任何代码会被执行。
+  </p>
+  <p>
+    真正致命的是两个条件<strong>同时满足</strong>：
+  </p>
+  <ul>
+    <li><strong>条件一：</strong>攻击者能控制上传文件的内容（这一步几乎总是成立，因为上传接口本来就是给用户提交内容用的）；</li>
+    <li><strong>条件二：</strong>上传目录允许"执行"落地的脚本文件（例如把一个 <code>.jsp</code>/<code>.php</code> 文件放进一个 Web 可访问、且服务器会将其当作脚本解析执行的目录）。</li>
+  </ul>
+  <p>
+    两者叠加，攻击者就获得了一个 <strong>Webshell</strong>——一个可以通过 URL 直接访问、并在服务器上执行任意代码的"后门脚本"，这本质上就是远程代码执行（RCE）。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>传达室（上传目录）只收快递不代表危险；危险的是传达室里有个人，只要包裹里写着"打开我并按里面的说明做事"，他就真的照做了。文件校验解决的是"能不能把危险包裹送进来"，而目录执行权限解决的是"送进来之后有没有人会照着执行"——两道防线缺一不可。
+  </div>
+
+  <!-- 攻击手法示例 -->
+  <h2>攻击是如何发生的</h2>
+  <p>
+    假设一个头像上传功能，前后端都只检查文件扩展名是否为 <code>.jpg</code>/<code>.png</code>。攻击者可能通过以下方式绕过：
+  </p>
+  <ul>
+    <li><strong>扩展名伪造：</strong>把 Webshell 命名为 <code>shell.jsp</code> 后，尝试改成 <code>shell.jsp.jpg</code> 或利用服务器的解析怪癖（比如老版本 Apache 对"未知后缀"的处理规则，会把 <code>evil.jsp;.jpg</code> 这种多后缀文件仍按 <code>.jsp</code> 解析执行）；</li>
+    <li><strong>Content-Type 伪造：</strong>上传时把 HTTP 请求里的 <code>Content-Type</code> 字段改成 <code>image/jpeg</code>，而后端如果只信任这个客户端可自由填写的字段，就会被骗过；</li>
+    <li><strong>目录穿越配合：</strong>如果上传路径处理不当，甚至可以尝试把文件写到 Web 根目录下的可执行路径中。</li>
+  </ul>
+  <p>下面是一个"概念性"的 Webshell 示意（仅用于理解原理，不是可直接使用的攻击代码）——它的核心逻辑极其简单：接收一个请求参数，把参数内容当作系统命令去执行：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>概念示意（JSP 伪代码，说明原理用）</span></div>
+    <pre><span class="com">// 危险之处在于：请求参数完全由攻击者控制，却被直接传给了命令执行函数</span>
+<span class="kw">&lt;%</span>
+  <span class="ty">String</span> <span class="var">cmd</span> = <span class="var">request</span>.<span class="fn">getParameter</span>(<span class="str">"cmd"</span>);  <span class="com">// 攻击者通过 URL 参数传入命令</span>
+  <span class="ty">Process</span> <span class="var">p</span> = <span class="ty">Runtime</span>.<span class="fn">getRuntime</span>().<span class="fn">exec</span>(<span class="var">cmd</span>);      <span class="com">// 服务器代为执行，等于交出了主机控制权</span>
+  <span class="com">// 之后把 p 的输出流写回响应，攻击者就能像开了一个远程终端一样操作服务器</span>
+<span class="kw">%&gt;</span></pre>
+  </div>
+  <p>
+    只要这个文件能被放进一个"会执行脚本"的目录，并且能通过 URL 访问到，攻击者此后就无需再依赖上传接口——直接访问
+    <code>http://target/uploads/shell.jsp?cmd=whoami</code> 就能在目标服务器上为所欲为。
+  </p>
+
+  <!-- 防御措施 -->
+  <h2>防御措施：为什么这么做能生效</h2>
+
+  <h3>1. 校验文件真实类型而不只是扩展名</h3>
+  <p>
+    文件名后缀和浏览器提交的 <code>Content-Type</code> 都是<strong>攻击者完全可控</strong>的字符串，仅凭这两者做判断形同虚设。
+    正确做法是读取文件内容的<strong>魔数（Magic Bytes / 文件签名）</strong>来判断真实类型——例如 PNG 文件必然以 <code>\x89PNG</code> 开头，
+    JPEG 以 <code>\xFF\xD8\xFF</code> 开头。伪装文件名可以随便改，但真实的文件头很难在保持"能被当作图片使用"的同时被随意篡改。
+  </p>
+
+  <h3>2. 上传目录禁止执行权限</h3>
+  <p>
+    这是最根本的一道防线：在 Web 服务器或操作系统层面配置，让上传目录<strong>无论存放什么文件都不会被当作脚本执行</strong>。
+    比如 Nginx 可以针对上传路径单独配置，拒绝将其中的文件交给 PHP-FPM 等脚本解析器处理。这样一来，即便有恶意文件通过了内容校验混了进来，
+    它也只是一个"打不开的脚本文件"，没有任何执行入口——相当于把"能不能执行"这个必要条件直接掐断。
+  </p>
+
+  <h3>3. 文件重命名</h3>
+  <p>
+    保存文件时用随机生成的文件名（如 UUID）替换用户上传时的原始文件名，彻底剥夺攻击者对文件名的控制权。
+    这能防住依赖"精心构造的文件名/多重后缀"的绕过手法，也让攻击者难以直接猜测或访问到已上传的文件路径。
+  </p>
+
+  <h3>4. 隔离存储域名</h3>
+  <p>
+    把用户上传的文件放到一个<strong>独立的域名或子域名</strong>下提供访问（例如专门的静态资源域名/CDN），该域名不携带主站 Cookie、
+    也不具备任何脚本执行能力。这样即便前面的防线都被突破，恶意文件也无法在主应用的域名/会话上下文中执行，从而无法窃取主站用户的登录态或触发同源攻击。
+  </p>
+
+  <!-- 对比表 -->
+  <h2>四道防线对比</h2>
+  <table>
+    <thead>
+      <tr><th>防御措施</th><th>防住了什么</th><th>单独使用是否足够</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>校验真实文件类型</td>
+        <td>伪装成图片的恶意文件被识别并拒绝</td>
+        <td>否——总可能存在解析器层面的绕过技巧</td>
+      </tr>
+      <tr>
+        <td>上传目录禁止执行</td>
+        <td>即使文件混入，也无法被当作脚本运行</td>
+        <td>否——配置疏漏、目录迁移都可能失效</td>
+      </tr>
+      <tr>
+        <td>文件重命名</td>
+        <td>攻击者无法通过构造文件名触发解析怪癖，也难以定位文件</td>
+        <td>否——不解决"内容"层面的风险</td>
+      </tr>
+      <tr>
+        <td>隔离存储域名</td>
+        <td>即使文件被执行，也不影响主站会话与用户数据</td>
+        <td>否——治标不治本，仍应堵住上游漏洞</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>纵深防御（Defense in Depth）：</strong>这四道防线要<strong>同时使用</strong>，而不是挑一个自认为"最强"的来用。
+    任何单一检查都可能被足够有创意的攻击者找到绕过方式（历史上各种 Web 服务器、框架的解析怪癖层出不穷），
+    只有层层叠加，才能保证"某一层被突破"不等于"全盘沦陷"。
+  </div>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"前端 JS 已经判断了文件扩展名，后端就不用再校验了。"
+    前端校验只是为了提升用户体验（少一次无效的网络请求），对安全<strong>毫无意义</strong>——攻击者只需打开浏览器开发者工具禁用校验，
+    或者干脆用 curl / Postman 直接向上传接口发请求，完全绕开前端页面。<strong>所有安全校验必须在服务器端完成</strong>，前端校验永远只是锦上添花。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"如何设计一个安全的文件上传功能？" 标准答案应覆盖：校验真实文件内容（而非扩展名/Content-Type）、
+    上传目录禁止脚本执行、随机化文件名、按需做病毒扫描、必要时使用独立域名隔离——并强调这是"纵深防御"而非单点校验。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-反序列化漏洞简介.html" class="nav-btn">← 反序列化漏洞简介</a>
+    <a href="./06-SSRF服务端请求伪造.html" class="nav-btn next">SSRF 服务端请求伪造 →</a>
+  </div>
+
+</div>
+</body>
+</html>

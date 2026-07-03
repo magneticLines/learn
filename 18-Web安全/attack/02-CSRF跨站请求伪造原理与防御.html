@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CSRF 跨站请求伪造原理与防御 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c4a10; }
+  .nav-btn.next { color: #fb923c; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 常见攻击 / CSRF 跨站请求伪造原理与防御
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">常见攻击</div>
+    <h1>CSRF 跨站请求伪造原理与防御</h1>
+    <p>浏览器有一个"忠诚"到近乎愚蠢的习惯：不管这个请求是从哪个页面发起的，只要目标域名匹配，就把这个域名的 Cookie 老老实实带上——攻击者要的就是这份"忠诚"。</p>
+  </div>
+
+  <!-- 核心机制 -->
+  <h2>核心机制：浏览器自动携带 Cookie</h2>
+  <p>
+    <strong>CSRF（Cross-Site Request Forgery，跨站请求伪造）</strong>指攻击者诱导已经登录目标网站的受害者，
+    在受害者<strong>毫不知情</strong>的情况下，让其浏览器向目标网站发出一个请求，而这个请求会被服务器当作受害者本人的合法操作来处理。
+  </p>
+  <p>
+    这一切之所以可能，是因为浏览器的一条基础规则：<strong>只要请求的目标域名匹配，浏览器就会自动把该域名下的 Cookie 附加到请求上，
+    完全不管这个请求是从哪个页面、由谁发起的</strong>。也就是说，Cookie 的携带只跟"请求发往哪里"有关，跟"请求从哪里发起"无关——
+    这正是让 CSRF 得以生效的那个特性。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>好比你随身带着一枚印章（Cookie），只要有人拿着写好的文件让你"顺手盖个章"，你的手（浏览器）看到文件抬头是自己单位（目标域名）就会条件反射地盖上去——它不会去核实"这份文件到底是不是你自己想盖的"，只认抬头对不对。
+  </div>
+
+  <!-- 攻击示例 -->
+  <h2>攻击示例</h2>
+  <p>
+    假设受害者刚刚登录了 <code>bank.com</code>，浏览器里保存着有效的 session cookie。攻击者诱导受害者访问一个恶意页面
+    <code>evil.com</code>，页面里藏着这样的内容：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>恶意页面 evil.com 的内容</span></div>
+    <pre><span class="com">&lt;!-- 最简单的形式：img 标签的 src 会自动发起 GET 请求 --&gt;</span>
+&lt;<span class="kw">img</span> <span class="var">src</span>=<span class="str">"https://bank.com/transfer?to=attacker&amp;amount=10000"</span> <span class="var">style</span>=<span class="str">"display:none"</span>&gt;
+
+<span class="com">&lt;!-- 或者用自动提交的表单发起 POST 请求，绕过"只能 GET"的限制 --&gt;</span>
+&lt;<span class="kw">form</span> <span class="var">id</span>=<span class="str">"f"</span> <span class="var">action</span>=<span class="str">"https://bank.com/transfer"</span> <span class="var">method</span>=<span class="str">"POST"</span>&gt;
+  &lt;<span class="kw">input</span> <span class="var">name</span>=<span class="str">"to"</span> <span class="var">value</span>=<span class="str">"attacker"</span>&gt;
+  &lt;<span class="kw">input</span> <span class="var">name</span>=<span class="str">"amount"</span> <span class="var">value</span>=<span class="str">"10000"</span>&gt;
+&lt;/<span class="kw">form</span>&gt;
+&lt;<span class="kw">script</span>&gt;<span class="var">document</span>.<span class="fn">getElementById</span>(<span class="str">'f'</span>).<span class="fn">submit</span>()&lt;/<span class="kw">script</span>&gt;</pre>
+  </div>
+  <p>
+    受害者的浏览器一打开这个页面，就会自动向 <code>bank.com/transfer</code> 发出请求，并且<strong>自动附带受害者在 bank.com 的合法
+    session cookie</strong>。服务器收到请求后，看到 cookie 有效，就认为"这是登录用户本人发起的转账操作"，于是照常处理——
+    整个过程受害者可能连页面加载了什么都没注意到。
+  </p>
+
+  <!-- 与 XSS 的本质区别 -->
+  <h2>与 XSS 的本质区别（面试关键点）</h2>
+  <div class="callout warn">
+    <strong>核心区分：代码究竟在谁的浏览器里跑了？</strong><br><br>
+    <strong>XSS</strong>：攻击者的恶意代码<strong>真正在受害者浏览器里执行了</strong>——相当于攻击者"借用"了受害者的浏览器来跑自己的脚本，
+    脚本能读 Cookie、能操作 DOM、能发任意请求，能力几乎不受限。<br><br>
+    <strong>CSRF</strong>：攻击者的代码<strong>从未在受害者浏览器里执行过一行</strong>——攻击者只是精心构造了一个请求，
+    让受害者的浏览器"顺手"把这个请求发出去，浏览器只是按照自己一贯的规则老老实实带上了本该带的 Cookie。
+    攻击者拿到的不是"执行能力"，而是"以受害者身份发出一次请求"的能力。
+  </div>
+  <p>
+    正因为 XSS 能让攻击者的代码真正跑起来，<strong>XSS 可以被用来绕过 CSRF 的防御</strong>：如果攻击者已经能在你的页面上执行 JS，
+    那么无论页面里藏了多隐蔽的 CSRF Token，攻击者的脚本都可以直接读取页面 DOM 或发起同源请求把这个 Token 拿到手，
+    再用它伪造出一个"合法"的请求——CSRF 防御在这种情况下形同虚设。这也是为什么很多人认为 <strong>XSS 是更根本、更危险的漏洞</strong>：
+    XSS 一旦存在，往往可以连带击穿其他防线。
+  </p>
+
+  <!-- 对比表：XSS vs CSRF -->
+  <h2>XSS vs CSRF 对比</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>XSS</th><th>CSRF</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>攻击机制</strong></td>
+        <td>把恶意脚本注入页面，脚本在受害者浏览器里真实执行</td>
+        <td>伪造一个请求，诱导受害者浏览器把它发送出去</td>
+      </tr>
+      <tr>
+        <td><strong>利用的漏洞/特性</strong></td>
+        <td>网站没有对输出做转义，导致"数据"被当成"代码"执行</td>
+        <td>浏览器无条件为同域请求自动附带 Cookie，与请求发起页面无关</td>
+      </tr>
+      <tr>
+        <td><strong>主要防御</strong></td>
+        <td>输出编码/转义 + CSP</td>
+        <td>CSRF Token + SameSite Cookie + Referer/Origin 校验</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 防御机制 -->
+  <h2>防御机制</h2>
+
+  <h3>1. CSRF Token</h3>
+  <p>
+    服务器为每个会话（或每个表单）生成一个<strong>不可预测的唯一 token</strong>，嵌入到页面表单的隐藏字段中；
+    提交状态变更类请求（转账、改密码等）时必须带上这个 token，服务器校验通过才处理。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>服务端渲染的表单示例</span></div>
+    <pre>&lt;<span class="kw">form</span> <span class="var">action</span>=<span class="str">"/transfer"</span> <span class="var">method</span>=<span class="str">"POST"</span>&gt;
+  &lt;<span class="kw">input</span> <span class="var">type</span>=<span class="str">"hidden"</span> <span class="var">name</span>=<span class="str">"csrf_token"</span> <span class="var">value</span>=<span class="str">"a1b2c3d4-随机不可预测的值"</span>&gt;
+  &lt;<span class="kw">input</span> <span class="var">name</span>=<span class="str">"amount"</span>&gt;
+  &lt;<span class="kw">button</span>&gt;转账&lt;/<span class="kw">button</span>&gt;
+&lt;/<span class="kw">form</span>&gt;
+
+<span class="com">// attacker.com 上的伪造表单没有这个页面，读不到这个动态生成的 token</span>
+<span class="com">// 因为同源策略禁止 evil.com 的 JS 跨域读取 bank.com 页面的内容</span>
+<span class="com">// 所以伪造请求要么不带 token，要么带错——服务端校验直接拒绝</span></pre>
+  </div>
+  <p>攻击者之所以拿不到这个 token，根源在于<strong>同源策略（Same-Origin Policy）</strong>禁止跨域读取另一个站点页面的内容——这也是本模块前面讲过的浏览器安全基石在这里的具体应用。</p>
+
+  <h3>2. SameSite Cookie 属性</h3>
+  <p>
+    这是<strong>浏览器层面</strong>的防御，从根源上限制"跨站请求要不要带 Cookie"，无需服务端额外生成 token：
+  </p>
+  <table>
+    <thead>
+      <tr><th>取值</th><th>行为</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Strict</code></td>
+        <td>完全禁止跨站请求携带该 Cookie，哪怕是从其他网站点击链接跳转过来也不带——最安全，但可能影响"从外部链接跳转后仍保持登录"的体验</td>
+      </tr>
+      <tr>
+        <td><code>Lax</code>（多数浏览器默认值）</td>
+        <td>跨站的"顶层导航 + GET 请求"（如点击链接跳转）允许携带，但跨站的 POST 表单提交、图片/iframe 等子请求不携带——在安全与体验之间取折中</td>
+      </tr>
+      <tr>
+        <td><code>None</code></td>
+        <td>不限制，任何跨站请求都携带该 Cookie，必须同时搭配 <code>Secure</code>（仅 HTTPS 下发送）——用于确实需要跨站共享 Cookie 的场景（如第三方嵌入）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3. Referer / Origin 头校验</h3>
+  <p>
+    服务器检查请求头中的 <code>Referer</code> 或 <code>Origin</code>，确认请求确实是从自己的域名发起的，而不是从
+    <code>evil.com</code> 发起的。这种方式实现简单，但<strong>只能作为补充手段，不能作为主要防御</strong>——
+    因为部分浏览器隐私设置、代理、企业网络策略可能会剥离或改写 Referer 头，导致合法请求被误判；反过来说，
+    它对没有精心处理请求头的简单攻击仍有一定拦截效果，属于"聊胜于无"的辅助层。
+  </p>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：把 CSRF Token 存在 Cookie 里就万事大吉了。</strong>
+    如果服务端校验逻辑只是简单地"读取 Cookie 里的 token，看看跟请求里的 token 是否一致"，这个防御毫无意义——
+    因为 Cookie 本身就是浏览器<strong>自动携带</strong>的东西，攻击者伪造的跨站请求同样会自动带上这个 Cookie 里的 token，
+    两边一对比自然"一致"，等于白防。<strong>正确做法是 token 必须存放在浏览器不会自动携带的位置</strong>——
+    比如页面表单里的隐藏字段（需要能读到页面 DOM 才能拿到，跨站页面读不到），或是要求前端手动放进自定义请求头
+    （如 <code>X-CSRF-Token</code>），浏览器同样不会替跨站请求自动加上自定义头。校验的关键是"这个值是不是攻击者伪造请求时也能自动拿到"。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"CSRF 的防御为什么不能只依赖 Cookie？" 答案就是上面这条误区——凡是浏览器会自动附带的东西
+    （不管是 Cookie 本身，还是简单存在 Cookie 里的 token），都不能用来证明"这是用户主动发起的请求"，
+    因为伪造请求同样能自动带上它。真正有效的凭证必须依赖"跨站页面拿不到"这条同源策略保障的边界。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>CSRF 利用的是浏览器"无条件携带同域 Cookie"这一基础特性</strong>，攻击者的代码从未在受害者浏览器里真正执行过。</li>
+    <li><strong>XSS 是"代码在受害者浏览器里跑"，CSRF 是"请求以受害者身份被发出"</strong>——这是理解两者关系、区分二者危害的关键，也是 XSS 能绕过 CSRF 防御的原因。</li>
+    <li><strong>CSRF Token 必须放在浏览器不会自动携带的位置</strong>（表单隐藏字段/自定义请求头），SameSite Cookie 提供浏览器层兜底，Referer/Origin 校验只能作为补充。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-XSS跨站脚本攻击原理与防御.html" class="nav-btn">← XSS 跨站脚本攻击原理与防御</a>
+    <a href="./03-SQL注入原理与防御.html" class="nav-btn next">SQL 注入原理与防御 →</a>
+  </div>
+
+</div>
+</body>
+</html>

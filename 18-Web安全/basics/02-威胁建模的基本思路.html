@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>威胁建模的基本思路 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #f87171; }
+  p code, li code { color: #f87171; }
+  h2 { color: #f87171; border-left-color: #f87171; }
+  .hero .tag { color: #f87171; border-color: #7c4a10; }
+  .nav-btn.next { color: #f87171; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 安全基础 / 威胁建模的基本思路
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">安全基础</div>
+    <h1>威胁建模的基本思路</h1>
+    <p>安全不是"加了多少防护措施"，而是"有没有想清楚威胁在哪"。堆再多的安全组件，如果没搞清楚自己到底在防什么，很可能是南辕北辙——防住了不痛不痒的角落，真正的薄弱点却没人管。</p>
+  </div>
+
+  <!-- 核心心法 -->
+  <h2>核心心法：安全是一种思维方式，不是一堆工具</h2>
+  <p>
+    很多团队做安全的方式是"清单式"的：上个 WAF、加个验证码、给密码加个盐、开启 HTTPS……这些措施单独看都没错，但如果不先搞清楚"我的系统到底有哪些资产、攻击者最可能从哪里下手"，就容易出现<strong>防护资源错配</strong>——花大量精力加固了一个几乎不会被攻击的角落，而真正暴露在外的高危接口却没人管。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>威胁建模就像给房子做安防规划前先想清楚"小偷会从哪进来"——是没锁的后门、一楼没装防盗网的窗户，还是快递柜的取件码容易被猜到？如果不先想清楚这些，你可能会花大价钱给正门装了三道锁，却对着一扇一直开着的窗户视而不见。<strong>威胁建模就是安全领域的"入室路径推演"</strong>：在写代码、上线之前，先站在攻击者的角度，把系统的薄弱环节找出来，再针对性地做防护。
+  </div>
+
+  <!-- 基本思路 -->
+  <h2>威胁建模的基本思路（四步法）</h2>
+  <p>威胁建模没有一个放之四海皆准的固定流程，但核心思路大体可以归纳为四步，环环相扣：</p>
+
+  <div class="tree">
+    <span class="hi">1. 识别资产（What are we protecting?）</span><br>
+    &nbsp;&nbsp;├─ 用户数据（账号密码、手机号、身份证、支付信息）<br>
+    &nbsp;&nbsp;├─ 业务数据（订单、合同、内部报表）<br>
+    &nbsp;&nbsp;└─ 系统本身（服务可用性、代码/密钥不被篡改）<br>
+    <span class="hi">2. 识别威胁来源与攻击面（Who might attack, and from where?）</span><br>
+    &nbsp;&nbsp;├─ 外部匿名攻击者（互联网上任何人）<br>
+    &nbsp;&nbsp;├─ 已登录但恶意的用户（内部越权、恶意脚本注入）<br>
+    &nbsp;&nbsp;└─ 攻击面：每一个输入点、每一个对外接口、每一个第三方依赖<br>
+    <span class="hi">3. 评估风险优先级（How bad, how likely?）</span><br>
+    &nbsp;&nbsp;├─ 危害程度：一旦被攻破，损失有多大<br>
+    &nbsp;&nbsp;└─ 发生概率：这个攻击手法容易实施到什么程度<br>
+    <span class="hi">4. 针对性设计防护措施（What do we do about it?）</span><br>
+    &nbsp;&nbsp;└─ 优先堵最高风险的口子，而不是平均用力
+  </div>
+
+  <p>
+    这四步是一个循环而不是一次性的：系统上线后功能一直在迭代，新增一个功能往往意味着新增了一块攻击面（比如加了个文件上传功能，就多了一类威胁），所以威胁建模应该伴随系统的整个生命周期持续做，而不是上线前突击一次就完事。
+  </p>
+
+  <!-- STRIDE -->
+  <h2>STRIDE 模型：给威胁分类的框架</h2>
+  <p>
+    "识别威胁"这一步说起来容易，真做起来容易漏掉一些角度。微软提出的 <strong>STRIDE 模型</strong>就是一套帮你系统性地检查"我是不是漏掉了某类威胁"的分类框架，六个字母对应六类威胁：
+  </p>
+  <table>
+    <thead>
+      <tr><th>字母</th><th>英文</th><th>含义</th><th>对应 CIA 要素</th><th>举例</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>S</strong></td>
+        <td>Spoofing</td>
+        <td>欺骗（冒充他人身份）</td>
+        <td>机密性/完整性</td>
+        <td>伪造他人的登录凭证、Session 固定攻击</td>
+      </tr>
+      <tr>
+        <td><strong>T</strong></td>
+        <td>Tampering</td>
+        <td>篡改（修改数据或代码）</td>
+        <td>完整性</td>
+        <td>篡改请求参数、CSRF 伪造转账请求</td>
+      </tr>
+      <tr>
+        <td><strong>R</strong></td>
+        <td>Repudiation</td>
+        <td>否认（做了坏事却矢口否认，且系统无法证明）</td>
+        <td>完整性</td>
+        <td>缺少操作日志，用户否认自己下过某笔订单</td>
+      </tr>
+      <tr>
+        <td><strong>I</strong></td>
+        <td>Information Disclosure</td>
+        <td>信息泄露</td>
+        <td>机密性</td>
+        <td>SQL 注入拖库、错误堆栈里泄露内部路径</td>
+      </tr>
+      <tr>
+        <td><strong>D</strong></td>
+        <td>Denial of Service</td>
+        <td>拒绝服务</td>
+        <td>可用性</td>
+        <td>DDoS、恶意接口耗尽数据库连接</td>
+      </tr>
+      <tr>
+        <td><strong>E</strong></td>
+        <td>Elevation of Privilege</td>
+        <td>权限提升</td>
+        <td>机密性/完整性</td>
+        <td>普通用户越权调用管理员接口</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    可以看到，STRIDE 六类威胁其实都能映射回上一篇讲的 <strong>CIA 三要素</strong>——STRIDE 是"更细粒度的威胁分类清单"，CIA 是"更本质的破坏目标"。做威胁建模时，拿着 STRIDE 这张清单一项项对照自己的系统去问"这里有没有可能被欺骗？有没有可能被篡改？"，比凭空想象更不容易漏掉角落。
+  </p>
+
+  <!-- 举例 -->
+  <h3>一个简化的例子：电商订单接口</h3>
+  <p>
+    假设你要给"查看订单详情"这个接口做威胁建模：
+  </p>
+  <ol>
+    <li><strong>资产：</strong>订单里的收货地址、支付金额、用户手机号。</li>
+    <li><strong>攻击面：</strong>接口参数里的订单 ID，任何登录用户都能构造请求访问这个接口。</li>
+    <li><strong>用 STRIDE 检查：</strong>会不会被"欺骗"（会话被劫持冒充他人）？会不会被"篡改"（改订单 ID 越权查看别人的订单——这其实就是水平越权，属于权限提升 E 的一种）？会不会"信息泄露"（返回的数据里是否包含不必要的敏感字段）？</li>
+    <li><strong>风险评估：</strong>越权查看他人订单的实施门槛极低（改个数字就行），一旦发生泄露的是真实的收货信息，属于高风险。</li>
+    <li><strong>防护措施：</strong>服务端必须校验"当前登录用户是不是这个订单的所有者"，而不能只依赖前端不显示入口。</li>
+  </ol>
+  <p>
+    这个思路会在后面"越权访问"那一篇里深入展开——这里先建立"用系统化的方法找漏洞，而不是拍脑袋"这个意识。
+  </p>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"我们上了 WAF/杀毒软件，应该比较安全了。"——安全产品是防护措施的一种落地手段，但它解决不了"你根本没意识到某个功能存在漏洞"这个问题。威胁建模是在设计阶段就发现问题，比上线后指望安全产品兜底要主动得多、成本也低得多（漏洞越早发现，修复成本越低）。
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"你了解威胁建模吗？STRIDE 模型是什么？"——能说出 STRIDE 六个字母分别代表什么、并且能举一到两个实际场景的例子，会比死记硬背定义更加分。追问时不妨主动提一句"STRIDE 六类威胁本质上都能归到 CIA 三要素里"，体现出你不是孤立记忆知识点。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>安全的起点是"想清楚"，不是"堆工具"：</strong>识别资产→识别攻击面→评估风险→针对性防护，这个循环比盲目上安全产品更有效。</li>
+    <li><strong>STRIDE 是查漏补缺的清单：</strong>六类威胁覆盖了从身份伪造到拒绝服务的完整攻击谱系，做威胁建模时可以逐项对照检查。</li>
+    <li><strong>接下来进入具体的攻击手法：</strong>从下一个 Tab 开始，逐个拆解 XSS、CSRF、SQL 注入等常见攻击的原理与防御，每一种都可以用今天学的框架去归类理解。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-安全的三要素.html" class="nav-btn">← 安全的三要素(机密性/完整性/可用性)</a>
+    <a href="../attack/01-XSS跨站脚本攻击原理与防御.html" class="nav-btn next">XSS 跨站脚本攻击原理与防御 →</a>
+  </div>
+
+</div>
+</body>
+</html>

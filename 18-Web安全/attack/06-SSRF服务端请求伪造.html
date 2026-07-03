@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SSRF 服务端请求伪造 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c4a10; }
+  .nav-btn.next { color: #fb923c; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 常见攻击 / SSRF 服务端请求伪造
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">常见攻击</div>
+    <h1>SSRF 服务端请求伪造 <span style="color:#94a3b8;font-size:1rem;">[进阶]</span></h1>
+    <p>如果服务器愿意替你去"跑腿"访问一个 URL，那它能跑到的地方，可能远比你自己能访问到的地方多——SSRF 玩的就是"借刀"，让服务器替攻击者闯进它自己家里的房间。本篇内容参考《黑客攻防技术宝典：Web 实战篇》第 2 版。</p>
+  </div>
+
+  <!-- 是什么 -->
+  <h2>SSRF 是什么</h2>
+  <p>
+    SSRF（Server-Side Request Forgery，服务端请求伪造）指的是：很多 Web 功能会让<strong>服务器代替用户去请求一个 URL</strong>——
+    比如"粘贴一个链接生成预览卡片""填入图片 URL 导入头像""配置一个 Webhook 回调地址"。如果服务器对这个 URL 不加限制，
+    攻击者就可以提交一个恶意 URL，让<strong>服务器自己（而不是攻击者自己的电脑）</strong>去访问一个攻击者原本无法直接触达的目标——
+    最常见的就是那些只在内网可访问、没有暴露在公网上的资源。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>你没有权限进入公司机房，但前台小哥可以自由进出。如果前台愿意"帮你带个东西去机房"，你只需要告诉他要去哪个房间、拿什么，
+    他就成了你的代理人，替你完成了你本来做不到的事——SSRF 里的服务器，就是这个"愿意帮忙跑腿、却不检查你要去哪"的前台。
+  </div>
+
+  <!-- 危险的关键 -->
+  <h2>为什么危险：服务器在内网里，能摸到你摸不到的东西</h2>
+  <p>
+    Web 服务器通常部署在一个<strong>私有网络（内网）</strong>中，这个内网里可能有对公网完全不可见的内部管理后台、内部数据库、内部 API，
+    以及一个格外重要的目标——<strong>云厂商的元数据服务（Metadata Service）</strong>。
+  </p>
+  <p>
+    以主流云厂商（AWS、阿里云等）为例，云主机内部通常可以访问一个固定地址 <code>http://169.254.169.254/latest/meta-data/</code>，
+    这个地址<strong>只能从云主机自身内部访问</strong>，公网用户完全够不到。但如果这台云主机上跑着一个存在 SSRF 漏洞的 Web 服务，
+    攻击者就可以让这台服务器替自己去请求这个地址，从而拿到本该严格保密的<strong>临时 IAM 凭证/密钥</strong>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SSRF 窃取云主机凭证的攻击流程</span></div>
+    <pre><span class="com">// 1. 攻击者向一个"帮你抓取 URL"的功能提交如下参数：</span>
+<span class="var">url</span> = <span class="str">"http://169.254.169.254/latest/meta-data/iam/security-credentials/&lt;role-name&gt;"</span>
+
+<span class="com">// 2. 服务器信以为真，替攻击者发出了这个请求（它自己就在内网里，天然有权限访问）</span>
+<span class="com">// 3. 如果响应内容被原样回显给攻击者（或者能通过报错信息、耗时差异间接推断出来）</span>
+<span class="com">//    攻击者就在没有真正突破网络边界的情况下，窃取到了云账号的临时密钥</span>
+<span class="com">// 4. 拿到密钥后，攻击者可以用它调用云 API，进一步在整个云账号内横向渗透</span></pre>
+  </div>
+  <p>
+    这个例子最能说明 SSRF 的本质威胁：<strong>攻击者不需要突破防火墙、不需要拿到内网的一个账号，只需要找到一个愿意替他"跑腿"的服务器接口</strong>，
+    就能借助服务器的网络位置，把手伸进原本完全隔离的内网深处。
+  </p>
+  <p>
+    除了窃取云元数据，SSRF 还常被用来：
+  </p>
+  <ul>
+    <li><strong>内网端口扫描：</strong>通过观察不同目标地址/端口的响应时间、返回状态码或报错信息的差异，判断内网中哪些主机、哪些端口是开放的；</li>
+    <li><strong>滥用非常规协议：</strong>如果 URL 解析没有限制协议类型，攻击者可以尝试 <code>file://</code> 等协议来读取服务器本地文件，而不仅限于发起 HTTP 请求。</li>
+  </ul>
+
+  <!-- 防御措施 -->
+  <h2>防御措施</h2>
+
+  <h3>1. 协议白名单</h3>
+  <p>
+    只允许 <code>http://</code>、<code>https://</code> 这类业务真正需要的协议，明确拒绝 <code>file://</code>、<code>gopher://</code>、<code>dict://</code> 等协议。
+    这些"冷门协议"经常被用来实现比普通 HTTP 请求更诡异、更强大的攻击手法（比如 <code>gopher://</code> 可以拼出任意 TCP 载荷），协议白名单能从源头堵住这条路。
+  </p>
+
+  <h3>2. 限制可访问的 URL 范围</h3>
+  <p>
+    如果业务场景本身就有明确边界（比如"只允许拉取图片"），应该尽量收紧到<strong>域名白名单</strong>，只允许请求信任的、已知的目标域名，
+    而不是"只要是个 URL 就放行"。业务范围越窄，攻击面就越小。
+  </p>
+
+  <h3>3. 禁止访问内网地址段</h3>
+  <p>
+    在发起请求前，先对目标主机名做 DNS 解析，拿到真实 IP 后再判断——如果解析结果落在私有/内网地址段
+    （<code>127.0.0.0/8</code>、<code>10.0.0.0/8</code>、<code>172.16.0.0/12</code>、<code>192.168.0.0/16</code>）
+    或云元数据地址 <code>169.254.169.254</code> 内，就直接拒绝这次请求。
+  </p>
+  <div class="callout warn">
+    <strong>关键细节：</strong>这个校验必须针对<strong>解析后的真实 IP</strong>进行，而不能只对着"主机名字符串"做简单匹配。
+    原因是攻击者可以用 <strong>DNS Rebinding</strong>（先让域名解析出一个正常的公网 IP 通过校验，请求发出时再让 DNS 悄悄指向内网 IP）
+    或者<strong>十进制/八进制编码 IP</strong>等方式（例如把 <code>127.0.0.1</code> 写成看起来"不像内网 IP"的等价形式），
+    在校验阶段伪装成一个合法的外部地址，实际发出请求时却指向了内网。只做字符串层面的黑名单匹配，基本形同虚设。
+  </div>
+
+  <h3>4. 谨慎处理重定向</h3>
+  <p>
+    很多 HTTP 客户端库默认会自动跟随 <code>3xx</code> 重定向。攻击者可以先提交一个校验时看起来完全合法的外部 URL，
+    这个 URL 返回一个指向内网地址的重定向响应，服务器一旦盲目跟随，前面所有的校验就都被绕过了。
+    正确做法是禁用自动跟随重定向，或者在每一次跳转后都重新对新的目标地址执行一遍完整校验。
+  </p>
+
+  <!-- 对比/总结表 -->
+  <h2>防御措施小结</h2>
+  <table>
+    <thead>
+      <tr><th>防御措施</th><th>解决的问题</th><th>容易被忽视的点</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>协议白名单</td>
+        <td>阻止 <code>file://</code>/<code>gopher://</code> 等协议被滥用</td>
+        <td>只校验了协议前缀，未必够，仍需结合其他手段</td>
+      </tr>
+      <tr>
+        <td>URL 范围限制</td>
+        <td>把攻击面收窄到业务真正需要的域名</td>
+        <td>过于宽松的通配域名（如 <code>*.example.com</code>）可能被子域名接管利用</td>
+      </tr>
+      <tr>
+        <td>禁止内网地址段</td>
+        <td>阻止请求打到内网资源和云元数据接口</td>
+        <td>必须校验解析后的真实 IP，否则被 DNS Rebinding/IP 编码绕过</td>
+      </tr>
+      <tr>
+        <td>重定向再校验</td>
+        <td>防止"先合法后跳转"的绕过方式</td>
+        <td>很多 HTTP 库默认自动跟随重定向，容易被遗漏</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"我在代码里判断了一下，如果 URL 里包含 <code>127.0.0.1</code> 或 <code>localhost</code> 字符串就拒绝，这样应该够了吧？"
+    这种基于字符串的黑名单校验极易被绕过：DNS Rebinding 可以让同一个域名在校验时解析出合法 IP、请求时解析出内网 IP；
+    IP 还可以用十进制整数（如 <code>2130706433</code> 就是 <code>127.0.0.1</code>）、八进制、十六进制等多种形式表示，字符串匹配根本覆盖不全。
+    <strong>唯一可靠的做法是实际发起 DNS 解析，拿到真实 IP 后再判断是否落在内网网段。</strong>
+  </div>
+  <div class="callout tip">
+    <strong>面试高频：</strong>"SSRF 和 CSRF 有什么区别？" 一句话区分：CSRF 是让<strong>用户的浏览器</strong>在用户不知情的情况下发起请求（利用的是用户身份），
+    而 SSRF 是让<strong>服务器自身</strong>发起请求（利用的是服务器的网络位置和信任关系）。两者攻击的"代理对象"完全不同。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./05-文件上传漏洞.html" class="nav-btn">← 文件上传漏洞</a>
+    <a href="./07-越权访问.html" class="nav-btn next">越权访问 →</a>
+  </div>
+
+</div>
+</body>
+</html>

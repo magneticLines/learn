@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SQL 注入原理与防御 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c4a10; }
+  .nav-btn.next { color: #fb923c; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 常见攻击 / SQL 注入原理与防御
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">常见攻击</div>
+    <h1>SQL 注入原理与防御</h1>
+    <p>把用户输入原样拼进 SQL 字符串，等于把"改写你程序逻辑的权力"交给了攻击者——这是 Web 安全里最经典、也是面试最高频的一道题。</p>
+  </div>
+
+  <!-- 本质 -->
+  <h2>SQL 注入的本质</h2>
+  <p>
+    SQL 注入（SQL Injection）的根本原因只有一句话：<strong>用户输入被直接拼接进了 SQL 语句字符串，导致输入内容不再只是"数据"，而是被数据库当成了 SQL 语法的一部分去解析</strong>。
+    正常情况下，一段 SQL 语句的<strong>结构</strong>（要查哪张表、用什么条件）应该完全由开发者决定，用户输入只应该填进"数据值"的位置。
+    一旦拼接方式不当，攻击者就能通过输入里的引号、注释符（<code>--</code>）、逻辑运算符（<code>OR</code>）等特殊字符，<strong>改变 SQL 语句本身的结构</strong>，而不仅仅是改变查询的数据值。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>拼接 SQL 就像把用户填的表单内容直接打印进一份"公文模板"里再交给审批系统执行。如果用户在姓名栏填的不是"张三"，而是"张三；同时批准我的所有请求"，而公文系统又不区分"这是姓名数据"还是"这是公文指令"，审批系统就会把整句话当成指令执行——这正是注入攻击的核心：让数据被误当成指令。
+  </div>
+
+  <!-- 经典案例：登录绕过 -->
+  <h2>经典案例：登录绕过</h2>
+  <p>假设登录逻辑是这样拼接 SQL 的（这是一段<strong>有漏洞</strong>的写法）：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>VulnerableLogin.java</span></div>
+    <pre><span class="ty">String</span> <span class="var">sql</span> <span class="punct">=</span> <span class="str">"SELECT * FROM users WHERE username='"</span> <span class="punct">+</span> <span class="var">username</span> <span class="punct">+</span>
+             <span class="str">"' AND password='"</span> <span class="punct">+</span> <span class="var">password</span> <span class="punct">+</span> <span class="str">"'"</span><span class="punct">;</span>
+<span class="com">// 直接执行拼接出来的字符串，把用户输入当成了 SQL 语法的一部分</span>
+<span class="var">stmt</span><span class="punct">.</span><span class="fn">executeQuery</span><span class="punct">(</span><span class="var">sql</span><span class="punct">);</span></pre>
+  </div>
+  <p>如果用户在密码框输入 <code>' OR '1'='1</code>，用户名随便填一个 <code>admin</code>，拼接后的完整 SQL 字符串会变成：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>拼接结果</span></div>
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> username=<span class="str">'admin'</span> <span class="kw">AND</span> password=<span class="str">''</span> <span class="kw">OR</span> <span class="str">'1'='1'</span></pre>
+  </div>
+  <p>
+    注意这里的 <code>WHERE</code> 子句被彻底改变了语义：<code>password=''</code> 这个条件是否成立已经不重要，因为后面用 <code>OR</code> 接了一个恒真条件 <code>'1'='1'</code>。
+    根据 SQL 运算符优先级，整个 <code>WHERE</code> 表达式等价于 <code>username='admin' AND (password='' OR 恒真)</code>，结果永远为真——攻击者不需要知道密码，就能查出这一行用户记录，从而绕过登录校验。
+  </p>
+  <p>另一种常见手法是利用注释符 <code>--</code>（后面通常再加一个空格）直接把密码校验部分注释掉。用户名填 <code>admin' -- </code>，密码随便填，拼接结果是：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>拼接结果（注释绕过）</span></div>
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> username=<span class="str">'admin'</span> <span class="com">-- ' AND password='任意值'</span></pre>
+  </div>
+  <p>
+    <code>--</code> 之后的所有内容在 SQL 里都变成了注释，等于 <code>AND password=...</code> 这部分校验根本不存在，语句退化成"只要用户名是 admin 就能登录"。
+  </p>
+
+  <div class="callout warn">
+    <strong>危害不止于登录绕过：</strong>如果注入点出现在一个会把结果显示给用户的查询里（比如商品搜索、订单查询），攻击者还可以用 <code>UNION SELECT</code> 拼接出额外的一列结果，把 <code>users</code>
+    表里的用户名密码、其他业务表里的敏感数据一起"伪装成"正常查询结果显示出来，实现整表甚至整库的数据窃取。
+    即使页面不直接回显数据，攻击者也可以用<strong>盲注（Blind Injection）</strong>——通过构造条件语句观察页面返回的细微差异（有无数据、响应时间长短）逐个字符地猜出数据库里的内容，虽然慢，但理论上能把整个数据库"抠"出来。
+    也就是说 SQL 注入的破坏面从"绕过一个登录框"一直到"拖库"，级别相差极大。
+  </div>
+
+  <!-- 根本防御 -->
+  <h2>根本防御：参数化查询 / 预编译语句</h2>
+  <p>
+    修复方式是使用 <strong>参数化查询（Parameterized Query）</strong>，在 Java 里对应 <code>PreparedStatement</code>：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>SafeLogin.java</span></div>
+    <pre><span class="ty">String</span> <span class="var">sql</span> <span class="punct">=</span> <span class="str">"SELECT * FROM users WHERE username=? AND password=?"</span><span class="punct">;</span>
+<span class="ty">PreparedStatement</span> <span class="var">ps</span> <span class="punct">=</span> <span class="var">conn</span><span class="punct">.</span><span class="fn">prepareStatement</span><span class="punct">(</span><span class="var">sql</span><span class="punct">);</span>
+<span class="var">ps</span><span class="punct">.</span><span class="fn">setString</span><span class="punct">(</span><span class="num">1</span><span class="punct">,</span> <span class="var">username</span><span class="punct">);</span>
+<span class="var">ps</span><span class="punct">.</span><span class="fn">setString</span><span class="punct">(</span><span class="num">2</span><span class="punct">,</span> <span class="var">password</span><span class="punct">);</span>
+<span class="ty">ResultSet</span> <span class="var">rs</span> <span class="punct">=</span> <span class="var">ps</span><span class="punct">.</span><span class="fn">executeQuery</span><span class="punct">();</span></pre>
+  </div>
+  <p>
+    这不是"看起来更安全"的写法，而是<strong>从机制上彻底堵死了注入的可能性</strong>。原理是：调用 <code>prepareStatement(sql)</code> 时，数据库驱动会先把带 <code>?</code> 占位符的 SQL 模板<strong>单独发送给数据库并完成编译/解析</strong>，
+    这一步就已经确定了整条语句的结构——要查哪张表、有几个条件、条件之间是 <code>AND</code> 还是 <code>OR</code>，全都在这一步定型。之后 <code>setString</code> 传入的用户输入是<strong>作为纯数据值单独发送</strong>的，
+    数据库不会把它当成 SQL 文本重新解析、重新拼接进语句结构里。换句话说，<strong>无论用户输入里包含多少个引号、<code>OR</code>、<code>--</code>，它们都只会被当作字符串的字面内容去比较，不可能被解析成 SQL 语法</strong>。
+    结构编译和数据传值是两个独立的阶段，攻击者能控制的只有后一个阶段，而后一个阶段根本不参与语法解析——这就是参数化查询能"治本"的原因。
+  </p>
+
+  <div class="callout tip">
+    <strong>呼应已学内容：</strong>这里正好对应 <strong>09-数据库</strong> 模块中讲过的预编译语句（PreparedStatement）——如果你已经学过 JDBC 的预编译机制，会发现它不仅是性能优化手段（SQL 执行计划可以被数据库缓存、复用，避免每次都重新解析和生成执行计划），
+    <strong>更是 SQL 注入防御的根本方案</strong>。一个机制同时解决了性能和安全两个问题，这也是为什么它是 JDBC 里几乎必须使用的 API。
+  </div>
+
+  <!-- 对比：黑名单转义 vs 参数化查询 -->
+  <h2>为什么"转义特殊字符"不是好办法</h2>
+  <p>
+    很多初学者的第一反应是："那我把用户输入里的单引号 <code>'</code> 转义一下（比如换成 <code>\'</code>）或者把危险字符过滤掉不就行了？" 这种思路本质上是<strong>黑名单过滤</strong>，存在结构性缺陷。
+  </p>
+  <table>
+    <thead>
+      <tr><th>方案</th><th>思路</th><th>问题</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>转义 / 过滤特殊字符（黑名单）</strong></td>
+        <td>识别并处理引号、分号、注释符等"危险字符"</td>
+        <td>
+          需要开发者<strong>每一处拼接 SQL 的地方都记得正确处理</strong>，只要漏掉一处就前功尽弃；
+          不同数据库、不同编码（如宽字节注入）下转义规则不同，容易被绕过；
+          本质是"堵漏洞"而不是"消除漏洞产生的原因"
+        </td>
+      </tr>
+      <tr>
+        <td><strong>参数化查询 / PreparedStatement</strong></td>
+        <td>从驱动层面把"语句结构"和"数据值"物理隔离</td>
+        <td>
+          无论输入是什么字符组合都不会影响语句结构，防御是<strong>结构性、框架级</strong>的，
+          个别开发者忘记处理也不会破功（只要用对了 API）
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    简单说：转义是"希望每个人都不犯错"的人工防线，参数化查询是"让犯错这件事在机制上不可能发生"的结构防线。安全领域里，能用机制解决的问题，尽量不要依赖人的自觉。
+  </p>
+
+  <!-- ORM 补充 -->
+  <h2>ORM 框架下的注意事项</h2>
+  <p>
+    使用 MyBatis、JPA/Hibernate 等 ORM 框架时，框架底层通常也是通过 <code>PreparedStatement</code> 实现参数绑定的，所以按框架推荐方式写通常是安全的。以 MyBatis 为例：
+  </p>
+  <ul>
+    <li><code>#{}</code> —— 会被编译成 <code>?</code> 占位符，走参数化查询，<strong>安全</strong>。</li>
+    <li><code>${}</code> —— 是<strong>原样的字符串替换</strong>，直接把值拼进 SQL 文本里，等同于手写字符串拼接，<strong>不具备任何防注入能力</strong>。</li>
+  </ul>
+  <div class="code-block">
+    <div class="cb-header"><span>UserMapper.xml</span></div>
+    <pre><span class="com">&lt;!-- 安全：#{} 会生成 PreparedStatement 占位符 --&gt;</span>
+<span class="punct">&lt;</span><span class="fn">select</span> <span class="var">id</span><span class="punct">=</span><span class="str">"findByName"</span><span class="punct">&gt;</span>
+  <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> username = #<span class="punct">{</span>username<span class="punct">}</span>
+<span class="punct">&lt;/</span><span class="fn">select</span><span class="punct">&gt;</span>
+
+<span class="com">&lt;!-- 危险：${} 是纯字符串拼接，等价于手写 SQL 拼接 --&gt;</span>
+<span class="punct">&lt;</span><span class="fn">select</span> <span class="var">id</span><span class="punct">=</span><span class="str">"findByNameUnsafe"</span><span class="punct">&gt;</span>
+  <span class="kw">SELECT</span> * <span class="kw">FROM</span> users <span class="kw">WHERE</span> username = <span class="str">'</span>$<span class="punct">{</span>username<span class="punct">}</span><span class="str">'</span>
+<span class="punct">&lt;/</span><span class="fn">select</span><span class="punct">&gt;</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>常见误区：</strong>"我用了 ORM 框架，所以自动就防住了 SQL 注入。" 这是错的——ORM 只是把"是否使用参数化查询"这件事包装得更方便了，但像 MyBatis 的 <code>${}</code>
+    这种 API 依然是原始字符串拼接，一旦某个字段名、排序字段、表名等需要动态拼接的地方图省事用了 <code>${}</code>，注入漏洞照样存在。看到 <code>${}</code> 时要额外警惕，能用 <code>#{}</code> 的地方绝不用 <code>${}</code>。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"SQL 注入的原因和修复方式？" 标准答案的核心一句话是：
+    <strong>"参数化查询让用户输入永远只作为数据值，不会被解析为 SQL 语法的一部分"</strong>——记住这句话，再补充"SQL 语句结构在编译阶段就已经确定，用户输入是之后单独绑定的数据"，基本能拿满分。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>根因：</strong>用户输入被拼接进 SQL 字符串，导致输入能改变语句的语法结构而不只是数据值。</li>
+    <li><strong>根本修复：</strong>使用 <code>PreparedStatement</code> 参数化查询，把"语句结构编译"和"数据值绑定"拆成两个独立阶段。</li>
+    <li><strong>不要依赖黑名单转义</strong>——它是人工防线，参数化查询才是结构性、框架级的防线。</li>
+    <li><strong>用 ORM 不等于自动安全</strong>，警惕 MyBatis 的 <code>${}</code> 等本质是字符串拼接的 API。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-CSRF跨站请求伪造原理与防御.html" class="nav-btn">← CSRF 跨站请求伪造原理与防御</a>
+    <a href="./04-反序列化漏洞简介.html" class="nav-btn next">反序列化漏洞简介 →</a>
+  </div>
+
+</div>
+</body>
+</html>

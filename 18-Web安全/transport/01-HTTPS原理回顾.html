@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HTTPS 原理回顾 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #4ade80; }
+  p code, li code { color: #4ade80; }
+  h2 { color: #4ade80; border-left-color: #4ade80; }
+  .hero .tag { color: #4ade80; border-color: #14532d; }
+  .nav-btn.next { color: #4ade80; border-color: #14532d; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 传输安全 / HTTPS 原理回顾
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">传输安全</div>
+    <h1>HTTPS 原理回顾</h1>
+    <p>TLS 握手的具体步骤在 10-计算机网络模块已经讲透，这里换一个视角——不再关心"怎么握手"，而是关心"HTTPS 到底替 Web 安全挡住了什么"。</p>
+  </div>
+
+  <div class="callout info">
+    <strong>与 10-计算机网络模块的关系：</strong>非对称加密协商密钥、证书链验证、TLS 握手的四次/一次往返细节，10-计算机网络的安全 Tab 已经详细讲过，这里不再重复展开。这一篇聚焦在：从 Web 安全的角度看，HTTPS 到底解决了哪三类问题，以及为什么"全站 HTTPS"在今天是底线要求而不是加分项。
+  </div>
+
+  <!-- 三大保障 -->
+  <h2>安全视角：HTTPS 提供的三重保障</h2>
+  <p>
+    把 TLS 握手的技术细节抽象掉之后，HTTPS 相对于明文 HTTP，本质上是在传输层之上叠加了三种安全属性，分别对应三类不同的攻击：
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>保障</th><th>解决的问题</th><th>底层机制（简述）</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>防窃听</strong><br>机密性</td>
+        <td>中间人（同一 WiFi 下的攻击者、运营商）能直接看到明文内容，包括账号密码、Cookie、隐私数据</td>
+        <td>握手协商出的对称密钥对所有应用层数据加密</td>
+      </tr>
+      <tr>
+        <td><strong>防篡改</strong><br>完整性</td>
+        <td>中间人在传输途中修改响应内容，比如注入广告脚本、篡改下载文件、插入恶意 JS</td>
+        <td>每条记录附带 MAC（消息认证码）或 AEAD 加密模式自带完整性校验</td>
+      </tr>
+      <tr>
+        <td><strong>防冒充</strong><br>身份认证</td>
+        <td>用户以为在访问银行官网，实际连接的是攻击者伪装的钓鱼站点（DNS 劫持、ARP 欺骗等场景）</td>
+        <td>CA 证书链验证服务器公钥确实属于该域名的合法持有者</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>具体到 Web 安全的例子：</strong>如果登录页面用 HTTP 明文传输，即便密码本身做了前端加密，Session Cookie 通常也是明文暴露在响应头 <code>Set-Cookie</code> 里的——攻击者在同一局域网用抓包工具（如 Wireshark、Fiddler）就能直接截获 Cookie，拿去伪造请求实现<strong>会话劫持</strong>，完全不需要破解密码。这也是为什么"只给登录页加 HTTPS，其他页面用 HTTP"这种做法是不够的——只要 Cookie 在任何一次请求中以明文传输过，就有被窃听的窗口。
+  </div>
+
+  <!-- 全站HTTPS -->
+  <h2>为什么"全站 HTTPS"是今天的底线，而不是可选项</h2>
+  <p>
+    早期互联网的常见做法是"只在登录、支付等敏感页面用 HTTPS，其余静态页面用 HTTP"，理由是 HTTPS 有额外的计算开销。但这个思路在今天已经被证明是不成立的：
+  </p>
+  <ul>
+    <li><strong>Cookie 没有页面边界：</strong>浏览器发请求时，只要域名匹配就会带上 Cookie，不区分这个页面是不是"敏感页面"——只要有一个页面用了 HTTP，登录态 Cookie 就有暴露机会。</li>
+    <li><strong>混合内容风险：</strong>HTTPS 页面里如果引用了 HTTP 的资源（图片、脚本），会被浏览器拦截或降级警告，且这类资源本身仍可被篡改，比如中间人在 HTTP 加载的 JS 文件里注入恶意代码。</li>
+    <li><strong>硬件和算法的进步早已抵消了性能顾虑：</strong>现代 CPU 普遍有 AES-NI 硬件加速，TLS 1.3 又把握手往返砍到了 1-RTT（甚至 0-RTT），性能开销已经不是拒绝全站 HTTPS 的理由。</li>
+    <li><strong>免费证书降低了成本门槛：</strong>Let's Encrypt 等机构提供免费自动续期证书，"证书太贵"也不再是借口。</li>
+  </ul>
+  <div class="callout tip">
+    <strong>结论：</strong>现代 Web 安全的基本要求是<strong>全站强制 HTTPS</strong>（配合 HSTS 响应头 <code>Strict-Transport-Security</code>，让浏览器记住"以后一律用 HTTPS 访问本站，不要再尝试 HTTP"），而不是挑几个"看起来敏感"的页面单独加密——安全防线只要有一个缺口，整体就形同虚设。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../auth/03-Session固定攻击.html" class="nav-btn">← Session 固定攻击</a>
+    <a href="./02-常见加密算法误用场景.html" class="nav-btn next">常见加密算法误用场景 →</a>
+  </div>
+
+</div>
+</body>
+</html>

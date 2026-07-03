@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Session 固定攻击 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 认证授权安全 / Session 固定攻击
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">认证授权安全</div>
+    <h1>Session 固定攻击</h1>
+    <p>不用偷 Session ID，而是"提前塞给你一个我知道的 Session ID"——这种反其道而行之的思路，是 Session 会话管理里最容易被忽视的漏洞。</p>
+  </div>
+
+  <!-- 原理 -->
+  <h2>攻击原理：不偷，而是"下发"</h2>
+  <p>
+    大多数会话相关的攻击（比如 XSS 窃取 Cookie）思路是"想办法偷到受害者已经登录的 Session ID"。但 <strong>Session 固定攻击（Session Fixation）</strong>换了个方向：
+    攻击者<strong>提前准备好一个自己知道的、合法的 Session ID</strong>，然后想办法让受害者用这个 Session ID 去登录。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>好比你去存包柜寄存行李，正常流程是柜子随机分配一个号码给你，只有你自己知道。
+    Session 固定攻击相当于攻击者提前偷偷把某个柜子的号码条硬塞到你手里，说"你就用 88 号柜子吧"——你把行李（登录凭证）放进了 88 号柜子，但攻击者本来就抄下了 88 号柜子的密码，你存完之后攻击者直接打开就能拿走你的行李。
+  </div>
+
+  <h3>完整攻击链</h3>
+  <div class="tree">
+    <span class="hi">1. 攻击者访问目标网站</span>，获得一个未登录状态的合法 Session ID（比如 SESSIONID=ABC123）<br><br>
+    <span class="hi">2. 攻击者诱导受害者使用这个 Session ID</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">↳</span> 常见手法：发一个带 Session ID 参数的链接，如 <span class="hi">http://target.com/login?jsessionid=ABC123</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">↳</span> 如果站点支持通过 URL 传递 Session ID（早期 Java Web 常见的 URL 重写机制），这一步很容易得手<br><br>
+    <span class="hi">3. 受害者点击链接，用自己的账号密码登录</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">↳</span> 关键问题：如果服务端在登录成功后，<strong>沿用了登录前的这个 Session ID</strong>，没有生成新的<br><br>
+    <span class="hi">4. 这个 Session（ID=ABC123）现在被标记为"受害者已认证"</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">↳</span> 但攻击者从第 1 步开始就知道这个 ID，于是攻击者带着 SESSIONID=ABC123 直接访问网站，服务端一看"这个 Session 已认证"，直接把攻击者当成受害者放行
+  </div>
+
+  <div class="callout warn">
+    <strong>本质：</strong>问题根源不在于 Session ID 被"偷走"，而在于服务端把"登录前的匿名会话"和"登录后的已认证会话"当成了同一个东西，没有在权限发生变化（从匿名到已认证）的这个关键节点上做隔离。
+  </div>
+
+  <!-- 防御 -->
+  <h2>防御手段：登录成功后必须换新 Session ID</h2>
+  <p>
+    核心防御原则只有一句话：<strong>用户登录成功的那一刻，服务端必须销毁旧 Session、生成一个全新的 Session ID</strong>，而不是在原来的 Session 基础上仅仅修改"已登录"状态位。
+    这样即使攻击者提前"种"下了一个 Session ID 并诱导受害者登录，登录成功后系统换发的新 ID 攻击者并不知道，攻击链在这一步就被切断。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java Web 场景下的典型写法（Servlet API）</span></div>
+    <pre><span class="com">// 反例：登录成功后直接复用旧 session，只改认证状态 —— 存在固定攻击风险</span>
+<span class="ty">HttpSession</span> session <span class="punct">=</span> request<span class="punct">.</span><span class="fn">getSession</span><span class="punct">();</span>
+session<span class="punct">.</span><span class="fn">setAttribute</span><span class="punct">(</span><span class="str">"user"</span><span class="punct">,</span> user<span class="punct">);</span> <span class="com">// 危险：旧 session id 没有变化</span>
+
+<span class="com">// 正例：登录成功后先让旧 session 失效，再创建新的</span>
+<span class="ty">HttpSession</span> oldSession <span class="punct">=</span> request<span class="punct">.</span><span class="fn">getSession</span><span class="punct">(</span><span class="kw">false</span><span class="punct">);</span>
+<span class="kw">if</span> <span class="punct">(</span>oldSession <span class="punct">!=</span> <span class="kw">null</span><span class="punct">)</span> <span class="punct">{</span>
+    oldSession<span class="punct">.</span><span class="fn">invalidate</span><span class="punct">();</span> <span class="com">// 关键一步：使旧 session id 失效</span>
+<span class="punct">}</span>
+<span class="ty">HttpSession</span> newSession <span class="punct">=</span> request<span class="punct">.</span><span class="fn">getSession</span><span class="punct">(</span><span class="kw">true</span><span class="punct">);</span> <span class="com">// 生成全新的 session id</span>
+newSession<span class="punct">.</span><span class="fn">setAttribute</span><span class="punct">(</span><span class="str">"user"</span><span class="punct">,</span> user<span class="punct">);</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>Spring Security 里怎么处理：</strong>07-Spring 模块讲到的 Spring Security 默认就内置了这个防御——<code>SessionManagementConfigurer</code> 的 <code>sessionFixation()</code> 策略默认是 <code>changeSessionId()</code>（Servlet 3.1+ 环境下），登录成功后自动更换 Session ID，不需要开发者手写上面这段逻辑；只有在自己手撸认证逻辑、绕开框架默认行为时，才需要特别留意这一点。
+  </div>
+
+  <div class="callout warn">
+    <strong>面试高频：</strong>"Session 固定攻击和 Session 劫持有什么区别？"
+    Session 劫持（Session Hijacking）是攻击者<strong>窃取</strong>受害者已登录的合法 Session ID（比如通过 XSS 读 Cookie、网络嗅探）；
+    Session 固定攻击是攻击者<strong>提前准备好</strong>一个 Session ID 并<strong>诱导</strong>受害者用它登录，攻击者从头到尾都"合法地"知道这个 ID，根本不需要"窃取"的动作。两者防御思路也不同：劫持防的是"ID 不能被看到/传输过程要加密"，固定防的是"登录前后 ID 必须不同"。
+  </div>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-OAuth2的授权流程.html" class="nav-btn">← OAuth2 的授权流程</a>
+    <a href="../transport/01-HTTPS原理回顾.html" class="nav-btn next">HTTPS 原理回顾 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OAuth2 的授权流程 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 认证授权安全 / OAuth2 的授权流程
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">认证授权安全</div>
+    <h1>OAuth2 的授权流程</h1>
+    <p>"用微信登录""授权访问你的 GitHub 仓库"背后都是 OAuth2 在工作——它解决的不是"你是谁"，而是"你能不能让别人代你办事"。</p>
+  </div>
+
+  <!-- 解决的问题 -->
+  <h2>OAuth2 解决的问题</h2>
+  <p>
+    设想一个需求：第三方应用 A 想读取你在平台 B（比如微信、GitHub）上的部分数据（头像、昵称、联系人列表）。最原始的做法是——你把 B 平台的账号密码直接告诉 A，让 A 登录 B 帮你取数据。
+    这样做的风险显而易见：A 拿到的是<strong>你的完整账号密码</strong>，它想干什么都行，你也没法单独收回给 A 的权限，除非把密码整个改掉连累所有已知晓密码的第三方。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>OAuth2 就像是"给房产中介一把只能开客厅的临时钥匙卡，还能设定几点后自动失效"，而不是把家门的总钥匙直接复制一份给中介。
+    你（资源所有者）不需要把总钥匙（账号密码）交给中介（第三方应用 A），而是通过物业（平台 B 的授权服务器）发一张范围受限、可撤销、可过期的临时卡（access token）。
+  </div>
+  <p>
+    OAuth2 的核心目标就是：<strong>让用户能够授权第三方应用访问自己在另一个平台上的部分数据，而不需要把账号密码直接暴露给第三方应用</strong>，并且这个授权是可以限定范围（scope）、可以随时撤销的。
+  </p>
+
+  <!-- 四种角色 -->
+  <h2>四个角色</h2>
+  <table>
+    <thead>
+      <tr><th>角色</th><th>对应例子</th><th>职责</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Resource Owner</strong>（资源所有者）</td><td>你本人</td><td>拥有数据，决定是否授权</td></tr>
+      <tr><td><strong>Client</strong>（客户端）</td><td>第三方应用 A</td><td>想要访问你数据的应用</td></tr>
+      <tr><td><strong>Authorization Server</strong>（授权服务器）</td><td>微信/GitHub 的登录授权页</td><td>验证身份、颁发 token</td></tr>
+      <tr><td><strong>Resource Server</strong>（资源服务器）</td><td>微信/GitHub 的开放 API</td><td>凭 token 提供数据</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 授权码模式 -->
+  <h2>授权码模式（Authorization Code）：最常用、最安全</h2>
+  <p>
+    OAuth2 定义了几种"授权模式"（grant type），其中<strong>授权码模式</strong>是 Web 应用场景下最常用、安全性最高的一种，因为它比其他模式多了一步"先换授权码、再换 token"，避免了 access token 直接暴露在浏览器地址栏或前端 JS 里。
+  </p>
+
+  <div class="tree">
+    <span class="hi">1. 用户点击"用 XX 登录"</span> → 第三方应用把用户重定向到授权服务器的授权页<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">↳</span> 带上 client_id、redirect_uri、scope（申请的权限范围）、state（防 CSRF 随机值）<br><br>
+    <span class="hi">2. 用户在授权页登录并同意授权</span> → 这一步用户是在平台 B 的域名下操作，账号密码从未经过第三方应用<br><br>
+    <span class="hi">3. 授权服务器重定向回第三方，URL 上带一个"授权码"（code）</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">↳</span> 授权码是一次性的、短时效的（通常几分钟），暴露在浏览器地址栏也相对安全<br><br>
+    <span class="hi">4. 第三方应用的后端服务器</span>用这个授权码 + 自己的 client_secret，向授权服务器换取 access token<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hi">↳</span> 这一步是服务端到服务端的请求，client_secret 不会暴露给浏览器<br><br>
+    <span class="hi">5. 第三方应用拿 access token 调用资源服务器 API</span>，获取用户的头像、昵称等授权范围内的数据
+  </div>
+
+  <div class="callout warn">
+    <strong>为什么要多一道"换 code"的步骤？</strong>如果授权服务器在第 3 步直接把 access token 放在重定向 URL 上（这是"隐式模式 Implicit Grant"的做法），token 就会经过浏览器地址栏、浏览器历史记录、Referer 头，泄露风险高得多。
+    授权码本身是一次性、短期有效、且必须配合只有服务端知道的 client_secret 才能换到 token，即使授权码在传输中被截获，攻击者没有 client_secret 也换不到真正的 access token。
+  </div>
+
+  <!-- 其他模式速览 -->
+  <h2>其他几种授权模式速览（面试高频）</h2>
+  <table>
+    <thead>
+      <tr><th>模式</th><th>适用场景</th><th>安全性/取舍</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>授权码模式</strong><br>Authorization Code</td>
+        <td>有后端的 Web 应用（第三方登录、开放平台对接）</td>
+        <td>最安全，多一次换 token 的步骤，client_secret 不暴露给浏览器</td>
+      </tr>
+      <tr>
+        <td><strong>隐式模式</strong><br>Implicit Grant</td>
+        <td>早期纯前端单页应用（无后端）</td>
+        <td>token 直接暴露在重定向 URL 里，风险较高，已被官方标准建议弃用，推荐改用授权码模式 + PKCE</td>
+      </tr>
+      <tr>
+        <td><strong>密码模式</strong><br>Password Credentials</td>
+        <td>用户对客户端高度信任的自家应用（如自家 App 调自家 API）</td>
+        <td>用户要把账号密码直接交给 Client，违背 OAuth2 本意，只适合完全可信的第一方场景</td>
+      </tr>
+      <tr>
+        <td><strong>客户端模式</strong><br>Client Credentials</td>
+        <td>服务间调用，没有用户参与（比如后台任务访问自己的资源）</td>
+        <td>不涉及用户授权，Client 用自己的身份直接换 token</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"OAuth2 几种授权模式分别用在什么场景？" 记忆口诀：<strong>有后端用授权码，纯前端用授权码+PKCE（而不是过时的隐式模式），自家 App 信得过才用密码模式，机器对机器没用户用客户端模式。</strong>
+  </div>
+
+  <!-- 联系 Spring -->
+  <h2>与 Spring Security 的联系</h2>
+  <p>
+    07-Spring 模块中 Spring Security 生态下的 <code>spring-security-oauth2-client</code> 和 <code>spring-authorization-server</code> 分别对应 OAuth2 的 Client 端和 Authorization Server 端实现：前者帮你处理"用 GitHub/Google 登录"这类第三方登录集成时的重定向、code 换 token 等繁琐流程，后者可以让你的系统自己扮演授权服务器角色，对外提供标准 OAuth2 授权能力。理解上面这套角色和流程，再看 Spring Security 的配置类会清晰很多——那些配置项本质上就是在填 client_id、redirect_uri、scope 这些 OAuth2 规范里定义的参数。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-JWT的原理与常见误用陷阱.html" class="nav-btn">← JWT 的原理与常见误用陷阱</a>
+    <a href="./03-Session固定攻击.html" class="nav-btn next">Session 固定攻击 →</a>
+  </div>
+
+</div>
+</body>
+</html>

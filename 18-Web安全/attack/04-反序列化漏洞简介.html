@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>反序列化漏洞简介 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c4a10; }
+  .nav-btn.next { color: #fb923c; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 常见攻击 / 反序列化漏洞简介
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">常见攻击 · 进阶</div>
+    <h1>反序列化漏洞简介</h1>
+    <p>反序列化本质上是"让外部数据决定接下来执行哪些代码"——一旦数据来源不可信，你就相当于把一部分程序控制权拱手让给了攻击者。这是比 SQL 注入更"底层"、危害也可能更大的一类漏洞（可导致远程代码执行）。</p>
+  </div>
+
+  <!-- 核心概念 -->
+  <h2>什么是反序列化漏洞</h2>
+  <p>
+    序列化（Serialization）是把内存中的对象转换成字节流，方便存储或网络传输；反序列化（Deserialization）则是反过来，把字节流还原成内存中的对象。
+    问题出在 Java 的原生序列化机制里：某些类实现了 <code>Serializable</code> 接口后，可以定义一个特殊方法 <code>readObject()</code>，这个方法会在<strong>反序列化过程中被自动调用</strong>，用来做一些自定义的对象恢复逻辑。
+  </p>
+  <p>
+    危险之处在于：如果反序列化的字节数据来自不可信来源（比如用户上传的文件、网络请求体），攻击者可以精心构造一段特殊的序列化字节数据。当这段数据被 <code>ObjectInputStream.readObject()</code> 处理时，
+    会自动触发目标类的 <code>readObject()</code> 方法，而如果这个类内部又调用了另一个类的某个方法、那个方法又调用了别的类……只要能找到一条"方法调用链"，最终执行到某个危险操作（比如执行系统命令、读写文件），
+    就能实现<strong>远程代码执行（RCE，Remote Code Execution）</strong>。这条精心挑选、串联起来的调用链，安全领域称为 <strong>"gadget chain"（利用链）</strong>。
+  </p>
+  <div class="callout info">
+    <strong>核心直觉：</strong>反序列化本质上是"让传入的数据决定接下来运行哪些代码"。正常情况下，程序执行什么逻辑是由开发者写死的代码决定的；但反序列化机制里，字节流的内容本身能触发一连串方法调用——
+    相当于攻击者往你的程序里"塞了一小段脚本"，脚本内容就是他们精心挑选的对象结构。数据来源一旦不可信，你等于允许攻击者部分地编写你 JVM 里将要执行的行为。
+  </div>
+
+  <div class="callout warn">
+    <strong>真实案例：</strong>Java 生态里最著名的例子是 <strong>Apache Commons Collections</strong> 的反序列化利用链（2015 年被公开），因为该库里几个常用类（如 <code>InvokerTransformer</code>）组合起来正好能构成一条从
+    <code>readObject()</code> 通往任意代码执行的完整链路，而 Commons Collections 又被大量项目间接依赖，导致当时包括 WebLogic、WebSphere、JBoss 等在内的一大批 Java 中间件被曝出严重的 RCE 漏洞（俗称 "Java 反序列化漏洞潮"）。
+    这不是理论风险，而是造成过大规模真实入侵事件的漏洞类型。
+  </div>
+
+  <!-- 简化示意 -->
+  <h2>为什么 readObject() 会自动执行是危险的</h2>
+  <p>
+    下面是一个极度简化的示意，用来说明问题所在——重点不是记住利用链的具体写法，而是理解"这个钩子函数在你的校验逻辑生效之前就已经跑起来了"：
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>DangerousExample.java（概念示意，非真实利用链）</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Payload</span> <span class="kw">implements</span> <span class="ty">Serializable</span> <span class="punct">{</span>
+    <span class="com">// readObject 会在反序列化时被 JVM 自动调用，早于你能做任何校验</span>
+    <span class="kw">private</span> <span class="kw">void</span> <span class="fn">readObject</span><span class="punct">(</span><span class="ty">ObjectInputStream</span> <span class="var">in</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="var">in</span><span class="punct">.</span><span class="fn">defaultReadObject</span><span class="punct">();</span>
+        <span class="com">// 攻击者精心构造的字节数据，会让这里链式触发一系列方法调用</span>
+        <span class="com">// 最终可能落到 Runtime.exec() 这类危险操作上</span>
+        <span class="fn">someChainedCall</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 你的业务代码只是老老实实地反序列化一份"数据"</span>
+<span class="ty">ObjectInputStream</span> <span class="var">ois</span> <span class="punct">=</span> <span class="kw">new</span> <span class="ty">ObjectInputStream</span><span class="punct">(</span><span class="var">untrustedInputStream</span><span class="punct">);</span>
+<span class="ty">Object</span> <span class="var">obj</span> <span class="punct">=</span> <span class="var">ois</span><span class="punct">.</span><span class="fn">readObject</span><span class="punct">();</span> <span class="com">// 这一行执行完，恶意逻辑可能已经跑完了</span></pre>
+  </div>
+  <p>
+    关键点在于：调用 <code>readObject()</code> 这一行代码本身，就已经把控制权交给了字节流里描述的对象类型及其内部逻辑，<strong>你的业务代码此时还完全没有机会对"这个对象到底是不是我期望的类型"做任何判断</strong>。
+    等你的代码拿到反序列化结果准备校验时，触发链可能早就执行完毕了。
+  </p>
+
+  <!-- 防御原则 -->
+  <h2>防御原则</h2>
+  <table>
+    <thead>
+      <tr><th>防御手段</th><th>思路</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>最佳方案：不反序列化不可信数据</strong></td>
+        <td>跨信任边界传输数据时，优先使用 JSON 等更安全的数据格式</td>
+        <td>把外部传入的字节反序列化成 DTO 时使用 JSON（如 Jackson/Gson），JSON 反序列化只是"按字段填充普通对象"，不存在 Java 原生序列化那种"任意触发方法调用链"的钩子问题</td>
+      </tr>
+      <tr>
+        <td><strong>白名单限制可反序列化的类</strong></td>
+        <td>如果确实无法避免对外部数据做 Java 原生反序列化，限制允许哪些类被还原</td>
+        <td>现代 Java 提供 <code>ObjectInputFilter</code>，可以指定一份允许的类名单，拒绝还原名单之外的任何类型；也可以使用某些安全库提供的类级别白名单机制</td>
+      </tr>
+      <tr>
+        <td><strong>及时升级依赖</strong></td>
+        <td>大量真实利用都依赖某个已知库里现成的 gadget chain</td>
+        <td>保持 Commons Collections、Fastjson 等历史上出过反序列化漏洞的库处于最新且已修复的版本，是性价比很高的防御措施</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>三条防线记忆法：</strong>能不用 Java 原生序列化就不用（换 JSON）→ 必须用就白名单限制类型（<code>ObjectInputFilter</code>）→ 无论如何都要保证依赖库是最新版本。三条防线是递进关系，优先级从上到下。
+  </div>
+
+  <!-- 常见误区 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：</strong>"我的代码里从来没有主动调用过 <code>readObject()</code>，所以反序列化漏洞跟我没关系。"
+    这个想法很危险，因为很多框架和中间件会<strong>隐式地</strong>做反序列化，开发者往往意识不到：
+    比如 Java RMI（远程方法调用）在网络层就依赖对象序列化传输参数；一些缓存框架、Session 持久化机制（把 Session 对象序列化后存到 Redis 或磁盘）也在背后悄悄调用反序列化。
+    只要数据链路上有一处会对不可信来源的数据做 Java 原生反序列化，风险就存在——即使你自己的业务代码从没写过 <code>ObjectInputStream</code>。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>本质：</strong>反序列化让外部字节数据能够触发预先存在的方法调用链，风险来自"数据能控制执行流程"这一设计。</li>
+    <li><strong>危害上限高：</strong>不同于登录绕过类攻击，反序列化漏洞的典型后果是远程代码执行（RCE），Apache Commons Collections 利用链是 Java 生态的经典案例。</li>
+    <li><strong>最佳实践：</strong>信任边界之外的数据优先用 JSON 等更安全的格式，避免使用 Java 原生序列化；无法避免时用类白名单兜底，并持续更新依赖。</li>
+    <li><strong>隐蔽性强：</strong>风险可能藏在 RMI、缓存、Session 持久化等框架背后，不能只检查自己显式写的代码。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-SQL注入原理与防御.html" class="nav-btn">← SQL 注入原理与防御</a>
+    <a href="./05-文件上传漏洞.html" class="nav-btn next">文件上传漏洞 →</a>
+  </div>
+
+</div>
+</body>
+</html>

