@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>如何验证与审查 AI 生成的代码 — 如何使用Agent</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #22d3ee; }
+  p code, li code { color: #22d3ee; }
+  h2 { color: #22d3ee; border-left-color: #22d3ee; }
+  .hero .tag { color: #22d3ee; border-color: #164e63; }
+  .nav-btn.next { color: #22d3ee; border-color: #164e63; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / 如何使用Agent / 如何验证与审查 AI 生成的代码
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">如何使用Agent</div>
+    <h1>如何验证与审查 AI 生成的代码</h1>
+    <p>"能跑起来"不等于"写对了"。AI 生成代码有它特有的错误模式,审查时如果沿用审查人类代码的老习惯,很容易漏掉真正的问题。</p>
+  </div>
+
+  <h2>AI 生成代码的错误模式,和人写的不一样</h2>
+  <p>
+    人写错代码,常见原因是"没想到某个边界情况"或者"手滑打错了字符";AI 生成代码出错,更常见的模式是另外几种,
+    审查时需要专门留意:
+  </p>
+  <ul>
+    <li><strong>一本正经地编造不存在的 API</strong>——调用一个听起来很合理、但项目里根本不存在的方法或库函数,如果不实际编译/运行,光看代码逻辑很容易被"骗过去"。</li>
+    <li><strong>看起来完整,实际上遗漏了边界情况</strong>——比如实现一个函数只覆盖了"正常输入"路径,空值、超大输入、并发调用这些边界情况完全没考虑,但代码风格工整、注释齐全,视觉上"很像对的"。</li>
+    <li><strong>过度设计</strong>——引入了任务根本用不到的抽象层、配置项、设计模式,原因是训练数据里"写得规范"的代码往往带着这些模式,模型学会了"看起来专业"但不一定"恰到好处"(这也是"软件设计的哲学"模块反复强调的复杂性下沉问题)。</li>
+    <li><strong>复制粘贴式的重复逻辑</strong>——在多个地方写相似但不完全一致的代码,而不是提炼成一个共享函数,因为模型倾向于"就着当前上下文续写",而不是主动做全局重构。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>最容易踩的心理陷阱:</strong>因为代码格式规范、注释齐全,很多人会不自觉地降低审查标准,潜意识觉得"AI 写的应该没问题"。
+    实际上恰恰相反——AI 生成代码的"专业外观"和"实际正确性"之间的相关性,比人写的代码更弱,审查时需要刻意提醒自己不要被表面的工整所迷惑。
+  </div>
+
+  <h2>三层验证关卡</h2>
+  <table>
+    <thead><tr><th>层级</th><th>关注什么</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>①自动化检查</strong></td>
+        <td>能跑测试就跑测试,能做类型检查就做类型检查——这是最便宜、最客观的一层关卡,呼应"任务描述"一篇讲的"验收标准要客观可执行"。
+          没有测试覆盖的改动,至少手动跑一遍验证核心路径。</td>
+      </tr>
+      <tr>
+        <td><strong>②Diff 审查</strong></td>
+        <td>像审查同事的 PR 一样逐行看 diff,重点关注上面列的四种 AI 特有错误模式,而不是只看"逻辑通不通"。
+          小步提交(每次只做一件事)能让这一步的审查负担小很多——这也是为什么"Agentic Loop"一篇建议把大任务拆小的另一个理由。</td>
+      </tr>
+      <tr>
+        <td><strong>③让另一个视角复查</strong></td>
+        <td>让另一个 Agent(甚至换一个不同的模型)专门做一次"只读审查",或者用不同的 Prompt 角度重新审视同一份代码——
+          这是"多 Agent 协作"Tab 里"辩论式"协作模式的实战应用:同一个模型很难发现自己犯的错误,换一个独立视角复查往往更有效。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>审查时值得追问的几个问题</h2>
+  <ul>
+    <li>这段代码处理了哪些边界情况?哪些没处理——是有意为之,还是被遗漏了?</li>
+    <li>这个改动是不是引入了任务本身不需要的抽象或配置项?</li>
+    <li>项目里有没有类似逻辑已经存在,这次是不是应该复用而不是重新写一遍?</li>
+    <li>调用的这些方法/库函数,是不是真实存在于这个项目依赖里(尤其是不熟悉的 API,顺手确认一下比事后排查省时间)?</li>
+  </ul>
+
+  <h2>小结:自动化不能替代审查,只能降低审查成本</h2>
+  <p>
+    回顾这个 Tab 三篇文章的完整链路:第一篇讲怎么把任务描述清楚(减少 Agent 猜错方向的概率),
+    第二篇讲什么时候可以放手用 Agentic Loop 自动跑(把自动化范围限定在代价可控的场景),
+    这一篇讲拿到结果后怎么验证(自动化检查 + 人工 diff 审查 + 独立视角复查三层关卡)。
+    三者共同的原则是一致的:<strong>Agent 能大幅降低"把事情做出来"的成本,但"确认它做对了"这件事,责任始终在使用者身上</strong>,
+    这也是整个 AI Agent 模块反复出现的主题——效率提升的另一面,永远是新的验证成本,工程判断力不会因为有了 Agent 就变得不重要,反而更重要。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-AgenticLoop自动模式的使用边界.html" class="nav-btn">← Agentic Loop:自动模式该怎么用</a>
+    <a href="../ai-agent-roadmap.html" class="nav-btn next">AI Agent 路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>
