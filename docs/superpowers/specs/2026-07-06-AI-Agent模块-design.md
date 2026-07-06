@@ -44,7 +44,11 @@ GitHub 仓库/教程」的组合,并在框架文件里明确标注"持续演进,
 
 1. **概念与 AI 基础**(`concepts/`)
    - 什么是 Agent(与传统程序、Chatbot 的区别)
+   - AI 模型基础概念:参数量/Tokenization/Embedding/注意力机制直觉
    - LLM 基础回顾:Prompt / Token / Context Window
+   - 主流大模型训练方法:预训练(Pretraining)→ 监督微调(SFT)→ 对齐(RLHF/DPO)
+   - 如何评价一个大模型的好坏:常见评测基准(MMLU/HumanEval等)、评测方法的局限、
+     业务场景下的自定义评测思路
    - 主流模型能力边界与选型
    - Prompt Engineering 基础
 
