@@ -74,51 +74,75 @@
     把执行环境放进一个隔离的 Docker 容器,就是把"最坏情况"框定在容器内部——容器可以被销毁重建,宿主机和其他会话不受影响。
   </div>
 
-  <h2>Runtime 容器里通常有什么</h2>
+  <h2>真实实现:DockerWorkspace 怎么把容器接进来</h2>
   <p>
-    一个编程 Agent 要完成"写代码、跑代码、调试报错、查资料"这类任务,Runtime 容器里通常会准备好这几类能力:
+    在 <code>openhands-workspace</code> 包里,Docker 隔离由 <code>DockerWorkspace</code> 类实现(继承自 <code>RemoteWorkspace</code>)。
+    它的工作方式不是"把 Agent 进程本身塞进容器",而是:<strong>启动一个运行着"Agent Server"镜像的容器,等它健康检查通过,
+    再通过 HTTP API 跟容器内部通信</strong>。
   </p>
-  <table>
-    <thead>
-      <tr><th>能力</th><th>用途</th></tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><strong>Shell 执行环境</strong>(如 SSH)</td>
-        <td>让 Agent 能运行任意命令行工具——装依赖、跑测试、查看文件、执行脚本</td>
-      </tr>
-      <tr>
-        <td><strong>Jupyter Kernel</strong></td>
-        <td>支持逐步执行 Python 代码并<strong>保持状态</strong>(变量、已导入的库不会每次执行都清空),适合数据探索、调试这类需要"接着上次结果继续跑"的场景</td>
-      </tr>
-      <tr>
-        <td><strong>浏览器自动化</strong></td>
-        <td>让 Agent 能像人一样打开网页、点击、读取页面内容,用于查资料、验证 Web 应用的实际效果</td>
-      </tr>
-      <tr>
-        <td><strong>文件系统</strong></td>
-        <td>提供一份隔离的工作目录,Agent 在这里读写、编辑代码文件,不会碰到宿主机的真实文件系统</td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="code-block">
+    <div class="cb-header"><span>workspace/docker/workspace.py</span><span>python · 节选自真实源码</span></div>
+    <pre><span class="kw">class</span> <span class="ty">DockerWorkspace</span>(<span class="ty">RemoteWorkspace</span>)<span class="punct">:</span>
+    <span class="str">"""Remote workspace that sets up and manages a Docker container.
+
+    This workspace creates a Docker container running a pre-built OpenHands agent
+    server image, waits for it to become healthy, and then provides remote workspace
+    operations through the container's HTTP API.
+    """</span>
+
+    <span class="com"># 容器内的工作目录,和宿主机上 Agent 进程所在的目录是两回事</span>
+    <span class="var">working_dir</span><span class="punct">:</span> <span class="ty">str</span> <span class="punct">=</span> <span class="ty">Field</span>(<span class="var">default</span><span class="punct">=</span><span class="str">"/workspace"</span>)</pre>
+  </div>
   <p>
-    这些能力共同的特点是:它们都跑在<strong>同一个隔离容器</strong>内,Agent(在容器外,作为决策进程)通过 Action/Observation
-    这套接口跟容器内的能力打交道,自己完全不直接接触宿主机资源。
+    这个细节很重要:<strong>Agent 的决策进程可以运行在你的笔记本上,而真正执行命令的地方是远端容器里的一个 Agent Server 进程</strong>,
+    两者之间用一份轻量的 REST/WebSocket 协议通信。这也解释了为什么"整体架构总览"一篇里 <code>Workspace</code> 能做到
+    "换个配置就切换执行环境"——本质上就是换了一个 HTTP 服务端点而已,Agent 侧的调用方式完全不变。
+    同一个抽象基类下还有 <code>ApptainerWorkspace</code>(HPC 场景常用的容器方案)和 <code>CloudWorkspace</code>,思路一致。
+  </p>
+
+  <h2>比容器隔离更细粒度的一层:按风险等级要求人工确认</h2>
+  <p>
+    容器只解决"最坏情况的爆炸半径",不能解决"这个操作到底该不该做"——比如"删除一个文件"在沙箱里执行是安全的,
+    但如果这个文件是用户唯一没有备份的重要数据,容器隔离并不能阻止这种"合法但危险"的操作。
+    OpenHands SDK 为此单独设计了一层<strong>风险分级 + 人工确认</strong>机制(<code>openhands/sdk/security/</code>):
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>security/risk.py</span><span>python · 节选自真实源码</span></div>
+    <pre><span class="kw">class</span> <span class="ty">SecurityRisk</span>(<span class="fn">str</span>, <span class="ty">Enum</span>)<span class="punct">:</span>
+    <span class="str">"""Security risk levels for actions."""</span>
+    <span class="var">UNKNOWN</span> <span class="punct">=</span> <span class="str">"UNKNOWN"</span>
+    <span class="var">LOW</span> <span class="punct">=</span> <span class="str">"LOW"</span>
+    <span class="var">MEDIUM</span> <span class="punct">=</span> <span class="str">"MEDIUM"</span>
+    <span class="var">HIGH</span> <span class="punct">=</span> <span class="str">"HIGH"</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>security/confirmation_policy.py</span><span>python · 节选自真实源码</span></div>
+    <pre><span class="kw">class</span> <span class="ty">ConfirmRisky</span>(<span class="ty">ConfirmationPolicyBase</span>)<span class="punct">:</span>
+    <span class="com"># 默认阈值是 HIGH:风险等级达到 HIGH 才需要人工点头,LOW/MEDIUM 自动放行</span>
+    <span class="var">threshold</span><span class="punct">:</span> <span class="ty">SecurityRisk</span> <span class="punct">=</span> <span class="ty">SecurityRisk</span>.<span class="var">HIGH</span>
+    <span class="var">confirm_unknown</span><span class="punct">:</span> <span class="ty">bool</span> <span class="punct">=</span> <span class="kw">True</span>  <span class="com"># 风险等级判断不出来时,保守起见也要求确认</span></pre>
+  </div>
+  <p>
+    每个 <code>ActionEvent</code> 在执行前都可以先经过一次风险评估(由 LLM 自身预测,或专门的分析器判断),
+    再对照 <code>ConfirmationPolicyBase</code> 的具体策略(<code>AlwaysConfirm</code> 全部确认 / <code>NeverConfirm</code> 全自动 /
+    <code>ConfirmRisky</code> 只在超过阈值时确认)决定要不要暂停下来等人类点头。
+    这和容器隔离是两条互补的防线:<strong>容器管的是"万一执行出问题,影响范围有多大";风险确认管的是"这个操作即使成功执行,后果是否可接受"</strong>。
   </p>
 
   <h2>陷阱:沙箱不是银弹</h2>
   <div class="callout warn">
-    <strong>容器隔离降低风险,但不等于零风险。</strong>生产级系统至少还要考虑以下几层加固,单纯"套一层 Docker"并不够:
+    <strong>容器隔离降低风险,但不等于零风险。</strong>生产级系统至少还要考虑以下几层加固,单纯"套一层 Docker"并不够——
+    这也是为什么 SDK 里专门有一个名为 <code>defense_in_depth</code>(纵深防御)的子模块,而不是只靠一层容器:
   </div>
   <ul>
     <li><strong>容器逃逸风险</strong>——容器隔离依赖内核层面的命名空间和 cgroup,历史上出现过容器逃逸漏洞,不能假设容器天生绝对安全,需要跟进安全补丁、避免用特权模式启动容器。</li>
     <li><strong>资源限制</strong>——需要给容器设置 CPU、内存配额,否则一个失控的死循环脚本可能耗尽宿主机资源,影响同机的其他会话。</li>
     <li><strong>网络访问控制</strong>——容器如果能不受限地访问外网,沙箱内的代码理论上可以对外发起攻击(比如被诱导执行了一段恶意生成的爬虫/攻击脚本),需要按需限制出站网络访问。</li>
-    <li><strong>执行超时与命令黑名单</strong>——给单次命令执行设置超时,拦截明显危险的命令模式(比如清空磁盘、修改系统关键配置),作为在沙箱之外的又一层防护。</li>
+    <li><strong>执行超时与风险确认</strong>——给单次命令执行设置超时,配合上面讲的风险分级确认机制,在容器之外再加一层"人类兜底"。</li>
   </ul>
   <p>
-    换句话说,沙箱解决的是"把爆炸半径限制在一个可控范围内",但这个范围本身还需要额外的资源限额、网络策略、超时熔断来收窄,
-    是一套<strong>多层防护(defense in depth)</strong>,而不是加一层容器就能一劳永逸的问题。
+    换句话说,沙箱解决的是"把爆炸半径限制在一个可控范围内",风险确认解决的是"操作本身该不该被允许",
+    是一套多层防护,而不是加一层容器就能一劳永逸的问题。
   </p>
 
   <h2>联系:这是"直接执行模型生成代码"这个老问题的工业级解法</h2>

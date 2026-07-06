@@ -59,7 +59,12 @@
   <div class="hero">
     <div class="tag">OpenHands源码拆解</div>
     <h1>Event-Stream 机制(Agent → Action → Observation)</h1>
-    <p>OpenHands 把 Agent 和 Runtime 之间的所有交互,都建模成了一条只能追加(append-only)的事件流。这一篇讲清楚:为什么不用直接的方法调用,事件流到底换来了什么。</p>
+    <p>OpenHands 把 Agent 和 Tool 之间的所有交互都建模成事件。这一篇讲清楚:为什么不用直接的方法调用,以及新旧两代架构在"事件"这件事上真实的区别。</p>
+  </div>
+  <div class="callout info">
+    <strong>关于标题里的"Event-Stream":</strong>这是 OpenHands 早期单体架构里的真实叫法——一条只能追加(append-only)的事件日志。
+    在 2025 年拆分出来的 <code>openhands-sdk</code>(见上一篇)里,这套机制演进成了一棵<strong>事件树</strong>而不是一条线性的流,
+    下面会讲清楚这个变化,标题沿用旧名是因为"事件驱动、解耦决策与执行"这个核心思路并没有变。
   </div>
 
   <h2>为什么不是"Agent 直接调用 Runtime 的方法"</h2>
@@ -77,72 +82,99 @@
     上面三个问题就都变成了这份数据结构自带的性质——历史就是这条流本身,谁想订阅就去监听这条流,想恢复任务就把这条流重新加载进来。
   </div>
 
-  <h2>事件的基本结构</h2>
+  <h2>事件的真实结构:一棵树,不是一条线</h2>
   <p>
-    可以把 EventStream 里的事件粗略理解成两大类:<strong>Action</strong>(Agent 想做什么)和 <strong>Observation</strong>(Runtime 执行后看到了什么)。
-    一个简化的示意结构大致是这样(伪代码,非真实源码):
+    <code>openhands-sdk</code> 里所有事件的基类是 <code>Event</code>(定义在 <code>openhands/sdk/event/base.py</code>),
+    真实字段比想象的更有意思——除了 <code>id</code>、<code>timestamp</code>、<code>source</code>,还有一个 <code>parent_id</code>:
   </p>
   <div class="code-block">
-    <div class="cb-header"><span>伪代码示意:Action / Observation 事件结构</span></div>
-    <pre><span class="com">// Agent 产生的 Action 事件——"我想做什么"</span>
-<span class="kw">Event</span> {
-  <span class="var">id</span>: <span class="num">42</span>,
-  <span class="var">type</span>: <span class="str">"CmdRunAction"</span>,      <span class="com">// 动作类型:运行 shell 命令</span>
-  <span class="var">source</span>: <span class="str">"agent"</span>,
-  <span class="var">args</span>: { <span class="var">command</span>: <span class="str">"pytest tests/"</span> }
-}
+    <div class="cb-header"><span>event/base.py</span><span>python · 节选自真实源码</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Event</span>(<span class="ty">DiscriminatedUnionMixin</span>, <span class="ty">ABC</span>)<span class="punct">:</span>
+    <span class="str">"""Base class for all events."""</span>
 
-<span class="com">// Runtime 执行后产生的 Observation 事件——"结果是什么"</span>
-<span class="kw">Event</span> {
-  <span class="var">id</span>: <span class="num">43</span>,
-  <span class="var">type</span>: <span class="str">"CmdOutputObservation"</span>,
-  <span class="var">source</span>: <span class="str">"runtime"</span>,
-  <span class="var">causeId</span>: <span class="num">42</span>,          <span class="com">// 指回触发它的那个 Action</span>
-  <span class="var">content</span>: <span class="str">"3 passed, 1 failed ..."</span>,
-  <span class="var">exitCode</span>: <span class="num">1</span>
-}</pre>
+    <span class="var">id</span><span class="punct">:</span> <span class="ty">EventID</span> <span class="punct">=</span> <span class="ty">Field</span>(<span class="var">default_factory</span><span class="punct">=</span><span class="kw">lambda</span><span class="punct">:</span> <span class="fn">str</span>(<span class="var">uuid</span>.<span class="fn">uuid4</span>()))
+    <span class="var">timestamp</span><span class="punct">:</span> <span class="ty">str</span> <span class="punct">=</span> <span class="ty">Field</span>(<span class="var">default_factory</span><span class="punct">=</span><span class="kw">lambda</span><span class="punct">:</span> <span class="var">datetime</span>.<span class="fn">now</span>().<span class="fn">isoformat</span>())
+    <span class="var">source</span><span class="punct">:</span> <span class="ty">SourceType</span> <span class="punct">=</span> <span class="ty">Field</span>(<span class="punct">...)</span>
+
+    <span class="com"># parent_id 让事件构成一棵树而不是一条链:同一个 parent_id 下的多个事件是"兄弟分支"</span>
+    <span class="com"># 官方注释原文:Events sharing a parent_id are sibling branches</span>
+    <span class="var">parent_id</span><span class="punct">:</span> <span class="ty">EventID</span> <span class="punct">|</span> <span class="kw">None</span> <span class="punct">=</span> <span class="ty">Field</span>(<span class="var">default</span><span class="punct">=</span><span class="kw">None</span>)</pre>
   </div>
   <p>
-    注意 Observation 里带着一个 <code>causeId</code> 指回触发它的 Action——这让整条事件流不是一堆散落的记录,而是一条能追溯"哪个动作导致了哪个结果"的因果链。
+    这是比"一条只能追加的日志"更进一步的设计——树形结构原生支持<strong>会话分叉</strong>(比如用户回到某个历史节点重新提问,
+    产生一条新的分支,而不是线性覆盖掉原来的路径),这是纯线性 EventStream 天然做不到的能力。
+  </p>
+  <p>
+    在这棵树上,真正驱动 ReAct 循环的是几个具体的事件子类型(定义在 <code>event/llm_convertible/</code> 目录下):
+  </p>
+  <table>
+    <thead><tr><th>事件类型</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>ActionEvent</code></td><td>Agent 决定要调用的工具——真实字段包括 <code>tool_name</code>、<code>tool_call_id</code>、
+        <code>thought</code>(推理过程)以及 LLM 原始返回的 <code>tool_call</code></td></tr>
+      <tr><td><code>ObservationEvent</code></td><td>工具执行后的结果,通过 <code>ActionEvent</code> 的 <code>tool_call_id</code> 关联回是哪次调用产生的</td></tr>
+      <tr><td><code>MessageEvent</code></td><td>用户或 Agent 的自然语言消息</td></tr>
+      <tr><td><code>AgentErrorEvent</code></td><td>Agent 执行过程中出现的错误,单独建模成一种事件类型,而不是让错误信息淹没在普通 Observation 里</td></tr>
+    </tbody>
+  </table>
+  <p>
+    值得注意的是 <code>ActionEvent</code> 直接复用了 LLM 厂商原生的 <strong>Function Calling</strong> 格式
+    (字段里保留了一份 <code>MessageToolCall</code>),而不是自造一套私有协议——这和"框架生态"Tab 里讨论的"结构化 JSON 输出"是同一套思路。
   </p>
 
   <h2>一次完整交互的事件序列</h2>
   <p>
-    把这些事件按时间顺序串起来,一次"帮我跑一下测试并修复失败用例"的任务,事件流大致长这样:
+    把这些真实事件类型按时间顺序串起来,一次"帮我跑一下测试并修复失败用例"的任务,事件树(在没有分叉的情况下退化成一条线)大致长这样:
   </p>
   <div class="tree">
-    <span class="hi">UserMessage</span>&nbsp;"帮我跑一下测试,修复失败的用例"<br>
+    <span class="hi">MessageEvent</span>&nbsp;(source=user)&nbsp;"帮我跑一下测试,修复失败的用例"<br>
     &nbsp;&nbsp;↓ Agent 推理:应该先跑一下测试看看现状<br>
-    <span class="hi">CmdRunAction</span>&nbsp;command: "pytest tests/"<br>
-    &nbsp;&nbsp;↓ Runtime 在沙箱容器里执行<br>
-    <span class="hi">CmdOutputObservation</span>&nbsp;"3 passed, 1 failed: test_login"<br>
+    <span class="hi">ActionEvent</span>&nbsp;tool_name=execute_bash,&nbsp;参数: "pytest tests/"<br>
+    &nbsp;&nbsp;↓ 对应 Tool 在 Workspace 里执行<br>
+    <span class="hi">ObservationEvent</span>&nbsp;"3 passed, 1 failed: test_login"<br>
     &nbsp;&nbsp;↓ Agent 读取这条 Observation,推理下一步:该去看看失败用例的代码<br>
-    <span class="hi">FileEditAction</span>&nbsp;修改 login.py 里的一处逻辑<br>
-    &nbsp;&nbsp;↓ Runtime 执行文件编辑<br>
-    <span class="hi">FileEditObservation</span>&nbsp;"修改已应用"<br>
+    <span class="hi">ActionEvent</span>&nbsp;tool_name=str_replace_editor,&nbsp;修改 login.py 里的一处逻辑<br>
+    &nbsp;&nbsp;↓ 文件编辑工具执行<br>
+    <span class="hi">ObservationEvent</span>&nbsp;"修改已应用"<br>
     &nbsp;&nbsp;↓ Agent 再次验证<br>
-    <span class="hi">CmdRunAction</span>&nbsp;command: "pytest tests/"<br>
-    &nbsp;&nbsp;↓ Runtime 再次执行<br>
-    <span class="hi">CmdOutputObservation</span>&nbsp;"4 passed"<br>
+    <span class="hi">ActionEvent</span>&nbsp;tool_name=execute_bash,&nbsp;参数: "pytest tests/"<br>
+    &nbsp;&nbsp;↓ 再次执行<br>
+    <span class="hi">ObservationEvent</span>&nbsp;"4 passed"<br>
     &nbsp;&nbsp;↓ Agent 判断任务已完成<br>
-    <span class="hi">FinishAction</span>&nbsp;"已修复失败用例,全部测试通过"
+    <span class="hi">MessageEvent</span>&nbsp;(source=agent)&nbsp;"已修复失败用例,全部测试通过"
   </div>
   <p>
-    可以看到,Agent 每一步的决策都建立在"读取 EventStream 里已经发生的历史"之上——它不需要额外的状态变量来记住"我刚才跑过测试、修了哪个文件",
-    这些信息都天然地存在于事件流里。这正是上一篇提到的"EventStream 即短期记忆"的具体体现。
+    可以看到,Agent 每一步的决策都建立在"读取事件历史"之上——它不需要额外的状态变量来记住"我刚才跑过测试、修了哪个文件",
+    这些信息都天然地存在于事件树里。这正是上一篇提到的"事件历史即短期记忆"的具体体现。
   </p>
 
-  <h2>陷阱:事件流会不断增长</h2>
+  <h2>历史会不断增长:真实的解法是 Condensation 事件</h2>
   <div class="callout warn">
-    <strong>上下文爆炸的具体化。</strong>EventStream 是只追加的,任务跑得越久、步骤越多,累积的事件就越多。
-    但 Agent 每一步做决策时,并不能把无限增长的历史原样喂给 LLM——这正是"概念与AI基础"一篇提到的
+    <strong>上下文爆炸的具体化。</strong>事件树是只追加的,任务跑得越久、步骤越多,累积的事件就越多。
+    Agent 每一步做决策时,并不能把无限增长的历史原样喂给 LLM——这正是"概念与AI基础"一篇提到的
     <strong>Context Window 有限且昂贵</strong>这个问题,在真实系统里的具体体现。
-    OpenHands 需要做<strong>历史截断</strong>(只保留最近若干步的完整细节)或<strong>历史摘要</strong>(把久远的事件压缩成一段摘要文本)
-    等机制,才能让 Agent 在长任务里既不"失忆"又不会把上下文塞爆、成本飙升。
   </div>
   <p>
-    这也是事件流架构的一个有意思的张力:它的优点是"完整记录一切",但完整记录本身又会成为下一步要解决的工程问题——
-    如何在"保留足够信息做出正确决策"和"控制喂给 LLM 的上下文体积"之间做取舍,是任何基于事件流/历史回放做记忆机制的 Agent 系统都绕不开的课题。
+    SDK 里对应的真实机制叫 <strong>Condensation</strong>(定义在 <code>event/condenser.py</code>),它本身也是一种事件,
+    记录了"哪些历史事件 ID 被遗忘了"(<code>forgotten_event_ids</code>)以及一段可选的<code>summary</code>摘要文本:
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>event/condenser.py</span><span>python · 节选自真实源码</span></div>
+    <pre><span class="kw">class</span> <span class="ty">Condensation</span>(<span class="ty">Event</span>)<span class="punct">:</span>
+    <span class="str">"""This action indicates a condensation of the conversation history is happening."""</span>
+
+    <span class="com"># 被"忘掉"(不再喂给 LLM)的历史事件 ID 集合——注意事件本身不会被物理删除,只是从视图里排除</span>
+    <span class="var">forgotten_event_ids</span><span class="punct">:</span> <span class="fn">set</span>[<span class="ty">EventID</span>] <span class="punct">=</span> <span class="ty">Field</span>(<span class="var">default_factory</span><span class="punct">=</span><span class="fn">set</span>)
+    <span class="var">summary</span><span class="punct">:</span> <span class="ty">str</span> <span class="punct">|</span> <span class="kw">None</span> <span class="punct">=</span> <span class="ty">Field</span>(<span class="var">default</span><span class="punct">=</span><span class="kw">None</span>)</pre>
+  </div>
+  <p>
+    这个设计有个细节值得注意:<strong>"忘记"不是物理删除事件</strong>,而是生成一条 <code>Condensation</code> 事件,
+    记录"接下来构造喂给 LLM 的上下文时,跳过这些事件、换成这段摘要"。原始事件依然完整保留在事件树里(用于展示完整历史、调试、审计),
+    只是"喂给模型看的那个视图"和"完整保存的历史"是两回事——这比简单粗暴地截断或物理删除更稳妥。
+  </p>
+  <p>
+    这也是事件驱动架构的一个有意思的张力:它的优点是"完整记录一切",但完整记录本身又会成为下一步要解决的工程问题——
+    如何在"保留足够信息做出正确决策"和"控制喂给 LLM 的上下文体积"之间做取舍,是任何基于事件历史做记忆机制的 Agent 系统都绕不开的课题。
   </p>
 
   <hr />

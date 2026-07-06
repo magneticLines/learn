@@ -62,6 +62,10 @@
     <h1>Agent 与 Runtime 解耦的设计取舍<span class="adv">进阶</span></h1>
     <p>前三篇分别看了整体架构、事件流机制、沙箱隔离。这一篇跳出具体机制,站在架构设计的高度问一个问题:把决策和执行拆成两个独立组件,到底值不值。</p>
   </div>
+  <div class="callout info">
+    <strong>命名说明:</strong>本篇标题延续"Agent/Runtime 解耦"这个经典说法,在 <code>openhands-sdk</code> 的真实代码里,
+    这一层抽象对应的类是 <code>Workspace</code>(见 01、03 篇),原理和取舍是同一件事,只是名字随架构演进换了。
+  </div>
 
   <h2>解耦带来了什么好处</h2>
   <p>
@@ -76,6 +80,10 @@
     <li>
       <strong>Runtime 的具体实现可以替换。</strong>只要遵守同一套 Action/Observation 协议,Runtime 背后到底是本地 Docker、
       远程沙箱服务、还是云端 VM,对 Agent 完全透明。今天用本地容器,明天想换成托管的远程执行服务,Agent 的决策逻辑不需要动一行。
+      这不是纸面上的设计理想——真实的 <code>openhands-sdk</code> 里 <code>Workspace</code> 这个抽象基类,下面真的挂着
+      <code>LocalWorkspace</code>、<code>DockerWorkspace</code>、<code>RemoteAPIWorkspace</code>、<code>ApptainerWorkspace</code>
+      等好几种具体实现(见 03 篇),官方文档原话是"同一份 Agent 代码,只需要替换 Workspace 配置,就能跑在不同的执行环境里"——
+      这正是"面向接口而不是面向实现编程"在 Agent 系统里的具体体现。
     </li>
     <li>
       <strong>安全加固可以独立进行。</strong>资源配额、网络策略、执行超时这些"上一篇"提到的多层防护,都是 Runtime 内部的事情,
@@ -102,6 +110,15 @@
       在解耦架构里是需要持续打磨的设计难点,而不是拆开组件就自动解决的。
     </li>
   </ul>
+  <p>
+    这个"职责边界模糊"的问题在真实代码里有一个很好的例子:<strong>"Agent 是不是卡在死循环里了"</strong>这个判断,
+    既不完全属于 Agent(它没有"上帝视角"看到自己在重复),也不属于 Workspace(它只管执行、不关心决策模式),
+    最终 SDK 把这个职责放在了第三方——<code>Conversation</code> 层的 <code>StuckDetector</code>
+    (<code>openhands/sdk/conversation/stuck_detector.py</code>),专门扫描最近的事件历史,
+    识别"重复的 Action-Observation 循环"、"重复报错"、"Agent 自说自话"等多种卡死模式,而不是简单粗暴的一个
+    <code>MAX_STEPS</code> 计数器。这说明真实系统里,决策(Agent)和执行(Workspace)之外,
+    往往还需要第三个"监督者"角色来处理那些两边都不该管、又必须有人管的横切关注点。
+  </p>
 
   <h2>类比:前后端分离</h2>
   <div class="callout tip">

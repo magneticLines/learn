@@ -64,69 +64,93 @@
 
   <h2>为什么选 OpenHands 作为拆解对象</h2>
   <p>
-    Agent 相关的开源项目很多,但适合拿来"学architecture"的不多——很多项目要么是薄薄一层 Prompt 拼接,没什么架构可言;
-    要么工程细节堆得太深,没有文档帮你建立全局图景。<strong>OpenHands</strong>(前身叫 OpenDevin,GitHub 地址
-    <code>https://github.com/All-Hands-AI/OpenHands</code>,star 数 7 万+)是一个例外:它是一个开源的自主编程 Agent,
+    Agent 相关的开源项目很多,但适合拿来"学架构"的不多——很多项目要么是薄薄一层 Prompt 拼接,没什么架构可言;
+    要么工程细节堆得太深,没有文档帮你建立全局图景。<strong>OpenHands</strong>(前身叫 OpenDevin,主仓库
+    <code>All-Hands-AI/OpenHands</code>,近 8 万 star)是一个例外:它是一个开源的自主编程 Agent,
     目标是让 Agent 像人类工程师一样,能写代码、跑命令、浏览网页、调试报错。选它作为拆解样本,主要基于三点:
   </p>
   <ul>
-    <li><strong>架构清晰</strong>——它把"Agent 决策"和"代码执行"这两件事,通过一个统一的事件模型彻底解耦,这个设计思路本身就值得学习,而不只是"能跑起来"。</li>
-    <li><strong>文档与教程完整</strong>——项目的公开架构文档把 Agent/Runtime/EventStream 的职责边界讲得很清楚,适合作为"看得懂的样本"而不是"猜源码"。</li>
-    <li><strong>社区活跃、迭代真实</strong>——它不是一个玩具项目或论文配套代码,而是长期演进、被大量用户实际使用的系统,架构决策背后有真实的工程压力做验证。</li>
+    <li><strong>架构清晰且真的在演进</strong>——它把"Agent 决策"和"代码执行"彻底解耦,而且这套架构本身经历过一次公开的大重构(下面会讲),能看到真实系统架构是怎么迭代的,而不是一份一成不变的教科书设计。</li>
+    <li><strong>核心引擎已经拆成独立、可读的开源库</strong>——不需要在一个巨型单体仓库里"猜"架构边界在哪。</li>
+    <li><strong>社区活跃、迭代真实</strong>——被大量用户实际使用,架构决策背后有真实的工程压力做验证,不是论文配套代码。</li>
   </ul>
   <div class="callout info">
-    <strong>说明:</strong>本 Tab 后续 4 篇内容,都是基于 OpenHands 公开的架构设计思路做的原理性拆解讲解,重点是讲清楚"为什么这样设计、解决了什么问题",
-    不会引用具体源码行号,也不需要你去读源码才能看懂。
+    <strong>说明:</strong>本 Tab 后续 4 篇基于 OpenHands 公开仓库的真实源码结构整理(截至撰写时的版本),
+    引用的类名、模块路径、代码片段均来自公开 GitHub 仓库,具体实现细节以你实际查看的版本为准——这类活跃项目的内部结构会持续变化。
   </div>
+
+  <h2>一次值得知道的架构演进:从单体到独立 SDK</h2>
+  <p>
+    早期的 OpenHands(包括很多流传的技术博客描述的版本)是一个单体应用:Agent 的决策逻辑、事件记录、Runtime 执行都耦合在
+    <code>All-Hands-AI/OpenHands</code> 这一个仓库里,核心抽象叫 <strong>EventStream</strong>——一条只能追加的事件日志。
+    2025 年该团队把 Agent 的核心引擎抽成了一个独立仓库 <code>OpenHands/software-agent-sdk</code>
+    (<a href="https://arxiv.org/abs/2511.03690" target="_blank" rel="noopener">配套技术报告</a>),
+    定位是"可组合、可扩展的生产级 Agent 基础设施",OpenHands 的 Web 产品、CLI、GitHub 集成都是这个 SDK 的具体应用之一。
+    本 Tab 后面几篇拆解的就是这个更新、更聚焦的 SDK 仓库。
+  </p>
 
   <h2>整体组件关系</h2>
-  <p>
-    先建立一个全局地图。一个用户提交的任务,在 OpenHands 里大致会经过这样的链路:
-  </p>
+  <p>SDK 的架构文档把核心组件划分成六个,职责边界很清楚:</p>
+  <table>
+    <thead><tr><th>组件</th><th>职责</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Agent</strong></td><td>中枢决策者,实现"推理-行动循环"——查询 LLM 决定下一步该做什么</td></tr>
+      <tr><td><strong>Conversation</strong></td><td>管理一次交互的状态与生命周期,接收用户消息喂给 Agent,再根据结果更新状态</td></tr>
+      <tr><td><strong>LLM</strong></td><td>厂商无关的语言模型接口,内置重试和可观测性(telemetry)</td></tr>
+      <tr><td><strong>Tool</strong></td><td>实现 Action / Observation / Executor 模式,真正执行文件操作、命令执行等具体工作</td></tr>
+      <tr><td><strong>Event</strong></td><td>贯穿全系统的类型化事件框架,记录动作、观察、用户消息、状态更新</td></tr>
+      <tr><td><strong>Workspace</strong></td><td>执行环境的抽象——决定 Agent 和 Tool 到底跑在本地、容器里,还是远程服务器上</td></tr>
+    </tbody>
+  </table>
+  <p>官方文档给出的执行流程是一条很直观的链路:</p>
   <div class="tree">
-    <span class="hi">用户界面 / CLI</span>&nbsp;(提交任务目标,展示执行过程)<br>
-    &nbsp;&nbsp;↓ 用户目标<br>
-    <span class="hi">Session / Controller</span>&nbsp;(维护一次任务的完整生命周期)<br>
-    &nbsp;&nbsp;↓ 驱动循环<br>
-    <span class="hi">Agent</span>&nbsp;(决策:调用 LLM 决定下一步 Action)<br>
-    &nbsp;&nbsp;↕ 读写事件<br>
-    <span class="hi">EventStream</span>&nbsp;(事件总线:记录 Action / Observation 全部历史)<br>
-    &nbsp;&nbsp;↕ 消费 Action / 产生 Observation<br>
-    <span class="hi">Runtime</span>&nbsp;(执行:Docker 沙箱,跑 Shell / Jupyter / 浏览器)
+    <span class="hi">User</span> → <span class="hi">Conversation</span> → <span class="hi">Agent</span>
+    → <span class="hi">LLM</span>(决策)→ <span class="hi">Tool</span>(执行)→ <span class="hi">Observation</span>
+    → <span class="hi">LLM</span>(判断是否继续)→ <span class="hi">Agent</span> → <span class="hi">Conversation</span> → User 收到回复
   </div>
   <p>
-    这条链路里,<strong>Session/Controller</strong> 是"项目经理"角色:接收用户目标,启动并持续驱动 Agent 的执行循环,
-    同时判断什么时候该收工——任务完成了、达到最大步数了、还是用户主动中断了。它不参与具体的推理和执行,只管"循环该不该继续转下去"。
+    官方文档特别强调一句话:<strong>"同一份 Agent 代码,只需要替换 Workspace 配置,就能跑在不同的执行环境里"</strong>
+    (LocalWorkspace 本地直接跑、DockerWorkspace 起一个容器、RemoteAPIWorkspace 连接远程服务)。
+    这正是"Agent 与 Runtime 解耦"这个设计取舍换来的直接收益,后面 03、04 两篇会深入展开。
   </p>
 
-  <h2>核心思想:用统一的事件模型解耦决策和执行</h2>
-  <p>
-    这套架构最值得学习的地方,不是"用了 Docker"或者"接了 LLM",而是<strong>它把 Agent 和 Runtime 之间的所有交互,都收敛成了一种统一的数据结构——事件(Event)</strong>。
-    Agent 不会直接调用 Runtime 的某个方法,Runtime 也不会直接调用 Agent 的某个回调,双方只通过往 EventStream 里读写 Action 事件和 Observation 事件来打交道。
-  </p>
-  <p>
-    这正好呼应"概念与AI基础"Tab 里"什么是 Agent"一篇提到的<strong>大脑-手-记忆</strong>三层划分:在 OpenHands 里,
-    <strong>Agent 是大脑</strong>——负责推理和决策;<strong>Runtime 是手</strong>——负责真正在沙箱里执行命令、改文件、跑代码;
-    <strong>EventStream 里积累的历史就是短期记忆</strong>——Agent 每一步做决策时,都要参考这段历史来理解"当前任务进行到哪一步了、之前做过什么、结果如何"。
-  </p>
+  <h2>真实的最小可运行示例</h2>
+  <p>下面是 SDK 官方仓库 README 里的真实代码(不是伪代码),可以直接体会 Agent / Conversation / Tool 三者怎么协作:</p>
+  <div class="code-block">
+    <div class="cb-header"><span>quickstart.py</span><span>python · 来自官方 README</span></div>
+    <pre><span class="kw">import</span> <span class="var">os</span>
+<span class="kw">from</span> <span class="var">openhands</span><span class="punct">.</span><span class="var">sdk</span> <span class="kw">import</span> <span class="ty">LLM</span><span class="punct">,</span> <span class="ty">Agent</span><span class="punct">,</span> <span class="ty">Conversation</span><span class="punct">,</span> <span class="ty">Tool</span>
+<span class="kw">from</span> <span class="var">openhands</span><span class="punct">.</span><span class="var">tools</span><span class="punct">.</span><span class="var">file_editor</span> <span class="kw">import</span> <span class="ty">FileEditorTool</span>
+<span class="kw">from</span> <span class="var">openhands</span><span class="punct">.</span><span class="var">tools</span><span class="punct">.</span><span class="var">task_tracker</span> <span class="kw">import</span> <span class="ty">TaskTrackerTool</span>
+<span class="kw">from</span> <span class="var">openhands</span><span class="punct">.</span><span class="var">tools</span><span class="punct">.</span><span class="var">terminal</span> <span class="kw">import</span> <span class="ty">TerminalTool</span>
+
+<span class="var">llm</span> <span class="punct">=</span> <span class="ty">LLM</span>(<span class="var">model</span><span class="punct">=</span><span class="str">"gpt-5.5"</span><span class="punct">,</span> <span class="var">api_key</span><span class="punct">=</span><span class="var">os</span>.<span class="fn">getenv</span>(<span class="str">"LLM_API_KEY"</span>))
+
+<span class="com"># Agent 只声明"有哪些工具",具体怎么隔离执行由 Workspace 决定,这里没有出现在 Agent 定义里</span>
+<span class="var">agent</span> <span class="punct">=</span> <span class="ty">Agent</span>(
+    <span class="var">llm</span><span class="punct">=</span><span class="var">llm</span><span class="punct">,</span>
+    <span class="var">tools</span><span class="punct">=</span>[
+        <span class="ty">Tool</span>(<span class="var">name</span><span class="punct">=</span><span class="ty">TerminalTool</span>.<span class="var">name</span>)<span class="punct">,</span>
+        <span class="ty">Tool</span>(<span class="var">name</span><span class="punct">=</span><span class="ty">FileEditorTool</span>.<span class="var">name</span>)<span class="punct">,</span>
+        <span class="ty">Tool</span>(<span class="var">name</span><span class="punct">=</span><span class="ty">TaskTrackerTool</span>.<span class="var">name</span>)<span class="punct">,</span>
+    ]<span class="punct">,</span>
+<span class="punct">)</span>
+
+<span class="com"># workspace=cwd 这里用的是本地当前目录,换成 DockerWorkspace(...) 就能切到容器隔离执行,Agent 代码完全不用改</span>
+<span class="var">conversation</span> <span class="punct">=</span> <span class="ty">Conversation</span>(<span class="var">agent</span><span class="punct">=</span><span class="var">agent</span><span class="punct">,</span> <span class="var">workspace</span><span class="punct">=</span><span class="var">os</span>.<span class="fn">getcwd</span>())
+<span class="var">conversation</span>.<span class="fn">send_message</span>(<span class="str">"把当前项目的 3 个关键事实写进 FACTS.txt"</span>)
+<span class="var">conversation</span>.<span class="fn">run</span>()</pre>
+  </div>
   <div class="callout tip">
-    <strong>类比:</strong>可以把这套架构想象成一个远程指挥中心——指挥官(Agent)不会亲自跑到现场拧螺丝,
-    他通过一份共享的行动记录(EventStream)下达指令(Action),前线队员(Runtime)执行指令后把结果(Observation)写回同一份记录,
-    指挥官看着记录决定下一步指令。指挥官和队员之间唯一的接口就是这份记录,谁也不需要知道对方内部是怎么工作的。
+    <strong>和"什么是 Agent"一篇的对应关系:</strong><code>Agent</code> 是大脑(决策),<code>Tool</code> 是手(执行),
+    <code>Conversation</code> 维护的事件历史是短期记忆——概念没变,只是这里能看到它们在真实代码里对应哪个具体的类。
   </div>
-
-  <h2>为什么不直接用函数调用</h2>
-  <p>
-    一个自然的问题是:既然 Agent 决定"运行一个 shell 命令",为什么不直接在代码里调用 <code>runtime.runCommand(cmd)</code>,
-    非要绕一圈经过事件总线？这个问题的答案,会在下一篇《Event-Stream 机制》里详细展开——简单说,直接函数调用会让"记录历史""多方订阅""中断恢复"这些工业级系统必须具备的能力,
-    变得难以实现;而事件流架构把这些能力,变成了这个数据结构自带的性质。
-  </p>
 
   <h2>后面三篇的路线图</h2>
   <ul>
-    <li><strong>02 Event-Stream 机制</strong>——深入 Action/Observation 事件的结构,以及为什么"一切皆事件"能解决可回放、多订阅、可中断这几个问题。</li>
-    <li><strong>03 Docker 沙箱与 Runtime 隔离设计</strong>——深入 Runtime 内部,讲清楚为什么执行环境必须隔离,以及隔离到什么程度才算够。</li>
-    <li><strong>04 Agent 与 Runtime 解耦的设计取舍</strong>——跳出具体机制,站在架构设计的高度,讨论这种解耦模式的收益与代价。</li>
+    <li><strong>02 事件模型(Event)</strong>——深入 Action/Observation 等事件类型的真实结构,以及为什么新版 SDK 把事件组织成"树"而不是一条简单的流。</li>
+    <li><strong>03 Docker 沙箱与 Workspace 隔离设计</strong>——深入 DockerWorkspace 的真实实现方式,以及独立的风险确认机制。</li>
+    <li><strong>04 Agent 与 Workspace 解耦的设计取舍</strong>——跳出具体机制,讨论这种解耦模式的收益与代价。</li>
   </ul>
 
   <hr />
