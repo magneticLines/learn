@@ -161,6 +161,32 @@
     如果登录态需要异步获取(如刷新页面后从后端校验 token),守卫里 <code>user</code> 初始可能是 <code>undefined</code>(未知)。别把"未知"当"未登录"直接踢到登录页,否则每次刷新都闪一下登录页。应区分三态:<code>loading</code> 显示占位、<code>已登录</code> 放行、<code>未登录</code> 才重定向。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>认证态闪烁(flash of login page)</strong>:刷新页面后登录态要靠异步请求(校验 token / 拉用户信息)才能确定,如果守卫把"还没拿到结果"的初始值(如 <code>undefined</code>)当成"未登录",会先把用户踢到登录页,等请求回来才发现其实登录了,又跳回来——页面闪一下。必须把状态拆成三态(<code>loading</code> / 已登录 / 未登录),<code>loading</code> 时渲染占位而不是直接下判断。</li>
+    <li><strong>把前端守卫当成安全边界</strong>:守卫只是控制"渲染哪个组件",本质上是纯前端逻辑,任何人打开控制台改改代码或直接调接口都能绕过去。真正的权限校验必须在后端每个接口里做,前端守卫的价值只是体验层面——不让未登录用户看到裸露的报错或空白页。</li>
+    <li><strong>忘记 <code>replace</code>,导致返回键死循环</strong>:<code>&lt;Navigate to="/login" /&gt;</code> 默认是 push,如果不加 <code>replace</code>,历史栈会变成 <code>/settings, /login</code>,用户点返回又回到 <code>/settings</code>,又被拦到 <code>/login</code>,形成死循环。守卫场景下的重定向几乎总该加 <code>replace</code>。</li>
+    <li><strong>异步校验期间的竞态</strong>:如果登录校验是异步的(比如请求校验 token 有效性),用户可能在校验完成前已经点击了别的链接或提交了表单。如果校验结果回来时不检查"当前还是不是那个页面/请求",可能会用过期的结果错误地重定向或放行,需要配合 <code>AbortController</code> 或"请求 id 比对"处理。</li>
+    <li><strong>忘记保存来源路径,登录后跳回首页</strong>:很多人图省事,守卫里直接 <code>&lt;Navigate to="/login" /&gt;</code>,登录成功后固定跳首页,用户被迫从头点回原来想去的页面。正确做法是把 <code>location</code> 存进 <code>state.from</code>,登录页读出来跳回去。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>React Router 有没有内置的"路由守卫"API?</strong>—— 没有。v6 完全是声明式匹配 URL 渲染组件,没有 Vue Router 那种 <code>beforeEach</code> 全局钩子概念。"守卫"是开发者自己用一个判断登录态、决定渲染 <code>&lt;Outlet /&gt;</code> 还是 <code>&lt;Navigate /&gt;</code> 的普通组件实现出来的模式,不是框架特性。</li>
+    <li><strong>为什么守卫不能只是"未登录就 return null"?</strong>—— 因为那样用户会看到一片空白,不知道发生了什么,也没有引导。应该渲染 <code>&lt;Navigate&gt;</code> 主动跳转到登录页,给出明确反馈,而不是静默地什么都不显示。</li>
+    <li><strong>包裹 <code>&lt;Outlet /&gt;</code> 和接收 <code>children</code> 两种守卫写法有什么区别,该怎么选?</strong>—— 包裹 Outlet 的写法是把守卫做成父路由,一次性保护一整组子路由,适合"一大片页面统一要求登录"的场景,代码只写一次;接收 children 的写法要在每个受保护页面外面手动包一层,适合零散保护、或不同页面需要不同权限判断的场景。</li>
+    <li><strong>为什么守卫里要区分登录态的 loading / 已登录 / 未登录三态,而不是用一个布尔值?</strong>—— 因为登录态往往要靠异步请求确认(刷新页面后重新校验 token)。如果只用布尔值,初始值必须是 true 或 false 中的一个,而这两个值都不代表真实情况,会导致误判——把"还不知道"当成"未登录"从而错误跳转,造成页面闪烁。三态能让 UI 在不确定时显示占位,等结果确定后才做出正确判断。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>布局路由 / Outlet 占位符：</strong>推荐写法里的 <code>RequireAuth</code> 本质就是一个"逻辑布局路由"——它不提供视觉外壳，只做鉴权判断，判断通过后渲染 <code>&lt;Outlet /&gt;</code> 放行子路由。不理解布局路由和 Outlet 的组合关系，就很难看懂为什么守卫可以像普通父路由一样包裹一组页面。</li>
+    <li><strong>路由 state 传参：</strong>守卫拦截时用 <code>state={{ from: location }}</code> 把来源路径带给登录页，这是路由 state 最典型的实战场景——数据不需要出现在 URL 上，只是登录成功后"跳回原处"的临时线索，刷新页面丢了也无妨（用户重新走一遍登录流程即可）。</li>
+    <li><strong>Navigate 重定向：</strong>守卫的拦截动作就是一次 <code>&lt;Navigate to="/login" replace /&gt;</code>，本文强调的"必须加 replace 避免返回键死循环"正是 Navigate 重定向那篇讲的核心陷阱——两者结合起来才能保证被拦截的页面不会赖在浏览器历史里。</li>
+    <li><strong>404 页面：</strong>守卫和 404 都是"路由渲染前的额外判断"，区别在于判断维度不同——404 判断"URL 是否存在对应路由"，守卫判断"用户是否有权限看这个已存在的路由"。一个页面理论上可能同时经过两层检查：先匹配到路由，再被守卫拦下。</li>
+    <li><strong>createBrowserRouter 与 loader：</strong>数据路由下，鉴权判断也可以放进 <code>loader</code> 里做——loader 发现未登录时 <code>throw redirect('/login')</code>，效果等同于组件里渲染 <code>&lt;Navigate&gt;</code>，但判断时机提前到了"渲染前"，避免了组件先渲染一瞬又被重定向的闪烁问题。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="86-index路由.html" class="nav-btn">← index 路由</a>

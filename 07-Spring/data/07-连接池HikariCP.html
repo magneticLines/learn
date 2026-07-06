@@ -149,6 +149,14 @@
     <li><strong>调优核心不是"调大池子"，而是匹配数据库真实承载能力</strong>，同时要留意 <code>REQUIRES_NEW</code> 等会额外占用连接的场景。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>事务管理 @Transactional：</strong>事务的边界本质上就是"一个连接被占用多长时间"——事务开始时通过 <code>DataSourceUtils</code> 从 HikariCP 借出一个连接并绑定到当前线程的 <code>ThreadLocal</code>，事务提交或回滚之后才归还连接池，所以事务方法写得越"重"（比如内部调用慢的外部 HTTP 接口），连接被占用的时间就越长，高并发下更容易把 <code>maximum-pool-size</code> 打满，详见 <code>data/04-事务管理Transactional.html</code>。</li>
+    <li><strong>REQUIRES_NEW 传播行为：</strong>这是连接池被过度消耗的一个典型触发点——<code>REQUIRES_NEW</code> 会挂起当前事务、额外借用一个新连接开启独立事务，意味着同一个线程在这段时间里同时占用两个连接。如果大量请求同时触发这种"双连接占用"，实际连接消耗会是平时的两倍，是连接池耗尽最常见的隐藏原因之一。</li>
+    <li><strong>Repository 方法命名查询：</strong>不管查询是手写 JPQL 还是通过方法命名自动生成，最终执行时都要从 HikariCP 借一个物理连接——Repository 层的动态代理只是省去了写实现代码的过程，并没有改变"连接从连接池借出、用完归还"这个底层执行模型，详见 <code>data/01-Repository接口与方法命名查询.html</code>。</li>
+    <li><strong>Spring Data Redis：</strong>Redis 客户端（Lettuce/Jedis）也有自己的连接池概念，作用和 HikariCP 完全类似——把"建立到 Redis 服务器的网络连接"这个开销从每次读写降低到预先建立、重复复用，只是管理的资源从数据库连接换成了 Redis 连接，两者是同一种资源复用思想在不同中间件上的落地。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

@@ -154,6 +154,32 @@
     <li>取舍在于:Tailwind 用 <code>className</code> 变长换来不用维护 CSS 文件、改样式原地可见;CSS Modules/手写 CSS 保留了语义化类名和更好的 HTML 可读性。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>动态拼接类名导致扫描失效</strong>:Tailwind 在构建时是<strong>静态扫描源码文本</strong>找工具类,不是运行时分析 JS 逻辑。如果写成 <code>`bg-${color}-500`</code> 这种拼接,源码里根本没有 <code>bg-red-500</code> 这样的完整字符串,扫描器找不到就不会生成对应 CSS,线上表现就是"这个颜色永远不生效"。要避免必须把完整类名写全,用一个映射对象(比如 <code>{ red: "bg-red-500", blue: "bg-blue-500" }</code>)按 key 取值,而不是拼字符串。</li>
+    <li><strong>className 无限膨胀</strong>:一个元素堆到十几二十个工具类之后,JSX 里的可读性会明显下降,团队新人 review 时很难一眼看出这个元素到底长什么样。这是原子化 CSS 的固有代价,盲目追求"零自定义类"反而会牺牲可维护性,遇到确实复杂、且会整体复用的组合,该用 <code>@apply</code> 抽出去就抽出去,不要死守"绝不自定义类名"。</li>
+    <li><strong>@apply 滥用又变回起名字</strong>:文中已经点出,如果每一个重复两三次的组合都抽成自定义类,最后又回到了"设计一堆语义类名 + 维护 CSS 文件"的老路,Tailwind 省下来的心智负担又还回去了。经验法则是只对跨很多文件、以后会整体统一改的组合(设计系统级别的按钮/卡片变体)用 <code>@apply</code>,一次性的组合直接写在 <code>className</code> 里。</li>
+    <li><strong>响应式前缀顺序理解错误</strong>:<code>md:flex</code> 里的 <code>md:</code> 表示"屏幕宽度 ≥ 768px 时生效",而不是"只在 md 断点(768~1024px)这一个区间生效"。Tailwind 的断点前缀是<strong>移动优先、向上覆盖</strong>的写法,如果同时写了 <code>flex md:grid lg:block</code>,理解成"三个区间各自独立"就会踩坑——实际效果是默认 flex,到 md 断点起改成 grid,到 lg 断点起再改成 block,后面的断点会覆盖前面的。</li>
+    <li><strong>忽视工具类的 CSS 特殊性冲突</strong>:多个工具类本质上都是等同特殊性的单一属性类,后写的类不一定会覆盖先写的类,真正生效的取决于这些类在最终生成的 CSS 文件里的<strong>先后顺序</strong>,而不是 <code>className</code> 字符串里的书写顺序。比如同时给一个元素写 <code>p-4</code> 和外部传入的 <code>className</code> 里的 <code>p-2</code>,谁生效要看 CSS 文件里谁在后面,不能想当然地认为 JSX 里写在后面的字符串就会赢,这也是为什么合并 className 时常需要 <code>tailwind-merge</code> 这类工具来处理冲突。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>Tailwind 为什么不会因为工具类多而导致打包体积失控?</strong>—— 因为构建时会扫描项目源码,只把真正出现在代码里的工具类对应的那一小撮 CSS 规则打进最终产物(类似 tree-shaking 的 purge 机制),未被使用的工具类不会生成任何 CSS,所以体积只和"实际用到的类的种类数"相关,和 Tailwind 内置了多少工具类无关。</li>
+    <li><strong>为什么动态拼接的类名(如模板字符串拼颜色)在 Tailwind 里可能不生效?</strong>—— 因为扫描器工作在构建阶段,靠对源码做纯文本匹配寻找形如 <code>bg-red-500</code> 的完整字符串,它不会执行 JS 逻辑,拼接后的字符串在源码里根本不以完整形态存在,自然扫描不到,也就不会生成对应的 CSS 规则。</li>
+    <li><strong>@apply 和直接在 className 里堆工具类相比,分别适合什么场景?</strong>—— 一次性的、只在一个地方用的组合直接写在 className 里,改起来原地可见;而跨多个文件重复出现、且未来会整体统一调整的组合(比如设计系统里的按钮变体)适合用 @apply 抽成一个语义类,减少改动时要全局替换字符串的成本,但滥用会让项目退化回"手动维护语义类名"的老问题。</li>
+    <li><strong>Tailwind 和 CSS Modules 解决的是同一个问题吗?</strong>—— 不是。CSS Modules 解决的是类名的"作用域"问题(避免全局命名冲突),本质上仍然是在写传统 CSS;Tailwind 解决的是"要不断为样式起名字、维护单独 CSS 文件"这件事,代价是把样式信息内嵌进了 className 字符串。两者可以在同一个项目里搭配使用,高频的布局/间距用 Tailwind,少数复杂自定义组件用 CSS Modules。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>CSS Modules:</strong> 两者是同一坐标系里的两个极端——CSS Modules 保留"写 CSS + 想类名"的传统心智模型,只解决作用域;Tailwind 连类名都不用想,直接拼工具类。项目里常见的搭配是高频的布局/间距交给 Tailwind,少数复杂到需要语义化命名的自定义组件仍用 CSS Modules,两者并不互斥。</li>
+    <li><strong>CSS-in-JS 概览:</strong> 下一篇会提到"Tailwind 的条件 className 已经能覆盖大部分 props 驱动的动态样式场景"——这正是社区近几年从 CSS-in-JS(尤其是运行时方案)转向 Tailwind/CSS Modules 的核心原因之一:构建时静态化没有运行时开销,而 Tailwind 用简单的三元表达式切换类名就能实现类似效果,不需要在 CSS 声明里嵌 JS 逻辑。</li>
+    <li><strong>受控组件与动态样式:</strong> Tailwind 的状态前缀(<code>hover:</code>、<code>focus:</code>)和响应式前缀(<code>md:</code>)本质上是把原本要写 JS 事件监听或媒体查询才能实现的动态效果,压缩成了纯 CSS 层面的声明式写法——这跟 React 组件设计里"能用声明式解决就不用命令式"的取向是一致的心智模型。</li>
+    <li><strong>组件设计原则:</strong> <code>@apply</code> 抽取重复工具类组合的取舍(只对跨很多文件复用的组合抽取,一次性组合不抽)和"何时拆分组件"的判断原则是同构的——都是在"过度抽象"和"重复代码"之间找平衡点,判断标准也类似:是否会被多处复用、是否会整体统一变更。</li>
+    <li><strong>ESLint 与 eslint-plugin-react:</strong> Tailwind 的"动态拼接类名导致扫描失效"是一类只有在运行时才会暴露的隐蔽 bug(样式不生效但没有任何报错),而 ESLint 类工具解决的正是"把本该运行时才发现的问题提前到写代码阶段拦住"这一思路——虽然目前主流做法是靠约定(不要拼接类名)而非 lint 规则强制,但两者背后是同一个工程原则。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="117-CSSModules.html" class="nav-btn">← CSS Modules（.module.css）</a>

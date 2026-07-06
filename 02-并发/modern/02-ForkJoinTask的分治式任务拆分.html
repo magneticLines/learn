@@ -151,6 +151,15 @@
     <li>阈值的选择直接决定并行收益，是这类算法调优的关键手段。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>ForkJoinPool 的工作窃取（上一篇）：</strong><code>fork()</code> 把子任务压入当前线程队列的队头，正是上一篇讲的双端队列模型的写代码视角——"左 fork、右 compute" 这个推荐写法的省一次调度开销，本质上就是少让一个任务经历"入队 → 被其他线程从队尾窃取"的完整流程，两篇内容是同一机制的"底层原理"与"应用写法"两面。</li>
+    <li><strong>经典分治算法（归并排序、快速排序）：</strong><code>compute()</code> 里"规模够小就直接算，否则拆成两半递归"的模板，与归并排序、快速排序的递归结构完全一致——唯一的区别是分治算法里的递归调用是同步的，而这里用 <code>fork()</code>/<code>join()</code> 把其中一半交给了另一个线程并行执行，理解经典分治算法能帮你更快看懂这里的代码结构。</li>
+    <li><strong>Callable/Runnable 与 Future：</strong>文中提到 RecursiveTask/RecursiveAction 的关系可以类比 Callable（有返回值）与 Runnable（无返回值），而 <code>fork()</code> 之后调用 <code>join()</code> 阻塞等待结果，其使用体验和 <code>Future.get()</code> 非常相似——本质上 <code>ForkJoinTask</code> 本身就实现了 <code>Future</code> 接口，join() 可以理解为一个不抛受检异常的 get()。</li>
+    <li><strong>阈值调优与生产环境压测：</strong>文中"阈值太小/太大分别导致什么后果"的表格，对应到生产环境线程池调优里就是"任务粒度"的选择问题——无论是这里的分治阈值，还是普通线程池里单个任务该做多少事，本质上都是在"调度开销"和"并行收益"之间找平衡点，没有放之四海而皆准的公式，都要靠压测。</li>
+    <li><strong>Stream.parallelStream() 的内部实现：</strong>Java 8 并行流在底层就是通过类似 <code>Spliterator</code> 拆分数据源、生成一棵 <code>ForkJoinTask</code> 任务树来并行处理的，本文手写的 <code>SumTask</code> 本质上就是 <code>parallelStream().sum()</code> 在语言层面帮你自动生成的代码——理解了这里的手写版本，就能理解为什么并行流也存在"数据规模太小反而更慢"的现象。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

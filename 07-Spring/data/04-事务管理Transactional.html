@@ -189,6 +189,16 @@
     <li><strong>生产项目建议统一加 <code>rollbackFor = Exception.class</code></strong>，避免受检异常导致的静默数据不一致。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>AOP 的 Advisor/Advice/Pointcut：</strong>@Transactional 的事务逻辑不是靠反射"识别注解"这么简单，而是一个标准的 AOP 切面——<code>TransactionAttributeSourceAdvisor</code> 的 <code>Pointcut</code> 负责匹配"哪些方法带有 @Transactional 注解"，它的 <code>Advice</code> 是 <code>TransactionInterceptor</code>，在方法调用前后完成开启/提交/回滚事务的逻辑。也就是说事务管理本质上就是 Spring 内置的一个 Advisor，具体三者如何协作见 <code>internals/06-AdvisorAdvicePointcut的关系.html</code>。</li>
+    <li><strong>BeanPostProcessor 扩展点：</strong>代理的生成时机由 <code>InfrastructureAdvisorAutoProxyCreator</code>（本质是一个 <code>BeanPostProcessor</code>）在 Bean 初始化完成后的 <code>postProcessAfterInitialization</code> 阶段触发——这解释了为什么事务代理一定包裹的是"完整初始化好"的 Bean，而不是半成品，详见 <code>internals/04-BeanPostProcessor扩展点.html</code>。</li>
+    <li><strong>三级缓存与循环依赖：</strong>如果一个需要事务代理的 Bean 恰好参与了循环依赖，代理就必须提前生成——三级缓存里的 <code>ObjectFactory</code> 在被其他 Bean 提前引用时会调用 <code>getEarlyBeanReference()</code>，把代理生成的时机从"初始化后"提前到"属性填充阶段"，否则最终会出现"容器里是代理对象、但循环依赖的另一方持有的是原始对象"的错乱，详见 <code>internals/03-三级缓存解决循环依赖.html</code>。</li>
+    <li><strong>连接池 HikariCP：</strong>事务的边界直接决定了数据库连接的占用时长——事务开始时通过 <code>DataSourceUtils</code>/<code>TransactionSynchronizationManager</code> 把一个从连接池借来的 <code>Connection</code> 绑定到当前线程的 <code>ThreadLocal</code>，事务提交或回滚之后才归还连接池；如果事务开得过大（比如在事务方法里调用了慢的外部接口），会导致连接被长时间占用，高并发下容易把连接池打满，详见 <code>data/07-连接池HikariCP.html</code>。</li>
+    <li><strong>Repository 方法命名查询：</strong>Repository 生成的动态代理和事务代理是两层独立的代理，但它们经常作用在同一次调用链上——Service 方法上的 @Transactional 保证一次业务操作里多次 Repository 调用共用同一个连接和事务，而 Repository 代理本身只负责把方法名翻译成查询逻辑，并不关心事务边界，两者职责互补。</li>
+    <li><strong>Spring Data Redis：</strong>@Transactional 默认只管理支持 <code>PlatformTransactionManager</code> 的资源（如 JDBC 连接），对 Redis 操作默认不生效——除非显式配置 <code>RedisTransactionManager</code> 并让 Redis 连接参与 Spring 的事务同步机制，否则一个方法里既操作数据库又操作 Redis，Redis 那部分不会随数据库事务一起回滚，这是实际项目中"缓存和数据库不一致"问题的一个常见根源，详见 <code>data/06-SpringDataRedis概览.html</code>。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

@@ -152,6 +152,32 @@
     <li>边界：没有 selector、大 state 频繁更新会大面积重渲——到那个规模再考虑 Zustand/Redux。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>只用一个 Context 同时装 state 和 dispatch</strong>：写成 <code>&lt;StoreCtx.Provider value={{ state, dispatch }}&gt;</code>，即便 <code>dispatch</code> 引用稳定，只要 <code>state</code> 变了，整个 value 对象就是新引用，所有消费者（包括只想 dispatch 的组件）全部跟着重渲。拆成两个 Context 才能真正发挥 <code>dispatch</code> 引用稳定的优势。</li>
+    <li><strong>value 里包一层新对象，抵消了拆分的效果</strong>：即使拆了两个 Context，如果还写 <code>&lt;StateCtx.Provider value={{ state }}&gt;</code> 多包一层对象，这层包装对象本身每次渲染都是新引用，等于白拆。应该直接把 <code>state</code>/<code>dispatch</code> 本身作为 value，不要再包一层。</li>
+    <li><strong>忘记给自定义 Hook 做"是否在 Provider 内"的校验</strong>：<code>useContext</code> 拿到默认值 <code>null</code> 后没有判断就直接用，导致组件树忘记套 <code>StoreProvider</code> 时，报错发生在很深的调用栈里，定位起来比在 Hook 入口直接 <code>throw new Error('必须在 StoreProvider 内使用')</code> 麻烦得多。</li>
+    <li><strong>把这套组合当成万能替代品，滥用到大型全局状态</strong>：state 树一大、更新一频繁，没有 selector 的 Context 会导致大面积无谓重渲，反而比引入一个专门状态库的心智负担更高。这个模式的甜蜜区是中小型、局部子树的状态共享，不是整个大型应用的状态管理方案。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么要把 state 和 dispatch 拆成两个 Context？</strong>—— <code>dispatch</code> 由 <code>useReducer</code> 保证引用永远稳定，不随 state 变化而改变；把它单独放一个 Context，"只派发不读取"的组件（比如一个添加按钮）就不会因为 state 变化被连带重渲。若混在一起，state 变化会导致 value 整体是新引用，所有消费者无差别重渲。</li>
+    <li><strong>这套组合和 Redux 最本质的差距是什么？</strong>—— 缺少 selector 机制。Redux/Zustand 允许组件只订阅 store 里自己关心的那一小块数据，其他字段变化不会引起该组件重渲；而 Context 的订阅粒度是整个 value，只要引用变就通知所有消费者，无法做细粒度订阅。这是决定"什么时候该升级到专门状态库"的核心依据。</li>
+    <li><strong>把 useContext 封装成自定义 Hook（如 useTodos）有什么工程价值？</strong>—— 三点：调用处不必知道具体 Context 对象、可以在 Hook 内部加"没套 Provider 就报错"的运行时校验、未来更换底层实现（比如从 Context 换成 Zustand）时，只需改 Hook 内部实现，所有调用方代码不用动，起到隔离变化的作用。</li>
+    <li><strong>什么信号提示该从 useReducer + Context 升级到 Redux/Zustand？</strong>—— state 树体量大且更新频繁、Profiler 已经证实由 Context 重渲引起卡顿、需要跨路由持久化或时间旅行调试、多团队协作需要统一规范的数据流约定。在这些信号出现之前强行引入额外状态库，属于过度设计。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>引用稳定性问题（第 51 篇）：</strong>这套组合能拆成 State/Dispatch 两个 Context，根本原因是 <code>useReducer</code> 返回的 <code>dispatch</code> 天然引用稳定——这正是下一篇要系统讲的"引用稳定性"概念在这里的具体应用。理解了引用稳定性，才能明白为什么"只派发"的组件能免于 state 变化引起的重渲。</li>
+    <li><strong>useMemo 缓存计算（第 52 篇）：</strong>如果 Context 的 value 不是像本篇这样直接传 <code>state</code>/<code>dispatch</code>，而是需要传一个额外派生的对象，就该用 <code>useMemo</code> 稳定这个对象的引用，避免每次渲染都造出新对象让所有消费者跟着重渲——这是第 61 篇跨层级 Context 通信里也会强调的同一个坑。</li>
+    <li><strong>抽离复用逻辑（第 56 篇）：</strong>本篇把 <code>useContext(StateCtx)</code> 封装成 <code>useTodos()</code> 自定义 Hook，思路和第 56 篇的 <code>useFetch</code>/<code>useLocalStorage</code> 完全一致——都是把一段固定的状态访问逻辑打包，让调用处更干净、还能加运行时校验。区别是这里复用的是"访问方式"而不是"独立状态"。</li>
+    <li><strong>跨层级 Context 通信（第 61 篇）：</strong>本篇是第 61 篇 Context 基础用法的进阶实战——不仅广播只读数据，还把修改数据的能力（<code>dispatch</code>）一起广播下去，相当于把第 59 篇"子传父回调"的模式从"父子之间"扩展到了"祖先与任意深度后代之间"。</li>
+    <li><strong>兄弟组件状态提升（第 60 篇）：</strong>可以把 useReducer + Context 理解成"状态提升"思路的终极形态——第 60 篇把 state 提升到最近的共同父组件，本篇则相当于把这个"共同父组件"换成了一个可以被任意深度访问的 Context Provider，解决的是提升后依然要一层层 props 透传的问题。</li>
+    <li><strong>过度优化的坏处（第 54 篇）：</strong>本篇结尾强调"没到规模别急着上 Redux"，这和第 54 篇"先测量再优化"的原则是同一种工程态度——不要为想象中的问题引入额外复杂度，无论是手动 memo 还是引入状态管理库，都应该等到有实际信号才升级。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="49-何时用useReducer.html" class="nav-btn">← 何时用 useReducer</a>

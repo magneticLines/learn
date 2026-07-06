@@ -166,6 +166,32 @@ Vite 项目(含 React/Vue)首选</pre>
     <li><code>toBe</code> 是全等比较,<code>toEqual</code> 是深度比较——对象/数组内容比较务必用后者。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>忘记配置 <code>environment: 'jsdom'</code>，一测组件就报错：</strong>Vitest 默认的测试环境是 <code>node</code>，没有 <code>document</code>、<code>window</code> 这些浏览器 API。测纯函数（如本篇的 <code>sum</code>）没问题，但只要涉及渲染组件、操作 DOM，就会报"document is not defined"。必须在 <code>vite.config.ts</code> 里显式加 <code>environment: 'jsdom'</code>（或用 <code>// @vitest-environment jsdom</code> 注释单独指定某个测试文件）。</li>
+    <li><strong>忘记 <code>globals: true</code> 却不 import，导致 <code>describe is not defined</code>：</strong>不开启 <code>globals</code> 选项时，<code>describe/it/expect</code> 都需要从 <code>'vitest'</code> 显式 import，这是很多从 Jest 迁移过来的人第一次运行就报错的原因——Jest 默认全局注入，Vitest 默认不注入。</li>
+    <li><strong><code>toBe</code> 和 <code>toEqual</code> 混用，测试"假通过"或"真失败"：</strong>本篇提到的坑值得再强调一遍：<code>toBe</code> 底层用 <code>Object.is</code>，比较对象/数组时比的是引用地址，两个内容完全一样但分别 new 出来的对象用 <code>toBe</code> 永远失败；反过来如果该用 <code>toBe</code>（比较基本类型）却用了 <code>toEqual</code>，测试意图会变得含糊，未来出现类型错误（比如把数字错写成字符串）时 <code>toEqual</code> 可能不会捕捉到。</li>
+    <li><strong>异步测试忘记 <code>await</code>，测试提前"假成功"结束：</strong>如果被测函数是异步的（返回 Promise，或者组件里有 <code>setTimeout</code>/网络请求触发的状态更新），测试函数体内如果没有 <code>await</code> 断言语句就直接 return，Vitest 会在异步操作完成前就判定这个 <code>it</code> 通过了——因为它根本没等。正确做法是 <code>it('...', async () =&gt; { await expect(fn()).resolves.toBe(x); })</code> 或搭配 <code>waitFor</code>（组件测试库提供）。</li>
+    <li><strong>用 <code>vi.fn()</code> mock 后忘记在每个测试间重置调用记录：</strong><code>vi.fn()</code> 创建的 mock 函数会持续累积调用记录（<code>mock.calls</code>），如果在多个 <code>it</code> 之间复用同一个 mock 实例却不清理，前一个测试的调用次数会污染后一个测试的断言。应该在 <code>beforeEach</code> 里调用 <code>vi.clearAllMocks()</code> 或每次重新创建 mock。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>Vitest 为什么比 Jest 更适合 Vite 项目？原理是什么？</strong>—— 核心在于转换管线是否复用。Jest 需要独立的转换器（Babel/ts-jest）来处理 TS/JSX，和 Vite 构建时用的 esbuild/SWC 是两套完全不同的编译逻辑，容易出现"测试环境能跑、生产构建报错"或反过来的不一致。Vitest 直接吃 Vite 的 <code>vite.config.ts</code>，路径别名、JSX 转换、CSS Modules 全部原样复用，本质上是把"用什么跑测试"和"用什么跑生产"统一成了同一套工具链。</li>
+    <li><strong><code>toBe</code> 和 <code>toEqual</code> 底层分别用什么比较逻辑？</strong>—— <code>toBe</code> 基于 <code>Object.is</code>（近似严格相等 <code>===</code>，但能正确处理 <code>NaN</code> 和 <code>±0</code> 的边界情况），比较对象/数组时看的是引用是否相同。<code>toEqual</code> 做递归的结构比较（deep equality），逐个字段比较值，不关心是不是同一个引用。这也是为什么测基本类型习惯用 <code>toBe</code>（表达"值语义"），测对象/数组必须用 <code>toEqual</code>（表达"结构语义"）。</li>
+    <li><strong>为什么测试要用 mock（比如 <code>vi.fn()</code>），而不是直接调用真实依赖？</strong>—— 单元测试的核心诉求是"隔离被测单元、结果可复现"。如果测试直接依赖真实的网络请求、数据库、定时器，测试结果会受外部环境影响（网络波动、时间不确定），而且慢、不稳定。mock 把这些外部依赖替换成可控的假实现，你能精确断言"这个函数是否被调用、被什么参数调用了几次"，同时让测试运行速度和确定性都大幅提升。</li>
+    <li><strong>监听模式（watch mode）相比 CI 里一次性运行，解决了什么问题？</strong>—— 监听模式在文件改动时只重新运行受影响的测试，反馈速度接近实时，适合开发过程中频繁试错；CI 环境需要的是一次性、确定性的全量运行结果用于门禁判断。两者不是相互替代关系，而是同一套测试代码在不同场景下的两种运行模式——这也是为什么 <code>package.json</code> 里通常会分别配 <code>"test": "vitest"</code>（本地监听）和 <code>"test:ci": "vitest run"</code>（CI 单次运行）。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>React Testing Library（下一篇 151）：</strong>Vitest 提供的是"运行测试、做断言"这套跑分基座，但它本身不知道怎么渲染 React 组件、怎么模拟用户点击。RTL 是搭在 Vitest 之上的组件测试工具，两者不是竞争关系——学完这一篇的 <code>describe/it/expect</code> 三层结构和 <code>jsdom</code> 环境配置，下一篇才能专注讲"怎么测组件"本身，而不用重复讲测试框架基础。</li>
+    <li><strong>MSW（152）：</strong>组件测试经常涉及"发请求拿数据后渲染"的场景,而 Vitest 本身不管网络层的事。<code>vi.fn()</code> 能 mock 单个函数调用,但更贴近真实使用场景的是在网络层拦截——这正是 MSW 要解决的问题,它和 Vitest 组合使用,而不是互相替代。</li>
+    <li><strong>useState / state 异步更新（19-21篇）：</strong>测试组件时最常踩的坑是"状态更新是异步的",如果测试代码里 <code>setCount</code> 之后立刻断言,和本系列 21 篇讲的"state 是快照"是同一个原理——测试也要等 React 完成重新渲染后才能断言到新值,这也是为什么组件测试库要提供 <code>waitFor</code>/<code>findBy*</code> 这类异步查询 API。</li>
+    <li><strong>Vite 工程化（本系列构建工具篇）：</strong>Vitest 之所以"零额外配置"就能跑起来,根源在于本系列前面讲过的 Vite 插件体系和 <code>vite.config.ts</code> 统一配置思路——理解了 Vite 怎么处理路径别名、JSX 转换,才能理解 Vitest 为什么能直接复用这套东西而不需要像 Jest 那样另起一套编译管线。</li>
+    <li><strong>TypeScript 类型系统：</strong>本篇代码示例用 TS 写测试文件,断言函数（如 <code>toBe</code>）的参数类型会根据被测函数的返回值类型做检查,这也是"测试即文档"的一种体现——类型错误在写测试的阶段就能被 IDE 提前捕捉到,不用等运行时才发现参数类型不对。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="149-AnimatePresence退出动画.html" class="nav-btn">← AnimatePresence 退出动画</a>

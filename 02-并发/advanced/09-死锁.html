@@ -420,6 +420,16 @@ T1 ◀──等待── lockA ◀──持有── T2 ──等待──┘
     <li><strong>线程转储是第一现场</strong>：生产出现疑似死锁时，先 <code>jstack</code> 保存现场，再重启服务，顺序不能反。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>AQS（AbstractQueuedSynchronizer）体系：</strong><code>ReentrantLock</code> 底层由 AQS 的等待队列实现，<code>tryLock(timeout)</code> 本质是 AQS 在获取失败后不进入永久阻塞，而是有限时间地排队——这正是本文"破坏不可剥夺条件"策略的底层支撑；而 <code>synchronized</code> 走的是 JVM 内置监视器锁，没有对应的超时接口，这也是它天生更容易死锁的根本原因。</li>
+    <li><strong>活锁与饥饿：</strong>死锁是"线程完全停止、CPU 几乎为零"，下一节要讲的活锁则是"线程一直在忙但谁都没有真正推进"。两者常被面试官放在一起对比：解决死锁引入的 tryLock+随机退避方案，如果退避策略不当（比如没有 Jitter），反而可能从死锁滑向活锁，这是理解两者关系的关键。</li>
+    <li><strong>线程池 ThreadPoolExecutor：</strong>本文提到的"任务 A 提交任务 B 并阻塞等待"属于资源耗尽型死锁，本质原因是单线程池的任务队列与工作线程数量耦合。理解 <code>newSingleThreadExecutor</code> 的局限性，需要结合线程池的核心线程数、队列策略来看，这也是排查线程池活跃性问题的常见起点。</li>
+    <li><strong>分布式锁（Redis / Zookeeper）：</strong>Coffman 四条件在分布式场景同样适用——多个服务节点以不同顺序获取多把分布式锁，会出现和本文 <code>synchronized</code> 转账反例完全同构的循环等待。分布式锁通常没有 JVM 内置的死锁检测能力（<code>jstack</code>、<code>ThreadMXBean</code> 都看不到跨进程等待链），因此固定加锁顺序、设置获取超时（等价于 <code>tryLock(timeout)</code>）在分布式场景下更加重要。</li>
+    <li><strong>JVM 线程状态：</strong>死锁线程在 <code>jstack</code> 中呈现为 <code>BLOCKED</code> 状态且相互等待对方持有的 monitor，这与线程正常运行时的 <code>RUNNABLE</code>、等待 I/O 时的 <code>WAITING</code> 有本质区别。看懂线程转储里的状态标记，是用 <code>jstack</code> 诊断死锁的前提。</li>
+    <li><strong>面试高频考点：</strong>"如何检测并解决线上死锁"是经典追问链——从 Coffman 四条件，到 <code>jstack</code>/<code>ThreadMXBean</code> 的定位手段，再到固定锁顺序/tryLock 超时的修复方案，最后延伸到"如果是分布式锁怎么办"，考察的是从原理到工具再到实践的完整闭环。</li>
+  </ul>
+
   <hr />
 
   <!-- 导航 -->

@@ -429,6 +429,16 @@
     <li><code>ThreadLocal</code> 在线程池下为什么会泄漏？如何避免？</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>JVM 锁升级（偏向锁/轻量级锁/重量级锁）：</strong>本文"无竞争 vs 有竞争"的开销差异，正是 JVM 为 <code>synchronized</code> 设计锁升级机制的原因——无竞争时用偏向锁/轻量级锁通过 CAS 在用户态完成，一旦检测到真实竞争才升级为重量级锁、涉及 OS 级挂起。理解锁升级路径，才能明白为什么"减少锁持有时长、降低请求频率"能让 <code>synchronized</code> 尽量停留在便宜的轻量级锁阶段，避免升级代价。</li>
+    <li><strong>活锁：</strong>本文第 6 节提到高竞争下 CAS 自旋会退化为"活锁"，这与上一节讲的活锁是同一现象在不同层面的体现——锁竞争激烈到一定程度，无锁方案（CAS）和有锁方案（synchronized 自旋）都会出现大量线程空转不推进的情况，说明"避免竞争"和"避免活锁"本质上是同一个优化目标的两种表述。</li>
+    <li><strong>ConcurrentHashMap 分段锁：</strong>本文的"锁分段（Lock Striping）"直接就是 <code>ConcurrentHashMap</code> 的核心设计思想——Java 7 用 16 个 Segment（每个是一把 ReentrantLock），Java 8 改为 CAS + 每个桶头节点加锁，粒度更细。理解本文 StripedMap 的手写实现，等于提前预演了 <code>ConcurrentHashMap</code> 的设计动机和 <code>size()</code> 为什么只能是近似值的原因。</li>
+    <li><strong>AQS（AbstractQueuedSynchronizer）体系：</strong><code>ReentrantReadWriteLock</code> 的读写状态是在同一个 AQS <code>state</code> 字段里用高低位分别编码读锁计数和写锁标记的，这也是为什么"写多场景下读写锁反而更慢"——读写状态耦合在一个字段上，竞争检测和状态转换本身就有额外开销，不是简单的"读写分离就一定快"。</li>
+    <li><strong>伪共享 false sharing：</strong>本文没有展开但与"避免热点字段"密切相关的下一层问题——<code>LongAdder</code> 内部的 Cell 数组为了消除伪共享做了专门的缓存行填充（<code>@Contended</code>），否则多个线程各自写相邻 Cell 时仍会因共享缓存行而互相拖慢，这是锁分段思想在 CPU 缓存层面的延伸。</li>
+    <li><strong>面试高频考点：</strong>本文列出的六个问题（Amdahl 定律、ConcurrentHashMap 分段演进、size() 近似值、读写锁写多场景、LongAdder vs AtomicLong、ThreadLocal 泄漏）是并发面试中"性能优化"方向的标准题库，几乎所有大厂面试都会从其中至少问一到两个作为死锁/活锁之后的进阶追问。</li>
+  </ul>
+
   <hr>
 
   <nav class="nav-footer">

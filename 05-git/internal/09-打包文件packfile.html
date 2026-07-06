@@ -90,6 +90,15 @@
     <li><code>.pack</code> 存数据、<code>.idx</code> 存哈希→偏移索引;<code>git gc</code>(常自动触发)负责打包、合并 refs、清理。大二进制文件不适合 delta,应用 Git LFS。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>关联 Git 对象模型:</strong>本篇是对象模型的存储层补充——对象模型讲"Git 存的是完整快照",packfile 讲"存储时如何用 delta 把相似快照压缩得更省空间";两者分别对应逻辑语义层和物理存储层,checkout 时 delta 会自动还原成完整对象,快照语义完全不受影响。</li>
+    <li><strong>关联「引用 refs 与 HEAD」(上一篇):</strong><code>git gc</code> 除了打包松散对象为 packfile,还会把散落的 <code>refs/heads/*</code> 文件合并进 <code>packed-refs</code>——这是同一次维护动作对"对象"和"引用"两类数据分别做的打包优化,思路一致:文件太多太散,合并成一个更省 I/O。</li>
+    <li><strong>关联「拣选 cherry-pick」:</strong>cherry-pick 产生的新提交内容与原提交几乎相同,这类高度相似的对象恰好是 delta 压缩最擅长处理的情形——即使历史里同时保留"原提交"和"摘取后的提交",packfile 也能把两者压缩得很小,不会让仓库明显变大。</li>
+    <li><strong>关联「reset 三种模式」与悬空对象:</strong>hard reset 丢弃的已提交内容会变成暂时无引用指向的悬空对象,短期内还能靠 reflog 找回;这些悬空对象最终会在 <code>git gc</code> 打包/清理阶段(按过期时间)被真正回收,packfile 篇讲的正是这类对象生命周期的最后一站。</li>
+    <li><strong>关联「子模块 submodule」:</strong>主仓库和每个子模块各自拥有独立的 <code>.git/objects</code>,也就各自独立打包、独立 gc——克隆主仓库不加 <code>--recursive</code> 时,子模块自己的 packfile 根本不会被传输,子模块目录为空这一现象,从存储层看就是"对应的 pack 文件还没拉过来"。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="./08-引用refs与HEAD.html" class="nav-btn">← 上一篇:引用 refs 与 HEAD</a>

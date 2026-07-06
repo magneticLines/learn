@@ -356,6 +356,17 @@ Semaphore 核心思想
   └── <span class="hi">必须在 finally 中 release()，否则许可永久泄漏</span>
   </div>
 
+  <!-- ⑪ 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>与 ReentrantLock 的关系：</strong>本文①、⑨节都提到互斥锁是 permits=1 的特殊信号量，但深层区别在于所有权语义——ReentrantLock 有"持有者"概念，支持重入和 Condition，unlock 必须由 lock 的同一线程调用；Semaphore 不认线程，任何线程都能 release，这正是陷阱二的根源，也是它能天然支撑"生产者 release、消费者 acquire"这种跨线程协作模式的原因，而 Lock 做不到。</li>
+    <li><strong>AQS 共享模式与 CountDownLatch 的对比：</strong>Semaphore 和 CountDownLatch 底层都继承 AQS 并使用共享模式（tryAcquireShared/tryReleaseShared），区别是 state 的变化方向——Semaphore 的 state 可增可减（对应本文⑧节"计数方向：双向"），CountDownLatch 只能单向递减到 0 后不可逆。这也解释了为什么 Semaphore 能被 release 到超过初始值（陷阱二），而 CountDownLatch 的 countDown 在 0 之后调用是安全的无操作。</li>
+    <li><strong>令牌桶与限流算法：</strong>本文②节的"令牌桶"类比不只是教学比喻——生产环境的限流组件（如 Guava RateLimiter、Sentinel）本质上就是"令牌桶算法"的时间维度扩展版：Semaphore 控制的是"同时并发数"，令牌桶限流器控制的是"单位时间内的速率"，两者可以组合使用（先限速率，再限并发）。</li>
+    <li><strong>与 BlockingQueue 实现有界容器的殊途同归：</strong>本文⑦节用 Semaphore 包装 HashSet 实现有界集合，而上一节 BlockingQueue 是"原生"就有有界语义的容器——二者是同一个问题（限制并发访问的资源数量）在"内部维护容量控制逻辑"与"外部叠加一层信号量控制"两种不同设计层次上的解法，理解这点有助于判断什么时候该选现成的有界容器、什么时候该用 Semaphore 自己包装。</li>
+    <li><strong>Dijkstra 的操作系统理论到 Java 并发包：</strong>本文①节提到的 P/V 原语不仅是 Semaphore 的来源，也是操作系统课程里进程同步的经典模型（哲学家就餐问题等经典并发问题都用信号量求解）；Java 把这套 50 多年前的理论直接落地成一个可用的类，是"并发理论 → 工程实现"的典范案例，面试官有时会追问信号量的历史来源来考察知识面广度。</li>
+    <li><strong>面试高频对比：</strong>"Semaphore 能不能实现互斥锁的功能"是常见追问——permits=1 时表面上能做到互斥，但因为不可重入（同一线程递归 acquire 会自锁死锁）且无所有权检查（任何线程可 release 导致临界区被破坏），生产代码永远不能用 Semaphore 替代 ReentrantLock 做真正的互斥保护。</li>
+  </ul>
+
   <hr />
 
   <!-- 导航 -->

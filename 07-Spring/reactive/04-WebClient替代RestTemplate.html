@@ -165,6 +165,15 @@
     <li>原则：一旦身处响应式链路，就把非阻塞坚持到底；<code>.block()</code> 只用在确定处于普通同步上下文的地方。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>响应式流背压概念：</strong><code>WebClient</code> 调远程接口拿到的 <code>Mono</code>/<code>Flux</code> 同样受背压保护，如果下游用 <code>flatMap</code> 并发调用很多次 <code>WebClient</code> 请求，加上 <code>concurrency</code> 参数限流本质上就是在利用背压机制控制"同时在途的请求数"。</li>
+    <li><strong>Docker 容器化部署：</strong>容器化环境下资源受限（CPU/内存都设了 limit），如果误用 <code>.block()</code> 拖住本就稀少的事件循环线程，问题会比在物理机上暴露得更快更明显——容器资源紧张时，线程模型的选择直接影响吞吐量上限。</li>
+    <li><strong>Kubernetes 与云原生：</strong>服务网格/微服务场景下调用链变长，<code>WebClient</code> 的非阻塞特性能让单个 Pod 用更少的线程支撑更高的并发出站请求量，这在 K8s 按资源配额调度、追求高密度部署的场景下价值更明显。</li>
+    <li><strong>Netty 与线程模型：</strong>本节提到"事件循环线程数量极少、阻塞一个就拖累一批请求"，根源在于 <code>WebClient</code> 默认基于 Reactor Netty 的少量固定事件循环线程模型，这与 Tomcat 传统的"一请求一线程"模型有本质区别，理解这一点才能明白为什么 <code>.block()</code> 在这里是致命的而在 Servlet 容器里只是次优。</li>
+    <li><strong>健康检查与自定义指标：</strong>如果自定义 <code>HealthIndicator</code> 需要探测第三方服务的可达性，用 <code>WebClient</code> 发起非阻塞探测请求，比用旧的 <code>RestTemplate</code> 更契合"健康检查要轻量、不能拖慢自身"的要求。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

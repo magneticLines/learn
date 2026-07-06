@@ -169,6 +169,32 @@
     <li>不要在 axios 拦截器里手写缓存逻辑,那是在重新发明 TanStack Query 已经做好的轮子。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>queryKey 漏掉依赖参数:</strong> 上面例子里 <code>queryKey: ['user', userId]</code> 特意把 <code>userId</code> 放进数组,如果偷懒写成 <code>['user']</code>,那么用户 A 的资料页切到用户 B 时,TanStack Query 会认为"这是同一条缓存",直接把 A 的数据渲染出来,直到重新请求才刷新——本质是把 <code>queryKey</code> 当成了"接口名字"而不是"缓存的身份标识",凡是 <code>queryFn</code> 里用到的参数,都要出现在 <code>queryKey</code> 里。</li>
+    <li><strong>在 queryFn 里把错误 catch 掉:</strong> 如果在 <code>queryFn</code> 内部写 <code>try/catch</code> 并且 <code>catch</code> 里返回了一个"看起来正常"的值(比如 <code>null</code> 或空数组),TanStack Query 会认为这次请求成功了,<code>isError</code> 永远是 <code>false</code>,页面上该展示的 <code>ErrorTip</code> 也就永远不会出现。<code>queryFn</code> 必须让错误继续往外抛(或者不做 catch),让 TanStack Query 自己捕获并进入 <code>error</code> 状态。</li>
+    <li><strong>mutation 成功后忘记 invalidateQueries:</strong> 92 行的例子里 <code>onSuccess</code> 主动调了 <code>invalidateQueries({ queryKey: ['user', userId] })</code>。如果漏了这一步,<code>useMutation</code> 确实把数据改到了后端,但页面上 <code>useQuery</code> 缓存的还是旧数据,用户会看到"明明保存成功了,页面却没变"——这是把"写操作成功"和"读缓存刷新"当成了同一件事,实际上它们是两条独立的链路,需要手动用 <code>invalidateQueries</code> 连起来。</li>
+    <li><strong>把拦截器已经处理过的错误在 queryFn 里再处理一遍:</strong> 144 篇封装的拦截器已经统一弹了错误提示、处理了 401,如果又在 <code>queryFn</code> 里对同一个错误再 <code>catch</code> 一次弹一次 toast,用户会看到重复的错误提示。记住表格里的分层原则:拦截器管"通用副作用",<code>queryFn</code>/组件层只管"这次调用要不要额外反应",不要在两层做重复的事。</li>
+    <li><strong>混淆 staleTime 和"缓存被清空":</strong> 很多人以为数据"过期"(超过 <code>staleTime</code>)之后缓存就没了、下次请求要重新走一遍 loading。实际上过期只是标记为"可能不新鲜了",TanStack Query 依然会先把旧缓存显示出来,同时在后台悄悄重新请求(后台重新验证),等新数据回来再替换——如果不理解这一点,容易误以为 <code>staleTime</code> 设置无效或者去手写多余的强制刷新逻辑。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>TanStack Query 解决了什么问题,为什么不能直接用 axios + useState/useEffect?</strong>—— axios 只负责发请求,useState/useEffect 手写方案要自己维护 loading/error 状态、自己判断要不要重新请求、自己做多组件共享同一份数据时的去重,还要自己处理"写操作后怎么让别处的数据也刷新"。TanStack Query 把这些"数据在组件生命周期里如何被消费"的通用逻辑抽成了一层,本质是把大家在 useEffect 里重复写的那套请求状态机标准化了。</li>
+    <li><strong>为什么说 TanStack Query 管理的是"服务端状态",而不是普通的客户端状态?</strong>—— 普通状态(比如输入框的值、弹窗开关)只属于当前组件,由前端完全掌控,什么时候变、怎么变都是本地决定的。服务端状态的真相在后端数据库里,前端拿到的只是某个时间点的"快照",随时可能被别的用户、别的标签页改掉,还需要跨组件共享同一份快照。所以服务端状态天然需要"缓存 + 过期 + 重新验证 + 失效"这套机制,这正是 <code>useState</code> 天生不具备、而 TanStack Query 专门解决的。</li>
+    <li><strong>queryKey 和缓存之间是什么关系,为什么它的设计这么重要?</strong>—— TanStack Query 内部用 <code>queryKey</code> 序列化后的字符串作为缓存的唯一索引,可以理解成一个以 <code>queryKey</code> 为键的 Map:同样的 key 命中同一份缓存(自动去重、共享数据),key 里包含的参数变了就等于换了一个新的缓存条目(自动重新请求)。所以 <code>queryKey</code> 本质上是在告诉 TanStack Query"这份数据由哪些因素决定",漏写依赖参数就是让缓存的身份标识和数据实际内容不一致,这也是它被追问细节最多的地方。</li>
+    <li><strong>invalidateQueries 的失效机制是怎么工作的?</strong>—— 调用 <code>invalidateQueries({ queryKey: [...] })</code> 并不会立刻重新发请求,它做的是把匹配到的缓存条目标记为"stale(过期)"。如果这个 <code>queryKey</code> 当前正被某个挂载的组件通过 <code>useQuery</code> 订阅着,TanStack Query 会自动触发一次重新请求;如果没有组件在订阅,它只是被标记,等下次有组件用到这个 key 时再重新拉取。这也是为什么"失效"和"重新请求"要分开理解——失效是缓存层面的状态变化,重新请求是订阅关系触发的结果。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>与上一篇 144(Axios 封装)的关系:</strong> <code>queryFn</code> 里调用的正是 144 篇封装好的 <code>request</code> 实例(或包装成语义化函数后的调用),两者是清晰的分层关系——axios 负责"怎么把请求发出去"(baseURL、认证头、错误提示),TanStack Query 负责"请求结果在组件生命周期里怎么被缓存和消费",谁都不替代谁,谁也不该越界去做对方的事。</li>
+    <li><strong>与手动用 useEffect 管理请求状态的对比:</strong> 没有 TanStack Query 时,每个需要发请求的组件都要自己手写 <code>useState</code> 存 <code>data</code>/<code>loading</code>/<code>error</code>,自己在 <code>useEffect</code> 里判断依赖数组、自己处理组件卸载后状态更新报错的问题。TanStack Query 把这套重复的手写状态机标准化成了 <code>isLoading</code>/<code>isError</code>/<code>data</code> 声明式返回值,本质是用"配置一个 queryKey + queryFn"替代了"手写一整套请求生命周期管理代码"。</li>
+    <li><strong>与下一篇 146(AbortController)的关系:</strong> TanStack Query 内部已经集成了自动取消过期请求的机制——比如 <code>queryKey</code> 变化导致旧请求还没返回就要作废,或者组件卸载时正在进行的请求应该被取消,它会自动用 <code>AbortController</code> 处理好这些细节。下一篇要手写的 <code>AbortController</code> 逻辑,本质上就是 TanStack Query 在背后已经帮你封装掉的那部分能力,先理解手写版再回头看会更清楚它到底省了什么。</li>
+    <li><strong>与组件卸载、竟态条件的关系:</strong> 144 篇提到裸用请求时,组件卸载后响应才回来可能引发"在已卸载组件上更新状态"的问题,也可能出现新旧请求响应顺序颠倒导致的竟态问题。TanStack Query 通过按 <code>queryKey</code> 管理请求生命周期,天然规避了这两类问题——不需要像手写方案那样自己在 <code>useEffect</code> 清理函数里判断"这次响应是不是已经过期了"。</li>
+    <li><strong>与表单提交、写操作的关系(143 篇):</strong> <code>useMutation</code> 包裹的正是提交表单后要调用的写请求,<code>onSuccess</code> 里的 <code>invalidateQueries</code> 让相关的读缓存失效并自动重新拉取——这把"表单校验通过后发起请求"(143 篇)和"请求结果怎么反映到界面上"这两个环节最终串成了一条完整链路:校验 → 发请求 → 缓存与状态自动更新。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="144-Axios封装.html" class="nav-btn">← Axios 封装（拦截器 / 统一错误处理）</a>

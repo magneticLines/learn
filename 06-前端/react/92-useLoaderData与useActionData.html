@@ -173,6 +173,31 @@
     切到 createBrowserRouter 后,如果还习惯性地在组件里写 <code>useEffect + fetch</code>,就白白丢掉了 loader 的所有好处(渲染前取数、自动 revalidate、错误统一处理),还退回了瀑布加载。迁移时要有意识地把请求从组件搬进 loader。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>在数据路由下还习惯性写 <code>useEffect + fetch</code></strong>:切到 <code>createBrowserRouter</code> 之后,如果继续在组件里用 <code>useEffect</code> 取数,等于把数据获取从"渲染前"退回"渲染后",重新引入了瀑布式加载(先渲染骨架 → 再发请求 → 再渲染数据),白白丢掉了 loader 天然自带的"进入页面时数据已就绪"的好处。</li>
+    <li><strong>误以为 <code>useLoaderData</code> 需要处理 loading 状态</strong>:很多人写 <code>const user = useLoaderData()</code> 后习惯性加一个 <code>if (!user) return &lt;Spinner /&gt;</code>,这其实是多余且可能有害的判断——loader 在组件渲染之前已经跑完,数据在渲染时必然存在(除非 loader 本身抛错,那是 <code>errorElement</code> 该管的事)。这种冗余判断反而掩盖了数据结构可能有问题的真实错误。</li>
+    <li><strong>把 <code>useActionData</code> 当成"随时可读的最新表单结果"</strong>:<code>useActionData</code> 返回的是"最近一次这个路由的 action 执行结果",如果页面首次加载还没提交过表单,它是 <code>undefined</code>;如果用户导航离开又导航回来,之前的 action 结果可能还残留展示,容易让人误判"这是不是最新提交的反馈"。使用前要结合 <code>useNavigation().state</code> 判断当前是否正在提交。</li>
+    <li><strong>混淆 loader 报错和 action 返回校验错误两种"错误"的处理方式</strong>:loader/action 内部 <code>throw</code> 的异常应该被 <code>errorElement</code> 兜底捕获,走的是"页面级异常"路径；而表单校验失败这类"可预期的业务错误"应该用 <code>return { error: ... }</code>,交给 <code>useActionData</code> 在原表单里回显。两者搞反的话,校验失败会直接跳到错误边界整页报错,或者程序性异常被当成表单提示悄悄吞掉。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>useLoaderData 读到的数据为什么不需要处理 loading 状态?</strong>—— 因为 loader 是在路由对应的组件渲染之前执行并等待完成的,React Router 保证组件真正渲染时,loader 的返回值已经就位。这与传统 <code>useEffect</code> 取数(先渲染组件,再发请求,请求期间要手动维护 loading state)是根本不同的时序,数据路由把"等待"这一步从组件渲染阶段挪到了导航阶段。</li>
+    <li><strong>useLoaderData/useActionData 这套模型和组件里手写 useEffect + fetch 相比,解决了什么问题?</strong>—— 主要解决三类问题:一是避免瀑布式加载(渲染前就能拿到数据,而不是渲染完再发请求);二是统一错误处理(loader/action 抛出的异常自动被 errorElement 捕获,不用每个组件各写一套 try/catch);三是自动重新验证(action 提交后相关 loader 自动重跑,数据自动刷新,不用手动管理"刷新" 逻辑)。</li>
+    <li><strong>action 返回校验错误和直接 throw 异常有什么区别,该怎么选?</strong>—— <code>return</code> 一个错误对象是"预期内的业务失败"(如表单校验不通过),会被 <code>useActionData</code> 接住,在原表单页面就地回显,用户可以立即修正重试;<code>throw</code> 异常是"非预期的程序性错误"(如网络中断、服务器 500),会被路由的 <code>errorElement</code> 捕获,通常展示为一个独立的错误页面。用错会导致体验错位——业务校验错误本该在表单里提示,却整页跳错误页。</li>
+    <li><strong>useNavigation 解决了什么问题,为什么不用自己维护一个 isSubmitting 的 useState?</strong>—— 因为提交状态、导航状态在数据路由模型里是路由体系统一管理的,<code>useNavigation().state</code> 直接反映"当前是否在提交/加载中",不需要在每个表单组件里手写一份 <code>isSubmitting</code> 状态并操心什么时候 <code>setTrue/setFalse</code>,也避免了手写逻辑遗漏边界情况(如提交失败后忘记复位)。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>本地 state 与全局 state(第 93 篇):</strong>数据路由把"数据获取"这一职责从组件搬到了路由层,这本质上是在回答"这份数据到底该由谁持有"的问题——loader 取到的数据不属于任何一个组件的本地 state,而是路由层统一持有、通过 <code>useLoaderData</code> 分发下去,天然规避了"要不要把请求结果提升到父组件"的纠结。</li>
+    <li><strong>服务端状态与客户端状态(第 94 篇):</strong>loader/action 管理的数据本质上就是<strong>服务端状态</strong>的一种落地方式——它同样面临"数据会过期""提交后要刷新"的问题,只是数据路由用"自动 revalidate"取代了 TanStack Query 的"缓存失效策略"。两者是解决同一类问题的不同工具,选型时要想清楚项目是否已经用了 React Router 的数据路由能力。</li>
+    <li><strong>Context 与 useReducer 轻量方案(第 95 篇):</strong>无论是数据路由还是 Context+useReducer,核心思路都是把"状态怎么变"的逻辑从组件里<strong>挪出去、集中管理</strong>——reducer 集中处理 action,loader/action 集中处理数据读写,组件都只负责"读结果、发指令",不再关心过程细节。</li>
+    <li><strong>Zustand 系列(第 96-99 篇):</strong>如果项目里的全局状态既有纯客户端偏好(该用 Zustand),又有强依赖 URL 的页面级数据(该用数据路由),两者会同时存在于一个应用中——理解各自的职责边界,才不会出现"该用 loader 取的数据硬塞进 Zustand,或者反过来"的架构混乱。</li>
+    <li><strong>action 返回值与状态更新的心智一致性:</strong> <code>useActionData</code> 读取 action 的返回值,和 Zustand 的 <code>set</code> 更新 store、useReducer 的 <code>dispatch</code> 触发 reducer,本质上都是"触发一次变更 → 组件订阅到最新结果"的单向数据流模式,只是变更的触发方式和承载位置不同。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="91-action处理表单提交.html" class="nav-btn">← action 处理表单提交</a>

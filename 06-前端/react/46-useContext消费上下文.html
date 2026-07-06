@@ -161,6 +161,23 @@
     <li>一个组件可同时消费多个 Context；顶层 Provider 太多可抽成 <code>AppProviders</code> 组合组件。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>value 变化导致所有消费者重渲染</strong>：Provider 的 <code>value</code> 只要引用变了（哪怕内容一样），React 就会通知<strong>所有</strong> <code>useContext(Ctx)</code> 的组件重渲——不管它们实际用没用到变化的那部分数据。这是 Context 最大的性能坑，也是第 47 篇要专门讲"避免滥用"的原因。</li>
+    <li><strong>每次渲染都传一个新对象当 value</strong>：写成 <code>&lt;Ctx.Provider value={{ theme, setTheme }}&gt;</code>，每次父组件渲染都会新建一个对象字面量，即使 <code>theme</code> 没变，引用也变了，等于每次都触发全树重渲。要靠 <code>useMemo</code> 稳定这个对象（第 52 篇）。</li>
+    <li><strong>把 Context 当全局状态库乱用</strong>：为了图方便把所有状态都塞进一个大 Context，结果任何一个字段变化都拖累无关组件重渲。Context 的定位是"跨层传递"，不是"通用状态管理"，字段异构、更新频率不同的状态最好拆成多个 Context。</li>
+    <li><strong>忘记检查 Provider 是否存在</strong>：直接用 <code>useContext(Ctx)</code> 拿到默认值（比如 <code>null</code>），却没判断就直接访问其属性，组件树里少套了 Provider 时会在运行时才炸出 <code>Cannot read property of null</code>，而不是在开发阶段就发现问题。</li>
+    <li><strong>混淆"传对象本身"和"传 Provider"</strong>：<code>useContext</code> 只接受 <code>createContext</code> 的返回值，不是 <code>Ctx.Provider</code>，也不是 JSX 元素。这个错误 TypeScript/运行时通常会直接报错，但初学者第一次遇到容易懵。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>Context 变化时，只有真正用到变化字段的组件才会重渲吗？</strong>—— 不是。React 对 Context 的订阅是"粗粒度"的：只要组件调用了 <code>useContext(Ctx)</code>，Provider 的 value 引用一变，这个组件就会重渲，不管它取的是 value 里哪个字段。这和 Redux/Zustand 的 selector 机制不同，后者能做到"只订阅关心的那一小块"。</li>
+    <li><strong>如何减少 Context 引起的无谓重渲？</strong>—— 常见手段：①用 <code>useMemo</code> 稳定传给 Provider 的 value 引用；②把关联度低的状态拆成多个 Context（比如 State Context 和 Dispatch Context 分开，见第 50 篇）；③给消费组件包一层 <code>React.memo</code>，配合稳定的 props 减少下游重渲；④真正需要细粒度订阅时换用带 selector 的状态库。</li>
+    <li><strong>Context 的默认值和 Provider 的 value 是什么关系？</strong>—— 默认值只在组件树中<strong>完全没有匹配的 Provider</strong> 时才生效；只要外层存在对应 Provider，即便它的 value 是 <code>undefined</code>，也不会回退到默认值。这常被面试用来考察对 Context 查找机制的理解。</li>
+    <li><strong>useContext 底层是怎么让组件"精准"重渲的？</strong>—— React 内部为每个 Context 维护一个订阅链表，组件调用 <code>useContext</code> 时会被记录为该 Context 的订阅者。Provider 的 value 变化后，React 在协调阶段会遍历这个订阅列表，标记对应组件进行重渲，而不需要整棵树全部重新走一遍 diff（尽管订阅粒度本身是"整块 value"而非字段级）。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="45-createContext与Provider.html" class="nav-btn">← createContext 与 Provider</a>

@@ -166,6 +166,29 @@
     <strong>常见错误：</strong>初学者经常在 JSX 里写 <code>class="..."</code>（HTML 习惯），React 会给出警告（<code>Warning: Invalid DOM property 'class'. Did you mean 'className'?</code>），但组件仍然能渲染——只是样式可能不生效。养成习惯，切换到 JSX 就想 <code>className</code>。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>style 写成字符串</strong>：把 HTML 习惯带过来写 <code>style="color: red"</code>，React 会直接报错，因为 <code>style</code> 属性必须是一个 JS 对象，不接受字符串。忘了这一点的人经常卡在"为什么样式属性完全不生效甚至报类型错误"上。</li>
+    <li><strong>style 对象里用连字符写属性名</strong>：写成 <code>{ 'font-size': 16 }</code> 而不是 <code>{ fontSize: 16 }</code>。因为 style 对象的键最终是 JS 对象属性，遵守驼峰约定；用连字符的字符串键虽然语法上不报错，但浏览器无法识别这个 CSS 属性，样式悄悄失效。</li>
+    <li><strong>数字长度值忘记单位，或者不该加单位时加了</strong>：<code>fontSize: 16</code> 默认解释成 <code>16px</code>，这点没问题；但像 <code>lineHeight</code>、<code>zIndex</code>、<code>opacity</code> 这些无单位属性，如果错误地写成字符串加单位（如 <code>'1.5px'</code>）反而会导致样式失效或行为异常。</li>
+    <li><strong>onClick 后面加括号直接调用</strong>：写成 <code>onClick={handleClick()}</code> 而不是 <code>onClick={handleClick}</code>，会导致组件一渲染就立刻执行这个函数（因为花括号里是 JS 表达式，<code>handleClick()</code> 的求值结果才是 onClick 拿到的值），而不是等点击时才执行。这是初学者调试"函数为什么自动执行了"时最常见的根源。</li>
+    <li><strong>自定义 DOM 属性直接搬 HTML 写法</strong>：比如给 <code>&lt;div&gt;</code> 加 <code>data-testid</code> 之类的属性通常没问题（<code>data-*</code>/<code>aria-*</code> 是例外，保留原样），但如果照搬其他非标准 HTML 属性名，React 会给出 "Unknown prop" 警告，容易和 className/htmlFor 这类必须转换的属性搞混。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 JSX 里用 className 而不是 class？</strong>—— 因为 JSX 属性最终会变成 <code>React.createElement</code> 调用里 props 对象的键名，而 <code>class</code> 是 JS 的保留关键字（ES6 class 语法），不能合法地用作这个位置的标识符，所以 React 选择了 <code>className</code> 作为替代名。</li>
+    <li><strong>JSX 里 style 属性为什么必须是对象，双花括号是什么意思？</strong>—— 外层花括号是 JSX 里"这里插入一个 JS 表达式"的语法，内层花括号是这个表达式本身——一个对象字面量。写 <code>style={{ color: 'red' }}</code> 本质上和先声明 <code>const s = { color: 'red' }</code> 再写 <code>style={s}</code> 完全等价，只是内联省略了变量。这样设计是为了让样式可以用 JS 变量动态计算，而不是被限制在字符串拼接里。</li>
+    <li><strong>onClick={fn} 和 onClick={fn()} 有什么区别？</strong>—— <code>{fn}</code> 传递的是函数引用，交给 React 在事件触发时才调用；<code>{fn()}</code> 是在渲染这一刻立即调用 <code>fn</code>，并把它的返回值（通常是 <code>undefined</code>）作为 onClick 的值。这是 JSX 花括号"里面是表达式，立即求值"这一规则的直接体现，也是最容易踩的坑之一。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>DOM 属性 vs React props 的本质区别：</strong>本文所有差异的根源都是"JSX 属性最终是 JS 对象的键"，这意味着 React 组件收到的从来不是 DOM 属性字符串，而是一份 JS 对象（props）。这也是为什么 <code>style</code> 能传对象、<code>onClick</code> 能传函数引用——DOM 原生属性只能是字符串，而 props 可以是任意 JS 值，能力上完全不是一个量级的东西。</li>
+    <li><strong>JSX 编译原理（08）：</strong>本文表格里每一行差异，都能在 08 篇讲的编译产物里找到直接对应：<code>className="card"</code> 编译后就是 <code>props</code> 对象里的 <code>{ className: 'card' }</code> 这一个键值对，命名规则完全遵循 JS 对象属性名的语法约束（不能是保留字、约定驼峰）。两篇结合看，"为什么要用 className"就不再是死记的规则，而是编译过程的必然结果。</li>
+    <li><strong>HTML/JS 命名规范差异：</strong>HTML 属性历史上大量使用连字符命名（<code>font-size</code>、<code>background-color</code>），这是因为 HTML 属性本身只是纯文本；而 JS 生态（包括对象属性、CSS-in-JS）统一用驼峰命名，因为连字符在 JS 里会被解析成减号运算符。JSX 站在 JS 这一侧，所以必须做一次命名风格的转换，这不是 React 独有的怪癖，而是任何"把 CSS/HTML 概念搬进 JS 对象"的方案都要面对的问题。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="06-JSX表达式.html" class="nav-btn">← JSX 表达式</a>

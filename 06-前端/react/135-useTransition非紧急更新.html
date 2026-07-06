@@ -164,6 +164,23 @@
     <li>它优化的是<strong>调度顺序</strong>,不是算法本身的性能,该有的性能优化(memo、虚拟列表)依然要做。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>把 startTransition 之外的 setState 也当成非紧急。</strong> 只有写在 <code>startTransition(() =&gt; {...})</code> 回调<strong>里面</strong>的 <code>setState</code> 才会被标记为过渡,写在回调外面的那一行(比如上面正例里的 <code>setQuery(value)</code>)永远是紧急更新——这正是要靠"拆两个 state"来保证输入框跟手的关键,漏包一步,优化就白做了。</li>
+    <li><strong>误以为 startTransition 能让异步请求变成非紧急。</strong> <code>startTransition</code> 调度的是<strong>渲染优先级</strong>,不是网络请求优先级——请求什么时候发出、什么时候返回,和它没关系。真要处理"搜索请求还在飞"的加载态,是数据请求方案(如 <code>useQuery</code>)的职责,<code>isPending</code> 反映的只是"这次过渡渲染有没有完成",不是"请求有没有回来"。</li>
+    <li><strong>和 useDeferredValue 的角色搞混。</strong> <code>useTransition</code> 是在"触发更新的那个事件处理函数里"主动标记"这次 <code>setState</code> 不紧急";如果拿不到触发更新的入口(比如 value 是父组件传下来的 props),就没法用 <code>startTransition</code> 包一层——这种场景才该用 <code>useDeferredValue</code>,让 React 自己在渲染阶段判断要不要延后用新值渲染,两者是"主动标记"和"被动延迟"的区别,不能互相替代。</li>
+    <li><strong>在 transition 里包普通输入框的受控更新导致丢字符。</strong> 如果错把驱动 <code>&lt;input value={...}&gt;</code> 的那份 state 也塞进 <code>startTransition</code>,输入框的回显就会被当成低优先级渲染,可能被后续按键打断而"跳字"或者卡顿感明显——受控输入框必须走紧急更新那条路,这也是为什么正例里 <code>query</code> 和 <code>filterQuery</code> 必须分成两个 state,而不是共用一个。</li>
+    <li><strong>以为 isPending 能反映全局的加载状态。</strong> <code>isPending</code> 只对应<strong>这一次</strong> <code>startTransition</code> 触发的过渡渲染,组件里如果同时存在别的异步过程(网络请求、定时器),<code>isPending</code> 对它们一无所知;转到别的过渡或者组件卸载后,这个值也不会继续累积或延续之前的状态。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>useTransition 和防抖(debounce)有什么区别,能互相替代吗?</strong>—— 防抖是"延迟触发",靠定时器等用户停止操作一段时间后才执行,本质是减少触发次数;<code>useTransition</code> 是"照样立即触发,但把渲染标记成可中断的低优先级",每次按键都会触发过渡渲染,只是这些渲染可以被更紧急的更新打断或抢先。两者可以叠加使用(防抖减少触发频率,transition 保证触发时不卡输入框),但不是同一层面的方案,不能互相替代。</li>
+    <li><strong>startTransition 包裹的更新一定会执行完吗?</strong>—— 不一定。过渡渲染是可中断、可丢弃的:如果在它完成前又来了一次更紧急的更新(比如新的按键事件),React 会先处理紧急更新,再决定要不要重新开始这次过渡渲染——如果又有新的 <code>startTransition</code> 调用带着更新的值进来,旧的那次过渡渲染结果直接被扔掉,这也是为什么过渡回调里不能放有副作用的异步逻辑,否则会重复执行。</li>
+    <li><strong>useTransition 依赖的并发渲染(Concurrent Rendering)具体解决了什么问题?</strong>—— React 18 之前渲染是同步、不可中断的一整块工作,渲染开始就必须做完才能响应下一个事件,哪怕这次渲染对用户毫无即时价值。并发渲染把渲染工作拆成可以被打断的小单元,每处理完一部分就检查有没有更高优先级的任务,让浏览器有机会先响应紧急的用户交互——这是"优先级调度"能落地的底层前提,<code>useTransition</code>、<code>useDeferredValue</code> 等 API 都是建立在这个能力之上的。</li>
+    <li><strong>为什么 startTransition 优化的是"体验",而不是"性能"?</strong>—— 因为它调整的只是<strong>渲染在时间线上的排队顺序</strong>——低优先级的渲染让路给高优先级的渲染,总的计算量、算法复杂度一点没变。如果一次过滤/渲染本身耗时很长(比如 O(n²) 或者没做虚拟列表),包一层 <code>startTransition</code> 只会让输入框不被拖累,过渡本身该花的时间照样要花,真正的性能优化(<code>useMemo</code>、虚拟列表、Web Worker)必须另外做。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="134-分页vs无限滚动.html" class="nav-btn">← 分页 vs 无限滚动</a>

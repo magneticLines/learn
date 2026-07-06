@@ -135,6 +135,23 @@
     <li>理解重渲染的三篇到此结束;接下来进入"代码分割"模块,从 <code>React.lazy</code> + <code>Suspense</code> 开始。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>清理函数缺失导致"重复订阅"</strong>——StrictMode 下 <code>useEffect</code> 挂载时会走"执行→清理→再执行"三步。如果你只写了 effect 的正向逻辑(比如 <code>socket.connect()</code>、<code>addEventListener</code>),却没写对应的清理函数去 <code>disconnect</code> 或 <code>removeEventListener</code>,第一次的连接/监听就会永久留存,第二次又建一份——最终页面上出现两个 socket 连接、事件回调被触发两次。原理是清理函数就是 React 用来"撤销上一次副作用"的钩子,没有它,双重调用就只剩"重复执行"没有"先清空",数据自然错乱。</li>
+    <li><strong>把双调用当成 bug 去"修复"</strong>——看到控制台打印两条日志,第一反应是去 GitHub 提 issue 或者到处加 <code>if</code> 判断"防止重复执行"。这类"修复"往往是在渲染函数或 effect 里加全局标志位拦截第二次调用,结果反而掩盖了真正的不纯逻辑,以后并发渲染场景下照样会炸。正确反应是:先确认是不是开发模式 + StrictMode,如果是,说明是故意的健康检查,该做的是修好 effect 的清理逻辑,而不是消灭双调用现象本身。</li>
+    <li><strong>拿开发环境的调用次数去衡量生产性能</strong>——因为只有开发模式 + <code>&lt;StrictMode&gt;</code> 才会双调用,生产构建永远是单次执行,如果照着开发环境日志数量去做"性能优化"(比如为了"减少一次渲染"给组件加莫名其妙的缓存),很可能是在优化一个生产环境根本不存在的问题,白费功夫还可能引入新 bug。判断性能要么关掉 StrictMode 在开发环境测,要么直接以 <code>npm run build</code> 后的产物为准。</li>
+    <li><strong>渲染函数体里直接改外部可变变量</strong>——像 <code>idCounter++</code> 这种写法,在 StrictMode 下会因为函数体被执行两次而"多加一次",看起来像计数器跳着走。根源是渲染函数被要求是纯函数,不能在渲染过程中修改渲染函数外部的状态;双调用只是把这个"不纯"的后果提前放大到开发阶段让你看见,而不是它本身引入了新问题。正确做法是用 <code>useRef</code>/<code>useId</code> 或者把状态挪到 <code>useState</code> 里,避免在渲染期间产生看得见的副作用。</li>
+    <li><strong>组件初始化里做请求或订阅当成"只跑一次"</strong>——把发请求、建立订阅之类的操作直接写在组件函数体或 <code>useState</code> 的初始化函数里,以为它只会跑一次,结果 StrictMode 下这些初始化函数也会被调用两次,导致重复发起请求。这类逻辑本应该放进 <code>useEffect</code> 并配好清理函数,而不是塞进渲染阶段——渲染阶段只应该是"计算这一次要显示什么",副作用永远要交给 effect 管理生命周期。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>StrictMode 为什么要把组件函数体和 effect 调用两次?</strong>—— 为了在开发阶段提前暴露不纯的渲染逻辑和没清理干净的副作用。React 的并发渲染要求组件函数是纯函数(同样输入产出同样输出、渲染过程中不能有可见副作用),因为渲染可能被打断、丢弃、重新开始。双调用是低成本地模拟这种"重来一次"的场景,让开发者在写代码时就发现问题,而不是等并发特性真正上线后才踩坑。</li>
+    <li><strong>StrictMode 下 useEffect 挂载时的执行顺序是什么?</strong>—— 先执行一次 effect,立即调用其返回的清理函数,再执行一次 effect(这次才是真正留下的)。也就是"执行→清理→再执行",本质是模拟"组件卸载后又重新挂载"的场景,用来检验清理函数是否把副作用完全撤销干净。</li>
+    <li><strong>生产环境下组件还会被双重调用吗?</strong>—— 不会。双重调用只发生在开发模式且组件被 <code>&lt;StrictMode&gt;</code> 包裹的情况下,生产构建(<code>npm run build</code> 之后)不会有这个行为,用户实际看到的是正常的单次渲染。因此不能拿开发环境的日志条数或调用次数去判断生产环境的性能或行为。</li>
+    <li><strong>如果发现组件在 StrictMode 下表现异常(比如状态多算了一次),该怎么排查?</strong>—— 先检查是否在渲染函数体内直接修改了外部可变变量,或者在 <code>useState</code>/<code>useReducer</code> 的初始化函数、组件函数体里做了本该放进 <code>useEffect</code> 的副作用(发请求、订阅等)。再检查已有的 <code>useEffect</code> 是否缺少清理函数,导致挂载→卸载→再挂载的过程中副作用被重复叠加而没有撤销。定位到具体是哪一类"不纯"操作,而不是去屏蔽双调用本身。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="124-ReactDevToolsProfiler使用.html" class="nav-btn">← React DevTools Profiler 使用</a>

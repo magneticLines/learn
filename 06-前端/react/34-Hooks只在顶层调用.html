@@ -164,6 +164,30 @@ useEffect(() =&gt; {
     <strong>为什么 React 团队接受"顺序绑定"这个约束？</strong>另一条路是给每个 Hook 一个显式 key（像 <code>useState('name')</code>），但那会让 API 变啰嗦、还要处理重名。用"调用顺序"作为隐式身份，代价是这条规则，换来的是极简的 API——<code>useState(0)</code> 就够了。同时配套 <code>eslint-plugin-react-hooks</code> 在编译期自动揪出违规，把约束的心智负担转嫁给工具，这是很划算的工程权衡。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>把 Hook 藏在"看起来是顶层"的三元表达式或 &amp;&amp; 短路里</strong>：<code>show &amp;&amp; useEffect(...)</code> 本质上和 <code>if</code> 一样是条件调用，容易被忽略，因为它看起来只是"一行表达式"。原理上，React 并不理解你的语法结构，它只是按调用发生的顺序把值塞进链表——只要某次渲染这行代码没执行，游标就会错位。</li>
+    <li><strong>提前 return 之后还有 Hook</strong>：很多人写"参数不合法就提前返回"的防御式代码，却把校验放在了后面几个 Hook 之前。只要 return 依赖的条件在某次渲染变化，return 之后的 Hook 就会时而执行、时而不执行，等价于条件调用。正确做法是把所有 Hook 都放在任何 return 之前。</li>
+    <li><strong>误以为"顺序错乱"只在开发环境报错，生产环境会静默出错更危险</strong>：React 在开发和生产都会做数量校验（Hook 数量对不上直接抛错），但如果两次渲染 Hook <strong>数量相同、只是顺序/身份错位</strong>（比如两个 useState 互换），React 检测不出来，只会安静地把状态串位，这是最难排查的情况，因为没有任何报错提示。</li>
+    <li><strong>在循环里想"给列表每一项一个状态"</strong>：直觉上会写 <code>items.map(item => useState(...))</code>，但列表长度一变，后面所有 Hook 的槽位全部错位。正确做法是把每一项抽成子组件，让状态归属到每个子组件自己的 Fiber 上，而不是挤在父组件的一条链表里。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 Hook 不能写在 if 语句里？</strong>—— 因为 React 用"调用顺序"而不是变量名来匹配每个 Hook 对应的状态槽位。Hook 状态实际存放在一条挂在组件 Fiber 上的链表里，每次渲染都从头按顺序遍历。条件语句会导致某次渲染跳过某个 Hook，链表指针后移的次数变化，后续所有 Hook 都会读到"别人的"状态。</li>
+    <li><strong>如果两次渲染 Hook 的调用顺序不同，React 是怎么发现并报错的？</strong>—— React 在渲染时会记录本次调用的 Hook 类型序列，和上一次渲染时记录的序列做对比；如果类型或数量不匹配，就抛出 "React has detected a change in the order of Hooks" 错误。但如果两次调用的 Hook 类型正好相同、只是逻辑归属不同（比如两个都是 useState），React 无法识别语义错误，只会静默错位。</li>
+    <li><strong>为什么不能用"给每个 Hook 一个唯一 key"的方式代替顺序匹配？</strong>—— 技术上可行，但会让 API 变得啰嗦（每次调用都要传 key，还要处理重名冲突），偏离了 Hook "像普通函数调用一样简单"的设计目标。React 团队选择用顺序作隐式身份，把复杂度换成了一条硬性规则，并配合 eslint-plugin-react-hooks 在编译期兜底。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>useState 基础用法：</strong>本节讲的"链表按调用顺序分配槽位"正是 useState 能在多次渲染间"记住"上次的值的底层机制——之前学 useState 时只需要知道"它能记住状态"，这一节把"怎么记住"的秘密揭开了，也解释了为什么 useState 不需要你手动传一个 key 来标识状态。</li>
+    <li><strong>自定义 Hook：</strong>自定义 Hook 内部调用的 <code>useState</code>/<code>useEffect</code> 等，同样要遵守顶层调用规则，且它们的槽位是嵌在调用它们的组件的同一条链表里、按调用顺序排列的——这意味着自定义 Hook 本身也不能在条件里被调用，否则会打乱它内部及外部所有 Hook 的顺序。</li>
+    <li><strong>为什么不能用 index 作 key（上一节）：</strong>本节和上一节都在讲"React 靠某种隐式顺序/身份来维持状态的正确对应"，只是维度不同——key 错位对应的是"列表里哪个元素是哪个"，Hook 顺序错位对应的是"这个组件内部哪个状态是哪个"，本质都是"身份匹配依赖稳定的顺序/标识，一旦被打乱就会状态串位"。</li>
+    <li><strong>useEffect 依赖数组：</strong>useEffect 同样依赖调用顺序被记录在这条链表里，它的依赖数组对比（决定是否重新执行 effect）也是基于"这次渲染的第 N 个 useEffect"和"上次渲染的第 N 个 useEffect"做对比——如果 Hook 顺序错位，effect 的依赖对比也会读到错的历史依赖值，引发副作用执行时机的诡异 bug。</li>
+    <li><strong>列表项状态管理（把每一项抽成子组件）：</strong>本节提到"想给列表每项一个状态，应该抽成子组件而不是在循环里调 Hook"，这和 key 一节讲的"列表项内部带 state 时 key 设计要格外谨慎"是同一类场景的两个侧面——子组件拆分解决了"Hook 顺序不能变"的约束，而稳定的 key 则保证这些子组件在列表变动时不会被错误复用或销毁重建。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="33-为什么不能用index作key.html" class="nav-btn">← 为什么不能用 index 作 key</a>

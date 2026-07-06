@@ -212,6 +212,30 @@ setCount(c => c + 1); // prev=2 → 3
     </tr>
   </table>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>混用直接传值和函数式，以为都"实时"</strong>：初学者常以为写了一次 <code>setCount(c => c+1)</code> 之后，紧跟着的 <code>count</code>（组件变量）就已经变成新值——实际上组件变量 <code>count</code> 直到下一次渲染前始终是本次渲染的快照，即便你用了函数式更新，<code>prev</code> 只在 React 内部链式传递，不会同步写回外部的 <code>count</code> 变量。</li>
+    <li><strong>在函数式更新里引入副作用</strong>：把 <code>setCount(c => { console.log('run'); return c + 1; })</code> 这种带副作用的代码写进更新函数。在 React 18 严格模式下，某些场景（如 StrictMode 下的开发环境）这个函数可能被调用两次用于检测副作用，如果函数里有副作用就会被放大或产生错误的统计，更新函数应该是纯函数，只算出新值。</li>
+    <li><strong>函数式更新里直接修改 prev 本身</strong>：比如 <code>setList(prev => { prev.push(x); return prev; })</code>——虽然用了函数式写法，但内部对 <code>prev</code> 做了原地修改（push），返回的还是同一个引用，React 依然认为没有变化，页面不更新。函数式更新解决的是"取最新值"的问题，不代表内部可以违反不可变更新的规则。</li>
+    <li><strong>不必要地到处用函数式更新</strong>：如果新值完全不依赖旧值（比如 <code>setName(e.target.value)</code>），硬要写成 <code>setName(prev => e.target.value)</code> 反而让代码更难读，且没有任何实际收益——函数式更新只在"新值依赖旧值"时才有意义。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么同一个事件处理函数里连续三次 <code>setCount(count + 1)</code> 只加了 1，而三次 <code>setCount(c => c + 1)</code> 能加 3？</strong>—— 因为 React 会把同步事件处理函数中的多次 setState 批处理（batching），在批处理结束前，事件函数体内引用的 <code>count</code> 始终是本次渲染时的旧快照，所以三次调用传的都是"旧值+1"这个固定结果，最终只生效一次。而函数式更新传入的是"如何计算新值"的函数，React 会把这些函数排成队列，依次把上一个函数的返回值作为下一个函数的参数执行，因此能正确累积。</li>
+    <li><strong>函数式更新中的更新函数必须满足什么条件？</strong>—— 必须是纯函数：只根据传入的 <code>prev</code> 计算并返回新值，不能有副作用（网络请求、修改外部变量、原地修改 prev 本身等），因为 React 在某些情况下（如严格模式下的开发环境）可能会调用它两次来辅助检测副作用，多次调用不应该产生不同的结果。</li>
+    <li><strong>直接传值和函数式更新在底层实现上有什么区别？</strong>—— React 内部会为每个 state 维护一个更新队列（update queue）。直接传值时，入队的是一个"替换为该值"的更新对象；传函数时，入队的是"用当前 state 调用该函数得到新 state"的更新对象。渲染前 React 会顺序遍历这个队列，依次执行每个更新，因此函数式更新天然支持链式计算，而直接传值的多次调用会互相覆盖。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>state 异步更新（上一节）：</strong>函数式更新正是为了解决"state 是快照、同一渲染内 state 不会立即变化"这个问题而存在的——理解了 state 快照和批处理，才能明白为什么直接传值会互相覆盖，而传函数能链式累积。</li>
+    <li><strong>不可变更新（下一节）：</strong>函数式更新只解决"取到最新值"的问题，不代表可以在更新函数内部对 <code>prev</code> 做原地修改（如 <code>prev.push(x)</code>）。两者结合起来才是正确写法：<code>setList(prev => [...prev, x])</code>——用函数式拿到最新数组，再用不可变的方式基于它生成新数组。</li>
+    <li><strong>useReducer：</strong>useReducer 的 reducer 函数本质上就是"广义的函数式更新"——它接收当前 state 和一个 action，返回新 state，和 <code>setCount(c => c + 1)</code> 的思路完全一致，只是把"如何计算新值"的逻辑从内联函数抽成了具名的 reducer，适合更复杂的状态变化场景。</li>
+    <li><strong>闭包陷阱：</strong>如果在 <code>useEffect</code> 或定时器里直接引用组件变量 <code>count</code> 来计算新值（如 <code>setInterval(() => setCount(count + 1), 1000)</code>），会因为闭包捕获了创建时的旧快照而导致计数不准；用函数式更新 <code>setCount(c => c + 1)</code> 可以完全绕开这个闭包陷阱，因为它不依赖外部变量，只依赖 React 传入的最新值。</li>
+    <li><strong>Immer：</strong>Immer 的 <code>produce(state, draft => { draft.count++ })</code> 也可以作为函数式更新的参数传给 <code>setState</code>，让"看起来像直接修改"的写法在底层生成不可变的新对象，是函数式更新和不可变更新两个理念结合的典型工具。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="21-state异步更新.html" class="nav-btn">← state 异步更新</a>

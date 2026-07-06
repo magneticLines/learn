@@ -158,6 +158,22 @@ register() 一行订阅一个字段
     <li>目前校验规则还比较零散,下一篇用 Zod 把校验规则统一整理成一份可复用的 schema。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>混用受控和非受控</strong>——给 <code>register</code> 接管的输入框再手动写 <code>value={xxx}</code> + <code>useState</code>,两套数据源互相打架:DOM 里的真实值和 state 里的值会不同步,输入框会出现"打字卡顿""值跳回旧值"之类的怪现象。要用 RHF 就把这个字段的值交给 <code>register</code> 全权管理,需要实时值就用 <code>watch</code>,而不是自己再加一层 state。</li>
+    <li><strong>动态字段忘记用带索引的 name</strong>——渐进式增删的表单项(比如"添加联系人"列表)如果所有输入框都注册成同一个 <code>name</code>(比如都叫 <code>contact</code>),RHF 内部按 <code>name</code> 做键值映射,后写入的值会直接覆盖前面的,导致表单数据错乱甚至丢字段。正确做法是把索引拼进 <code>name</code>(如 <code>contacts.0.email</code>、<code>contacts.1.email</code>),配合 <code>useFieldArray</code> 管理增删。</li>
+    <li><strong>滥用 <code>watch</code> 导致重渲染泛滥</strong>——本文强调过 RHF 的性能优势来自"按键不重渲染",但如果在组件顶层无差别地 <code>watch()</code> 整个表单(不传字段名,监听所有字段),那么每次任意字段变化都会触发这个组件重渲染,等于把 RHF 又变回了受控表单的重渲染频率,性能收益全部作废。应该只 <code>watch</code> 真正需要实时值的具体字段,并且尽量把用到 <code>watch</code> 结果的 UI 拆到子组件里,缩小重渲染范围。</li>
+    <li><strong>异步获取的 <code>defaultValues</code> 没有及时 <code>reset</code></strong>——<code>useForm({ defaultValues })</code> 只在表单初始化那一刻读一次默认值。如果默认值是异步请求回来的(比如编辑页要先拉详情接口),组件首次渲染时数据还没到,表单会先用空值渲染;等数据到达后如果只是更新了外部的 state,并不会让已经"非受控"的输入框自动刷新——因为值已经交给 DOM 管理了。必须在数据到达后手动调用 <code>reset(fetchedData)</code>,才能把新值真正写回每个输入框。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>React Hook Form 为什么比纯 <code>useState</code> 受控表单性能好?</strong>—— 受控表单把输入框的值和 React state 绑在一起,每次按键都要 <code>setState</code> 触发组件重渲染;RHF 让输入框保持"非受控",值留在 DOM 节点里,通过 <code>register</code> 拿到的 <code>ref</code> 直接读写 DOM,并靠原生事件收集输入,绕开了 React 的渲染流程。只有真正需要响应式更新的场景(校验报错、<code>watch</code> 订阅)才会精确触发对应组件的重渲染,而不是整个表单重渲染。</li>
+    <li><strong><code>register</code> 背后的 <code>ref</code> 机制是怎么工作的?</strong>—— <code>register('email')</code> 返回一个包含 <code>name</code>、<code>onChange</code>、<code>onBlur</code>、<code>ref</code> 的对象,展开到 <code>input</code> 上后,RHF 通过这个 <code>ref</code> 拿到真实 DOM 节点的引用,存进内部一份以字段名为键的注册表里。之后无论是读取当前值、执行校验,还是提交表单,RHF 都是直接从这个 DOM 引用上取值(<code>element.value</code>),而不需要经过 React state 这一层,这也是它能做到"非受控"的关键。</li>
+    <li><strong><code>handleSubmit</code> 做了什么,为什么不能直接把 <code>onSubmit</code> 传给 <code>form</code> 的 <code>onSubmit</code>?</strong>—— <code>handleSubmit(onSubmit)</code> 包了一层:表单提交时先阻止默认的整页刷新行为,再遍历所有注册字段跑一遍校验规则,校验全部通过后才把收集到的字段值组装成一个对象传给你写的 <code>onSubmit</code>;如果校验不通过,则直接把错误信息更新到 <code>formState.errors</code> 里,不会调用 <code>onSubmit</code>。直接传原始 <code>onSubmit</code> 会跳过这一整套校验和数据收集逻辑。</li>
+    <li><strong><code>watch</code> 和 <code>getValues</code> 有什么区别?</strong>—— <code>getValues</code> 是命令式地"读一次当前值",调用时才去 DOM 取数据,不会订阅、不会触发任何重渲染,适合在事件回调里临时取值;<code>watch</code> 是声明式订阅,会让调用它的组件对指定字段的变化保持响应,字段一变就重渲染,适合需要把某个字段的值实时展示在 UI 上的场景。两者的取舍本质上就是"要不要为了拿到实时值,牺牲 RHF 非受控省渲染的优势"。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="140-RadixUI无样式Headless组件.html" class="nav-btn">← Radix UI 无样式 Headless 组件</a>

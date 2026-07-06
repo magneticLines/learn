@@ -153,6 +153,29 @@ function MyInput({ ref, ...props }) {
     <strong>为什么 React 19 能简化？</strong>历史上 <code>forwardRef</code> 存在，是因为早期 <code>ref</code> 被特殊对待、不进 props。React 19 重新设计后取消了这层特殊性，<code>ref</code> 变成普通 prop，API 更直观、少一层包裹、TS 类型也更简单。这是 React 团队"消除历史包袱"的一步。学习时理解 <code>forwardRef</code> 的原理仍有价值——大量现存代码库和第三方组件库还在用它，短期内不会消失。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>以为给函数组件传 ref 就能像传普通 prop 一样在组件里通过 props.ref 拿到</strong>：这是最根本的误解。React 会把 <code>ref</code>（和 <code>key</code>）当作<strong>保留属性</strong>特殊处理，从 JSX 元素上摘出来，不会塞进传给组件的 <code>props</code> 对象。所以在 React 18 及以前，函数组件内部读 <code>props.ref</code> 永远是 <code>undefined</code>，必须用 <code>forwardRef</code> 包一层，通过它的第二个参数才能拿到。</li>
+    <li><strong>忘记把转发进来的 ref 真正挂到目标 DOM 节点上</strong>：写了 <code>forwardRef((props, ref) => {...})</code> 却在返回的 JSX 里漏掉 <code>ref={ref}</code>，这样虽然组件"支持"接收 ref 了，但 ref.current 依然是 null，因为没有任何 DOM 元素真正持有这个 ref。forwardRef 只是打通了"接收"的通道，"挂载到哪个元素"仍需要手动指定。</li>
+    <li><strong>用 useImperativeHandle 时忘了依赖数组，导致每次渲染都重新生成暴露对象</strong>：<code>useImperativeHandle(ref, createHandle, deps)</code> 的第三个参数决定了暴露对象是否要在每次渲染重新创建。忘记传或传错依赖，会导致父组件每次拿到的都是一个新对象引用，如果父组件依赖这个引用做 memo 比较或者放进另一个 effect 的依赖数组，会引发不必要的重复执行。</li>
+    <li><strong>混淆 forwardRef 转发"整个 DOM 节点"和 useImperativeHandle 暴露"受限接口"的场景</strong>：直接 <code>ref={ref}</code> 转发会把整个真实 DOM 节点交给父组件，父组件可以随意调用任何原生方法甚至直接改内容/结构，破坏封装；如果只想让父组件调用几个受控的方法（如 focus、scrollToTop），应该用 useImperativeHandle 自定义暴露的内容，而不是简单转发整个节点。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么函数组件不能像普通 prop 一样接收 ref，必须用 forwardRef？</strong>—— 因为 React 把 <code>ref</code> 和 <code>key</code> 视为框架层面的保留属性，会在创建元素时从传入的属性里摘出来单独处理，不会作为普通 prop 传进组件函数收到的 <code>props</code> 对象里。这是有意设计：ref 语义上指向"某个实例或 DOM 节点"，而函数组件本身没有实例，React 不能替开发者猜测该把 ref 指向组件内部的哪个节点，只能通过 forwardRef 显式声明"这个 ref 该转发给谁"。</li>
+    <li><strong>forwardRef 和 useImperativeHandle 分别解决什么问题，二者关系是什么？</strong>—— forwardRef 解决"如何让 ref 穿透一层组件，落到内部某个节点或实例上"的问题，是转发的通道。useImperativeHandle 则在 forwardRef 拿到 ref 之后，进一步自定义"父组件通过这个 ref 到底能访问到什么"，可以只暴露几个受控方法而不是整个真实 DOM 节点。二者常搭配使用：forwardRef 打通通道，useImperativeHandle 收窄暴露范围，形成一个命令式的、可控的接口。</li>
+    <li><strong>React 19 之后 forwardRef 还有必要学吗？和之前的写法有什么区别？</strong>—— 有必要，因为大量现存代码库和第三方组件库仍在使用 forwardRef，短期内不会消失，理解其原理是读懂旧代码的前提。区别在于：React 19 之前 ref 是保留属性、不进 props，必须用 forwardRef 包裹组件才能接收并转发；React 19 取消了这层特殊性，ref 可以像普通 prop 一样在函数组件的参数里直接解构出来（如 <code>function MyInput({ ref, ...props })</code>），不再需要额外包一层，API 更直观、TS 类型也更简单。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>useRef 访问 DOM：</strong>forwardRef 解决的问题建立在"ref 可以挂到 DOM 元素上"这个基础之上——如果不理解 <code>&lt;input ref={inputRef}&gt;</code> 会让 <code>inputRef.current</code> 指向真实 DOM 节点，就无法理解 forwardRef 转发的第二个参数 <code>ref</code> 最终要挂到哪里去。forwardRef 本质是把"谁能拿到这个 ref"这件事从"只能是直接渲染该元素的那层"扩展到了"任意外部调用者"。</li>
+    <li><strong>useRef 存储可变值：</strong>forwardRef 组件内部常见写法是先用 <code>useRef</code> 拿到内部 DOM 的引用（如 <code>inputRef</code>），再通过 <code>useImperativeHandle</code> 把基于这个 ref 封装出的方法暴露给外部——内部这层 ref 本身依然遵循"跨渲染保持同一引用、读写不触发渲染"的普通 useRef 规则，forwardRef 只是多加了一层"决定暴露什么给外部"的包装。</li>
+    <li><strong>createContext 与 Provider（下一篇）：</strong>forwardRef 和 Context 都是 React 提供的"跨层级传递东西"的机制，但传递的内容和方向不同：ref 传递的是"对某个实例/DOM 的命令式引用"，通常自上而下由父组件持有、指向子组件内部；Context 传递的是"数据"，向下广播给所有订阅的后代。两者常被初学者混淆，但适用场景完全不同——需要调用子组件方法用 ref，需要跨层共享数据用 Context。</li>
+    <li><strong>Hooks 只在函数组件中调用：</strong>forwardRef 包裹的函数、以及内部调用的 <code>useImperativeHandle</code>，仍然要遵守"只在函数组件或自定义 Hook 里调用 Hook"的规则——forwardRef 返回的组件本质上还是一个函数组件，只是多接收了一个 ref 参数，Hooks 的调用规则对它没有任何特殊豁免。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="43-useRef存储可变值.html" class="nav-btn">← useRef 存储可变值</a>

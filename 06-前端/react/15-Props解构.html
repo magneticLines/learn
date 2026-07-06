@@ -209,6 +209,31 @@
     <strong>本节核心：</strong>① 解构是 ES6 特性，React 只是习惯用它来接收 props；② 推荐在参数位置解构，函数签名即 props 文档；③ <code>...rest</code> 收集剩余 props，适合封装透传场景；④ 两种写法完全等价，选解构是为了可读性，不是语法要求。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>解构默认值不是"Props 默认值机制"，只是碰巧长得像：</strong>写 <code>function Avatar({ size = 40 })</code> 时，<code>= 40</code> 是 ES6 解构语法自带的能力——只要等号右边取到的是 <code>undefined</code> 就会用默认值，跟 props 没有任何关系。把同样的写法放进普通函数 <code>function f({ x = 1 }) {}</code> 一样生效。很多人误以为这是"React 的默认值系统"，其实解构默认值只在<strong>父组件没传这个字段</strong>时触发；如果父组件传了 <code>null</code>，解构默认值不会介入（这一点会在下一节"Props 默认值"里详细展开）。</li>
+    <li><strong>嵌套解构对不存在的中间层会直接报错：</strong>比如 <code>function UserCard({ user: { name, age } })</code>，一旦父组件没传 <code>user</code>（值是 <code>undefined</code>），解构 <code>undefined</code> 的属性会抛出 "Cannot destructure property 'name' of 'undefined'"，页面直接崩溃。写嵌套解构前一定要确认这个字段是必传的，或者给中间层也设默认值：<code>{ user: { name, age } = {} }</code>。</li>
+    <li><strong>解构会丢失对象引用，改名字要小心 rest 的顺序：</strong><code>...rest</code> 收集的是"解构剩下的所有字段"，它的内容取决于你在它<strong>之前</strong>解构了哪些字段。如果不小心把某个想透传的字段写进了具名解构里（哪怖只是为了读它的值判断逻辑），它就不会再出现在 <code>rest</code> 里，透传到底层元素时这个属性会"神秘消失"。</li>
+    <li><strong>解构出来的变量名和用途容易对不上：</strong>解构支持重命名（<code>{ onClick: handleClick }</code>），但过度使用会让调用处的 props 名字和函数体内的变量名不一致，读代码时要来回对照。除非确实有命名冲突（比如两个组件的 <code>onClick</code> 需要区分），否则保持原名更利于可读性。</li>
+    <li><strong>函数体内解构 vs 参数位置解构，选错时机会让代码变啰嗦：</strong>如果只是单纯接收 props 就用参数位置解构；如果需要先把整个 props 对象传给别的函数（比如日志、校验），才有必要延迟到函数体内解构，否则没必要多写一行 <code>const {...} = props</code>。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>参数位置解构和函数体内解构有什么区别？</strong>—— 没有本质区别，都是 ES6 解构语法，只是发生的时机不同。参数位置解构在函数调用、参数绑定的那一刻就完成拆包；函数体内解构需要先拿到完整的 <code>props</code> 对象，再手动执行一次解构语句。二者运行结果完全一致，选择纯粹是可读性和是否需要访问 <code>props</code> 整体的问题。</li>
+    <li><strong><code>...rest</code> 语法在 props 场景里解决了什么问题？</strong>—— 解决"部分 props 自己用，剩下的原样转发给底层元素/组件"的透传痛点。没有它就要手写 <code>onClick={props.onClick} disabled={props.disabled} ...</code> 逐个转发，一旦底层元素支持的属性增多，组件签名要跟着改；用 <code>...rest</code> 之后，新增的原生属性天然可以透传，不需要改这个封装组件的代码。</li>
+    <li><strong>解构默认值和 <code>defaultProps</code> 是同一回事吗？</strong>—— 不是。解构默认值是 JavaScript 语言特性，作用于函数参数层面，只对"这个位置传入 <code>undefined</code>"生效；<code>defaultProps</code> 是 React（历史上）在组件对象上挂的静态属性，由 React 内部在渲染前做合并，且已在函数组件中标记废弃。两者最终效果类似，但实现层级完全不同，解构默认值不依赖 React 运行时。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>传递与接收 Props：</strong>解构自始至终都建立在上一节的基础之上——React 传给子组件的仍然是一个完整的 props 对象，解构只是在这个对象上多做了一步"拆包"，让你不用写 <code>props.xxx</code>。如果对 props 对象本身的结构、类型规则还不熟，回头复习上一节会比死记解构语法更有效。</li>
+    <li><strong>解构默认值 vs <code>defaultProps</code>：</strong>本节 <code>{ size = 40 }</code> 用的是 ES6 解构默认值，只在这个字段是 <code>undefined</code> 时生效；<code>defaultProps</code> 是 React 在组件对象上挂的静态属性，由 React 渲染前统一合并，且函数组件中已被标记废弃。二者看起来都是"给 prop 兜底"，但生效的时机和依赖的运行时完全不同——前者是纯语言特性，随时可用；后者依赖 React 的处理逻辑。</li>
+    <li><strong>children prop 的解构：</strong><code>children</code> 也是 props 对象里的一个普通字段，一样可以在参数位置解构出来，比如 <code>function Card({ title, children })</code>，之后直接在 JSX 里写 <code>{children}</code>，不需要 <code>props.children</code>。它没有特殊语法，只是恰好承载了标签内容这份数据。</li>
+    <li><strong>JS 函数参数解构：</strong>本节反复强调的"这不是 React 特有语法"值得再次点出——<code>function greet({ name, age }) {}</code> 在任何 JavaScript 函数里都能用，和有没有 React 毫无关系。React 组件只是恰好符合"用一个对象参数传数据"的场景，把 ES6 解构用得特别多而已，这也是为什么解构默认值、嵌套解构、<code>...rest</code> 的坑在普通 JS 代码里同样会踩到。</li>
+    <li><strong>TypeScript interface 解构：</strong>给 props 定义了 <code>interface Props { title: string; onClick: () => void }</code> 之后，解构写法不需要任何改动，但编辑器会在解构出的每个变量上给出精确的类型提示和类型收窄——比如解构出的 <code>onClick</code> 会被识别为函数类型而不是 <code>any</code>，这是普通 JS 解构做不到的，也是后续引入 TS 后收益最直接的一点。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="14-传递与接收Props.html" class="nav-btn">← 传递与接收 Props</a>

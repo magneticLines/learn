@@ -128,6 +128,32 @@ npx shadcn@latest add button dialog</pre>
     <li>下一篇拆开 shadcn/ui 的底层依赖之一 Radix UI,看它作为 headless 组件到底解决了什么问题。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>当成普通组件库来"装"</strong>——看到 <code>npx shadcn@latest add button</code> 就以为这是 npm install 的变种，结果找不到 <code>node_modules</code> 里的包。它本质是代码生成器，不是依赖，思路要先转过来。</li>
+    <li><strong>升级全靠 npm update 的惯性</strong>——传统组件库升级版本号就完事，shadcn/ui 官方更新 <code>button.tsx</code> 后不会自动同步到你项目，得自己去看 diff、手动合并，忘了这一点就会一直用着有已知问题的旧版本源码。</li>
+    <li><strong>改动太随意导致以后没法合并升级</strong>——组件源码归你所有不代表可以毫无节制地改，改得越深，将来对比官方新版本、合并改动就越痛苦，尤其组件多、迭代频繁的项目要提前想好维护成本。</li>
+    <li><strong>把 Radix UI 和 Tailwind 的角色搞混</strong>——shadcn/ui 本身不提供行为逻辑也不提供样式引擎，Radix UI 管无障碍和交互行为，Tailwind 管样式，shadcn/ui 只是把两者组合成一份参考实现交给你。不理解这个分层，遇到问题就不知道该去哪个环节排查。</li>
+    <li><strong>选型时忽略"组件齐全度"的差距</strong>——想快速搭后台系统、需要表格/树/复杂表单联动这类现成重组件时硬选 shadcn/ui，会发现很多东西要自己从头拼，这类场景传统组件库（如 Ant Design）效率更高。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>shadcn/ui 和 Ant Design 这类传统组件库的本质区别是什么？</strong>—— 本质区别在于分发方式：Ant Design 是打包进 <code>node_modules</code> 的黑盒依赖，通过 props/token 定制，升级靠 <code>npm update</code>；shadcn/ui 用 CLI 把组件源码直接复制进你的仓库，组件和你自己手写的代码没有区别，定制没有限制，但升级也不再是版本号问题，而是要手动对比、合并官方源码的变化。</li>
+    <li><strong>为什么 shadcn/ui 选择"复制源码"而不是"发 npm 包"这种设计？</strong>—— 因为它要解决的是传统组件库"黑盒不可控"的痛点：一旦组件以依赖形式存在，你能改的只有官方开放的 API 和 token，遇到没预留的定制点就只能等官方支持或提 issue。把源码直接交给使用者，代价是升级要自己维护，但换来的是没有任何定制上限——这是一种用维护成本换灵活性的取舍，而不是免费的午餐。</li>
+    <li><strong>shadcn/ui、Radix UI、Tailwind 三者是什么关系？</strong>—— 这是分层组合关系：Radix UI 是 headless 组件，只负责行为逻辑和无障碍（键盘导航、焦点管理、ARIA 属性），不带任何样式；Tailwind 负责视觉样式；shadcn/ui 把这两者组合、写成一份具体实现（比如一个带样式的 <code>Button</code>），再通过 CLI 把这份实现的源码交给你。三者不是竞争关系，而是各管一层。</li>
+    <li><strong>shadcn/ui 这种模式适合什么样的团队，不适合什么样的团队？</strong>—— 适合项目已经用 Tailwind、希望组件"看起来是自己写的"、需要深度定制、并且团队能接受多维护一份组件源码的场景；不适合追求开箱即用、组件要"齐全"（复杂表格、树、上传等现成重组件）、或者团队没有精力去手动跟进官方源码更新的场景——这本质是"自主可控"和"维护成本"之间的权衡。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>AntDesign：</strong>本篇开篇就对比了两者的本质区别——AntDesign 是装进 <code>node_modules</code> 的黑盒依赖，shadcn/ui 是复制进项目的源码。这个差异直接影响性能优化的可操作性：AntDesign 只能通过官方开放的 API（比如 <code>virtual</code> 属性）间接触发内部优化，shadcn/ui 因为组件源码就在项目里，可以直接打开文件给内部子组件加 <code>memo</code>、<code>useMemo</code>，不需要等官方支持。</li>
+    <li><strong>React.memo / useMemo / useCallback：</strong>shadcn/ui 生成的组件"和你自己手写的组件没有任何区别"——这意味着如果某个 shadcn/ui 组件在大数据量场景下出现性能问题，完全可以直接打开 <code>components/ui/xxx.tsx</code>，用前面几篇讲的 memo 包裹内部子组件、用 useMemo 缓存计算、用 useCallback 稳定传给子组件的回调，这是黑盒组件库（如 AntDesign）做不到的定制自由度。</li>
+    <li><strong>虚拟滚动 TanStack Virtual：</strong>如果 shadcn/ui 没有内置某个大数据表格或长列表组件的虚拟滚动实现，因为组件源码直接在项目里，可以直接在这份源码里接入 <code>@tanstack/react-virtual</code> 的 <code>useVirtualizer</code>，把虚拟滚动逻辑写进组件内部——这是"源码归你所有"这一特性在性能优化场景下最直接的体现。</li>
+    <li><strong>组件组合与嵌套：</strong>13 篇讲的组合优先于继承，在 shadcn/ui 里体现得更彻底——它甚至不提供一个"组件库"意义上的整体，而是把 Radix UI（行为）和 Tailwind（样式）组合成一份份独立的参考实现，每份实现职责单一、互不依赖，这正是"把复杂 UI 拆成小组件再组合"这条设计哲学在生态选型层面的延伸。</li>
+    <li><strong>状态下移与内容提升模式：</strong>用 shadcn/ui 构建的 <code>Dialog</code>、<code>Popover</code> 这类组件时，同样可以应用 132 篇讲的"内容提升"——把不依赖开关状态的内容作为 <code>children</code> 传入，效果和用在 AntDesign 的 <code>Modal</code> 上完全一致；区别是 shadcn/ui 下如果这个模式不够用，还能直接改组件源码，而不必止步于结构调整这一层。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="138-AntDesign使用.html" class="nav-btn">← Ant Design 使用(按需引入 / 主题定制)</a>

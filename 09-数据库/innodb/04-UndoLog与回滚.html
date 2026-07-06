@@ -158,6 +158,16 @@
     <li><strong>长事务是 undo log 膨胀的元凶</strong>，生产环境要监控事务运行时长，避免"一个事务拖垮整个实例的 purge 效率"。</li>
   </ul>
 
+  <!-- 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>Redo Log：</strong>两者虽然都叫"日志"，但方向相反——redo log 记录"改成了什么"，用于把已提交但未刷盘的修改往前补齐；undo log 记录"改之前是什么"，用于把未提交的修改往回撤销。二者在崩溃恢复中是配合而非替代关系，详见 <a href="./03-RedoLog与WAL机制.html" style="color:#4ade80;">Redo Log 与 WAL 机制</a>。</li>
+    <li><strong>崩溃恢复流程：</strong>崩溃重启时必须先完成 redo 阶段把所有页恢复到崩溃前的物理状态，undo log 才有意义——因为 undo log 本身也存放在数据页（回滚段）里，页状态不确定时根本无法安全读取和应用 undo 记录。这也是"先 redo，后 undo"顺序的根本原因，详见 <a href="./08-崩溃恢复流程.html" style="color:#4ade80;">崩溃恢复流程</a>。</li>
+    <li><strong>Change Buffer：</strong>两者都是"延迟处理、换取效率"的思路，但延迟的对象不同：Change Buffer 延迟的是二级索引页的物理写入（避免立即读盘），undo log 延迟的是"旧版本数据被回收"的时机（要等没有事务再需要它）。二者互不干扰，但都体现了 InnoDB 用空间/时间换 I/O 效率的设计哲学。</li>
+    <li><strong>Checkpoint 机制：</strong>undo log 所在的页同样是普通数据页，其修改也要写 redo log、也参与 checkpoint 推进和刷脏；换句话说，undo log 并不游离于 InnoDB 的整套持久化机制之外，它自己的安全性同样依赖 redo log + checkpoint 这套基础设施。</li>
+    <li><strong>MVCC 与长事务：</strong>undo log 的版本链是 MVCC 一致性读的物理载体，而长事务会让本该被 purge 的旧版本一直保留在链上——这不仅拖慢查询（版本链变长），也会导致 undo tablespace 膨胀，是生产环境排查"磁盘暴涨""查询变慢"时的常见根因之一。</li>
+  </ul>
+
   <hr />
 
   <!-- 导航 -->

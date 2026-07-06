@@ -448,6 +448,17 @@
     <li><strong>StampedLock 和 ReentrantReadWriteLock 怎么选？</strong>StampedLock 无重入、无 Condition、API 复杂，但乐观读不阻塞写者，适合极高读并发；日常业务首选 RRWL。</li>
   </ul>
 
+  <!-- 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>AQS 体系：</strong>本节讲的「高 16 位读锁计数 + 低 16 位写锁计数」正是 <code>ReentrantReadWriteLock</code> 对 AQS <code>state</code> 字段的定制解释方式；对比上一节 <code>ReentrantLock</code> 直接把整个 <code>state</code> 当作重入计数，可以看出 AQS 的通用之处——不同子类只是重写 <code>tryAcquire</code>/<code>tryAcquireShared</code> 等方法，赋予 <code>state</code> 不同的业务含义。</li>
+    <li><strong>JMM / happens-before：</strong>写锁释放时对共享数据的修改，能被之后获取读锁的线程看到，这依赖的底层机制和 <code>ReentrantLock</code> 一样——AQS 的 <code>state</code> 是 <code>volatile</code> 的，写锁 <code>unlock()</code> 里的 <code>state</code> 写入建立了 happens-before 关系。锁降级模板里"先获取读锁再释放写锁"的顺序，本质上就是要保证这条可见性链条不断裂。</li>
+    <li><strong>CAS 与原子类：</strong>读锁的加锁不是简单加锁计数，而是用 CAS 对高 16 位做原子递增；多个读线程并发进入时依赖的正是 CAS 的「比较并交换」语义，避免了给整个 <code>state</code> 加互斥锁再修改的开销，这也是读写锁能做到"读读不互斥"又不破坏计数一致性的关键。</li>
+    <li><strong>ConcurrentHashMap：</strong>本节最后提到生产环境更常用 <code>ConcurrentHashMap.computeIfAbsent</code> 或 Guava LoadingCache 而非读写锁包 HashMap，原因是 <code>ConcurrentHashMap</code> 用分段（CAS + synchronized 锁桶）的方式把锁粒度降到了单个哈希桶级别，比"整个 Map 共用一把读写锁"的并发度更细，这是理解"何时该用读写锁、何时该换更细粒度并发容器"的分界线。</li>
+    <li><strong>Spring 场景应用：</strong>Spring 应用里本地缓存刷新（如配置中心客户端缓存最新配置）常用读写锁：查询走读锁保证高并发读性能，配置变更走写锁并结合"锁降级"模式——写完新配置后立刻用读锁读出来返回给调用方，避免写锁释放和读锁获取之间的窗口期被其他更新请求抢先修改。</li>
+    <li><strong>分布式锁对比：</strong>Redisson 提供了 <code>RReadWriteLock</code>，语义上模仿本节的读写锁模型，但受制于网络延迟和 Redis 单点特性，"读读并发"的吞吐提升不如 JVM 内置读写锁明显；而锁降级、非公平写者饥饿这些细节问题在分布式场景下更难精确控制，通常只在业务能容忍一定不一致的场景才用分布式读写锁。</li>
+  </ul>
+
   <hr />
 
   <!-- 知识树 -->

@@ -140,6 +140,23 @@
     <li>下一篇讲 <code>import()</code> 本身的原理——它不是 React 专有语法,而是 ES 标准动态导入。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>忘记包 Suspense</strong>:直接把 <code>lazy</code> 组件当普通组件用,不套 <code>&lt;Suspense&gt;</code>,渲染时会抛出"A component suspended while responding to synchronous input"之类的报错。根本原因是懒加载组件在代码没下载完时会 <code>throw</code> 一个 Promise,React 靠最近的 <code>Suspense</code> 边界捕获这个 Promise 并显示 <code>fallback</code>——没有边界,这个"异常"就一直往上抛,谁都接不住。</li>
+    <li><strong>具名导出直接传给 lazy</strong>:页面组件写的是 <code>export function Settings() {}</code>,却直接 <code>lazy(() =&gt; import('./pages/Settings'))</code>,运行时报"组件是 undefined"。因为 <code>lazy</code> 内部固定去取 <code>module.default</code>,具名导出的模块里根本没有 <code>default</code> 字段。养成路由页面统一 <code>export default</code> 的习惯,能避免这个坑,也省掉手动 <code>.then()</code> 转换那层代码。</li>
+    <li><strong>fallback 缺失或太简陋导致白屏闪烁</strong>:<code>Suspense</code> 的 <code>fallback</code> 属性是可选的,但不写就等于加载期间什么都不渲染,用户会看到一闪而过的白屏,体验比不分割还差。fallback 应该给一个和目标页面尺寸、布局接近的骨架屏(如例子里的 <code>PageSkeleton</code>),而不是随手写个"加载中...",否则加载完成后内容会突然"跳一下"。</li>
+    <li><strong>顶层单一 Suspense 导致布局跟着一起消失</strong>:如果把唯一的 <code>Suspense</code> 放在应用最外层,切换任何路由时,连页头、侧边栏这些公共布局都会被 fallback 替换掉,整页闪烁。应该像文中示例那样把 <code>Suspense</code> 下沉到每个路由的内容区,让 loading 状态只影响真正在等待的那部分 UI。</li>
+    <li><strong>没有错误边界,chunk 加载失败时整个应用崩溃</strong>:懒加载的本质是运行时再发一次网络请求下载 JS 文件,网络波动、CDN 失效都可能导致这次 <code>import()</code> 直接 reject。<code>Suspense</code> 只处理"还在加载"这一种状态,不处理"加载失败";如果外层没有 <code>ErrorBoundary</code>,这个 reject 会变成未捕获异常,把整个应用炸挂。生产环境给每个路由懒加载都配一层错误边界,失败时给出"重试"按钮,才是完整的方案。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong><code>React.lazy</code> 是怎么让代码分割生效的?</strong>—— <code>lazy</code> 本身不做打包,它只是把 <code>import()</code> 包装成一个特殊组件:首次渲染时才调用 <code>loader()</code> 触发 <code>import()</code>,而 <code>import()</code> 是 Vite/webpack 识别的"动态导入"语法,打包工具会据此把目标模块拆成独立 chunk。真正的分割动作发生在构建阶段,<code>lazy</code> 只是在运行时控制"什么时候去下载这个 chunk"。</li>
+    <li><strong>为什么 <code>lazy</code> 组件渲染时会抛出 Promise,而不是直接返回 loading UI?</strong>—— 这是 Suspense 机制的设计:组件渲染函数发现依赖的资源没准备好,就 <code>throw</code> 一个 pending 的 Promise,React 捕获后暂停渲染这棵子树,展示最近的 <code>Suspense fallback</code>,并在 Promise resolve 后重新渲染。这样"异步加载"和"渲染逻辑"解耦——组件本身不需要写任何 loading 状态的判断代码。</li>
+    <li><strong>具名导出为什么不能直接传给 <code>lazy</code>?</strong>—— <code>lazy(loader)</code> 内部约定 <code>loader()</code> 返回的模块对象必须有 <code>default</code> 字段,取的是 <code>module.default</code>;具名导出的模块没有这个字段,拿到的就是 <code>undefined</code>,渲染时自然报错。解决办法是让页面组件用 <code>export default</code>,或者手动 <code>.then(module =&gt; ({ default: module.XXX }))</code> 包一层。</li>
+    <li><strong>多个路由各自的 <code>Suspense</code> 和一个全局 <code>Suspense</code> 有什么区别?</strong>—— 全局 <code>Suspense</code> 会让任意子路由的加载状态影响整个应用(包括页头、侧边栏等公共布局);路由级 <code>Suspense</code> 把加载边界收窄到内容区本身,切换路由时只有对应区域展示 fallback,公共布局保持稳定,是更常见的实践。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="125-StrictMode双重调用行为.html" class="nav-btn">← Strict Mode 双重调用行为</a>

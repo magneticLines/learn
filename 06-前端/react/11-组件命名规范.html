@@ -180,6 +180,30 @@ BUTTON         ← SCREAMING_SNAKE（常量）</pre>
     <strong>小结：</strong>① PascalCase = 每个单词首字母大写，无分隔符；② 强制大写的原因是 Babel 编译规则——大写编译成函数引用，小写编译成 HTML 字符串；③ 文件名与组件名保持一致，方便 IDE 和 ESLint；④ 静默空白 + 无报错 = 先查组件名首字母。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>组件名小写开头导致静默空白渲染</strong>：这是本节最核心的坑——写了 <code>function userCard()</code> 并用 <code>&lt;userCard /&gt;</code> 调用，React 不会报"找不到组件"，因为 Babel 把它编译成了字符串 <code>'userCard'</code>，浏览器把它当成一个未知自定义 HTML 标签渲染成空节点。没有报错、没有警告，只有页面空白，是最难排查的一类问题。</li>
+    <li><strong>动态渲染组件时直接用小写变量或表达式做标签名</strong>：写 <code>&lt;componentMap[type] /&gt;</code> 这种形式，JSX 语法本身就不支持用表达式当标签名；即便先赋值给一个小写变量 <code>const comp = UserCard</code> 再写 <code>&lt;comp /&gt;</code>，Babel 依然会因为首字母小写把它当字符串处理。必须赋值给大写开头的变量才能被识别为组件引用。</li>
+    <li><strong>把 HTML 原生标签名当组件名复用</strong>：给自定义组件取名 <code>Table</code>、<code>Form</code> 这类和原生标签同名（大写后）的名字本身没问题（因为大小写不同，不会冲突），但容易在阅读代码时和原生标签混淆，尤其是嵌套使用时不容易一眼看出哪层是自定义组件、哪层是原生 DOM 标签。</li>
+    <li><strong>文件名和导出组件名不一致</strong>：比如文件叫 <code>Card.jsx</code> 却导出 <code>export default function UserCard()</code>。这不会导致运行时错误，但会让 IDE 的自动导入、ESLint 的组件规则、以及团队协作时的可读性全部打折——看到文件名猜不到组件叫什么，看到 import 语句也对不上文件路径。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 React 组件名必须大写开头？如果写成小写会发生什么？</strong>—— 因为 JSX 编译时，Babel 只看标签首字母的大小写来决定生成的代码：大写会被当作作用域内的变量（函数/类）引用，编译成 <code>createElement(ComponentName, ...)</code>；小写会被当作字符串字面量，编译成 <code>createElement('tagname', ...)</code> 交给浏览器当原生标签处理。如果组件名小写开头，React 会把它当成未知的原生标签，安静地渲染成空节点，不会抛出任何异常。</li>
+    <li><strong>如果要动态选择渲染哪个组件（比如根据数据类型渲染不同组件），该怎么写？</strong>—— 必须先把目标组件赋值给一个大写开头的变量（如 <code>const Component = componentMap[type]</code>），再用 <code>&lt;Component /&gt;</code> 渲染。JSX 不支持把表达式直接写在标签位置，也不认变量名大小写以外的其他判断依据，所以"赋值给大写变量"是唯一能让 Babel 生成函数引用调用的方式。</li>
+    <li><strong>组件命名和文件命名的最佳实践是什么，为什么？</strong>—— 组件名用 PascalCase，文件名与其导出的组件名保持一致（如 <code>UserCard.jsx</code> 导出 <code>UserCard</code>）。这不是语法要求，而是社区约定：能让 IDE 自动导入的路径和组件名对应，让 ESLint 的 <code>display-name</code> 等规则正确识别，也让团队成员通过文件名就能猜到组件是什么。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>关联定义与调用组件（上一章）：</strong>上一章讲"函数就是组件"，本章补上"这个函数必须大写命名"这条硬性约束——两节合起来才是一个可用组件的完整定义，缺了命名规则，写出的函数在 JSX 里根本不会被当成组件对待。</li>
+    <li><strong>关联 JSX 编译与 createElement：</strong>本节反复提到的"Babel 编译规则"背后就是 JSX → <code>React.createElement</code> 的转换过程，命名规范表面是风格问题，实质是在利用这套编译期的静态规则区分"组件"和"DOM 标签"。</li>
+    <li><strong>关联项目目录结构规范：</strong>无论按 type 还是按 feature 分层组织项目，"文件名与组件名一致"这条约定都要遵守，目录解决"放在哪个文件夹"，命名规范解决"这个文件和其中的组件该叫什么"，两者共同支撑项目的可维护性。</li>
+    <li><strong>关联条件渲染与动态组件：</strong>本节"动态组件名必须赋给大写变量"的规则，会在后续写条件渲染、路由懒加载、根据类型渲染不同表单组件等场景反复用到，是那些场景能正常工作的前提条件。</li>
+    <li><strong>关联 ESLint 与团队规范：</strong><code>react/display-name</code>、<code>react/jsx-pascal-case</code> 这类 ESLint 规则就是把本节的命名约定自动化检查，团队项目里通常会强制开启，避免命名问题在代码评审阶段才被发现。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="10-定义与调用组件.html" class="nav-btn">← 定义与调用组件</a>

@@ -144,6 +144,31 @@
     受控是 React 推崇的<em>声明式</em>——"值等于 state,你只管声明"。非受控更偏<em>命令式</em>——"用的时候我主动去 DOM 里取"。React 生态整体倾向受控(它可预测、可测试),非受控是务实的特例。这也是为什么 React 官方文档把受控作为默认推荐,把非受控列为"你确实需要时的逃生舱"。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>同时写 value 和 defaultValue</strong>：这是最容易犯的低级错误——React 检测到两者共存会发出警告并忽略 <code>defaultValue</code>，等于组件行为和你预期的不一致。必须二选一：要受控就只用 <code>value</code>+<code>onChange</code>，要非受控就只用 <code>defaultValue</code>，checkbox/radio 对应 <code>defaultChecked</code>。</li>
+    <li><strong>误以为非受控组件"性能一定更好"</strong>：非受控确实避免了每次按键触发重渲染，但现代 React 对受控输入框的重渲染开销通常微乎其微（回顾第 54 篇：没测量就优化是过早优化）。除非 Profiler 证实确有大表单卡顿问题，否则不该为了"性能"牺牲受控组件带来的实时校验、联动等能力。</li>
+    <li><strong>忘记 ref.current 可能是 null</strong>：如果在组件挂载完成之前（比如条件渲染导致 input 还没出现）就访问 <code>inputRef.current.value</code>，会因为 <code>ref.current</code> 是 <code>null</code> 而抛出运行时错误。需要确保读取时机在 DOM 节点已经挂载之后（比如事件回调里，而不是渲染期间）。</li>
+    <li><strong>对 file input 尝试受控绑定</strong>：新手看到别的 input 用 <code>value</code> 绑定很自然，也想给 <code>&lt;input type="file"&gt;</code> 写 <code>value={someFile}</code>，但浏览器出于安全考虑禁止用脚本设置文件输入框的值，这样写会报错或被忽略，file input 只能走 <code>ref</code> + <code>onChange</code> 读取 <code>files</code> 的非受控路线。</li>
+    <li><strong>非受控表单里做实时校验的错误尝试</strong>：非受控组件在输入过程中 React 完全不知道当前值是什么，如果需求是"输入时就要提示格式错误"，用非受控实现只能靠手动监听 DOM 事件、绕开 React 的声明式模型，反而更复杂——这种场景应该直接选受控组件。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>受控组件和非受控组件的本质区别是什么？</strong>—— 区别在于"值的归属权"：受控组件的值归 React state 所有，DOM 只是显示 state 的镜像，每次按键都通过 <code>onChange</code> 更新 state 再重渲染；非受控组件的值归 DOM 节点自己所有，React 不追踪它的实时变化，只能通过 <code>ref</code> 在需要的时刻主动读取。</li>
+    <li><strong>为什么 &lt;input type="file"&gt; 必须是非受控的？</strong>—— 浏览器出于安全考虑，禁止用 JavaScript 代码设置文件输入框的值，否则恶意网页可以伪造"用户已选择某个本地文件"来诱导或窃取文件信息。由于值无法被代码写入，也就没办法实现"React state 驱动显示值"的受控模式，只能通过 <code>ref</code> 读取用户真实选择的 <code>files</code>。</li>
+    <li><strong>什么场景下应该选择非受控组件而不是受控组件？</strong>—— 典型场景包括：只在提交时一次性取值、不需要实时校验或联动的简单表单；必须非受控的 file input；集成不受 React 管理 DOM 的第三方库（如老的 jQuery 插件）；以及经 Profiler 证实存在性能问题的超大表单。React 整体仍推荐受控作为默认选择，非受控是有明确需求时的"逃生舱"。</li>
+    <li><strong>非受控组件里，defaultValue 和 ref 分别起什么作用？两者能否配合 onChange 一起使用？</strong>—— <code>defaultValue</code> 只设置初始显示值，之后完全由 DOM 自己维护，不会被 React 重新赋值；<code>ref</code> 提供访问真实 DOM 节点的入口，用于在需要时（如提交）读取 <code>.value</code>。可以配合 <code>onChange</code> 使用（比如做即时的日志记录或触发某个非受控的副作用），但只要不把 <code>onChange</code> 里读到的值写回 <code>value</code> 属性形成闭环控制，组件依然是非受控的。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>受控组件(上一篇)：</strong>非受控组件的每一个特性都是相对受控组件"减法"出来的——不绑 <code>value</code>、不写 <code>onChange</code>、不实时同步 state,理解它的价值(省代码、贴近原生表单)必须建立在已经吃透受控组件"数据闭环"的基础上,否则容易误以为它是"更差的受控"而不是"不同定位的方案"。</li>
+    <li><strong>useRef：</strong>非受控组件是 <code>useRef</code> 最典型的用途之一——ref 在这里不是"记住上次渲染的值"(那是 <code>useRef</code> 保存可变数据的用法),而是"拿到真实 DOM 节点的引用",这提醒我们 ref 有"访问 DOM"和"跨渲染保存值"两种常见角色,非受控组件是前者的代表场景。</li>
+    <li><strong>受控与非受控的选择(下一篇)：</strong>本篇列出的"什么时候用非受控"只是初步归纳,64 篇会把这个选择上升为一条决策铁律("拿不准就用受控"),并深挖"混用受控与非受控"触发警告的根本原因——这两篇是同一个决策问题的"是什么"和"怎么选/怎么防坑"。</li>
+    <li><strong>组合模式（children / render props）：</strong>非受控组件"用时才取值"的思路,和 children/render props 里"组件不预先决定一切、把控制权留给使用者"的哲学有相通之处——都是"少管一点,让调用者在需要时自己处理"的设计取向,只是作用对象不同(一个是表单值,一个是渲染内容)。</li>
+  </ul>
+
   <hr>
   <h2>小结</h2>
   <ul>

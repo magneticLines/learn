@@ -171,6 +171,31 @@
 <span class="punct">&lt;</span><span class="tag-c">Navigate</span> <span class="attr">to</span><span class="punct">={-</span><span class="num">1</span><span class="punct">}</span> <span class="punct">/&gt;</span></pre>
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>在渲染期间调用 <code>navigate()</code> 而不是用 <code>&lt;Navigate&gt;</code></strong>:很多人写条件跳转时习惯性调用 <code>useNavigate()</code> 返回的函数,却在组件函数体里(渲染阶段)直接调用它。这会触发"在渲染期间产生副作用"的警告,甚至导致状态错乱。渲染阶段想表达"这里该跳到别处",应该 <code>return &lt;Navigate to="..." /&gt;</code>,把跳转变成合法的渲染输出。</li>
+    <li><strong>忘记 <code>replace</code>,把重定向也当成一次普通导航</strong>:<code>&lt;Navigate&gt;</code> 默认是 push(压入历史栈),这意味着被拦截、被重定向掉的那个 URL 依然会留在历史里。用户点返回键会先回到那个"不该存在"的中间态,体验混乱甚至死循环。重定向语义下几乎总该加 <code>replace</code>。</li>
+    <li><strong>混淆 <code>&lt;Navigate&gt;</code> 和 <code>useNavigate()</code> 的适用场景</strong>:把命令式的跳转逻辑硬塞进渲染阶段(比如在组件体里直接调 <code>navigate()</code>),或者反过来在事件回调里试图"渲染" <code>&lt;Navigate&gt;</code>(这是不生效的,因为它不在渲染树里)。正确心智是:渲染时判断"这里该显示别的页面" → 用 <code>&lt;Navigate&gt;</code>;用户操作之后跳转 → 用 <code>navigate()</code>。</li>
+    <li><strong>从 v5 迁移时以为 <code>&lt;Navigate&gt;</code> 默认行为等同 <code>&lt;Redirect&gt;</code></strong>:v5 的 <code>&lt;Redirect&gt;</code> 默认就是 replace 语义,但 v6 的 <code>&lt;Navigate&gt;</code> 默认是 push。直接照抄迁移代码而不加 <code>replace</code>,会悄悄改变原有的历史栈行为。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>React Router v6 为什么用 <code>&lt;Navigate&gt;</code> 取代了 v5 的 <code>&lt;Redirect&gt;</code>?</strong>—— 因为"重定向"本质上就是"导航到另一个地方",没必要单开一套 API。改名为 Navigate 也强调了它和命令式的 <code>useNavigate</code> 是同一件事的两种表现形式:一个是声明式(渲染即跳),一个是命令式(调用即跳)。</li>
+    <li><strong>&lt;Navigate&gt; 和 useNavigate() 的本质区别是什么,分别该在什么场景用?</strong>—— 前者是组件,渲染时触发,适合"渲染阶段判断这里该展示别的页面"(守卫拦截、无权限跳转);后者是函数,在事件回调或副作用里调用,适合"某个动作完成后跳转"(提交表单成功、点击按钮)。混用会导致渲染期间产生副作用的报错。</li>
+    <li><strong>push 和 replace 两种导航方式的区别,以及为什么重定向类跳转应该用 replace?</strong>—— push 把新地址压入历史栈,原地址还能通过返回键回去;replace 直接替换当前历史记录,原地址从历史里消失。重定向(如未登录被拦、旧路径迁移)本质上是"这个 URL 不该真的存在过",如果用 push,用户按返回键会重新回到被拦截的地址,再次触发重定向,造成死循环或体验混乱,所以应该用 replace。</li>
+    <li><strong>为什么不能在组件函数体里直接调用 navigate()?</strong>—— 组件函数体是渲染阶段,React 期望渲染是纯粹、无副作用的;<code>navigate()</code> 会立即改变 URL,是典型的副作用,直接在渲染期间调用可能引发重复渲染警告或状态不一致。应该放进 <code>useEffect</code>(渲染后)或事件回调(用户触发)里执行,渲染阶段真正需要"跳转"的语义应改用 <code>&lt;Navigate&gt;</code> 组件表达。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>认证守卫 PrivateRoute：</strong>上一篇守卫组件里的拦截逻辑，正是本文"渲染期间判断要不要跳转"的典型例子——<code>&lt;Navigate to="/login" replace /&gt;</code> 之所以必须加 <code>replace</code>，就是为了避免守卫反复拦截造成的返回键死循环，这是两篇内容的直接衔接点。</li>
+    <li><strong>路由 state 传参：</strong><code>&lt;Navigate&gt;</code> 组件支持的 <code>state</code> 属性和 <code>useNavigate()</code> 的 <code>{ state }</code> 选项是同一套底层机制，只是分别对应声明式和命令式两种触发方式——学会一个，另一个直接照搬语义即可。</li>
+    <li><strong>index 路由：</strong>文中对比过用 index 路由展示首页 vs 用 Navigate 重定向到默认页——前者不产生额外跳转、URL 保持父路径本身；后者会真实改变 URL、多一次历史记录。这提醒我们：如果"默认展示"能用 index 路由解决，就不必用 Navigate 硬跳。</li>
+    <li><strong>404 页面：</strong>404 场景有时也会搭配 Navigate 使用——比如捕获到旧版本失效路径后，不显示 404 页面而是直接 <code>&lt;Navigate to="/new-path" replace /&gt;</code> 静默迁移用户到新地址，这是通配路由和声明式重定向的组合用法。</li>
+    <li><strong>createBrowserRouter 与 loader：</strong>数据路由里重定向不再用 <code>&lt;Navigate&gt;</code> 组件，而是在 loader/action 里 <code>return redirect(url)</code> 或 <code>throw redirect(url)</code>——本质仍是"导航到别处"，但触发时机从组件渲染阶段提前到了路由匹配阶段，避免了组件先渲染一次又被跳转的中间态。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="87-认证守卫PrivateRoute.html" class="nav-btn">← 认证守卫 PrivateRoute</a>

@@ -147,6 +147,31 @@ const onClick = useCallback(
     <li>React 19 Compiler 会自动记忆化，手动 <code>memo</code> 正逐渐被编译器取代——但"先测量"永远对。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>给未 memo 的子组件传 useCallback</strong>：如果子组件本身没用 <code>memo</code> 包裹，父组件重渲时子组件一定会重渲，<code>useCallback</code> 完全不起作用，只是白白多了一次依赖比较的开销。很多人误以为"加了 useCallback 就能防止子组件重渲"，其实它只是保证函数引用稳定，真正阻止重渲的是 <code>memo</code>。</li>
+    <li><strong>依赖数组"半缓存"</strong>：<code>useCallback</code> 包住了回调，但同时传给子组件的另一个 prop 是内联对象/数组（如 <code>style={{}}</code>），引用每次渲染都变，<code>memo</code> 照样判定 props 变化而重渲。优化没生效，代码却复杂了——典型的"做了一半等于没做"。</li>
+    <li><strong>把 useMemo 当"缓存开关"滥用</strong>：对一个简单的加法或字符串拼接套 <code>useMemo</code>，计算成本远低于依赖比较和占内存的成本，属于负优化。判断是否值得缓存，应该看计算本身是否昂贵（如遍历大数组、复杂正则），而不是"反正加了总没错"。</li>
+    <li><strong>没测量就下结论</strong>：凭感觉觉得"这里应该会卡"就加 memo，往往加错地方——真正的瓶颈可能在别的组件。跳过 Profiler 直接优化，是"过早优化"最常见的表现形式。</li>
+    <li><strong>过度依赖 React Compiler 后忽视基本原理</strong>：即使用了 React 19 Compiler 自动记忆化，也不代表可以完全不理解 memo 的原理——遇到 Compiler 无法安全优化的场景（如带副作用的表达式），仍需要手动介入，不理解原理会看不懂 Compiler 为什么"没生效"。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么给所有组件都加 memo 不是好习惯？</strong>—— <code>memo</code> 本身有比较 props 的开销（浅比较所有 prop），如果组件本来就渲染很快、props 经常变化，这层比较反而是净增负担；同时大量 memo 会让代码充满样板，降低可读性和可维护性。优化应该基于 Profiler 测量出的真实瓶颈，而不是全面覆盖。</li>
+    <li><strong>useCallback 和 useMemo 分别解决什么问题？为什么"用了就一定变快"是误解？</strong>—— <code>useMemo</code> 缓存计算结果，<code>useCallback</code> 缓存函数引用本身（等价于 <code>useMemo(() => fn, deps)</code>）。它们只在"结果会被 memo 组件的 props 比较""或被其它 effect 依赖数组比较"时才有意义；如果没人消费这个稳定引用，缓存本身的比较和存储开销可能比重新计算还贵。</li>
+    <li><strong>如何科学地判断一个组件是否需要优化？</strong>—— 用 React DevTools Profiler 录制真实交互，观察火焰图里渲染耗时长、渲染次数多的组件；开启 "Highlight updates" 直观看到无谓的重渲染。只有测量到确实的性能问题，才针对瓶颈组件精准施加 <code>memo</code>/<code>useMemo</code>/<code>useCallback</code>，然后再次测量验证效果。</li>
+    <li><strong>React 19 的 Compiler 是如何替代手动 memo 的？</strong>—— Compiler 在构建期静态分析组件代码的数据流，自动判断哪些值/函数在渲染间保持不变、哪些子组件可以跳过重渲，并插入等价于 <code>memo</code>/<code>useMemo</code>/<code>useCallback</code> 的优化代码，判断粒度比人工更精细、覆盖更全，且不污染源码可读性。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>useMemo 缓存计算（第 52 篇）与 useCallback 缓存函数（第 53 篇）：</strong>本篇是前两篇"什么时候该用"的反面收尾——那两篇分别讲了怎么用这两个 Hook，本篇讲的是它们"不该用"的三大代价（可读性、缓存开销、依赖维护负担），完整闭环才是"该不该用"的全貌。</li>
+    <li><strong>引用稳定性问题（第 51 篇）：</strong>本篇强调的"优化要么做全、要么别做"（例子里 <code>useCallback</code> 稳定了回调，但内联 <code>style={{}}</code> 依然让 memo 失效）根源就是第 51 篇讲的引用比较机制——只稳定一半引用，另一半依然会让整个 props 浅比较判定"变了"。</li>
+    <li><strong>抽离复用逻辑（第 56 篇）：</strong>本篇陷阱里提到"没测量就下结论"，同样的态度也适用于要不要抽自定义 Hook——第 56 篇的判断标准是"确实重复或逻辑复杂"，而不是"看起来像该抽"，两篇都在强调"基于证据决策，而不是凭直觉"。</li>
+    <li><strong>useReducer 与 Context 结合（第 50 篇）：</strong>那一篇结尾"什么信号提示该升级到 Redux/Zustand"和本篇"什么信号提示该加 memo"是同一种工程判断逻辑——都要求先有实际的性能/规模信号，再引入额外复杂度，不能提前预防性优化。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="53-useCallback缓存函数.html" class="nav-btn">← useCallback 缓存函数</a>

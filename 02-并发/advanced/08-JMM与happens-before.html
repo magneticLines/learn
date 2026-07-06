@@ -456,6 +456,19 @@
       └── 推导不出 hb 链 → 必须加同步，不要靠运气
   </div>
 
+  <!-- ===== 12. 与其他知识点的联系 ===== -->
+  <h2>与其他知识点的联系</h2>
+
+  <ul>
+    <li><strong>锁的分类总览 / ReentrantLock / ReadWriteLock：</strong>本节第 10 节已点出 AQS 靠 <code>volatile int state</code> 建立 hb，这正是「锁」这个概念能同时保证互斥和可见性的根本原因——unlock 时对 state 的 volatile 写、lock 成功时对 state 的 volatile 读，二者构成规则 3 的 hb 链，把临界区内的所有修改都"捎带"传递给了下一个进入临界区的线程。不管是 <code>ReentrantLock</code> 的整数重入计数，还是 <code>ReentrantReadWriteLock</code> 的高低位拆分，都共享这同一条 hb 通路。</li>
+    <li><strong>CAS 与原子类 / ABA 问题：</strong>本节第 10 节提到 <code>AtomicInteger</code> 的"volatile 保证可见性，CAS 保证原子性"分工，这是理解无锁编程正确性的钥匙——没有 volatile，即使 CAS 本身是原子的，其他线程也可能因为读到寄存器缓存的旧值而看不到最新结果。<code>AtomicStampedReference</code> 解决 ABA 问题时依然遵循这一分工，只是把比较对象从裸值换成了 (值, stamp) 的包装对象。</li>
+    <li><strong>AQS 体系：</strong>上一节详细展开的 acquire/release 骨架，其正确性完全建立在本节讲的 happens-before 规则之上——这也是为什么"07-AQS"一节的陷阱部分强调 <code>tryRelease</code> 必须在 state 真正归零后才返回 true：提前返回意味着提前唤醒后继线程，而这时候 volatile 写还没发生，可见性保证根本没建立，后继线程可能读到脏数据。</li>
+    <li><strong>CountDownLatch / Semaphore：</strong>本节第 10 节提到 <code>countDown()</code> 的写 hb <code>await()</code> 返回后的读，这解释了一个常见误区——很多人以为 <code>CountDownLatch</code> 只是"计数器归零就放行"的简单工具，实际上它同时承担着"把计数归零之前所有线程的写操作可见性传递给等待线程"的职责，这也是并发编程中用同步工具做"数据发布"的常见模式。</li>
+    <li><strong>Spring 事务 / 线程池 / @Async：</strong>Spring 声明式事务提交时（本质是一次 <code>commit()</code> 调用，内部往往涉及锁或 CAS）和后续读取数据库/缓存的线程之间，同样需要某种 hb 关系才能保证"事务提交的修改对后续读者可见"；线程池提交任务（<code>execute()</code>）到工作线程执行之间也依赖类似的可见性保证——这也是为什么直接用裸线程共享变量而不通过线程安全的容器传递数据是常见的生产事故来源。</li>
+    <li><strong>分布式锁对比：</strong>JVM 内置锁的可见性保证由 JMM 在同一进程内通过内存屏障实现，成本很低；分布式锁（如 Redis、ZooKeeper）想要达到类似的"释放锁后修改对其他节点可见"的效果，必须依赖网络往返和存储介质的持久化保证，天然比进程内的 volatile/CAS 慢几个数量级，这也是分布式系统中一致性和性能永远要做权衡的根源。</li>
+    <li><strong>面试高频考点：</strong>"JMM 和 JVM 内存结构（堆/栈/方法区）有什么区别"是常见的混淆点——JMM 是关于可见性/有序性的抽象规范，和堆栈划分是两个不同维度的概念，回答时要先讲清楚这一层区分，再讲 happens-before 规则本身。</li>
+  </ul>
+
   <hr />
 
   <!-- 导航 -->

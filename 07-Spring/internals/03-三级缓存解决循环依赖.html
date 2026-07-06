@@ -161,6 +161,13 @@
     <li><strong>边界很清晰：</strong>只能救 setter/字段注入的单例循环依赖，构造器注入和原型作用域都救不了——理解这一点比背诵缓存层级更重要。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>Bean 的完整生命周期：</strong>三级缓存不是一个独立设计，而是完全建立在上一篇"实例化和属性填充是两个分开的步骤"这一前提之上——正是因为实例化一结束就能拿到一个空对象的引用，才有机会把它（或它的工厂）放进缓存，供其他 Bean 在属性填充阶段提前引用，详见 <code>internals/02-Bean的完整生命周期.html</code>。</li>
+    <li><strong>BeanPostProcessor 扩展点：</strong>三级缓存里存的 <code>ObjectFactory</code> 之所以不能简化成直接存原始对象，根源在于 AOP 代理的生成时机——正常情况下代理是在 <code>postProcessAfterInitialization</code> 才生成的，但循环依赖要求提前暴露引用，所以 <code>ObjectFactory.getObject()</code> 内部会调用 <code>getEarlyBeanReference()</code>，实质是提前触发了 <code>AnnotationAwareAspectJAutoProxyCreator</code>（一个 <code>BeanPostProcessor</code>）的代理逻辑，把"要不要代理"这个判断从"初始化后"提前搬到"属性填充时"执行，两篇讲的是同一个扩展点在两种不同触发时机下的行为，详见 <code>internals/04-BeanPostProcessor扩展点.html</code>。</li>
+    <li><strong>事务管理 @Transactional：</strong>如果一个需要事务代理的 Service Bean 恰好陷入循环依赖，就必须依赖三级缓存提前生成代理，否则会出现"容器最终持有的是代理对象，但循环依赖的另一方在属性填充时拿到的是原始对象"这种错乱——即注入进去的 Bean 不是真正生效事务的那个对象，调用它的事务方法会静默失效，这是三级缓存和 AOP、事务机制之间最容易被忽视但后果很严重的联系，详见 <code>data/04-事务管理Transactional.html</code>。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

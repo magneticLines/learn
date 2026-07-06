@@ -161,6 +161,32 @@
     <li>至此表单处理这一组形成闭环:受控表单的性能问题(RHF)→ 校验规则的组织问题(Zod)→ 两者整合(resolver)。下一组进入网络请求实战,先看 Axios 的拦截器封装和统一错误处理。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>useForm 泛型和 schema 类型脱节</strong>:上面警示框提到的坑不只是"忘记传泛型"这一种——更隐蔽的是传了一个和 <code>zodResolver(schema)</code> 不一致的手写类型(比如字段名对不上、某个字段类型写成了 <code>string</code> 而 schema 里其实是 <code>number</code>)。TS 编译器只按你传的泛型检查,不会反过来校验 schema 和泛型是否匹配,结果就是类型检查"看起来通过"但运行时 resolver 报的错跟 IDE 提示的字段完全对不上。稳妥做法是<strong>只用 <code>z.infer&lt;typeof schema&gt;</code> 这一处推导出来的类型</strong>,不要手写第二份。</li>
+    <li><strong>defaultValues 和 schema 类型不一致</strong>:<code>useForm</code> 的 <code>defaultValues</code> 也要满足 <code>LoginFormValues</code> 的形状,如果 schema 里某个字段是必填字符串,但 <code>defaultValues</code> 给了 <code>undefined</code> 或漏写了这个字段,TS 有时能查出来,但如果 <code>defaultValues</code> 类型标注得比较宽松(比如 <code>Partial&lt;LoginFormValues&gt;</code>),问题会一直拖到运行时才在 <code>register</code> 或校验阶段暴露出来。</li>
+    <li><strong>把 Zod 的错误结构和 RHF 的错误结构搞混</strong>:直接用 <code>schema.safeParse()</code> 得到的 <code>error.issues</code> 是 Zod 自己的格式,和 <code>formState.errors.字段名.message</code> 这种 RHF 格式并不是一回事。<code>zodResolver</code> 已经把两者的转换做掉了,组件里只需要读 <code>formState.errors</code>——如果习惯性地在业务代码里再手动跑一遍 <code>safeParse</code> 去读错误,就是重复做了 resolver 已经做好的事,还容易两套错误信息不一致。</li>
+    <li><strong>只看到"提交时校验",忽略了触发时机是可配置的</strong>:上面示例里 <code>zodResolver</code> 默认是在 <code>handleSubmit</code> 触发时才跑校验,如果没意识到这一点,容易误以为"输入的时候就会实时报错",结果发现输入框失焦、打字过程中 <code>errors</code> 一直是空的,以为 resolver 没生效——其实是校验时机(<code>mode</code>)没配对,不是 resolver 本身的问题。</li>
+    <li><strong>schema 改了但没同步更新 <code>LoginFormValues</code> 的使用位置</strong>:因为类型是从 schema <code>z.infer</code> 出来的,改 schema(比如给 <code>password</code> 加一个 <code>regex</code> 校验)不会改变类型本身,很容易只改了校验规则、忘了看一眼是否也该同步调整错误文案或者上层组件对该字段的处理逻辑,造成"校验通过的规则"和"UI 提示的规则"不一致。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>resolver 模式的本质是什么,为什么 RHF 要设计成"可插拔校验器"而不是内置一套自己的校验语法?</strong>—— resolver 本质是一个函数签名的约定:接收当前表单值,返回 <code>{ values, errors }</code>(或等价结构),RHF 并不关心这个函数内部用什么校验库实现。这样 RHF 把"校验逻辑该长什么样"完全外包出去,只负责在合适的时机(提交、blur、change 等)去调用这个函数并消费它的返回值。好处是 RHF 不用为每个校验库(Zod、Yup、Joi……)写专门的适配代码,也不用背负一套自己维护的校验 DSL——这是典型的依赖倒置:RHF 依赖一个抽象接口(resolver 签名),具体实现(zodResolver)反过来适配这个接口。</li>
+    <li><strong>为什么 RHF + Zod 这个组合能同时拿到类型安全和运行时校验,两者是怎么被同一份 schema 串起来的?</strong>—— 类型安全和运行时校验原本是两件不同阶段的事:TS 类型只在编译期存在,编译完就被抹掉,不能拦截"用户在表单里瞎填的数据";运行时校验能拦截真实数据,但如果单独手写,类型和校验规则容易写成两份、逐渐漂移。Zod 的关键是<code>z.infer</code>——它让 TS 类型直接从 schema 的运行时定义"反向推导"出来,而不是人工再写一遍 interface。这样 schema 变成唯一真源:改一处,编译期类型和运行时校验同时更新,不可能出现"类型说这是必填,但校验规则忘了加必填"的割裂。</li>
+    <li><strong>如果不用 zodResolver,自己在 onSubmit 里手动调用 schema.safeParse() 校验,会有什么问题?</strong>—— 能工作,但会丢掉 RHF 生态里其他依赖 <code>formState.errors</code> 的能力:比如 <code>errors.email</code> 驱动的自动聚焦到第一个错误字段、逐字段错误提示、以及 <code>mode: 'onBlur'/'onChange'</code> 这类非提交时机的校验触发,都是建立在 RHF 内部统一走 resolver 这条路径上的。手动 <code>safeParse</code> 只能覆盖"提交这一刻"的校验,拿到的是 Zod 原始的 <code>issues</code> 数组,还需要自己再写一层转换才能塞进 <code>formState</code>,等于把 resolver 已经做好的适配工作重新做一遍。</li>
+    <li><strong>resolver 这一层的存在,如何体现"关注点分离"?去掉它直接耦合会带来什么后果?</strong>—— 没有 resolver 时,校验逻辑往往就地写在组件里,和状态管理代码混在一起,想换一个校验库(比如从 Zod 换成 Yup)就要把散落在各个组件里的校验代码逐个改掉。有了 resolver 这层适配,RHF 只认 resolver 函数签名,校验库的选择被隔离在 <code>useForm({ resolver: xxxResolver(schema) })</code> 这一行配置里,替换成本从"改所有用到校验的组件"降到"改一行配置",这也是为什么本文开头强调"RHF 管状态,Zod 管规则,谁都不用管对方实现细节"。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>与上一篇 142(Zod schema)的关系:</strong> 142 篇写出的 <code>loginSchema</code> 本身不认识 RHF,resolver 正是把两者粘合起来的那层适配器——没有 resolver,schema 只能靠手动 <code>safeParse()</code> 调用,接进来之后 schema 才真正成为"驱动表单校验"的那一层,而不只是一份孤立的规则文档。</li>
+    <li><strong>与 RHF 基础用法(register、formState.errors)的关系:</strong> resolver 接入后,校验失败时 Zod 的 <code>issues</code> 会被自动转换、映射进 <code>formState.errors.字段名.message</code>,组件里只需要照常读 <code>errors.email</code>、<code>errors.password</code> 就能拿到对应的错误文案——底层换了校验引擎,但 <code>register</code>/<code>errors</code> 这套上层 API 完全没变,这正是 resolver 抽象层带来的好处。</li>
+    <li><strong>与受控/非受控组件的关系:</strong> RHF 走的是非受控订阅模型,<code>register('email')</code> 把 ref 和事件绑定挂在输入框上而不经过 state;resolver 接入的校验逻辑并不关心这一点,它只在 RHF 决定"要校验了"的那个时刻(提交、blur、change)被调用一次,拿到当前收集到的值去跑 <code>safeParse</code>,和输入框本身是否受控完全无关。</li>
+    <li><strong>与下一篇 144(Axios 封装)之间的关系:</strong> 本篇 <code>onSubmit</code> 回调里的 <code>data</code> 已经通过了 schema 的全部校验,是"确定合法"的数据——这正是发起网络请求的最佳时机。下一篇封装的 axios 请求函数,正是要被塞进这个校验通过之后的 <code>onSubmit</code> 里去调用,表单校验和网络请求由此串成一条完整的链路。</li>
+    <li><strong>与"可插拔校验器"设计模式的关系:</strong> resolver 本质是一个函数签名约定,RHF 不关心具体实现,今天用 Zod,明天想换 Yup 也只需要换一个 resolver 函数——这和后面封装 axios 时"业务代码只关心调哪个接口,不关心底层用什么发请求"是同一种关注点分离思路的重复出现。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="142-Zod表单校验.html" class="nav-btn">← Zod 表单校验</a>

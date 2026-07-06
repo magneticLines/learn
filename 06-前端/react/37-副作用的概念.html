@@ -153,6 +153,21 @@ socket.subscribe(...)   // 订阅</pre>
     <strong>联系函数式编程。</strong>"纯函数 + 把副作用隔离到边界"是 FP 的核心思想（Haskell 的 IO Monad 也是同一哲学）。React 把这套搬到 UI：渲染是纯的（可预测、可缓存、可中断），副作用被 <code>useEffect</code> 圈到一个明确的、受控的边界里。理解了这层，就理解了 React 为什么这么设计。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>把"事件触发的操作"也塞进 useEffect</strong>：比如点击提交按钮后发请求，直接写进一个监听某个 state 变化的 effect 里。这样一来，凡是这个 state 因为任何原因发生变化（不只是用户点击），请求都会被重新触发。判断标准是问自己：这件事是"用户做了某个动作才该发生"，还是"只要组件显示着、状态是这样，就该一直保持同步"——前者用事件处理器，后者才用 effect。</li>
+    <li><strong>在渲染期直接调用 setState 导致无限循环</strong>：如果把 <code>setUser(...)</code> 直接写在组件函数体里（不包在 effect 里），会触发重渲染，重渲染又执行到这行代码，再次 setState——陷入死循环。这是"渲染必须是纯计算"这条规则被打破后最典型的报错表现。</li>
+    <li><strong>误以为 StrictMode 下 effect 跑两次是 bug</strong>：开发环境下 React 故意把组件渲染两次、effect 也执行两次（挂载→卸载→再挂载），目的是主动暴露"没写清理函数"或"不是幂等"的副作用。看到这个现象不该关掉 StrictMode 掩盖，而应该检查副作用是否正确处理了重复执行的情况。</li>
+    <li><strong>把"读取外部值"误判为副作用而滥用 useEffect</strong>：例如根据 props 计算一个派生值，本该直接在渲染期用一行表达式算出来，却写成 <code>useEffect(() => setDerived(compute(props)), [props])</code>。这不仅多了一次渲染的延迟，还违背了"渲染应该是纯计算"的原则——纯粹的计算不是副作用，不需要 effect。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 React 组件的渲染过程要求是"纯"的？</strong>—— 因为 React 不保证渲染只执行一次、也不保证一定会被提交到屏幕:并发特性下可能渲染到一半被打断重来,StrictMode 下会故意重复渲染来暴露问题。如果渲染期直接执行有副作用的代码(发请求、改 DOM),这些操作会被不受控地重复或提前执行,产生难以预测的 bug。纯计算不管重复执行多少次结果都一样,才能被 React 安全地中断、重试、复用。</li>
+    <li><strong>什么样的操作应该放进 useEffect，什么样的不需要？</strong>—— 判断标准不是"是否复杂"，而是"是否影响渲染之外的世界"。发请求、订阅事件、操作 DOM、设置定时器都会影响外部系统，必须放进 effect，让它们在渲染提交到屏幕之后才执行。而单纯基于 props/state 计算出的派生值属于纯计算，应该直接在渲染期算出，不需要额外用 effect 包一层再 setState。</li>
+    <li><strong>useEffect 的回调什么时候实际执行，为什么这么设计？</strong>—— effect 在组件渲染完成、React 把 DOM 更新提交到屏幕、浏览器完成绘制之后才异步执行,不会阻塞首次绘制。这样设计是为了让用户尽快看到界面,副作用(往往涉及网络、DOM 操作等有延迟或开销的事)被推迟到不影响视觉响应速度的时间点。如果需要在绘制前同步读取或修改 DOM 布局(避免闪烁),才用 useLayoutEffect。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="36-eslint-plugin-react-hooks.html" class="nav-btn">← eslint-plugin-react-hooks</a>

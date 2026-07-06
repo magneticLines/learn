@@ -157,6 +157,31 @@
     <li>别为了优化而优化——没有 memo 子组件或依赖项需求时,包裹 useCallback/useMemo 是净亏损。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>useCallback 依赖数组写空,但闭包里用了会变的变量。</strong>为了"稳定引用"图省事,把依赖数组直接写成 <code>[]</code>,结果函数内部引用的 <code>count</code> 永远是第一次渲染时的值(经典的闭包陷阱)。稳定引用不能靠瞒报依赖换来,该有的依赖必须老实写全,真正想要"引用稳定又拿到最新值"应该用函数式更新或 <code>useRef</code>。</li>
+    <li><strong>以为 useCallback 本身能防止函数重新创建。</strong>实际上 <code>useCallback</code> 每次渲染时函数字面量还是会被重新求值一遍,只是 React 内部把新函数丢弃、返回缓存的旧引用——它省的是"引用变化",不是"函数体重新执行"的开销。</li>
+    <li><strong>只包了 onClick,漏了 style/config 等内联对象。</strong>浅比较是"全部字段都要相等",漏一个内联对象或数组,memo 照样整体判定为变化。要么把所有传给 memo 子组件的非原始类型 props 都稳定,要么这次优化就是无效功。</li>
+    <li><strong>给不会被 memo 包裹的子组件也套 useCallback。</strong>子组件不是 <code>React.memo</code> 包出来的,父组件重渲染时它本来就会重渲染,这时 useCallback 只增加了依赖比较和缓存的开销,没有任何收益。</li>
+    <li><strong>把 useMemo 当成"缓存计算结果"的万能钥匙,用在廉价计算上。</strong>比如 <code>useMemo(() =&gt; a + b, [a, b])</code>,加法本身比 useMemo 的比较、缓存开销还便宜,包一层纯属负优化。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 React.memo 配合内联箭头函数会失效?</strong>—— 因为 JSX 里 <code>onClick={() =&gt; ...}</code> 每次渲染都会创建一个新的函数对象,函数地址不同,memo 的 <code>Object.is</code> 浅比较结果为 <code>false</code>,判定 props 变化,照常重渲染。</li>
+    <li><strong>useCallback(fn, deps) 和 useMemo(() =&gt; fn, deps) 有什么关系?</strong>—— 前者是后者的语法糖,两者本质都是"依赖不变则返回同一个缓存值"的记忆化机制,区别只是 useCallback 缓存的是函数本身,useMemo 缓存的是函数的返回值。</li>
+    <li><strong>useCallback 的依赖数组写错(比如漏依赖)会导致什么问题?</strong>—— 会形成闭包陷阱:函数体内引用的外部变量停留在创建时的值,后续状态更新不会反映到这个函数里,表现为"点击没反应"或"用的是旧数据"这类隐蔽 bug。</li>
+    <li><strong>什么时候不该用 useCallback/useMemo?</strong>—— 子组件没有被 memo 包裹、依赖的计算本身很廉价、或者结果没有被其他 Hook 当作依赖项时,包一层记忆化只有比较和缓存的成本、没有收益,属于过度优化。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>React.memo 浅比较(上一篇):</strong>本篇是上一篇留下的坑的直接解法。理解浅比较"比引用不比内容"是前提,理解 useCallback/useMemo"依赖不变则返回同一引用"是解法,两篇合起来才是一套完整的记忆化优化链路。</li>
+    <li><strong>单一职责(第74篇):</strong>一个组件如果职责单一、props 简单,需要稳定的引用往往就一两个,配套工作量小、容易做全;职责混杂的大组件里对象/函数 props 一多,漏配一个就整体失效——这也是"拆分得好的组件更容易被性能优化"的又一个例证。</li>
+    <li><strong>容器组件 vs 展示组件(第75篇):</strong>useCallback/useMemo 通常出现在"容器"一侧(或替代容器的自定义 Hook 里),用来给下层的纯展示组件传递稳定的 props;展示组件本身不需要关心引用稳定性,它只管拿到 props 后怎么渲染。</li>
+    <li><strong>何时拆分组件(第76篇):</strong>该篇强调"性能驱动的拆分要用 Profiler 验证",这条原则同样适用于 useCallback/useMemo——不要凭直觉到处包一层,而要先确认子组件确实被 memo 包裹、确实存在可观测的重渲染浪费,再决定要不要引入这层记忆化。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="72-React.memo浅比较.html" class="nav-btn">← React.memo 浅比较</a>

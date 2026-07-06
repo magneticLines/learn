@@ -235,6 +235,32 @@ Object.fromEntries(
     深度比较（递归对比对象所有字段）开销太大——每次渲染都对整个 state 树做深度比较，性能不可接受。引用比较是 O(1) 的，瞬间完成。代价就是你需要在更新时创建新对象——这看起来"浪费"，但 JS 引擎对短生命周期对象的 GC 做了大量优化，实践中性能完全可以接受。如果觉得手写展开太繁琐，可以用 <strong>Immer</strong> 库，它让你写"看起来像直接修改"的代码，但底层帮你生成新对象。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>只展开了第一层，忽略嵌套对象</strong>：<code>{ ...user, address: user.address }</code> 看似"不可变"，但如果之后又写 <code>newUser.address.city = 'x'</code>，因为 <code>address</code> 还是原来那个引用，实际上改的是原对象内部的嵌套对象。展开运算符只做<strong>浅拷贝</strong>，嵌套层级需要逐层展开：<code>{ ...user, address: { ...user.address, city: 'x' } }</code>。</li>
+    <li><strong>用 <code>sort()</code>、<code>reverse()</code> 时忘了它们是原地修改</strong>：这两个数组方法很容易被误认为"返回新数组"，实际上它们直接修改原数组并返回同一个引用。正确做法是先用 <code>[...list]</code> 或 <code>list.slice()</code> 复制一份，再调用 <code>sort/reverse</code>。</li>
+    <li><strong>误以为 <code>setList(list)</code> 里传的是"新数据"就够了</strong>：即便你在 <code>setList</code> 之前用别的变量算好了新值，只要最终传入的引用和旧 state 相同，React 的 <code>Object.is</code> 比较就判定没变化，直接跳过重渲染——这也是为什么"数据看起来是对的，但页面没更新"的经典 bug 现象。</li>
+    <li><strong>在渲染期间（组件函数体里）直接修改 props 或 state 对象</strong>：比如在 render 阶段写 <code>props.items.push(x)</code>，这不仅违反不可变原则，还可能影响到父组件持有的同一个数组引用，产生跨组件的隐藏 bug，且这种修改往往不会立刻触发报错，只会在后续渲染或严格模式下暴露问题。</li>
+    <li><strong>为了"性能"手写深拷贝代替局部展开</strong>：新手有时会用 <code>JSON.parse(JSON.stringify(obj))</code> 做深拷贝去规避引用问题，这既丢失函数、<code>Date</code>、<code>undefined</code> 等特殊值，性能也远差于只展开需要变化的那一层——不可变更新的重点是"创建新引用"，不是"整体深拷贝"。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>React 为什么要求 state 不可变更新？直接修改会有什么后果？</strong>—— React 用 <code>Object.is</code>（本质是 <code>===</code>）做引用比较来判断 state 是否变化，这是 O(1) 的浅比较，性能开销极低。如果允许直接修改原对象/数组，引用不变，React 会误判"没有变化"从而跳过重渲染，UI 与实际数据不同步；同时不可变数据也是 <code>React.memo</code>、<code>useMemo</code> 等浅比较优化手段能正常工作的前提。</li>
+    <li><strong>展开运算符 <code>{ ...obj }</code> 是深拷贝还是浅拷贝？会有什么坑？</strong>—— 是浅拷贝，只复制第一层属性，嵌套的对象/数组仍然共享同一个引用。修改嵌套字段时，如果只展开外层而不展开内层，实际上还是在改原来的嵌套对象，必须逐层展开或使用 Immer 等工具处理深层更新。</li>
+    <li><strong>为什么 <code>list.sort()</code> 在 React 里是危险操作？</strong>—— 因为 <code>sort</code>（以及 <code>reverse</code>、<code>splice</code>、<code>push</code>、<code>pop</code> 等）是原地修改数组并返回同一引用的方法。如果直接对 state 数组调用后 <code>setList(list)</code>，引用没变，React 认为没有更新；即便页面因为其他原因重渲染了，用户也可能看到数据错乱，因为原数组已经被静默修改。应该先复制 <code>[...list].sort()</code> 再排序。</li>
+    <li><strong>Immer 是如何在保持不可变更新语义的同时，让代码"看起来像直接修改"的？</strong>—— Immer 用 Proxy 包装原始状态形成一个"草稿对象"（draft），你在回调里对草稿做的任何"修改"都会被 Proxy 拦截记录，而不会作用到原始对象上；结束后 Immer 根据记录的操作生成一个新的、只在改动路径上创建新引用的对象（结构共享，未修改部分复用原引用），兼顾了开发体验和性能。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>函数式更新：</strong>函数式更新解决"取到最新值"的问题，不可变更新解决"如何基于旧值生成新引用"的问题，两者经常一起出现：<code>setUser(prev => ({ ...prev, age: prev.age + 1 }))</code> 既拿到最新的 <code>prev</code>，又通过展开运算符生成了新对象，缺一个都可能出 bug。</li>
+    <li><strong>key 的作用与规范：</strong>列表渲染时给每一项分配 key，本质上也依赖"每一项是独立的数据"这一前提——如果用 <code>map</code> 生成新数组时错误地复用了同一个对象引用，即便 key 正确，React 也可能因为浅比较判断某一项"没变"而跳过必要的更新，两者共同保证列表 diff 的正确性。</li>
+    <li><strong>React.memo / 浅比较优化：</strong>不可变更新是 <code>React.memo</code>、<code>useMemo</code>、<code>useCallback</code> 等浅比较优化手段能正常工作的前提——这些 API 都是用 <code>Object.is</code> 比较 props/依赖项是否变化，如果你直接修改对象后仍传入同一引用，<code>memo</code> 会误判"没变"从而跳过应有的重渲染，或者反过来因为你每次都创建新对象而让 <code>memo</code> 永远判定"变了"失去优化意义。</li>
+    <li><strong>Redux / 状态管理理念：</strong>Redux 的 reducer 强制要求"不能修改 state，必须返回新对象"，这和 React state 的不可变更新是同一套设计哲学的延伸——都是用引用比较换取 O(1) 的变化检测性能，代价是开发者必须遵守不修改原数据的约定。</li>
+    <li><strong>Immer：</strong>手写展开运算符处理深层嵌套对象很繁琐且容易漏层，Immer 通过 Proxy 拦截"看起来像直接修改"的代码，在内部生成结构共享的新对象，是解决不可变更新繁琐问题的标准工具，在 useState、useReducer、Redux 里都能使用。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="22-函数式更新.html" class="nav-btn">← 函数式更新</a>

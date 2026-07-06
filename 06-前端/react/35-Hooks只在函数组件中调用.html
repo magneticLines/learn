@@ -155,6 +155,29 @@
     <strong>和 class 组件对比。</strong>class 用 <code>this.state</code> / <code>this.setState</code>，状态天然绑在实例 <code>this</code> 上，所以没有"调用顺序"问题。Hook 抛弃了 <code>this</code>，改用"渲染期 + 顺序"来定位状态——代价就是这两条规则。好处是逻辑复用从"高阶组件 / render props 的嵌套地狱"变成了扁平的自定义 Hook 组合。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>在事件处理器里调用 Hook</strong>：新手容易觉得"事件处理器也是组件里的函数，应该能调"，但事件处理器是<strong>渲染之后、由浏览器事件触发</strong>执行的，那时 dispatcher 早已不指向当前组件，Hook 找不到归属的 Fiber。判断标准很简单：只有"组件函数体本身执行的那一刻"才是合法窗口，回调、定时器、Promise.then 里都不算。</li>
+    <li><strong>把工具函数误认为自定义 Hook，只因为它内部用到了状态</strong>：自定义 Hook 的合法性不来自"用了 useState"，而来自<strong>命名以 use 开头 + 被组件或另一个 Hook 调用</strong>这两个约定同时满足。只把函数改名成 <code>useXxx</code> 却仍在普通函数里调用它（比如在 <code>calcTotal</code> 内部调 <code>useXxx</code>），本质问题没解决，只是骗过了 lint 的命名检测。</li>
+    <li><strong>npm link 本地调试组件库时遇到 "Invalid hook call" 却怀疑自己写错了代码</strong>：这类报错很多时候和两条规则无关，而是项目里存在<strong>两份 React 副本</strong>（比如库自己 node_modules 里的 React 和主项目的 React 不是同一份），dispatcher 单例对不上。排查顺序应该是：先看是否真的违规调用，再查 <code>npm ls react</code> 是否有多份。</li>
+    <li><strong>在 class 组件里"抄"函数组件的 Hook 写法</strong>：老项目迁移时偶尔会有人在 class 的 render 方法里直接写 <code>useState</code>，这是双重错误——class 组件没有 dispatcher 指向的渲染上下文，且它本身有自己的状态机制 <code>this.state</code>，两套状态模型不能混用。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 Hook 不能在普通函数或事件处理器里调用？</strong>—— Hook 的状态存在当前渲染组件对应的 Fiber 节点上，React 内部通过一个 dispatcher 指针记录"现在正在渲染哪个组件"。事件处理器、setTimeout 回调等都是在渲染完成之后才执行的，那时 dispatcher 不指向任何有效的渲染上下文，Hook 无法定位该把状态存到哪里，因此 React 直接抛出 Invalid hook call。</li>
+    <li><strong>自定义 Hook 的 use 前缀只是命名约定，还是有实际约束力？</strong>—— 既是约定也有实际后果。React 本身在运行时不会校验函数名，但 ESLint 的 rules-of-hooks 依赖这个前缀来判断"这个函数内部调用其他 Hook 是否合法"；同时约定统一之后，其他开发者和工具（包括 React DevTools）都能一眼识别出这是一个可复用的状态逻辑单元，而不是普通函数。</li>
+    <li><strong>遇到 Invalid hook call 报错，排查思路是什么？</strong>—— 官方给出三个方向：① 检查是否违反了"只在顶层"或"只在组件/自定义 Hook 里"调用的规则；② 检查 react 和 react-dom 版本是否一致；③ 检查项目里是否存在多份 React（常见于 monorepo 或 npm link 本地组件库场景），因为 Hook 依赖模块级单例的 dispatcher，多份 React 会导致组件用的 dispatcher 和实际渲染用的不是同一个。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>Hooks 只在顶层调用（上一篇）：</strong>这两条规则同源于同一套底层机制——链表按调用顺序存取状态，且这个链表挂在当前渲染组件的 Fiber 上。顶层规则保证"顺序稳定"，本篇的规则保证"有一个正在渲染的 Fiber 可以挂靠"。少了任何一条，"按顺序读写链表"这套设计都无法成立。</li>
+    <li><strong>useEffect 依赖数组、清理函数：</strong>本篇提到"useEffect 的回调里不能再调用 Hook"，因为回调是异步执行、不在渲染期。理解了这一点，再看后面 useEffect 依赖数组和清理函数时会更清楚：effect 回调本身就是一段"渲染之外"执行的代码，这也是它不能直接调用 Hook、却可以安全读写 <code>ref.current</code> 的原因。</li>
+    <li><strong>自定义 Hook 与 useRef 系列：</strong>自定义 Hook 的合法性来自"use 前缀 + 被组件或另一个 Hook 调用"这两个约定，后面学到的 <code>useRef</code>、<code>useReducer</code> 等都遵循同样的规则——它们也只能在函数组件或自定义 Hook 内部调用，背后原因完全一致：都要依赖 dispatcher 指向当前正在渲染的组件。</li>
+    <li><strong>forwardRef 与命令式代码：</strong>本篇强调"事件处理器、setTimeout 回调不是渲染期"，这个"渲染期 vs 非渲染期"的区分，后面在 forwardRef、useImperativeHandle 讨论"什么时候可以安全操作 DOM"时会再次出现——原则相通：声明式渲染逻辑和命令式的事件/回调逻辑是两个不同的执行阶段，各自有各自的规则。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="34-Hooks只在顶层调用.html" class="nav-btn">← Hooks 只在顶层调用</a>

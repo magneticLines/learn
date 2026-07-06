@@ -161,6 +161,31 @@ function AlertDialog() {
     有人会说"class 组件不是 <code>extends React.Component</code> 吗,那不是继承?"——那是继承 React <em>框架</em>提供的基类(为了拿到 <code>setState</code> 等能力),属于"继承框架 API"。而 React 反对的是<strong>在你自己的业务组件之间</strong>用继承来复用。何况函数组件 + Hooks 时代,连这个基类都不需要了。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>把"特例化组件"误写成继承</strong>：从 OOP 转过来的人容易本能地想写 <code>class WelcomeDialog extends Dialog</code>，但函数组件根本没有这种继承机制。正确做法永远是"新组件内部渲染通用组件、把特定 props 填好"，靠<em>组合</em>而不是<em>类继承</em>实现"特化版"。</li>
+    <li><strong>误以为 class 组件 extends React.Component 就是在践行继承复用</strong>：这是继承 React 框架提供的基类以获取 <code>setState</code>/生命周期等能力，属于"继承框架 API"，跟"业务组件之间要不要用继承复用逻辑"是两件不同的事——React 反对的是后者。函数组件 + Hooks 时代，连前者也不需要了。</li>
+    <li><strong>用继承的思维去"包一层"而不是组合</strong>：比如想给 Dialog 加一个通用的边框样式，容易想着"写个基类 Dialog，再派生出带边框的版本"，实际上应该用组合——让"带边框"的组件把 <code>children</code> 渲染进一个通用的 Dialog 里，或者用 props 传入样式差异，而不是建立继承链。</li>
+    <li><strong>共享逻辑时求助"基类方法"而不是自定义 Hook</strong>：想在多个组件间共享"获取在线状态"这类逻辑,如果还在想"要不要抽个基类让组件继承",说明还没转过来 React 的思维——正确答案永远是抽成 <code>useXxx</code> 自定义 Hook,任何函数组件调用即可,无需任何继承关系。</li>
+    <li><strong>过度使用 children 插槽导致组件"看不出接口"</strong>：为了践行组合而无限制地把所有内容都塞进 <code>children</code>，会让组件本身失去清晰的 props 接口约束，调用者不看内部实现就不知道该传什么进去。组合不代表放弃类型约束，具名插槽（用具体命名的 props 承载 JSX）往往比笼统的 <code>children</code> 更清晰。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>React 官方为什么不推荐用继承来复用组件？</strong>—— 因为 UI 组件之间几乎不存在真正的"is-a"（是一种）关系，绝大多数复用需求本质是"has-a / contains"（包含关系）——比如 AlertDialog 不是"一种特殊的 Dialog 类型"，而是"用了 Dialog 外壳的东西"。继承还会造成经典的脆弱基类问题：父类实现细节一变，所有子类都可能遭连带影响，耦合度高、维护成本大，组合能覆盖所有这些场景且更灵活。</li>
+    <li><strong>如何用组合实现 OOP 里"子类特化父类行为"的效果？</strong>—— 写一个新组件，内部渲染通用组件（如 Dialog），把这个特化版本需要的 title、children 等具体内容通过 props 填好，对外只暴露这个新组件。这被称为"特例化（specialization）"：没有继承链，没有 extends，只是把通用组件当作可配置的容器来使用。</li>
+    <li><strong>组合和继承在"共享逻辑"这件事上分别怎么做？哪个是 React 推荐的？</strong>—— OOP 继承会把公共逻辑放进基类，子类通过继承拿到这些方法；React 推荐把有状态逻辑抽成自定义 Hook（如 <code>useOnlineStatus</code>），任何函数组件直接调用即可获得同样的能力，不需要建立任何继承关系，也不会有基类被多个子类耦合的问题。</li>
+    <li><strong>"组合优于继承"是 React 独创的原则吗？</strong>—— 不是。这是软件设计领域的普遍原则，最早由 GoF 在《设计模式》里提出（"favor composition over inheritance"），Go 语言甚至直接取消了类继承只保留组合。React 只是把这一原则在 UI 场景里贯彻得非常彻底——因为 UI 需求变化快，继承的紧耦合和层级僵化在这种场景下代价格外高。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>children 插槽模式(65 篇)：</strong>本篇"全景对照表"里把 children 列为"把内容放进外壳"这一复用需求的组合方案——65 篇讲的"组合优于配置"只是局部结论,本篇把它扩展成"组合优于继承"这个更高层的原则,children 是这个原则在 props 设计上最直接的落地。</li>
+    <li><strong>render props 模式(66 篇)：</strong>对照表把 render props 列为"共享数据给渲染"对应 OOP "受保护成员"的组合方案——如果没先理解 render props 如何让组件把内部 state 交给使用者决定渲染什么,这里"共享数据"这一行就只是个抽象标签。</li>
+    <li><strong>自定义 Hook：</strong>本篇把"共享有状态逻辑"明确判给自定义 Hook,而不是继承基类——这是对 66 篇结尾"Hook 出现后 render props 退居二线"的呼应和收口,也解释了为什么现代 React 代码里很少再看到刻意设计的继承层级。</li>
+    <li><strong>错误边界(下一篇)：</strong>错误边界是本篇原则的一个例外确认——它恰恰必须写成 class 组件、继承 <code>React.Component</code>,但这属于"继承框架 API 以获取平台能力"(callout 里已经区分过),不是"业务组件之间用继承复用",两者并不矛盾,反而更凸显 React 反对的是后者。</li>
+  </ul>
+
   <hr>
   <h2>小结</h2>
   <ul>

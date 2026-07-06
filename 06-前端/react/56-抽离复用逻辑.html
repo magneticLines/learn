@@ -152,6 +152,31 @@
     <li>核心性质：<strong>每次调用状态独立</strong>——Hook 共享的是逻辑，不是状态；共享状态用 Context。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>误以为调用同一个 Hook 会共享状态</strong>：这是最典型的误解——两个组件各自调用 <code>useFetch(url)</code>，会得到两份完全独立的 <code>data</code>/<code>loading</code>，改一个不会影响另一个。想要真正共享同一份数据，必须用 Context 或状态库，Hook 本身无法做到"跨组件同步"。</li>
+    <li><strong>useFetch 里忘记处理竞态（race condition）</strong>：如果 <code>url</code> 快速切换（比如搜索框联想），旧请求可能比新请求慢返回，若不加 <code>ignore</code> 标志或 <code>AbortController</code> 判断，旧请求的结果会覆盖新请求的结果，界面显示错误数据。这也是为什么示例代码里一定要在 <code>useEffect</code> 的清理函数里置位 <code>ignore</code>。</li>
+    <li><strong>useLocalStorage 每次渲染都读 localStorage</strong>：如果不用 <code>useState</code> 的惰性初始化写法（传函数而不是直接读取的结果），每次组件渲染都会重新执行 <code>localStorage.getItem</code>，虽然只在初始化那次真正生效，但代码语义上容易被误改成每次渲染都读，带来不必要的同步 I/O 开销。</li>
+    <li><strong>把不该抽的逻辑也强行抽成 Hook</strong>：只在一个地方用、且逻辑简单的 <code>useState</code>+<code>useEffect</code> 组合，抽成 Hook 反而多了一层间接，读代码时要多跳一次文件。抽离的信号应该是"确实有重复"或"逻辑复杂到污染组件主体"，不是"看起来像 Hook 就该抽"。</li>
+    <li><strong>返回值形状设计不一致</strong>：有的 Hook 返回数组（模仿 <code>useState</code>），有的返回对象，团队里如果没有统一约定，调用处经常要翻实现才知道怎么解构，增加认知负担。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>两个组件调用同一个自定义 Hook，它们的 state 是否共享？为什么？</strong>—— 不共享。Hook 内部的 <code>useState</code>/<code>useEffect</code> 实际运行在调用它的那个组件的渲染上下文里，React 按"组件 + 第几个 Hook 调用"来存取 state。自定义 Hook 只是把这些调用"打包转发"，state 依然各自挂在调用者身上，类似普通函数里的局部变量每次调用都是新的一份。</li>
+    <li><strong>useFetch 类 Hook 为什么要在 useEffect 里做清理（cleanup）？不做会有什么问题？</strong>—— 如果 <code>url</code> 在请求未完成时又变化，会触发新的请求，但旧请求的 <code>.then</code> 回调仍会在稍后执行。不加清理判断（如 <code>ignore</code> 标志），旧请求返回时会用过期数据覆盖新请求已经设置好的 state，造成界面显示与当前输入不一致的竞态 bug。</li>
+    <li><strong>什么时候应该把逻辑抽成自定义 Hook，什么时候不需要？</strong>—— 判断标准是"重复"和"复杂度"：多个组件出现几乎相同的 state+effect 组合，或单个组件里这段逻辑本身足够复杂、影响组件主体可读性，就该抽。如果逻辑简单且只用一次，抽出来反而增加间接层，得不偿失。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>useReducer 与 Context 结合（第 50 篇）：</strong>本篇陷阱里提到"想共享状态用 Context"，第 50 篇的 <code>useTodos()</code>/<code>useTodosDispatch()</code> 正是这种共享状态的自定义 Hook 封装——表面看都是"useXxx() 返回一份数据"，但第 50 篇内部走的是 <code>useContext</code>，多个组件调用会拿到同一份数据；本篇的 <code>useFetch</code> 内部是 <code>useState</code>，各自独立，这正是区分两者的关键。</li>
+    <li><strong>useMemo 缓存计算（第 52 篇）与 useCallback 缓存函数（第 53 篇）：</strong>自定义 Hook 内部同样会用到这两个性能 Hook——比如 <code>useFetch</code> 如果要对返回的 <code>data</code> 做进一步派生计算，或者要把某个方法传给 <code>memo</code> 子组件，一样要考虑引用稳定性问题，抽 Hook 并不能绕开这些考量，只是把它们封装到了一处。</li>
+    <li><strong>过度优化的坏处（第 54 篇）：</strong>本篇陷阱"把不该抽的逻辑也强行抽成 Hook"和第 54 篇的核心思想同源——都是"没有实际收益却引入了额外的间接层/开销"，抽 Hook 和加 memo 都要基于"确实有重复/确实测到瓶颈"的证据，而不是看起来该做就做。</li>
+    <li><strong>父传子 Props（第 58 篇）：</strong>自定义 Hook 的返回值最终往往还是要通过 props 或直接在组件内使用，理解 Hook 返回的数据/函数如何被消费，离不开对 props 传递机制的理解——尤其是 Hook 返回对象/数组时的引用稳定性，会直接影响子组件是否被无谓重渲染。</li>
+    <li><strong>跨层级 Context 通信（第 61 篇）：</strong>本篇明确划清"Hook 复用逻辑，Context 共享状态"的边界——如果需求从"多处需要同样的处理逻辑"变成"多处需要读写同一份数据"，就该从自定义 Hook 切换到 Context，这是判断该用哪种方案的关键分界线。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="55-自定义Hook命名规范.html" class="nav-btn">← 自定义 Hook 命名规范</a>

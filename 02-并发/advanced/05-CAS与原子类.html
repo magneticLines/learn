@@ -416,6 +416,17 @@
     <li><strong>compareAndSet 和 weakCompareAndSet 的区别？</strong> — <code>weakCompareAndSet</code> 可能伪失败（spurious failure），但在某些平台开销更低；<code>compareAndSet</code> 有完整的 volatile 内存语义。</li>
   </ul>
 
+  <!-- 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>JMM / happens-before：</strong>本节强调的"<code>volatile</code> 保证可见性，CAS 保证原子性"两者分工，正是 JMM 里 volatile 写/读的 happens-before 规则的具体应用——<code>AtomicInteger</code> 的 <code>value</code> 字段是 <code>volatile</code> 的，一次成功的 CAS 相当于一次 volatile 写，其他线程随后对同一字段的读能看到这次修改，这也是无锁编程能保证正确性而不只依赖"原子指令"本身的关键一环。</li>
+    <li><strong>ABA 问题：</strong>本节结尾埋的"陷阱 4"就是下一节的主题——CAS 只比较值是否相等，无法区分"一直没变"和"变了又变回来"，这在无锁栈、无锁链表这类需要复用节点指针的结构里会导致逻辑错误，必须靠 <code>AtomicStampedReference</code> 额外带版本号来解决，详见「ABA 问题」一节。</li>
+    <li><strong>AQS 体系：</strong>本节讲的"CAS 失败就自旋重试"和 AQS 里 <code>tryAcquire</code> 的第一步几乎一模一样——<code>ReentrantLock</code> 非公平模式下的加锁，第一步就是对 AQS 的 <code>state</code> 做一次 CAS(0, 1)，只有失败了才真正走到"排队 + 阻塞"的悲观路径。可以说 AQS 是"CAS 乐观尝试 + 失败后阻塞排队"的悲观锁通用骨架，而本节的原子类是"只信任 CAS、永不阻塞"的纯乐观方案。</li>
+    <li><strong>ConcurrentHashMap：</strong>JDK 8 之后的 <code>ConcurrentHashMap</code> 在插入空桶时用 CAS 而非加锁，只有发生哈希冲突时才对桶头节点加 <code>synchronized</code>，这种"无竞争用 CAS、有竞争才加锁"的混合策略与本节"CAS 适合极短临界区、竞争激烈时该退回锁"的经验法则一致。</li>
+    <li><strong>LongAdder 与线程池监控：</strong>本节 <code>LongAdder</code> 的分段累加思想在实际工程里很常见——比如统计接口 QPS、Spring 线程池活跃任务数等高频写、低频读的计数场景，用 <code>LongAdder</code> 代替 <code>AtomicLong</code> 能显著降低高并发下的 CAS 竞争，是把本节原理落地到监控埋点的典型案例。</li>
+    <li><strong>面试高频考点：</strong>面试官常追问"CAS 和 synchronized 怎么选"，本节第 9 部分的对比表是标准答案框架；进一步追问"高并发下 CAS 一定比锁快吗"，正确回答是不一定——竞争极其激烈时自旋浪费的 CPU 可能超过阻塞和调度的开销，这也是 <code>LongAdder</code> 存在的意义。</li>
+  </ul>
+
   <hr />
 
   <!-- nav-footer -->

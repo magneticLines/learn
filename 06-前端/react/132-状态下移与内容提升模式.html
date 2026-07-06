@@ -196,6 +196,32 @@
     <li>下一篇进入"列表性能"主题,讲长列表如何用虚拟滚动(TanStack Virtual)只渲染可视区域。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>状态放得太高的惯性</strong>——很多人写组件时习惯"状态先放在最外层再说",觉得这样以后万一别的组件要用会方便。这其实是过度设计:state 提前放在高层不会带来任何好处,只会让这个 state 变化时白白拖着一整棵无关子树重渲染。正确做法是反过来——先把 state 放在离使用它最近的组件里,等真的出现"多个兄弟组件都要用"的需求时,再往上提升,而不是提前占位。</li>
+    <li><strong>下移了状态却没搬对内容</strong>——把 <code>searchText</code> 这类 state 下移到 <code>SearchBox</code> 内部,却忘了检查 Page 里还有没有其他"看起来和这个 state 无关但其实被拖下水"的逻辑(比如 Page 上还留着一段依赖 searchText 做副作用的 <code>useEffect</code>)。状态下移不是简单地剪切 <code>useState</code> 那一行代码,而是要把所有只服务于这个 state 的逻辑和 UI 一起搬过去,否则优化没有真正生效,Page 该重渲染还是会重渲染。</li>
+    <li><strong>误以为 memo/useMemo 能达到同样效果</strong>——看到 ExpensiveChart 重渲染,第一反应是给它包一层 <code>memo</code>,或者用 <code>useMemo</code> 缓存它的元素。这样确实能"堵住"问题,但属于文中说的"事后补救",还得维护依赖数组、操心浅比较的边界条件。如果本质原因是组件结构没设计好(state 和不相关的子树耦合在同一层),那更省心的办法是用状态下移或内容提升从结构上解决,根本不需要引入记忆化 API 的心智负担。</li>
+    <li><strong>只改 JSX 写法,没搬状态归属</strong>——照抄"children 作为 props"的写法,把 <code>&lt;ExpensiveChart /&gt;</code> 写在 <code>&lt;Modal&gt;</code> 标签里,但 <code>isOpen</code> 这个 state 依然留在同一个组件里管理。文中已经点破:这个模式生效的前提是<strong>持有 state 的组件和创建 children 的组件必须是分开的两层</strong>。如果 Page 自己既管 isOpen 又渲染 Modal 和 ExpensiveChart,那 isOpen 变化时 Page 照样会重新执行、重新创建 ExpensiveChart 元素,children 引用照样变,JSX 结构写得再像也没用。</li>
+    <li><strong>矫枉过正,把所有状态都往下移</strong>——理解了状态下移的好处后,容易走到另一个极端:凡是 state 都尽量往最底层的组件塞。但如果几个兄弟组件本来就需要共享和响应同一份数据(比如搜索框的值要联动过滤商品列表),硬把它下移到某个子组件里,只会导致其他组件拿不到这份数据,还得靠更别扭的方式(比如全局状态、事件总线)绕回来。判断标准始终是"这个 state 到底被谁需要",覆盖到刚好够用的那一层就好,不多不少。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么把 children 作为 props 传入能减少重渲染?</strong>—— 因为 JSX 子节点在编译后本质上是 <code>Modal({ children: &lt;ExpensiveChart /&gt; })</code> 这样的函数调用,<code>&lt;ExpensiveChart /&gt;</code> 这个元素对象是在外层(创建它的那次渲染)生成的,不是在 Modal 内部生成的。只要外层组件本身没有因为某个 state 而重新执行渲染函数,这个元素对象的引用就不会变,Modal 重渲染时拿到的 children 还是同一个引用,React 据此判断这部分子树的输入没变而跳过渲染——这是 React 元素创建机制的天然结果,不依赖 memo 或任何浅比较逻辑。</li>
+    <li><strong>状态下移和状态提升是不是矛盾的两个技巧?</strong>—— 不矛盾,它们是同一个原则的两个方向:state 应该放在"刚好覆盖所有需要它的组件"的那一层。只有一个组件用就下移到那个组件内部;多个兄弟组件都要共享就提升到能同时管住它们的公共父组件。判断依据始终是这个 state 实际的使用范围,不是固定往上或往下移动。</li>
+    <li><strong>状态下移和内容提升,分别适用于什么场景?两者能否互相替代?</strong>—— 状态下移解决的是"某个 state 本身可以彻底不放在高层"的场景(比如输入框自己的临时值);内容提升解决的是"state 必须留在高层(比如弹窗开关要由外层决定渲不渲染),但受它影响的子树里有一部分内容其实不依赖这个 state"的场景。两者不能互相替代,但可以配合:先看能不能下移,不能下移的部分再考虑把无关内容通过 children 提升出去。</li>
+    <li><strong>为什么说状态下移/内容提升比 memo 等记忆化手段更"根本"?</strong>—— memo/useMemo/useCallback 是在组件树结构不变的前提下,靠额外的比较逻辑在渲染前"拦截"不必要的渲染,本质是事后补救,需要维护依赖数组、留意浅比较失效的边界条件。而状态下移和内容提升是调整 state 的归属层级和组件组合方式,让不相关的子树从设计上就不会被卷入重渲染的触发路径,零运行时比较成本,也不会有依赖数组写错导致的隐蔽 bug,这也是 React 官方推荐"先组合、后记忆化"的原因。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>React.memo / useMemo / useCallback：</strong>文中"三种手段的对比"已经把关系讲清楚——memo 系列是"事后补救"，需要记忆化 API 和依赖数组；状态下移/内容提升是"事前设计"，零心智负担。但两者不是互斥的：结构调整解决不了的场景（子组件确实需要接收会变化的、开销大的 props）依然要靠 memo/useMemo/useCallback 兜底，React 官方推荐的顺序是"先组合，后记忆化"。</li>
+    <li><strong>组件组合与嵌套：</strong>13 篇讲的"某部分有独立的 state 就该拆成独立组件"这条拆分信号，正是本篇"状态下移"的前置基础——本篇的 <code>SearchBox</code> 之所以能把 <code>searchText</code> 下移进去，前提是它本来就该被拆成一个独立组件；"内容提升"用到的 <code>children</code> 作为 props，也是组合思想的延伸应用。</li>
+    <li><strong>虚拟滚动 TanStack Virtual：</strong>下一篇 133 讲的虚拟滚动和本篇的定位一脉相承——本篇解决的是"重渲染要不要发生"，虚拟滚动解决的是更前置的"DOM 节点数量本身"；两者都是从架构/机制层面减少渲染成本，而不是像 memo 那样靠运行时比较去拦截，是同一种"从设计上根治"思路在不同问题域的应用。</li>
+    <li><strong>useDeferredValue：</strong>本篇的状态下移和内容提升是通过调整组件结构减少不必要的重渲染，136 篇的 <code>useDeferredValue</code> 则是在重渲染确实要发生的前提下，把它标记为可被打断的低优先级更新——前者是"不让它发生"，后者是"让它发生但不阻塞更紧急的交互"，两者可以在同一个应用里配合使用，分别处理"结构能解决的部分"和"结构解决不了、只能靠调度让步的部分"。</li>
+    <li><strong>AntDesign 与 shadcn/ui：</strong>138、139 篇提到 AntDesign 是黑盒依赖、shadcn/ui 是可直接编辑的源码——面对第三方组件库（比如 AntDesign 的 Modal）时，本篇的"内容提升"模式格外有用：只要把不依赖某个 state 的内容作为 children 传给这些黑盒组件，就能天然避免重渲染，而不需要等官方支持某个记忆化选项，这是黑盒场景下少数几种"不用改组件内部实现"就能生效的优化手段。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="131-useCallback稳定函数引用.html" class="nav-btn">← useCallback 稳定函数引用</a>

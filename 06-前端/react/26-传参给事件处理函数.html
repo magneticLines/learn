@@ -144,6 +144,30 @@
     直接写 <code>onClick={handleClick}</code>，React 调用 <code>handleClick(e)</code> 时会自动把合成事件作为第一个参数传入。加了箭头函数包裹后，<code>() => fn(id)</code> 里的那个函数才是真正的 onClick 处理器，React 把事件传给它——箭头函数接不接收 <code>e</code> 都行，只要你不需要用它。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>写成 <code>onClick={handleDelete(id)}</code> 却没意识到问题</strong>：这是本文开头就点出的经典错误，本质是把"函数调用表达式"当成了"函数引用"传给 onClick。危险之处在于如果 <code>handleDelete</code> 内部没有调用 setState，代码可能"看起来正常"（只是永远不会真正响应点击），只有当内部触发了状态更新时才会暴露成无限渲染循环，排查起来容易走偏。</li>
+    <li><strong>在循环里为每一项都写复杂的箭头函数，误以为会有明显性能问题</strong>：确实每次渲染都会为列表里每一项创建新的箭头函数，但这在绝大多数场景下性能影响可忽略——只有在列表极大（几千项以上）且子组件用了 <code>React.memo</code> 依赖 props 引用相等做优化时，才需要考虑用 <code>useCallback</code> 或事件委托（把事件绑在父级 <code>ul</code> 上，用 <code>e.target.dataset</code> 取参数）来减少函数创建。不要在没有性能问题的场景下过早优化。</li>
+    <li><strong>柯里化写法里忘记内层要返回函数</strong>：写 <code>function handleDelete(id) { setTodos(...) }</code> 却按柯里化的方式调用 <code>onClick={handleDelete(id)}</code>，这其实退化成了本文一开始警告的"直接调用"错误——柯里化能生效的前提是外层函数必须返回一个新函数，而不是直接执行副作用逻辑。</li>
+    <li><strong>混淆"事件对象"和"自定义参数"的顺序</strong>：原生 <code>addEventListener</code> 回调只接收事件对象，而箭头函数包裹场景里参数顺序完全由你自己定义（比如 <code>(id, e) =&gt; handleChange(id, e)</code>），容易在团队协作里因为参数顺序不统一造成读错、传错的问题，建议团队内统一约定参数顺序（如事件对象放最后）。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 <code>onClick={handleClick(id)}</code> 是错的，<code>onClick={() =&gt; handleClick(id)}</code> 是对的？</strong>—— JSX 中 <code>{}</code> 内是一个表达式，会在组件每次渲染（即调用组件函数）时立即求值。<code>handleClick(id)</code> 这个表达式在渲染阶段就被执行，其返回值（通常是 undefined）才是真正赋给 onClick 的值，因此点击时不会有任何行为，而渲染时逻辑却已经执行了。用箭头函数包裹后，<code>() =&gt; handleClick(id)</code> 本身作为一个函数值赋给 onClick，渲染阶段只是"创建"了这个函数，真正调用 <code>handleClick(id)</code> 要等到用户点击、React 调用这个箭头函数时才发生。</li>
+    <li><strong>不传参数时，事件对象是怎么传给处理函数的？</strong>—— React 在触发事件时，会调用 <code>onClick</code> 上挂的函数，并把这次的 SyntheticEvent 对象作为第一个实参传入，等价于 <code>onClickHandler(syntheticEvent)</code>。如果你写的是 <code>onClick={handleClick}</code>，handleClick 的第一个形参自然拿到事件对象；但如果写了 <code>onClick={() =&gt; handleClick(id)}</code>，React 传的事件对象实际是传给了那个匿名箭头函数，而箭头函数没有转发它，所以 handleClick 内部拿不到事件对象，除非显式写成 <code>e =&gt; handleClick(id, e)</code>。</li>
+    <li><strong>箭头函数包裹传参和柯里化传参，本质区别是什么？</strong>—— 两者最终赋给 onClick 的都必须是一个函数引用，区别在于"由谁在何时创建这个函数"。箭头函数包裹是在 JSX 里直接创建一个闭包函数；柯里化则是调用一个"高阶函数"（<code>handleDelete(id)</code>），该高阶函数内部返回一个新函数作为真正的处理器。二者性能上没有本质差异（都是每次渲染创建新函数），只是代码组织风格不同。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>onClick / onChange / onSubmit：</strong>本节解决的是"给这些事件处理函数额外传参"的问题，前提是先掌握了 onClick 的基本绑定方式（传函数引用而非调用结果）——如果没理解 <code>onClick={handleAdd()}</code> 为什么错，也就很难理解为什么 <code>onClick={handleDelete(id)}</code> 同样是错的。</li>
+    <li><strong>闭包：</strong>箭头函数包裹传参 <code>() => handleDelete(todo.id)</code> 本质是利用闭包把 <code>todo.id</code> 这个值"锁"在函数内部，等用户点击时再读取——这和函数式更新一节提到的闭包陷阱是同一机制的两面：这里是"善用闭包传递当前渲染的值"，那里是"闭包捕获旧值导致的坑"。</li>
+    <li><strong>不可变更新：</strong>示例中的 <code>handleDelete</code> 用 <code>todos.filter(t => t.id !== id)</code> 生成新数组而不是 <code>splice</code> 原地删除，这是不可变更新原则在事件处理函数里的直接应用——传参的目的（知道删哪一项）和删除的实现方式（不可变）是两个独立但常常同时出现的知识点。</li>
+    <li><strong>性能与 useCallback：</strong>每次渲染都为列表里的每一项创建新的箭头函数，这个"看似浪费"的做法关联到 <code>React.memo</code> + <code>useCallback</code> 的优化场景——只有当子组件用 memo 依赖 props 引用相等时，才值得用 useCallback 缓存这些传参函数，否则是不必要的复杂度。</li>
+    <li><strong>key 的作用与规范：</strong>示例代码里 <code>todos.map</code> 渲染列表项时用了 <code>key={todo.id}</code>，这与传参逻辑用的是同一个 <code>id</code>——用稳定的业务 id 而不是数组下标做 key，恰好也是给事件处理函数传参时能"认对目标项"的可靠依据。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="25-onClick与onChange与onSubmit.html" class="nav-btn">← onClick / onChange / onSubmit</a>

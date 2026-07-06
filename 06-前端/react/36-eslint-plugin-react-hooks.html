@@ -147,6 +147,21 @@
     <strong>联系工程实践：</strong>把规则设为 error 意味着 CI 会因违规而红。这正是 lint 的价值——把"团队约定"变成"机器强制"，避免 code review 时反复口头提醒。Hook 规则天然适合 lint，因为它们是<strong>语法层面可静态判定</strong>的（顺序、位置、命名）。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>以为 lint 通过就等于依赖数组"正确"</strong>：<code>exhaustive-deps</code> 只做<strong>语法层面</strong>的分析——它检查你在 effect 里引用了哪些外部变量，是否都列进了依赖数组，但它不理解业务语义。比如你依赖了一个每次渲染都新建的对象，lint 会说"依赖齐全"，可这个 effect 依然会因为对象引用变化而每次重跑，这是 lint 发现不了的问题。</li>
+    <li><strong>为了消除警告随手加 eslint-disable，而不是搞懂为什么报警</strong>：这是最危险的用法。90% 情况下警告指向真实 bug（过期闭包），禁用注释只是让报错消失，问题还在。养成"先问自己这个依赖是否真的不需要"再决定要不要禁用的习惯。</li>
+    <li><strong>把 rules-of-hooks 和 exhaustive-deps 的严重程度混为一谈</strong>：前者违反了就是必然出 bug（状态错位），所以是 error；后者是启发式建议，有时候确实有合理的例外（比如某些一次性初始化场景），所以是 warn。见到 warn 不代表可以无视，但也不代表必须机械地照办。</li>
+    <li><strong>依赖一个函数导致 effect 无限重跑</strong>：函数在每次渲染都是新的引用，如果这个函数被列进依赖数组，effect 就会每次渲染后都重新执行。lint 会如实提示"缺少这个函数依赖"，但真正的修复往往需要 <code>useCallback</code> 包裹函数或把函数移进 effect 内部——这一步 lint 不会替你做。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>eslint-plugin-react-hooks 能检查出什么，不能检查出什么？</strong>—— 能检查：Hook 调用顺序/位置是否合规（rules-of-hooks，语法层面可静态判定），以及 effect/useMemo/useCallback 依赖数组是否列全了代码里实际引用的响应式值（exhaustive-deps）。不能检查：某个依赖在业务上是否真的应该触发重新执行、依赖的值是否被错误地每次重新创建导致语义上的死循环、以及任何需要理解程序意图而非单纯语法分析才能发现的问题。</li>
+    <li><strong>为什么 rules-of-hooks 是 error 而 exhaustive-deps 只是 warn？</strong>—— rules-of-hooks 检测的是必然导致状态错位或运行时崩溃的硬性违规，没有例外，因此设为 error 直接阻断构建。exhaustive-deps 是基于代码引用关系的启发式推断，某些场景下开发者确实有意为之（尽管少见），存在合理例外的可能性，所以只给出警告，把最终判断权留给开发者。</li>
+    <li><strong>如果 exhaustive-deps 建议的依赖会导致 effect 无限触发，应该怎么处理？</strong>—— 不应该直接禁用规则了事，而要找到根本原因：通常是依赖的是一个每次渲染都重新创建的函数或对象。正确解法包括用 useCallback/useMemo 稳定引用、把不需要触发重新执行的逻辑移出依赖（比如用 ref 存储），或者反思这个 effect 的依赖设计是否本身有问题。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="35-Hooks只在函数组件中调用.html" class="nav-btn">← Hooks 只在函数组件中调用</a>

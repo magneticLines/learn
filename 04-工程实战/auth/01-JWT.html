@@ -285,6 +285,18 @@ SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c    ← Signature（防篡改）</div
     <strong>面试高频考点：</strong>JWT 如何实现登出？→ 这正是考察你是否理解 JWT 无状态的本质。回答：Access Token 短期（15min）自然失效，Refresh Token 存 Redis 可以主动删除，配合 Token 黑名单或版本号机制可实现即时吊销。
   </div>
 
+  <!-- ─── 9. 与其他知识点的联系 ─── -->
+  <h2>与其他知识点的联系</h2>
+
+  <ul>
+    <li><strong>OAuth2：</strong>JWT 只是一种 token 的<strong>数据格式</strong>，OAuth2 是颁发和传递 token 的<strong>流程协议</strong>。OAuth2 授权码模式最终换到的 <code>access_token</code> 完全可以用 JWT 格式编码，Spring Security 的 <code>oauth2ResourceServer().jwt()</code> 本质上就是"用 JWT 校验逻辑去验证 OAuth2 颁发的 token"，二者是组合关系而非替代关系，学完本文再看下一篇 OAuth2 会更容易分清"协议"和"格式"这两个层面。</li>
+    <li><strong>Spring Security 的 Filter 链：</strong>本文的 <code>JwtAuthFilter</code> 只是插入到 <code>SecurityFilterChain</code> 中的一环，它和 <code>UsernamePasswordAuthenticationFilter</code>、<code>ExceptionTranslationFilter</code> 等按顺序组成职责链模式（Chain of Responsibility）。理解这一点后再看 Spring Security 的其他自定义 Filter（如限流、IP 黑名单）会发现套路完全一致：都是在链上找准插入位置，做完自己的事再 <code>doFilter</code> 放行。</li>
+    <li><strong>密码学基础（哈希 vs 加密 vs 编码）：</strong>JWT 的三段结构正好对应三种不同的密码学操作——Header/Payload 只是 Base64<strong>编码</strong>（可逆、无密钥、任何人可读），Signature 是<strong>哈希 + 密钥</strong>的 HMAC 运算（不可逆、用于验证完整性），如果要对 Payload 保密则要用 JWE 做真正的<strong>加密</strong>。混淆"编码"和"加密"正是很多人以为 Payload 是安全的根源。</li>
+    <li><strong>分布式系统 / CAP 理论：</strong>JWT 用"无状态"换来水平扩展能力，本质上是在 CAP 权衡里放弃了服务端的强一致状态（谁的 token 有效、谁已登出），用密码学验证代替了数据库查询。第 6 节讲的"无法即时吊销"正是这个权衡的代价——想要拿回强一致性（即时吊销），就必须引入 Redis 查询，退回到部分有状态。</li>
+    <li><strong>缓存与 Redis 的典型应用：</strong>Token 黑名单、Refresh Token 存储、版本号机制，都是 Redis「设置 TTL 自动过期 + 快速查键」特性的典型应用场景，和缓存穿透/缓存雪崩等 Redis 相关知识点是同一套基础设施能力的不同用法。</li>
+    <li><strong>微服务鉴权与 API Gateway：</strong>RS256 的"私钥签发、公钥验签"模式天然适合微服务架构——认证中心统一签发 token，各业务服务甚至 API Gateway 层只需公钥即可完成鉴权，不用每个服务都对接认证中心做同步调用，这也是"关注点分离"在鉴权场景下的具体体现。</li>
+  </ul>
+
   <hr>
 
   <div class="nav-footer">

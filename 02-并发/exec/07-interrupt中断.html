@@ -330,6 +330,16 @@ h2 { color: #fbbf24; border-left-color: #fbbf24; }
     <strong>一句话总结：</strong>中断是 Java 协作式取消的信号协议——发出方负责设置标志，接收方负责检查并响应，绝不能悄悄吞掉信号。
   </div>
 
+  <!-- ⑩ 关联知识点 -->
+  <h2>⑩ 与其他知识点的联系</h2>
+  <ul>
+    <li><strong>线程池的优雅关闭（下一篇）：</strong><code>shutdownNow()</code> 的底层实现就是对每个工作线程调用 <code>interrupt()</code>——本文讲的"中断只是请求，任务必须主动检查才会真正停下"这条规则，直接决定了下一篇里"任务写了 <code>while(true)</code> 不检查中断标志会导致线程池永久无法终止"这个陷阱的根本原因，两篇内容是同一个机制在不同层面的体现。</li>
+    <li><strong>AQS（AbstractQueuedSynchronizer）：</strong><code>ReentrantLock.lockInterruptibly()</code> 之所以能在等待锁期间响应中断，是因为 AQS 的 <code>acquireInterruptibly</code> 方法在每次被唤醒时都会检查中断标志并抛出 <code>InterruptedException</code>，而 <code>synchronized</code> 对中断完全无感，是因为 <code>synchronized</code> 的锁等待逻辑写在 JVM 层（monitor），根本没有暴露中断检查点——这是 Lock 相比 synchronized 的一个关键优势。</li>
+    <li><strong>Future.cancel(true) 与 CompletableFuture：</strong>取消一个正在执行的异步任务，本质上也是靠 interrupt 信号驱动，如果任务内部执行的是不响应中断的阻塞操作（如 Socket I/O），<code>cancel(true)</code> 会显得"没反应"，这与本文⑦节讲的"不可中断阻塞"是同一个坑，排查异步任务取消不掉的问题时要先检查任务内部用了什么阻塞 API。</li>
+    <li><strong>JUC 阻塞队列（BlockingQueue）：</strong><code>take()</code>/<code>put()</code> 之所以要声明 <code>throws InterruptedException</code>，正是因为它们内部通过 <code>Condition.await()</code>（基于 AQS）实现阻塞等待，而 <code>Condition.await()</code> 的语义就包含"响应中断并清除标志后抛异常"，这解释了为什么几乎所有 JUC 的阻塞方法都是受检异常而不是普通阻塞。</li>
+    <li><strong>面试高频考点：</strong>"如何优雅地停止一个线程" 这类问题的标准答案就是本文的核心内容——不要用废弃的 <code>stop()</code>，而是用 <code>interrupt()</code> 配合 <code>volatile</code> 标志或可中断的阻塞 API，这也是几乎每一轮 Java 并发面试都会问到的必考题。</li>
+  </ul>
+
   <hr />
 
   <!-- 导航 -->

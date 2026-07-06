@@ -193,6 +193,16 @@ pt-query-digest /var/lib/mysql/slow.log &gt; digest_report.txt
     <strong>陷阱二：</strong>EXPLAIN 里的 <code>rows</code> 是基于表的统计信息估算出来的，不是精确值。如果表刚做过大批量删改、统计信息严重过期，<code>rows</code> 可能被严重高估或低估，导致优化器选错执行计划。这时可以用 <code>ANALYZE TABLE orders;</code> 重新收集统计信息，往往能让优化器"重新想明白"该走哪个索引。
   </div>
 
+  <!-- 联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>B+ 树索引的原理 / 聚簇索引与二级索引回表（本 Tab 01-03）：</strong>案例里 EXPLAIN 结果从 <code>type: ALL</code> 优化到 <code>type: ref</code>，本质是让优化器从"扫全表"改为直接走 B+ 树定位——理解树高、扇出、回表这些底层原理，才能看懂为什么加一个联合索引能把扫描行数从 120 万降到 3。</li>
+    <li><strong>覆盖索引（本 Tab 06）：</strong>案例结尾提到"把常用输出列加进索引避免回表"，这正是覆盖索引的应用场景——排查流程的第 4 步"加索引或改写 SQL"，很多时候具体做法就是把普通索引扩展成覆盖索引，把 <code>Extra</code> 从 <code>NULL</code> 变成 <code>Using index</code>。</li>
+    <li><strong>哈希索引与自适应哈希索引（本 Tab 07）：</strong>排查流程主要针对索引设计和 SQL 改写这类"显式可控"的优化手段，而 AHI 是 InnoDB 自动、透明的补充优化——当索引已经设计到位但仍有性能瓶徘，AHI 的命中率也是排查链路可以延伸观察的一个维度。</li>
+    <li><strong>Buffer Pool 原理（InnoDB Tab）：</strong>陷阱二提到 <code>rows</code> 是基于统计信息的估算值，而实际执行效率还受 Buffer Pool 缓存命中率影响——同样的执行计划，数据是否在内存里直接决定了这条 SQL 到底是"快查询"还是"慢查询"，这也是排查慢 SQL 时不能只看 EXPLAIN、还要结合缓存命中率的原因。</li>
+    <li><strong>Redo Log 与 WAL 机制（InnoDB Tab）：</strong>本篇陷阱一提醒"索引不是免费的，每次写入都要同步维护索引"——这个写放大最终会体现为更多的 Redo Log 记录和脏页，如果一张表索引过多，即便查询变快了，写入路径的整体开销（包括日志和刷盘）也会上升，这是加索引决策时容易被忽略的成本。</li>
+  </ul>
+
   <!-- 知识地图总结 -->
   <h2>本 Tab 知识地图收尾</h2>
   <p>"索引与执行计划"这个 Tab 从底层到应用层，串起来的核心逻辑是：</p>

@@ -117,6 +117,15 @@
     <li><strong>代价：</strong>不可重入、不支持 Condition，用错容易死锁，须谨慎评估是否真的需要这份极致性能。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>关联知识点：CAS 与乐观锁思想。</strong>StampedLock 的乐观读本质上是把 CAS 一章讲的"读旧值 → 算新值 → 校验没被改过 → 否则重试"的乐观并发思路，从"单个变量的原子更新"搬到了"一段读代码的一致性保证"上——校验对象从一个 int/long 值变成了一个代表"是否发生过写"的 stamp，思路是同源的。</li>
+    <li><strong>关联知识点：ReentrantReadWriteLock 与 AQS。</strong>ReentrantReadWriteLock 的读锁共享是靠 AQS 的 state 字段用 CAS 维护读者计数实现的，读线程之间仍存在对这个计数的竞争；而 StampedLock 没有基于 AQS 实现，乐观读完全不触碰任何共享状态，这也是它能在高并发读场景下比 ReadWriteLock 更快的根本原因，理解 AQS 的 state 语义才能看清两者的性能差异从哪来。</li>
+    <li><strong>关联知识点：可见性与内存屏障。</strong>乐观读读到的数据要靠 <code>validate()</code> 校验，而不是靠 <code>volatile</code> 或锁来保证可见性——这提醒我们，StampedLock 保证的"最终读到正确值"和 <code>volatile</code> 保证的"每次读都可见最新值"是两种不同的机制，不能把 StampedLock 修饰的字段当成不需要额外同步的普通字段来用。</li>
+    <li><strong>关联知识点：不可重入引发的死锁，与 ReentrantLock 对比。</strong>前面学 <code>ReentrantLock</code>/<code>ReentrantReadWriteLock</code> 时强调过重入计数机制能避免"自己等自己"，StampedLock 反而故意放弃了重入支持来换取更简单、更快的实现——这是一个典型的"性能与易用性/安全性此消彼长"的设计案例，面试里常拿来考察对锁重入本质的理解。</li>
+    <li><strong>关联知识点：读多写少场景的选型链条。</strong>synchronized → ReentrantReadWriteLock → StampedLock 乐观读，是同一类"读多写少"问题在不同并发强度下的递进解法，串起来看能理解"为什么 JDK 要不断引入新的锁"这条演进主线，而不是孤立记忆每个 API。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

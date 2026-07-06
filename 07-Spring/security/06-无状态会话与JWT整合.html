@@ -164,6 +164,14 @@
     <li><strong>过滤器顺序很关键：</strong><code>addFilterBefore</code> 必须插在 <code>UsernamePasswordAuthenticationFilter</code> 之前，保证后续的授权检查能读到已经填好的登录状态。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>自定义 UserDetailsService：</strong>本篇的 <code>JwtAuthenticationFilter</code> 在校验签名通过后，依然要调用 <code>userDetailsService.loadUserByUsername(username)</code> 把用户名还原成带权限集合的 <code>UserDetails</code>——JWT 只解决了"身份是否可信"，具体这个人有哪些角色/权限，还是要回到统一的用户查询接口，这也是为什么弃用 Session 不代表能弃用 <code>UserDetailsService</code>。</li>
+    <li><strong>方法级安全 @PreAuthorize：</strong>本篇手动塞进 <code>SecurityContextHolder</code> 的 <code>Authentication</code> 对象，正是后续 <code>@PreAuthorize("authentication.principal.id == #userId")</code> 表达式能读到的数据来源——只要这里构造对象时权限集合和 principal 类型正确，方法级安全的判断逻辑完全不需要知道背后是 Session 还是 JWT。</li>
+    <li><strong>DispatcherServlet 请求处理流程：</strong><code>addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)</code> 说明 JWT 解析这一步，和上一篇讲的"默认拒绝"防线一样，都发生在 Servlet Filter 链里，比请求真正进入 <code>DispatcherServlet</code> 分派到 Controller 还要早——Controller 方法体开始执行时，登录状态早已确定，这也是为什么不需要在每个 Controller 里手写 Token 解析逻辑。</li>
+    <li><strong>CORS 跨域配置 / CSRF 防护及何时禁用（下两篇）：</strong>本篇代码里已经先写了一行 <code>csrf(...disable)</code>，这不是随手为之——正是因为 JWT 放在 <code>Authorization</code> 头而不是 Cookie 里，浏览器不会自动携带，CSRF 攻击的前提被破坏，下一篇会展开讲这背后的原理；同理，前后端分离场景下几乎必然要配 CORS，因为前端和后端天然是不同端口的"跨域"关系。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

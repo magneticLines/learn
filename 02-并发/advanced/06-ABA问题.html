@@ -403,6 +403,19 @@
     <li>代价是 GC 压力；如果能做到"每次 new 新节点"，可以完全规避 ABA 而不引入 stamp</li>
   </ul>
 
+  <!-- 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>CAS 与原子类：</strong>ABA 问题是上一节 CAS 语义的直接推论——CAS 判断"没变"的依据只是"值相等"，而 <code>AtomicStampedReference</code> 的修复思路本质上还是一次 CAS，只是把比较的对象从"裸值"换成了"(值, stamp) 打包后的 <code>Pair</code>"，没有引入新的同步原语，只是扩大了比较的信息量。</li>
+    <li><strong>JMM / happens-before：</strong>本节强调 <code>AtomicStampedReference</code> 内部靠 <code>Unsafe.compareAndSwapObject</code> 对 <code>Pair</code> 对象做原子替换，这个 <code>Pair</code> 引用字段同样是 <code>volatile</code> 的，一次成功的 CAS 仍然建立了 happens-before 关系——这也是"小结"里提到的"volatile 保证可见性，CAS 保证原子性"分工在 ABA 修复方案里依然成立的原因。</li>
+    <li><strong>AQS 体系：</strong>本节知识地图里提到 AQS 用 <code>volatile state + CAS</code> 构建锁和同步器，但 AQS 并不会遭遇 ABA 问题——因为 <code>state</code> 是单调的计数语义（重入次数、许可数等），线程只关心"当前值是否等于期望值"，不存在"节点被复用导致地址相同但含义已变"的场景。理解这一点能帮你分辨 ABA 问题的适用边界：它只出现在需要"引用/指针复用"的无锁数据结构里，不是所有 CAS 场景都要担心。</li>
+    <li><strong>数据库乐观锁：</strong>本节"给值打版本戳"的思路和数据库乐观锁的 <code>version</code> 字段是同一套设计模式——更新时带上旧版本号做 <code>WHERE version = ?</code> 条件，若被别人改过版本号已变，更新影响行数为 0，等价于 CAS 失败。区别只是发生的层级不同：一个是内存里的 CPU 指令级操作，一个是跨进程的数据库行级操作，但"用单调递增的版本号识别历史变化"这个本质完全一致。</li>
+    <li><strong>无锁队列/ConcurrentLinkedQueue：</strong>本节结尾提到的"Java 9+ 替代方案"——用"每次 new 新节点"规避 ABA，正是 <code>ConcurrentLinkedQueue</code> 等 JUC 无锁容器的实际做法，它们不维护版本号，而是靠节点对象永不复用来保证"地址相同即状态相同"，用堆内存的开销换掉了 stamp 机制的复杂度，是工程实践中更常见的选择。</li>
+    <li><strong>面试高频考点：</strong>面试常问"ABA 问题怎么复现、怎么解决"，标准答案要覆盖：CAS 的局限（只比较当前值）、具体危害场景（无锁栈节点复用导致链表断裂）、以及两种解法的取舍（<code>AtomicStampedReference</code> 版本号 vs 节点不复用）。进一步追问"业务代码里怎么应用"时，数据库乐观锁的 version 字段是最好的落地例子。</li>
+  </ul>
+
+  <hr />
+
   <!-- 导航 -->
   <div class="nav-footer">
     <a href="./05-CAS与原子类.html" class="nav-btn">← 05. CAS 与原子类 atomic</a>

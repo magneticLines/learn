@@ -492,6 +492,17 @@
       <code>CachedThreadPool</code>、Exchanger 的底层思路、两个线程需要"同步握手"时。</li>
   </ul>
 
+  <!-- 12. 与其他知识点的联系 -->
+  <h2>12. 与其他知识点的联系</h2>
+  <ul>
+    <li><strong>wait/notify 与 Condition：</strong>本文源码里的 <code>notEmpty.await()</code> / <code>notFull.signal()</code> 本质是 <code>Lock + Condition</code> 对 <code>synchronized + wait/notify</code> 的替代方案——区别在于 Condition 能拆分出多个等待队列（notEmpty、notFull 各自独立），而内置锁的 wait/notifyAll 只有一个等待集合，只能广播唤醒，精度不够。这也是"为什么 while 判断防虚假唤醒"这一条规则在两种写法里都成立的原因。</li>
+    <li><strong>与 CountDownLatch / Semaphore 的关系：</strong>三者底层都是"条件不满足就阻塞，条件变化后唤醒"的模式，但语义不同：BlockingQueue 关心的是"容器空/满"，CountDownLatch 关心"计数是否归零"，Semaphore 关心"许可证是否充足"。理解 BlockingQueue 内部这套 ReentrantLock+Condition 的写法，后续学 Semaphore/CountDownLatch 的 AQS 实现会更容易类比。</li>
+    <li><strong>ThreadPoolExecutor 的任务队列：</strong>本文第 10 节已经点出 BlockingQueue 是线程池的第五个构造参数，队列类型直接决定线程池的"排队 vs 扩容 vs 拒绝"策略——这是承接到 <code>exec/04-ThreadPoolExecutor.html</code> 七大参数、以及"为什么不推荐 Executors 静态工厂"的关键桥梁，因为 Executors.newFixedThreadPool 默认用的就是无界 LinkedBlockingQueue，正是本文陷阱一直在强调的隐患。</li>
+    <li><strong>生产者-消费者模式的分布式延伸：</strong>本文的毒丸模式、有界队列实现背压，本质上和消息队列（Kafka、RabbitMQ）里的"消费者拉取+确认"机制是同一套思想的单机版——单机内存队列解决线程间协调，分布式消息队列解决进程/机器间协调，背压（backpressure）的概念是共通的。</li>
+    <li><strong>中断机制的复用：</strong>put/take 声明 throws InterruptedException，和后面 <code>exec/07-interrupt中断.html</code> 要讲的"响应中断的标准写法"完全一致——捕获后必须 <code>Thread.currentThread().interrupt()</code> 恢复标志，这是贯穿整个并发包的统一约定，不是 BlockingQueue 独有的规则。</li>
+    <li><strong>面试高频对比：</strong>"手写 wait/notify 版生产者消费者和用 BlockingQueue 的区别"常被追问到"为什么标准库要拆两个 Condition"，答案正是"精确唤醒 vs 广播唤醒"的性能差异——避免了 notifyAll 把不该被唤醒的线程也叫醒再重新检查条件的浪费。</li>
+  </ul>
+
   <hr/>
 
   <div class="callout tip">

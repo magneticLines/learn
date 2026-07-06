@@ -227,6 +227,28 @@ function ColA() {
     <strong>记忆口诀：</strong><code>&lt;&gt;&lt;/&gt;</code> 是"隐形容器"——<strong>满足 JSX 规则，但不污染 DOM</strong>。需要 key 时换成 <code>&lt;React.Fragment key={...}&gt;</code>。碰到 CSS 布局因为多余 div 乱掉、或 HTML 语义结构（table/dl/select）不允许 div 的地方，Fragment 是第一反应。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>在 .map() 里用简写 Fragment 却想加 key</strong>：写 <code>&lt;&gt;</code> 时尝试塞 <code>key={item.id}</code>，React 会直接报错或警告，因为简写语法根本不支持任何属性。列表渲染中需要 key 的场景必须换成完整的 <code>&lt;React.Fragment key={...}&gt;</code>，这是唯一的例外场景。</li>
+    <li><strong>以为 Fragment 能像 div 一样加 className 或 style</strong>：Fragment 除了 key 之外不接受任何属性，因为它在设计上就是"完全透明、不产生任何 DOM 痕迹"的占位符。如果需要一个可以设置样式的包裹容器，本质上你需要的是一个真实的 div，不是 Fragment。</li>
+    <li><strong>在有严格子元素语义的 HTML 结构里用 div 而不是 Fragment</strong>：比如在 <code>&lt;tr&gt;</code> 里用组件包一层 div 返回 <code>&lt;td&gt;</code>，浏览器会认为这个 div 是非法内容并尝试"修复"DOM 结构，导致表格渲染完全错乱，而且这种错误在 React 层面不会报错，只有打开浏览器 DevTools 检查真实 DOM 才能发现。</li>
+    <li><strong>忽视 Fragment 对 CSS 选择器的隐藏影响</strong>：如果依赖 <code>:first-child</code>、<code>:nth-child</code> 等基于 DOM 结构的选择器，中间插入的 div 包裹会改变父子关系层级，从而让这些选择器命中错误的元素。换成 Fragment 后，子元素直接暴露给外层，选择器行为才符合预期。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 React 需要 Fragment，而不是永远用 div 包一层？</strong>—— JSX 语法要求组件必须返回单一根节点，但用 div 包裹会在真实 DOM 里多产生一层节点，这层多余的 div 可能破坏依赖直接父子关系的 CSS（如 flex/grid 布局）或 HTML 语义结构（如 table/dl/select）。Fragment 满足"单一根节点"的语法要求，同时在渲染到真实 DOM 时不留下任何痕迹。</li>
+    <li><strong>Fragment 的两种写法有什么区别，什么时候必须用完整写法？</strong>—— 简写 <code>&lt;&gt;&lt;/&gt;</code> 更简洁，覆盖绝大多数场景；完整写法 <code>&lt;React.Fragment&gt;</code> 唯一的额外能力是可以传 <code>key</code> 属性。在 <code>.map()</code> 渲染列表且外层不需要额外容器时（比如返回多个 <code>&lt;td&gt;</code>），必须用完整写法配合 key，让 React 能正确追踪每一项。</li>
+    <li><strong>Fragment 在虚拟 DOM 和真实 DOM 里分别是什么？</strong>—— Fragment 在虚拟 DOM 层是一个真实存在的节点类型（<code>type</code> 是 <code>Symbol(react.fragment)</code>），React 需要它来组织子节点、支持 key；但在渲染到真实 DOM 时，React 会跳过 Fragment 本身，只把它的子节点挂载到父容器上，因此真实 DOM 里完全看不到 Fragment 的任何标签或注释。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>JSX 单一根节点限制（05）：</strong>Fragment 存在的唯一理由就是为了满足 05 篇讲的"组件必须返回单一根节点"这条规则，同时避免用 <code>&lt;div&gt;</code> 包裹带来的副作用。可以说 Fragment 是"规则"和"实际需求"之间的一个巧妙折中方案——语法上妥协，DOM 输出上不妥协。</li>
+    <li><strong>key 属性与列表渲染（06）：</strong>本文提到列表渲染中 Fragment 需要用完整写法才能加 key，这和 06 篇讲的 <code>.map()</code> 列表渲染是同一套机制——React 依赖 key 在 Diff 阶段追踪每一项，无论子元素是普通标签还是 Fragment 包裹的多个元素，key 的作用完全一致，只是简写语法 <code>&lt;&gt;</code> 出于简洁性砍掉了传属性的能力，因此需要退回完整写法。</li>
+    <li><strong>虚拟 DOM 与 Diff 算法（08）：</strong>Fragment 在虚拟 DOM 树里确实占据一个节点位置（帮助 React 组织结构、定位 key），但在提交到真实 DOM 时会被"拆包"，只留下它的子节点。这个"虚拟层存在、真实层消失"的特性，正好体现了虚拟 DOM 作为一层抽象、不必和真实 DOM 一一对应的设计自由度。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="08-JSX编译原理.html" class="nav-btn">← JSX 编译原理</a>

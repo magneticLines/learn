@@ -155,6 +155,31 @@
     <li>思想与 Redux 同源（单向流 + 纯 reducer + dispatch），是其内置轻量版。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>在 reducer 里直接 mutate state</strong>：写成 <code>state.count++; return state;</code> 而不是返回新对象。React 用引用比较判断是否要重渲——你改的还是同一个对象引用，React 会认为"state 没变"，页面不更新，还破坏了严格模式下"重复调用 reducer 检测副作用"的假设。</li>
+    <li><strong>在 reducer 里搞副作用</strong>：在 <code>case</code> 里发请求、写 <code>localStorage</code>、操作 DOM。reducer 必须是纯函数，React（尤其严格模式下）可能多次调用同一个 reducer 来帮你揪出不纯的逻辑，副作用被多次触发就会出诡异 bug。正确做法是把副作用放到 dispatch 之后的 <code>useEffect</code> 或事件处理函数里。</li>
+    <li><strong>忘记写 default 分支，或者 default 里啥都不干却没 return</strong>：漏掉 <code>default: return state;</code>，遇到未知 action 时函数末尾隐式 <code>return undefined</code>，state 直接变成 <code>undefined</code>，后续读取字段全部报错。</li>
+    <li><strong>action.type 拼错却没有报错</strong>：<code>dispatch({ type: 'incremnt' })</code> 这种拼写错误，如果 reducer 的 <code>default</code> 只是安静地 <code>return state</code>，界面会"看起来什么都没发生"，调试起来毫无线索。养成 <code>default</code> 里 <code>throw</code> 或至少 <code>console.warn</code> 的习惯能提前暴露问题。</li>
+    <li><strong>action 里塞了过多逻辑判断，寄望组件端先算好"新值"再传</strong>：比如 <code>dispatch({ type: 'set', value: state.count + 1 })</code>，这样"怎么变"的逻辑又跑回组件里了，违背了 reducer 模式"集中决策"的初衷，也让 action 不再是单纯描述"发生了什么"。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么 reducer 必须是纯函数？</strong>—— 因为 React（尤其是严格模式）可能出于检测副作用的目的多次调用同一个 reducer；纯函数保证"相同输入一定产出相同输出、不产生副作用"，这样重复调用不会破坏状态一致性，也让 reducer 可以脱离组件单独做单元测试。</li>
+    <li><strong>action 一定要有 type 字段吗？为什么社区都这么约定？</strong>—— 不是语法强制，是约定。<code>type</code> 是 reducer 里 <code>switch</code> 分支判断的依据，统一用字符串常量便于查找引用、避免拼写不一致导致的静默失败，也方便未来接入 Redux DevTools 之类工具做日志和时间旅行调试。</li>
+    <li><strong>reducer 模式和面向对象里的命令模式（Command Pattern）有什么相似之处？</strong>—— 两者思路一致：把"要做什么"封装成一个独立的数据对象（action / command），和"怎么执行"的逻辑（reducer / handler）解耦。调用方只需要构造描述意图的对象并转交出去，不需要知道具体如何实现，这样修改执行逻辑时不影响调用方代码。</li>
+    <li><strong>如果 reducer 返回了和传入 state 全等（===）的引用，会发生什么？</strong>—— React 会认为状态没有变化，跳过这次重渲染（这也是为什么"某个 case 不需要改变状态"时可以直接 <code>return state</code>）。这依赖于 reducer 返回新对象而非 mutate 原对象的约定——如果你 mutate 后返回同一个引用，即便数据变了，React 也会误判为"没变"。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>避免 Context 滥用（上一篇）：</strong>上一篇"优化二：拆 state 与 dispatch"用到的正是本篇的 <code>useReducer</code>——<code>dispatch</code> 引用永远稳定，把它单独放进一个 Context，只触发更新、不读数据的组件就不会因为 state 变化而重渲。这也是 useReducer 和 Context 组合、手写一个轻量全局状态方案的经典模式。</li>
+    <li><strong>useState：</strong>本篇开篇就点明了 useState 和 useReducer 的思路差异——useState 是"直接告诉 React 新值"，useReducer 是"描述发生了什么，交给 reducer 决定怎么变"。当组件里有多个 <code>useState</code> 互相关联、更新逻辑分散在各个事件处理器里时，正是切换到 useReducer 的信号——它把"怎么改"从组件里抽出来，集中到一个纯函数里。</li>
+    <li><strong>useEffect 依赖数组：</strong>本篇提到 <code>dispatch</code> 函数引用稳定、不必放进依赖数组，这和 <code>useState</code> 的 setter 是稳定值的道理完全一致——依赖数组篇讲的"哪些值算响应式值、哪些是稳定值不用列"的判断标准，同样适用于 <code>useReducer</code> 返回的 <code>dispatch</code>。</li>
+    <li><strong>createContext 与 Provider：</strong>reducer 模式"意图与实现分离"的思想——组件只 <code>dispatch</code> 描述意图，具体怎么改交给 reducer——和 Context 的"传输管道"定位可以很好地配合：Provider 内部用 <code>useReducer</code> 管理状态，再把 <code>state</code> 和 <code>dispatch</code> 分别通过 Context 下发，子组件既不知道数据怎么存的，也不知道更新逻辑怎么写的，只管读数据、派发动作。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="47-避免Context滥用.html" class="nav-btn">← 避免 Context 滥用</a>

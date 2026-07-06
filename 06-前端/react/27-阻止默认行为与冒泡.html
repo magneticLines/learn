@@ -185,6 +185,32 @@
     React 也支持在捕获阶段（从上往下）监听事件，只需把 on 后面加 Capture：<code>onClickCapture</code>。这在调试冒泡问题时有用，日常开发几乎不需要。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>把 <code>preventDefault()</code> 和 <code>stopPropagation()</code> 用错场景</strong>：两者解决的是完全不同的问题——preventDefault 阻止的是浏览器对该元素的内置行为（跳转、刷新、右键菜单），stopPropagation 阻止的是事件向父元素传播。表单提交刷新页面用 stopPropagation 是无效的（因为默认行为和冒泡是独立的两条线），必须用 preventDefault。混用会导致"改了却没生效"的困惑。</li>
+    <li><strong>忘记 <code>onChange</code> 之类的非冒泡事件不受 stopPropagation 影响</strong>：并不是所有事件都会冒泡，比如 <code>onMouseEnter</code>/<code>onMouseLeave</code> 本身设计上就不冒泡，在这些事件里调用 stopPropagation 没有任何意义，说明对"这个事件是否冒泡"的判断错了，而不是 stopPropagation 本身失效。</li>
+    <li><strong>滥用 stopPropagation 破坏了依赖冒泡的功能</strong>：很多 UI 库（下拉菜单、弹层、埋点系统）依赖在 document 上监听冒泡上来的点击事件来判断"点击了外部区域"从而关闭浮层。如果子组件里滥用了 stopPropagation，会让这类"点击外部关闭"逻辑失效，且这种 bug 往往要跨组件排查才能发现，定位成本很高。</li>
+    <li><strong>以为 <code>return false</code> 能像老式 jQuery 那样阻止默认行为</strong>：在 React 的事件处理函数里 <code>return false</code> 没有任何特殊含义，不会阻止表单提交或链接跳转，这是从 jQuery/原生 <code>onclick="..."</code> attribute 时代带来的错误直觉，必须显式调用 <code>e.preventDefault()</code>。</li>
+    <li><strong>在异步回调里调用 preventDefault 却为时已晚</strong>：比如在 <code>onSubmit</code> 里先 <code>await</code> 一个请求，再调用 <code>e.preventDefault()</code>，此时浏览器可能已经开始执行默认的表单提交/页面跳转了。preventDefault 必须在事件处理函数同步执行的阶段、事件还没有完成默认动作之前调用。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong><code>e.preventDefault()</code> 和 <code>e.stopPropagation()</code> 分别阻止的是什么，能否举例说明必须同时使用的场景？</strong>—— preventDefault 阻止浏览器对当前元素的默认动作（如表单提交刷新、a 标签跳转），stopPropagation 阻止事件对象继续向父元素冒泡触发它们的监听器，两者互不影响、可以独立使用也可以同时使用。典型的同时使用场景：列表行整体可点击跳转（父级 onClick 处理导航），行内还有一个"删除"按钮，点击删除既不希望触发父级的导航（需要 stopPropagation 阻止冒泡到父级），本身如果是 <code>&lt;a&gt;</code> 或 <code>&lt;button type="submit"&gt;</code> 还可能需要 preventDefault 阻止其自身默认行为。</li>
+    <li><strong>React 的事件冒泡顺序和浏览器原生事件冒泡顺序一致吗？</strong>—— 一致，都是从触发元素开始逐层向上传播到祖先元素（先捕获阶段从外到内，再冒泡阶段从内到外，日常 onClick 监听的是冒泡阶段）。区别在于 React 内部把所有事件统一委托到根节点后再模拟分发，但对开发者暴露出来的语义和原生冒泡完全一致，写代码时可以直接套用原生事件冒泡的心智模型。</li>
+    <li><strong>为什么"点击弹窗遮罩关闭弹窗，点击弹窗内容不关闭"这个需求必须用 stopPropagation 而不是在遮罩的处理函数里判断 <code>e.target</code>？</strong>—— 其实两种方案都能实现：用 <code>e.target === e.currentTarget</code> 判断"点击的确实是遮罩本身而不是子元素"是另一种常见做法，不依赖 stopPropagation，也不会破坏内容区事件继续冒泡给更外层的能力（比如埋点统计）。stopPropagation 的方案更直接但会截断该事件后续的冒泡路径，两种方案的取舍本质是"事件流该不该被中断"的设计决策，面试可以对比说出优劣。</li>
+    <li><strong>onClickCapture 和 onClick 的区别是什么，什么场景需要用捕获阶段？</strong>—— onClick 监听的是事件冒泡阶段（从子到父），onClickCapture 监听的是捕获阶段（从父到子，比冒泡阶段更早触发）。当需要在事件真正到达目标元素之前就介入处理（比如全局的权限拦截、埋点前置校验，或者要确保某个外层逻辑一定先于内层子组件的 onClick 执行）时，会用 Capture 版本。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>合成事件与原生事件的区别：</strong><code>preventDefault</code>、<code>stopPropagation</code> 都是 SyntheticEvent 对象上的方法，接口与原生事件完全一致，但实际的分发是在 React 委托到根节点的事件系统内完成的——理解合成事件的委托机制，才能理解为什么"React 的冒泡顺序和原生一致"这个结论并不是巧合，而是 React 刻意在抽象层之上还原了原生冒泡语义。</li>
+    <li><strong>onSubmit（表单提交）：</strong>preventDefault 最常用的场景就是表单的 onSubmit——不阻止默认行为，浏览器会尝试真正发起页面级的 GET/POST 请求，导致整页刷新、React 应用状态全部丢失，这也是"几乎每次 onSubmit 都要 preventDefault"这条经验法则的由来。</li>
+    <li><strong>传参给事件处理函数：</strong>上一节例子里给事件处理函数传参时常常需要同时保留事件对象（如 <code>(e, file) => handleDeleteClick(e, file)</code>），这里的 <code>e</code> 正是用来调用 <code>stopPropagation</code> 的，两个知识点在"行内操作按钮"这种场景里天然要结合使用。</li>
+    <li><strong>条件渲染与短路运算符：</strong>阻止冒泡常用于弹窗/下拉菜单"点遮罩关闭、点内容不关闭"的场景，而这类组件本身往往依赖条件渲染（<code>{open && <Modal />}</code>）来控制显示与隐藏，二者共同构成完整的弹层交互逻辑。</li>
+    <li><strong>useEffect 里的原生事件监听：</strong>依赖冒泡实现的"点击外部关闭"逻辑，通常是在 <code>useEffect</code> 里给 <code>document</code> 绑定原生 <code>click</code> 监听实现的，如果内部组件滥用了 <code>stopPropagation</code> 截断了合成事件的冒泡，并不会影响这种绑在 document 上的原生监听（因为原生事件冒泡链路和 React 合成事件冒泡链路是分别独立模拟的），这也是排查"点击外部关闭失效"问题时容易搞混的一个点。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="26-传参给事件处理函数.html" class="nav-btn">← 传参给事件处理函数</a>

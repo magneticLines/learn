@@ -122,6 +122,15 @@
     <li><strong>适用边界：</strong>CPU 密集、可递归拆分的计算任务，不要用来跑阻塞 IO。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>ThreadPoolExecutor 的共享队列模型：</strong>ForkJoinPool 的每线程双端队列设计，正是为了规避 ThreadPoolExecutor 那种"所有线程抢同一把队列锁"的竞争模式——理解了 ThreadPoolExecutor 里 <code>workQueue</code> 是单一共享阻塞队列，才能体会到工作窃取"每线程私有队列 + 只在队尾窃取时才竞争"的设计有多精妙，这是两种线程池在队列结构上的根本分歧点。</li>
+    <li><strong>锁竞争与可伸缩性（上一篇）：</strong>工作窃取算法本质上是"减少共享状态、把竞争从全局收缩到局部"这一伸缩性原则的具体实现——队头无锁访问、队尾窃取才需要 CAS，是"尽量让每个线程操作自己的数据，只在必要时才同步"这一通用原则在调度器设计上的落地。</li>
+    <li><strong>Stream.parallelStream()：</strong>Java 8 的并行流底层默认复用 <code>ForkJoinPool.commonPool()</code>，这意味着你写的每一处 <code>parallelStream()</code> 实际上都在和其他并行流、<code>CompletableFuture.supplyAsync()</code>（不指定线程池时）共享同一个公共池——如果不了解这一点，很容易在多处滥用并行流后遇到"任务互相挤占导致的性能不升反降"的问题。</li>
+    <li><strong>操作系统调度与 CPU 亲和性：</strong>ForkJoinPool 默认把并行度设为 <code>Runtime.availableProcessors()</code>，这是因为计算密集型任务的最优并发数应该贴近物理核数，超过核数只会增加上下文切换开销而不提升吞吐——这与 IO 密集型线程池"线程数可以远超核数"的经验法则形成直接对比，根源在于 CPU 密集任务不存在"等待期"，线程闲不下来去做别的事。</li>
+    <li><strong>AQS 公平锁：</strong>文中提到工作窃取以吞吐量优先、不保证公平，这与 <code>ReentrantLock</code> 公平模式下严格按 FIFO 顺序分配锁的设计目标正好相反——两者代表了并发系统设计里"公平性"与"吞吐量"这对经典取舍的两个不同选择，理解其中一个的取舍，有助于举一反三理解另一个。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

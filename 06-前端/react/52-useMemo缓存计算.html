@@ -159,6 +159,32 @@ const rows = useMemo(
     <li>不要预防性滥用——<strong>先测量再优化</strong>，依赖数组必须完整诚实。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>给便宜的计算无脑套 useMemo</strong>：像 <code>a + b</code> 这种加法也包一层 <code>useMemo</code>，缓存本身要保存依赖数组、做比较、多一层函数调用，这些开销比直接重算还高，属于负优化，还让代码可读性变差。判断标准是"测量后确实慢"，不是"看起来是个计算就该缓存"。</li>
+    <li><strong>依赖数组漏写，读到过期值</strong>：计算函数里用到的 props/state 没有全部放进依赖数组，导致依赖变化后 <code>useMemo</code> 仍然返回旧的缓存结果，产生"数据明明变了、界面却没更新"的诡异 bug。应该始终依赖 <code>eslint-plugin-react-hooks</code> 的 <code>exhaustive-deps</code> 规则，而不是手动"精简"依赖来图省事。</li>
+    <li><strong>误以为 useMemo 能保证结果绝对不重算</strong>：<code>useMemo</code> 只是给 React 的一个"性能提示"，不是语义上的强保证——在某些情况下（如 React 未来的特性、内存压力）React 可能会丢弃缓存重新计算。不能把它当成必然只执行一次的记忆化，函数体不该包含"只能跑一次"才对的副作用逻辑。</li>
+    <li><strong>把 useMemo 当成解决所有重渲染问题的银弹</strong>：只稳定了计算结果，却没意识到问题根源其实是"这个子组件本不该重渲染"——真正该做的可能是提升/下沉 state、拆分组件，而不是到处撒 <code>useMemo</code> 去掩盖架构上的重渲染问题。</li>
+    <li><strong>用 useMemo 做数据获取或订阅副作用</strong>：把 <code>fetch</code>、事件监听塞进 <code>useMemo</code> 的计算函数里。<code>useMemo</code> 的语义是"纯计算+缓存"，不是副作用管理，副作用应该放进 <code>useEffect</code>；混用会导致渲染阶段产生副作用，破坏 React 严格模式下"渲染必须是纯粹的"这一假设。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>useMemo 解决的核心问题是什么？</strong>—— 组件每次渲染都会把函数体整体重新执行一遍；如果里面有输入没变但计算耗时的逻辑，重复计算就是纯浪费。<code>useMemo</code> 让"计算函数 + 依赖数组"配对，依赖不变时跳过计算直接复用上次结果，用空间(缓存)换时间(重算)。</li>
+    <li><strong>什么时候用 useMemo 才划算？如何判断？</strong>—— 不能拍脑袋，要测量：用 <code>console.time/timeEnd</code> 或 React DevTools Profiler 量出该计算的实际耗时，经验值是低于 1ms 基本不值得缓存，因为比较依赖数组、维护缓存本身也有开销。真正值得的场景通常是大数组的 filter/sort/reduce、复杂数据结构转换等可测量到的耗时操作。</li>
+    <li><strong>useMemo 缓存对象引用和缓存计算结果，是同一件事吗？</strong>—— 本质上是同一个机制的两种应用：缓存计算结果针对的是"避免重复的昂贵运算"；缓存对象/数组引用针对的是"让引用保持稳定"，供 <code>React.memo</code> 的 props 比较、<code>useEffect</code> 的依赖比较、Context 的 value 比较使用，即使这个对象的计算本身并不贵。两种用途都是靠"依赖不变则返回同一个缓存值"实现的。</li>
+    <li><strong>useMemo 的依赖数组漏写会造成什么后果，和 useEffect 漏写依赖的坑一致吗？</strong>—— 一致，两者都是闭包问题：计算/副作用函数在创建时捕获了当时的变量值，如果依赖数组没有把用到的、会变化的值写全，函数会一直用创建时的"旧值"，导致数据更新了但界面/逻辑仍反映旧状态。用 <code>exhaustive-deps</code> ESLint 规则可以在编译期而不是运行时暴露这个问题。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>引用稳定性问题（第 51 篇）：</strong>本篇的"第二个用途"直接承接第 51 篇的痛点——即使计算不贵，只要结果要进 <code>memo</code> 的 props 比较或 <code>useEffect</code> 依赖，就需要稳定引用。<code>useMemo</code> 是那篇提出问题后给出的第一个工具。</li>
+    <li><strong>useCallback 缓存函数（第 53 篇）：</strong>下一篇会揭示 <code>useCallback(fn, deps)</code> 本质就是 <code>useMemo(() =&gt; fn, deps)</code> 的语法糖——两者共享同一套依赖比较、缓存槽位机制，区别只是缓存的东西是"函数"还是"函数的返回值"。</li>
+    <li><strong>过度优化的坏处（第 54 篇）：</strong>本篇反复强调"先测量、别预防性 memo"，这正是第 54 篇要系统展开的话题——给便宜计算套 <code>useMemo</code> 属于典型的过早优化，缓存本身的依赖比较和内存开销可能比重算还贵。</li>
+    <li><strong>useReducer 与 Context 结合（第 50 篇）：</strong>那一篇提到如果 Context 的 value 需要在 <code>state</code>/<code>dispatch</code> 之外再包一层派生对象，就该用 <code>useMemo</code> 稳定这个对象的引用——否则会像"多包一层新对象"的陷阱那样抵消拆分 Context 的效果，是本篇"稳定引用"用途的一处典型场景。</li>
+    <li><strong>抽离复用逻辑（第 56 篇）：</strong><code>useMemo</code> 缓存计算结果、<code>useFetch</code> 之类的自定义 Hook 缓存的是整套"状态+副作用"逻辑，两者都是"把重复或耗时的东西打包，让调用处更简洁"，但对象不同：一个缓存值，一个复用逻辑流程。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="51-引用稳定性问题.html" class="nav-btn">← 引用稳定性问题</a>

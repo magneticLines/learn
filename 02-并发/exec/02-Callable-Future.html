@@ -429,6 +429,18 @@ COMPLETING          ← 过渡态（outcome 写入中），极短暂
     <code>Future</code> 是<strong>拉模型</strong>（你主动 <code>get()</code> 等结果），阻塞调用线程；<code>CompletableFuture</code> 是<strong>推模型</strong>（任务完成后主动触发回调），支持流式链式编排，彻底消除阻塞等待。下一节将详细展开。
   </div>
 
+  <!-- ======================================================== -->
+  <h2>与其他知识点的联系</h2>
+
+  <ul>
+    <li><strong>与 Executor 框架的分层关系：</strong>Callable/Future 是"任务与结果"这一层抽象，<code>ExecutorService.submit()</code> 负责把 Callable 包装成 FutureTask 并交给底层线程池调度——理解本文后回看上一节 Executor 框架，会发现 <code>submit()</code> 只是"Runnable 提交"的语义升级版，二者共享同一套线程池调度逻辑，只是返回值处理方式不同。</li>
+    <li><strong>FutureTask 状态机与 volatile/CAS：</strong>本文状态机图里"状态一旦离开 NEW 就不可逆"，其安全性依赖 volatile 字段 + CAS 操作保证的 happens-before 语义，这与 <code>CountDownLatch</code> 内部 AQS 用 CAS 修改 state 是同一套底层机制的不同应用——都是"用 CAS 实现无锁的一次性状态翻转"这一模式的具体案例。</li>
+    <li><strong>Memoizer 与单例懒加载的血缘关系：</strong>本文用 <code>FutureTask + ConcurrentHashMap.putIfAbsent</code> 实现的 Memoizer，本质和"双重检查锁定实现单例"要解决的是同一类问题——"保证昂贵操作只执行一次，且并发场景下后来者能安全拿到结果"，只是 Memoizer 是通用的按 key 缓存，DCL 单例是固定单个实例的特化版本。</li>
+    <li><strong>与 CompletableFuture 的能力落差：</strong>本文陷阱 2（顺序 get 导致串行化）和陷阱 3（cancel 不能真正停止任务）恰好是 CompletableFuture 要解决的两大痛点——前者被 <code>allOf</code>/<code>thenCombine</code> 的并行编排取代，后者本质上没有被根本解决（CompletableFuture 的 cancel 同样只是标记状态），但链式回调模型从设计上减少了"手动管理多个 Future"的复杂度，这是下一节要讲的核心动机。</li>
+    <li><strong>ExecutionException 包装与异常传播的通用模式：</strong>本文强调"子线程异常被包裹进 ExecutionException，需 getCause() 还原"，这与 <code>CompletableFuture</code> 用 <code>CompletionException</code> 包装异常、反射调用用 <code>InvocationTargetException</code> 包装异常是同一种"跨越执行边界（线程/反射调用）时必须显式包装真实异常"的设计范式，面试中常作为对比考点。</li>
+    <li><strong>面试高频对比：</strong>"Future.cancel(true) 为什么不能保证任务立即停止"经常被追问底层原理——本质是 Java 的协作式中断模型（cooperative interruption）：JVM 不会强行杀死线程，只是设置中断标志或对阻塞方法抛异常，任务代码必须主动检查响应，这与后面 <code>07-interrupt中断.html</code> 要讲的中断机制完全一致。</li>
+  </ul>
+
   <!-- 导航 -->
   <div class="nav-footer">
     <a href="./01-Executor框架.html" class="nav-btn">← 01. Executor 框架与解耦思想</a>

@@ -140,6 +140,23 @@
     <li>下一篇顺便讲清一个容易和"真的重渲染两次"搞混的现象:Strict Mode 的双重调用。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>开发模式耗时当真</strong>:Profiler 面板里看到的 <code>actualDuration</code> 是在开发模式(dev build)下测出来的,而开发模式为了给出更好的报错信息、支持热更新,本身就比生产构建慢很多(有时几倍)。直接拿开发模式的绝对毫秒数去判断"这个组件卡不卡"是错的,正确做法是只在开发模式下做<strong>相对比较</strong>(优化前 vs 优化后、这个组件 vs 那个组件),真正的绝对耗时要用生产构建(<code>react-dom/profiling</code>)单独测。</li>
+    <li><strong>只看单次 commit 耗时,忽略触发频率</strong>:火焰图一次只展示一次提交(一次 state/props 变化触发的渲染)。有人看到某个组件方块只有 0.3ms 就断定它没问题,但如果这个组件在一次操作里被重渲染了几十次(比如每次输入框按键都触发),累积下来同样会卡。判断要不要优化,得把"单次耗时"和"这次录制里出现的次数"结合看,不能只盯着一次提交。</li>
+    <li><strong>StrictMode 干扰渲染次数统计</strong>:开发模式下 StrictMode 会把组件的渲染函数多调用一次来暴露副作用问题,这会让 Profiler 里看到的渲染次数比生产环境实际发生的多。如果录制时页面被 StrictMode 包裹,看到"这个组件渲染了两次"先别急着当成 bug,要分清是 StrictMode 的故意双重调用,还是真的发生了两次独立的 commit(下一篇会讲这两者的区别)。</li>
+    <li><strong>误读"为什么渲染"里的 hooks 变化</strong>:面板显示"hooks 变了"时,只会说变化确实发生了,不一定列出具体是哪个 <code>useState</code>/<code>useContext</code>。看到"hooks changed"就以为是某个特定 hook 的问题去动手改,容易改错方向;更可靠的做法是结合代码里这个组件用了哪些 hook,逐个排查,而不是单凭面板这一句提示下结论。</li>
+    <li><strong>录制本身带来的额外开销</strong>:Profiler 录制过程中,React 要额外记录每个组件的开始/结束时间戳,这本身有性能开销,所以录制时看到的耗时会比不录制时略高。这个开销是均匀分布在所有组件上的,不影响"谁比谁慢"的相对排序,但如果拿录制期间的绝对耗时去跟不录制时的用户体感做比较,会有偏差。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>Profiler 面板里的"火焰图"和"排序图"有什么区别,分别用在什么场景?</strong>—— 火焰图按组件树的层级结构展示,方块宽度代表耗时,能看出父子关系和灰色(未渲染)组件,适合理解"这次渲染波及了树的哪些部分";排序图把这次提交中重渲染过的组件按耗时从长到短平铺排列,不保留树结构,适合快速找出"最慢的那几个组件"。定位问题一般先看排序图抓重点,再回到火焰图看上下文关系。</li>
+    <li><strong>为什么不能直接用 Profiler 测出来的毫秒数判断线上性能?</strong>—— 因为 Profiler 面板依赖开发模式构建,开发模式包含额外的校验、警告收集和不可优化的代码路径,耗时通常比生产构建高出数倍。Profiler 的价值在于同一模式下做相对比较(定位哪个组件慢、优化前后对比),绝对数值要靠生产构建配合 <code>react-dom/profiling</code> 包单独测量。</li>
+    <li><strong>看到一个组件在 Profiler 里"props 没变但还是重渲染了",说明什么,该怎么优化?</strong>—— 说明它是因为父组件重渲染被动带着渲染的(默认行为:父渲染,子全部跟着渲染),而不是自身 state/props 真正变化导致的。这种情况才是 <code>memo</code> 真正能生效的场景——用 <code>memo</code> 包裹后,props 没变时会跳过渲染。如果面板显示是自身 state 变了,加 <code>memo</code> 没有意义。</li>
+    <li><strong>Profiler API 里的 <code>onRender</code> 回调和 DevTools 里的 Profiler 面板是什么关系?</strong>—— DevTools 面板是可视化工具,底层数据来源正是 React 内部的 Profiler 机制;<code>&lt;Profiler&gt;</code> 组件的 <code>onRender</code> 回调则是把同样的数据(id、phase、actualDuration 等)以编程方式暴露出来,可以用来做自动化的性能监控或上报,而不依赖人工打开面板去看。两者是同一套底层数据的不同呈现方式。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="123-触发重渲染的三种原因.html" class="nav-btn">← 触发重渲染的三种原因</a>

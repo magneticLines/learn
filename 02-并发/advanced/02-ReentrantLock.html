@@ -404,6 +404,18 @@
     <li><strong>tryLock() 能避免死锁吗？</strong> — 能在一定程度上避免：若两个线程互相持有对方需要的锁，tryLock 超时后可以<em>回退并重试</em>，打破死锁的"持有并等待"条件。</li>
   </ul>
 
+  <!-- ============================================================ -->
+  <h2>与其他知识点的联系</h2>
+
+  <ul>
+    <li><strong>AQS 体系：</strong>本节反复提到的 <code>state</code>、CLH 队列、<code>LockSupport.park/unpark</code> 都不是 <code>ReentrantLock</code> 私有的，而是 <code>AbstractQueuedSynchronizer</code> 提供的通用骨架。<code>ReentrantLock</code> 只是重写了 <code>tryAcquire</code>/<code>tryRelease</code> 把 <code>state</code> 解释成「持有次数」；换一种解释方式，同一套骨架就变成了 <code>Semaphore</code>（state 是「剩余许可数」）或 <code>CountDownLatch</code>（state 是「剩余计数」），详见「AQS」一节。</li>
+    <li><strong>JMM / happens-before：</strong><code>lock()</code>/<code>unlock()</code> 不只是互斥手段，还建立了 happens-before 关系——这依赖 AQS 内部 <code>state</code> 字段被声明为 <code>volatile</code>：<code>unlock()</code> 里对 <code>state</code> 的写入相当于一次 volatile 写，其他线程 <code>lock()</code> 成功后的读，能看到该线程释放锁之前的全部修改。这正是「加锁能保证可见性」的底层依据，而不仅仅是「挡住了别的线程」这么简单。</li>
+    <li><strong>读写锁 ReentrantReadWriteLock：</strong>读写锁同样基于 AQS，但把一个 32 位 <code>state</code> 拆成高 16 位（读锁计数）和低 16 位（写锁计数），从而用一把锁对象同时表达「共享」和「独占」两种语义，可以看作 <code>ReentrantLock</code> 独占语义的自然扩展，详见「ReadWriteLock」一节。</li>
+    <li><strong>CAS 与原子类：</strong>本节讲的加锁流程第一步「CAS(state, 0, 1)」，其思路和 <code>AtomicInteger.compareAndSet</code> 完全一致——都是乐观地假设当前无竞争，先尝试无锁更新，失败了才走悲观路径（入队阻塞）。可以说 <code>ReentrantLock</code> 是「CAS 失败后退化为阻塞」的悲观锁，而原子类是「只信任 CAS、失败就重试」的纯乐观方案。</li>
+    <li><strong>Spring 事务与线程池：</strong>Spring 声明式事务、<code>@Async</code> 线程池等场景中如果需要控制并发访问共享资源（如本地缓存刷新、限流计数），经常直接用 <code>ReentrantLock</code> 搭配 <code>tryLock</code> 实现「拿不到锁就降级」，比 <code>synchronized</code> 更适合这种「宁可放弃也不无限等待」的业务语义。</li>
+    <li><strong>分布式锁对比：</strong>Redisson 的 <code>RLock</code> 在 API 设计上刻意模仿了 <code>Lock</code> 接口（同样有 <code>tryLock(time, unit)</code>），可重入也是靠一个类似「持有计数」的字段（存在 Redis hash 里，记录线程标识和次数）实现的；区别在于 JVM 内置锁的等待队列在内存里（AQS 的 CLH 队列），分布式锁的等待队列要么靠客户端自旋轮询，要么靠 Redis 的发布订阅机制模拟「唤醒」，可靠性和延迟都比进程内锁差一个量级。</li>
+  </ul>
+
   <hr/>
 
   <!-- 导航 -->

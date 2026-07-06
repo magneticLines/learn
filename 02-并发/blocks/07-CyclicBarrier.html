@@ -427,6 +427,17 @@ CyclicBarrier<br/>
     <li>参与者数量固定是最大限制；若需动态增减，升级到 <code>Phaser</code></li>
   </ul>
 
+  <!-- 10. 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>为什么不是 AQS 子类：</strong>本文第 8 节已指出 CyclicBarrier 底层用 <code>ReentrantLock + Condition</code> 而非直接继承 AQS，这与 CountDownLatch/Semaphore 都基于 AQS 共享模式形成鲜明对比——原因在于 CyclicBarrier 的语义（N 个参与者互等 + 可选屏障动作 + 自动重置为新一代）比"简单的计数增减"复杂得多，用 Lock+Condition 手写状态机比硬套 AQS 的 tryAcquireShared 更清晰，这是一个"何时该用 AQS，何时该自己撑起同步逻辑"的设计取舍案例。</li>
+    <li><strong>与 Fork/Join 框架的关系：</strong>本文"并行迭代计算"场景（分片计算→屏障同步→下一轮）与 Fork/Join 框架解决的问题高度相似，但思路不同：Fork/Join 用递归分治+工作窃取自动调度任务，CyclicBarrier 需要你手动控制固定数量的线程和轮次。如果分阶段计算的每一轮都是同构任务且轮数不固定，通常 Fork/Join 或 <code>Phaser</code> 更合适；如果是"固定线程数、固定阶段结构"的场景，CyclicBarrier 更直观。</li>
+    <li><strong>Generation 机制与 CAS 版本号思想的呼应：</strong>本文第 3 节的 <code>Generation</code> 对象每轮创建新实例来隔离新旧等待者，这与 AQS 内部用 <code>state</code> 版本变化区分"哪一轮"的思路类似，也类似 <code>AtomicStampedReference</code> 用版本号解决 ABA 问题的思路——本质都是"给状态打版本戳，避免新旧数据混淆"这一通用套路的不同实现。</li>
+    <li><strong>BrokenBarrierException 与异常传播设计：</strong>屏障损坏后所有参与者都会收到异常，这种"一人失败、全员感知"的设计与 <code>CompletableFuture</code> 链式调用中异常沿链传播、下游全部走 exceptionally 分支的思路是同构的——都是"分布式/多线程协作中，局部失败必须能够被全局感知，不能被静默吞掉"这一原则的具体体现。</li>
+    <li><strong>ZooKeeper DoubleBarrier 的分布式对应：</strong>ZooKeeper 官方 recipe 中的 DoubleBarrier（进入屏障+离开屏障）就是把本文的循环屏障思想搬到跨进程集群场景：本地用 Generation+Condition 协调线程重置，分布式场景用临时子节点计数+Watcher 通知，都是"固定数量参与者互等后统一放行"这一模型的不同实现层级。</li>
+    <li><strong>面试高频对比：</strong>"CyclicBarrier 和 CountDownLatch 分别适合什么场景"本文第 8 节已给出直接答案，但更本质的追问是"为什么 CyclicBarrier 能重复使用而 CountDownLatch 不能"——根源在于 CountDownLatch 只有"计数减到 0"这一个不可逆的终态，而 CyclicBarrier 通过 Generation 把"一轮"的生命周期显式建模出来，天然支持轮转。</li>
+  </ul>
+
   <hr/>
 
   <!-- 导航 -->

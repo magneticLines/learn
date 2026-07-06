@@ -148,6 +148,29 @@ ref.current.value
     <strong>ref 是"命令式逃生舱"。</strong>React 的核心是声明式（描述"UI 应该长什么样"），但浏览器 API 里有大量命令式操作（focus、scroll、play）无法用声明式表达。ref 就是为这些"无法声明"的场景保留的口子。用得越少越好——如果发现自己频繁用 ref 操作 DOM，先想想是不是有声明式的写法。下一篇会讲 useRef 的另一大用途：存储不触发渲染的可变值。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>在渲染期（组件函数体里）直接读 ref.current</strong>：<code>useRef(null)</code> 初始值是 <code>null</code>，只有在 React 把对应元素<strong>挂载到 DOM 之后</strong>才会把真实节点写进 <code>current</code>。渲染期组件函数体本身执行的时候，DOM 还没挂载完成，此时读 <code>ref.current</code> 大概率拿到的还是 <code>null</code>，只能在事件处理器或 <code>useEffect</code>（渲染完成之后执行）里安全访问。</li>
+    <li><strong>首次渲染就想拿到 ref 指向的 DOM 尺寸，却在组件顶层直接调用测量方法</strong>：即使写在 <code>useEffect</code> 里通常也没问题（effect 在 DOM 提交后执行），但如果需要在浏览器绘制前就同步测量并调整布局（避免闪烁），应该用 <code>useLayoutEffect</code> 而不是普通的 <code>useEffect</code>，否则会看到先出现错误布局、再瞬间纠正的闪烁。</li>
+    <li><strong>用 ref 直接修改 DOM 的内容或结构</strong>：比如手动 <code>ref.current.textContent = 'x'</code> 或 <code>appendChild</code>。React 并不知道你做了这个修改，它内部维护的虚拟 DOM 快照和真实 DOM 不一致了，下次渲染时 React 会按照它自己记录的状态去更新 DOM，你手动改的内容可能被覆盖，甚至在涉及节点增删时直接抛错崩溃。ref 应该只用来做 React 不管理的命令式操作（聚焦、滚动、测量、媒体控制），不要用来接管内容渲染。</li>
+    <li><strong>条件渲染导致 ref 绑定的元素时而存在时而不存在，操作时忘记判空</strong>：如果 ref 绑定的元素被条件渲染包裹（比如 <code>{show &amp;&amp; <input ref={inputRef} />}</code>），当 <code>show</code> 为假时元素不存在，<code>current</code> 会被设回 <code>null</code>。这时如果事件处理器仍然无条件调用 <code>inputRef.current.focus()</code>，会因为对 <code>null</code> 调用方法而报错。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么不能在组件渲染期间直接读取 ref.current 并假设它已经指向 DOM？</strong>—— 因为 ref 与 DOM 的绑定发生在"提交（commit）阶段"，也就是 React 把变更实际应用到真实 DOM 之后，而组件函数体本身是在"渲染（render）阶段"执行的，此时对应的 DOM 节点可能还没创建或挂载。只有在挂载完成之后运行的代码（事件处理器、useEffect 回调）才能保证读到非 null 的 current。</li>
+    <li><strong>什么时候应该用 ref 操作 DOM，什么时候应该用受控组件（state 驱动）？</strong>—— 需要对输入做实时响应（校验、联动、按钮禁用等）时用受控组件，因为 state 变化会触发重渲染，UI 能立刻同步。只在特定时刻需要一次性读值（比如提交时才读取输入框内容），或者需要执行浏览器原生的命令式操作（focus、scroll、播放媒体）、或包裹不受 React 管理的第三方 DOM 库时，才用 ref，因为这类操作本质上是命令式的，无法用声明式的 state 表达。</li>
+    <li><strong>为什么不建议用 ref 直接修改 DOM 的内容或结构？</strong>—— React 依赖自己内部记录的虚拟 DOM 状态来做高效的 diff 和更新，如果你绕过 React 直接修改真实 DOM 的内容或结构，React 并不知道这个变化，它内部的记录和实际 DOM 就产生了不一致。下次渲染时 React 会依据自己过时的记录去更新 DOM，可能覆盖你手动做的修改，涉及节点增删时甚至可能因为 DOM 结构和 React 预期不符而报错崩溃。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>useRef 存储可变值（下一篇）：</strong>本篇讲的是 useRef 的第一大用途——挂到 DOM 元素上；下一篇讲的是它的第二大用途——存储不触发渲染的普通值（定时器 id、上一次的值等）。两者共享同一个底层机制：<code>useRef</code> 返回的对象跨渲染保持同一个引用，只是这里的 <code>current</code> 恰好被 React 自动填充成了 DOM 节点，而不是手动赋的普通值。</li>
+    <li><strong>useEffect 与清理函数：</strong>本篇强调"渲染期读 ref.current 可能是 null，只能在事件处理器或 effect 里安全访问"，这和 useEffect 系列讲的"effect 是渲染完成之后才执行"是同一个时序在不同 Hook 上的体现——ref 绑定到 DOM 发生在提交阶段之后，effect 也是提交之后才跑，所以在 effect 里读 ref 天然是安全的。</li>
+    <li><strong>forwardRef 转发 ref：</strong>本篇的 ref 都是直接挂在原生 DOM 元素（<code>&lt;input ref={inputRef}&gt;</code>）上，但如果想让父组件拿到自定义函数组件内部的 DOM 节点，直接传 ref 是拿不到的——这正是下一篇 forwardRef 要解决的"ref 穿透一层组件"问题，本篇是理解那个问题的必要基础。</li>
+    <li><strong>受控组件与 useState：</strong>本篇"ref vs 受控组件"的对比，本质上和后面 state vs ref 的选择原则是同一套判断逻辑——需要让 UI 实时跟着变就用 state，只需要在特定时刻读一次或做命令式操作就用 ref。这条原则会在 useRef 存储可变值一篇里被总结成更通用的表格。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="41-useEffect与useLayoutEffect.html" class="nav-btn">← useEffect 与 useLayoutEffect</a>

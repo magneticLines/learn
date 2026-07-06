@@ -159,6 +159,23 @@
     <li>社区库 <strong>ahooks / react-use / usehooks-ts</strong> 已封装大量常用 Hook，生产可直接用。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>usePrevious 的时机误解</strong>：容易以为 <code>ref.current = value</code> 应该在渲染时立刻更新，但示例里特意放进 <code>useEffect</code>——因为 effect 在渲染<em>提交之后</em>才执行，这样"本次渲染"读到的 <code>ref.current</code> 还是上一次提交后的值，如果直接在渲染函数体里赋值，"上一次的值"和"当前值"会在同一次渲染里被覆盖，逻辑就错了。</li>
+    <li><strong>useDebounce 忘记清理定时器</strong>：如果 <code>useEffect</code> 不返回 <code>clearTimeout(timer)</code> 的清理函数，用户连续输入时会攒下一堆没被取消的 <code>setTimeout</code>，虽然只有最后一个会真正生效（因为 state 只认最后一次 setDebounced），但这些悬空定时器仍是内存和调度的浪费，规范写法必须清理。</li>
+    <li><strong>把多个 Hook 硬塞进一个函数而不是真正"组合"</strong>：简单地把 <code>useState</code>+<code>useEffect</code>+<code>useRef</code> 堆在一起、却互不关联、只是共享一个函数体，不是组合，是"打包"。真正的组合应该是这些 Hook 协作完成一个更高层的语义（比如防抖、比较前后值），对外暴露的接口要比内部实现更简单。</li>
+    <li><strong>过度嵌套自定义 Hook 导致依赖链难以追踪</strong>：<code>useSearch</code> 用了 <code>useDebounce</code> 和 <code>useFetch</code>，如果继续往上叠三四层，出问题时要一层层跳进去排查是哪层的依赖数组出了错，组合虽然优于继承，但也不能无限叠加而不加注释和文档。</li>
+    <li><strong>直接抄社区库代码却不理解边界情况</strong>：ahooks/react-use 里的实现往往处理了很多你没想到的边界（比如 SSR 环境下没有 <code>window</code>），照抄片段用在自己项目里，遇到边界场景报错时容易一头雾水，不如理解原理后按需简化实现。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>usePrevious 为什么要把赋值放在 useEffect 里，而不是直接在函数体里赋值？</strong>—— React 的渲染函数体应该保持"读"而不是"写"的纯粹性，且 <code>useEffect</code> 在 DOM 提交之后才执行，这个时序差正是"上一次值"得以保留的关键：当前渲染读到的 <code>ref.current</code> 是上一次 effect 执行时写入的值，本次的新值要等这次渲染提交完、effect 跑完才会写进去，供下一次渲染读取。</li>
+    <li><strong>为什么说 Hook 组合体现了"组合优于继承"？相比 HOC/render props 好在哪？</strong>—— HOC/render props 通过嵌套包裹组件树来复用逻辑，层级越叠越深、数据来源要顺着嵌套链才能找到，容易形成"wrapper hell"。Hook 组合是横向拼接：每个 <code>useXxx</code> 调用都在同一层，加一个能力只多一行代码，不改变组件树结构，数据来源在调用处一目了然，可以独立测试、自由排列组合。</li>
+    <li><strong>useDebounce 的实现中，为什么依赖数组要写成 [value, delay] 而不是只写 [value]？</strong>—— <code>useEffect</code> 的依赖数组必须列出所有在 effect 内部被读取、且可能变化的外部变量。如果漏写 <code>delay</code>，当 <code>delay</code> 单独变化时 effect 不会重新执行，用户设置的新防抖时长不会生效，属于典型的"闭包捕获了旧值"问题。</li>
+    <li><strong>如何选择自己实现一个 Hook 还是直接用社区库（如 ahooks）？</strong>—— 学习阶段应该自己实现一遍，理解清理逻辑、依赖处理等细节；生产项目里，成熟库通常已经处理好 SSR、内存泄漏、竞态等边界情况，且经过大规模项目验证，直接用能省下大量踩坑时间，但仍建议读一读库源码作为学习组合思路的范例。</li>
+  </ol>
+
   <hr>
   <div class="nav-footer">
     <a href="56-抽离复用逻辑.html" class="nav-btn">← 抽离复用逻辑</a>

@@ -156,6 +156,15 @@
     <li><strong>UserDetails 是标准契约：</strong>用户名、密码哈希、权限集合、四个状态标志位，构成了框架能理解的"用户视图"。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>Spring Security 自动配置默认行为（上一篇）：</strong>本篇实现的 <code>CustomUserDetailsService</code> 一旦注册为 Bean，就会让上一篇讲的"内存随机密码用户"兜底配置失效——同样是 <code>@ConditionalOnMissingBean</code> 在起作用，说明整套自动配置体系是靠"有没有你自己的 Bean"这一个统一规则串起来的，不是零散的特例。</li>
+    <li><strong>密码编码 PasswordEncoder（下一篇）：</strong>本篇反复强调 <code>UserDetailsService</code> 只管查用户、不管验密码，这个职责边界正是为了让 <code>PasswordEncoder</code> 能独立演进——<code>DaoAuthenticationProvider</code> 拿到 <code>UserDetails</code> 后单独调用 <code>PasswordEncoder.matches()</code>，两个接口各自替换互不影响，这是"单一职责"在框架设计里的具体体现。</li>
+    <li><strong>方法级安全 @PreAuthorize：</strong>本篇 <code>loadUserByUsername</code> 返回的 <code>UserDetails</code> 会被塞进 <code>Authentication.getPrincipal()</code>，之后 <code>@PreAuthorize("authentication.principal.id == #userId")</code> 这类表达式才能直接引用到它——如果自定义的 <code>UserDetails</code> 实现不暴露业务字段（比如用户主键），方法级安全的很多精细判断根本没法写。</li>
+    <li><strong>无状态会话与 JWT 整合：</strong>JWT 架构下依然要用到 <code>UserDetailsService</code>——<code>JwtAuthenticationFilter</code> 解析出 Token 里的用户名后，还是要调用 <code>loadUserByUsername</code> 把用户名还原成完整的 <code>UserDetails</code>（带上权限集合），才能构造出框架认识的 <code>Authentication</code> 对象，说明这个接口不只服务于 Session 认证，是整个认证体系通用的"查用户"入口。</li>
+    <li><strong>DispatcherServlet 请求处理流程：</strong><code>UserDetailsService.loadUserByUsername</code> 的调用发生在 Security Filter 链内部，早于请求真正到达 <code>DispatcherServlet</code>——这意味着 Controller 方法执行时，认证早已完成，<code>Authentication</code> 已经可以通过 <code>SecurityContextHolder</code> 直接取到，不需要再查一次数据库。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

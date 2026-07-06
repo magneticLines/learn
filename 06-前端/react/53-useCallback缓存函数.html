@@ -153,6 +153,32 @@
     <li>依赖要写全，防闭包捕获旧值；更新依赖旧态时用<strong>函数式更新</strong>去掉依赖。不要滥用。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>没有 memo 子组件也无脑用 useCallback</strong>：给每个事件处理函数都套一层 <code>useCallback</code>，但组件树里没有任何 <code>React.memo</code> 消费这个引用、也没进任何依赖数组。这时候缓存函数没有任何收益，反而多了依赖比较和闭包维护的开销，纯属"看起来在优化"的心理安慰。</li>
+    <li><strong>依赖数组漏写，闭包里用的是旧的 state/props</strong>：比如 <code>useCallback(() =&gt; setCount(count + 1), [])</code> 漏了 <code>count</code>，缓存的函数永远闭包捕获创建时的初始值，无论点多少次结果都一样。这是 <code>useCallback</code> 最容易踩、也最难查的坑，因为报错现场是"逻辑不对"而不是崩溃。</li>
+    <li><strong>以为把依赖数组清空就等于"性能更好"</strong>：为了让引用绝对稳定，故意把用到的变量从依赖数组里删掉（哄骗 ESLint），代价是函数内部读到的永远是过期数据。正确解法是用<strong>函数式更新</strong>（<code>setCount(c =&gt; c + 1)</code>）真正消除对旧值的依赖，而不是隐瞒依赖。</li>
+    <li><strong>忽视 useCallback 本身也有维护成本</strong>：多一个 Hook 调用、多一份依赖数组要跟着代码演进同步维护，团队协作时容易有人改了函数体却忘了同步依赖数组，造成隐蔽 bug。只有明确"这个函数要传给 memo 组件或进依赖数组"时才值得引入这份成本。</li>
+    <li><strong>混淆"函数没有重新创建"和"函数内部逻辑没有变化"</strong>：<code>useCallback</code> 保证的是引用稳定性，不代表函数执行的结果不会变——依赖变化后返回的是携带新闭包的新函数，行为完全可能不同。把它和"记忆化结果"（如 useMemo 缓存返回值）搞混，会误判某些场景该不该用。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>useCallback 到底解决什么问题？为什么普通函数定义不够？</strong>—— JS 里每次渲染时组件函数体重新执行，其中定义的箭头函数/普通函数都是"新对象"，即使代码逻辑完全一样，引用也不相等。这会导致依赖引用比较（<code>React.memo</code> 的浅比较、<code>useEffect</code> 依赖比较）永远判定"变了"，从而使 memo 失效或 effect 重复触发。<code>useCallback</code> 让同一段逻辑跨渲染保持同一个函数引用，解决的正是这个"意外的引用不稳定"问题。</li>
+    <li><strong>useCallback(fn, deps) 和 useMemo(() =&gt; fn, deps) 是什么关系？</strong>—— 完全等价，<code>useCallback</code> 是 <code>useMemo</code> 针对"缓存函数"这个高频场景的语法糖：<code>useMemo</code> 缓存的是"计算函数的返回值"，如果这个返回值恰好是另一个函数，效果就和 <code>useCallback</code>一样。二者共享同一套底层缓存机制（依赖比较、缓存槎位）。</li>
+    <li><strong>useCallback 什么时候是"白加"，完全没有性能收益？</strong>—— 当这个函数引用没有被传给任何 <code>React.memo</code> 包裹的子组件、也没有作为其它 Hook（如 useEffect/useMemo）的依赖时。此时不管函数引用是否稳定，都不会影响任何比较结果或触发额外渲染，缓存的成本（依赖比较、内存占用）纯属浪费。</li>
+    <li><strong>为什么函数式更新（setState(prev =&gt; ...)）能帮 useCallback 减少依赖？</strong>—— 普通写法 <code>setCount(count + 1)</code> 需要在闭包里读取当前的 <code>count</code>，因此必须把 <code>count</code> 放进依赖数组，一旦 <code>count</code> 变化，缓存的函数就要重新生成。而 <code>setCount(c =&gt; c + 1)</code> 让 React 在更新时把"当前最新值"作为参数传入回调，函数体内不再需要闭包捕获外部的 <code>count</code>，依赖数组可以安全清空，函数引用能保持真正的稳定。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>useMemo 缓存计算（第 52 篇）：</strong>本篇已经证明 <code>useCallback(fn, deps)</code> 就是 <code>useMemo(() =&gt; fn, deps)</code> 的语法糖，两者共享同一套"依赖不变则复用缓存"的机制——学 <code>useCallback</code> 本质是在学怎么用 <code>useMemo</code> 缓存"函数"这一种特殊值。</li>
+    <li><strong>引用稳定性问题（第 51 篇）：</strong>本篇解决的正是第 51 篇提出的"破坏点一"——父组件每次渲染都新建函数字面量，导致 <code>React.memo</code> 子组件的 props 比较永远判定"变了"。<code>useCallback</code> 是那篇留下的悬念的具体解法。</li>
+    <li><strong>过度优化的坏处（第 54 篇）：</strong>本篇陷阱里提到"没有 memo 子组件也无脑用 useCallback"是白加开销，下一篇会把这个道理系统化——预防性缓存的三大代价（可读性、缓存开销、依赖维护负担）同样适用于 <code>useCallback</code>。</li>
+    <li><strong>useReducer 与 Context 结合（第 50 篇）：</strong>那一篇里 <code>dispatch</code> 天然引用稳定、不需要额外 <code>useCallback</code> 包装，是因为 <code>useReducer</code> 内部已经保证了这一点——对比本篇需要手动 <code>useCallback</code> 才能稳定普通函数，能更清楚看出"哪些引用天生稳定、哪些需要手动稳定"的区别。</li>
+    <li><strong>子传父回调（第 59 篇）：</strong>第 59 篇讲父组件把函数当 props 传给子组件实现"子传父"，如果这个子组件被 <code>memo</code> 包裹，父组件传下去的回调函数就需要用本篇的 <code>useCallback</code> 稳定引用，否则回调模式和性能优化会互相拖累。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="52-useMemo缓存计算.html" class="nav-btn">← useMemo 缓存计算</a>

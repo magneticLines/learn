@@ -410,6 +410,17 @@ Node[] table  (volatile)
     <strong>选型建议：</strong>绝大多数并发读写场景首选 <code>ConcurrentHashMap</code>。若读远多于写（如配置缓存），可考虑下一节的 <code>CopyOnWriteArrayList</code> 思路；若需要有序遍历，可使用 <code>ConcurrentSkipListMap</code>（跳表，支持 <code>NavigableMap</code> 接口）。
   </div>
 
+  <!-- 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>关联知识点：同步容器（上一节）：</strong><code>ConcurrentHashMap</code> 是对上一节 <code>Hashtable</code> 全局锁方案的直接改进——把"锁粒度远大于冲突粒度"这一根本问题，通过分段锁（JDK 7）→ CAS+bucket 级 synchronized（JDK 8）逐步细化解决，是同一个问题在实现层面的演进史，适合对照着理解锁粒度设计的取舍。</li>
+    <li><strong>关联知识点：线程安全的定义（原子性/可见性/有序性）：</strong><code>Node[] table</code> 用 <code>volatile</code> 保证数组引用可见，但数组元素需要 <code>Unsafe.getObjectVolatile</code> 单独处理——这是"volatile 只保证其修饰的变量本身可见，不会传递到数组/集合元素"这一易错点在真实源码中的体现。</li>
+    <li><strong>关联知识点：CAS 与 Atomic 类 / LongAdder：</strong><code>size()</code> 的实现直接借用了 <code>LongAdder</code> 的分散计数思路（<code>baseCount</code> + <code>CounterCell[]</code>），本质是"用空间换并发度"——多个线程各自累加到不同 cell，减少 CAS 竞争，这与学习 <code>AtomicLong</code> 在高并发下性能瓶颈时引出的 <code>LongAdder</code> 是同一套设计思想。</li>
+    <li><strong>关联知识点：对象的组合与同步策略：</strong><code>putIfAbsent</code> 存在"高代价对象被无谓创建"的问题，而 <code>computeIfAbsent</code> 把整个"检查+计算+插入"逻辑收进 bucket 锁的保护范围内，正是"复合操作交给内部锁统一处理，而不是依赖客户端加锁"这一组合策略的教科书级实现。</li>
+    <li><strong>关联知识点：Spring 缓存与本地缓存设计：</strong>业务代码中大量用 <code>ConcurrentHashMap</code> 实现本地缓存（如 Caffeine 之外的简易场景），<code>computeIfAbsent</code> 的锁行为需要特别小心——lambda 中若递归操作同一个 Map 或执行耗时 IO，会长时间占用 bucket 锁甚至死锁，这是实际项目中排查"缓存卡死"问题的常见根源。</li>
+    <li><strong>关联知识点：面试高频考点——JDK 7 与 JDK 8 实现对比：</strong>"为什么 JDK 8 放弃分段锁重新用 synchronized"本质考察的是对 JVM 锁优化（偏向锁/轻量级锁）历史的理解，这与 JVM 基础中"synchronized 底层原理"章节直接呼应，是并发和 JVM 两个模块知识交叉的典型考点。</li>
+  </ul>
+
   <hr>
 
   <!-- 导航 -->

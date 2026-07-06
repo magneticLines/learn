@@ -395,6 +395,17 @@ CountDownLatch<br>
     需要重复使用的屏障请改用 <strong>CyclicBarrier</strong>。
   </div>
 
+  <!-- 10. 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>AQS 共享锁模式：</strong>本文第 2 节讲的 <code>tryAcquireShared</code> / <code>tryReleaseShared</code> 是 AQS 共享模式的典型实现，与 <code>ReentrantLock</code>（独占模式）、<code>Semaphore</code>（同样是共享模式，但 state 双向增减）、<code>ReentrantReadWriteLock</code> 的读锁共用同一套 AQS 队列机制。理解了 CountDownLatch 的 tryReleaseShared 归零后广播唤醒，再看 Semaphore 的 release 逻辑会发现两者代码结构几乎一样，只是语义不同。</li>
+    <li><strong>与 CyclicBarrier 的本质差异：</strong>本文第 7 节的对比表已经列出关键区别，但更深一层看：CountDownLatch 是"等待者与计数者分离"（任意线程都能 countDown，等待者被动），而 CyclicBarrier 是"参与者身份统一"（每个参与线程既是等待者也是计数者），这是理解下一节 CyclicBarrier 为什么能"自动重置"的关键前提——因为它的语义是"大家互等"而不是"有人倒计时"。</li>
+    <li><strong>与线程池 awaitTermination 的联系：</strong>本文两个示例都配合 <code>ExecutorService</code> 使用，而 <code>ExecutorService.awaitTermination()</code> 内部也是"等待某个条件发生"的模式，只是 JDK 没有直接暴露一个 CountDownLatch 给你操作，而是把等待逻辑封装在了线程池内部——本质思路相通，都是"多线程协作完成后再往下走"。</li>
+    <li><strong>happens-before 与内存可见性体系：</strong>本文第 6 节强调的"countDown() happens-before await() 返回"，与 volatile 写读、synchronized 解锁加锁、线程 start()/join() 共同构成 JMM 的 happens-before 规则集合，是 Java 并发大厦的地基——面试中常要求横向列出这些规则并举例。</li>
+    <li><strong>分布式协调工具的单机雏形：</strong>ZooKeeper 的 <code>Barrier</code> / <code>DoubleBarrier</code> recipe 就是把 CountDownLatch/CyclicBarrier 的思想搬到跨进程场景：本地用 AQS 的 CAS+队列协调线程，分布式场景用 ZK 的临时节点+Watcher 协调进程，问题模型是同构的。</li>
+    <li><strong>面试高频对比：</strong>"CountDownLatch 和 join() 的区别"本文已给出，但更深追问是"为什么 join 不能实现发令枪模式"——因为 join 只能等一个线程"结束"，而 CountDownLatch 可以在线程运行过程中的任意时刻 countDown，不要求线程终止，这是两者适用场景分裂的根本原因。</li>
+  </ul>
+
   <hr />
 
   <!-- nav-footer -->

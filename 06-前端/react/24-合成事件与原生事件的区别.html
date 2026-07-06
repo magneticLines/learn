@@ -164,6 +164,31 @@
     <strong>合成事件的本质是适配器模式</strong>：React 在原生事件之上建了一个抽象层，屏蔽了浏览器差异，统一了事件委托策略，同时保留了完全兼容的 API。你大多数时候感知不到它的存在——这正是好的抽象该有的样子。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>在异步代码里访问合成事件对象</strong>：比如 <code>setTimeout(() => console.log(e.target), 1000)</code>。在 React 17 之前，SyntheticEvent 用完即被<strong>对象池回收</strong>（所有字段被置空复用），异步访问会拿到 <code>null</code>；React 17 起废弃了事件池，合成事件不再被回收，此坑已消失，但如果项目还在用 React 16 及以下，或者读到旧教程提到 <code>e.persist()</code>，要知道它就是用来解决这个历史问题的。</li>
+    <li><strong>混淆"合成事件不触发"与"事件没绑定"</strong>：给非表单元素（如自定义 div）绑定类似 <code>onScroll</code> 的事件却发现不生效，往往不是合成事件系统的问题，而是某些事件（如 <code>onScroll</code>）合成事件不冒泡，或者元素本身不具备该行为的触发条件（如 div 默认不可聚焦，键盘事件不触发），需要针对具体事件类型排查，而不是笼统怀疑"合成事件坏了"。</li>
+    <li><strong>在 useEffect 里用合成事件的方式绑定 document 监听</strong>：合成事件只作用于 JSX 中声明的 React 元素树，监听 <code>document</code>、<code>window</code> 等全局对象必须用原生 <code>addEventListener</code>，且要记得在清理函数里 <code>removeEventListener</code>，忘记清理会导致组件卸载后监听器仍然存活，造成内存泄漏或访问已卸载组件状态的报错。</li>
+    <li><strong>以为事件委托意味着"事件绑定在 document/根节点上就能拿到冒泡前的完整信息"</strong>：合成事件的委托机制是 React 内部实现细节，你在业务代码里写的 <code>onClick</code> 依然遵循组件树层级的"冒泡"语义（父子组件的 onClick 都会依次触发），不能因为知道内部委托到根节点，就假设事件行为和普通嵌套 DOM 冒泡不一样。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>什么是 SyntheticEvent？React 为什么要包装原生事件？</strong>—— SyntheticEvent 是 React 对浏览器原生事件的跨浏览器包装对象，实现了与 W3C 标准一致的接口。它的作用是屏蔽不同浏览器事件模型的差异（如老 IE 的 <code>attachEvent</code>/<code>srcElement</code>），并配合 React 的事件委托机制统一管理事件的注册、分发和批处理，原生对象可以通过 <code>e.nativeEvent</code> 访问。</li>
+    <li><strong>React 17 前为什么会有"异步访问事件对象拿到 null"的坑？<code>e.persist()</code> 是做什么的？</strong>—— React 16 及更早版本为了减少频繁创建事件对象带来的 GC 压力，用了一个对象池：事件处理函数执行完后，SyntheticEvent 的所有字段会被立即清空以便复用给下一个事件。如果你把事件对象传进 <code>setTimeout</code> 或 Promise 异步读取，取到的字段就是 null。<code>e.persist()</code> 会把该事件对象从池中移除，防止被回收，从而能在异步代码里安全访问。React 17 移除了事件池机制，这个问题已不存在。</li>
+    <li><strong>React 的事件委托机制经历了什么变化，为什么这么改？</strong>—— React 16 及之前把所有合成事件统一委托绑定在 <code>document</code> 上；React 17 起改为绑定在渲染树的根 DOM 容器（<code>createRoot</code> 挂载点）上。原因是多个 React 版本或多个 React 应用共存于同一页面时（常见于微前端场景），共享 document 监听会导致事件在不同 React 树之间串扰，改到各自的根节点后实现了隔离。</li>
+    <li><strong>合成事件和原生事件的执行顺序是怎样的？</strong>—— 因为合成事件依赖事件冒泡委托到根节点后才分发，所以如果同时在某个 DOM 节点上用 <code>addEventListener</code> 绑定原生事件、又在其 React 组件上绑定合成事件，原生事件会先于合成事件触发（原生监听器在事件到达根节点之前就已经在冒泡路径上执行），这在需要精确控制执行顺序的场景（如同时用第三方库操作 DOM）容易踩坑。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>onClick / onChange / onSubmit：</strong>这些常见的事件处理属性，处理函数拿到的参数正是本节讲的 SyntheticEvent——理解了合成事件的接口和委托机制，才能明白为什么 <code>onChange</code> 里能安全访问 <code>e.target.value</code>，以及为什么这些事件不需要手动 <code>addEventListener</code>。</li>
+    <li><strong>阻止默认行为与冒泡：</strong><code>e.preventDefault()</code> 和 <code>e.stopPropagation()</code> 是合成事件对象上的方法，它们的行为看起来和原生事件一致，但底层是在 React 的委托事件系统内运作的，涉及冒泡顺序时需要结合本节的事件委托模型理解。</li>
+    <li><strong>传参给事件处理函数：</strong>无论是原生事件监听还是合成事件，事件处理函数的固定签名都是"接收一个事件对象"，如果还想传自定义参数，需要额外用箭头函数包一层——这是两者共享的限制，和合成事件本身无关，但理解事件对象的传递方式是前提。</li>
+    <li><strong>useEffect 与清理函数：</strong>凡是跳出 React 组件树、监听 <code>document</code> 或 <code>window</code> 的原生事件，都必须在 <code>useEffect</code> 里手动 <code>addEventListener</code> 并在清理函数里 <code>removeEventListener</code>——这是合成事件机制覆盖不到的场景，也是 useEffect 生命周期管理的典型应用。</li>
+    <li><strong>受控组件：</strong>受控组件依赖 <code>onChange</code> 合成事件实时读取 <code>e.target.value</code> 来同步 state，如果合成事件的字段访问时机不对（如历史版本的事件池回收问题），会直接影响受控组件读取输入值的正确性。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="23-不可变更新.html" class="nav-btn">← 不可变更新</a>

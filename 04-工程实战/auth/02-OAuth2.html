@@ -302,6 +302,18 @@
     <strong>面试高频考点：</strong>OAuth2 四种模式哪种最安全，为什么？→ 授权码模式，因为 access_token 只在后端流转，不经过浏览器；code 一次性且短期；结合 PKCE 后即使 code 被截获也无法换 token。
   </div>
 
+  <!-- ─── 9. 与其他知识点的联系 ─── -->
+  <h2>与其他知识点的联系</h2>
+
+  <ul>
+    <li><strong>JWT：</strong>OAuth2 只规定了授权服务器如何颁发、客户端如何交换 token，但没规定 token 长什么样——<code>access_token</code> 可以是一段不透明字符串（opaque token，需要资源服务器回调授权服务器查询），也可以直接用 JWT 编码，把用户身份、scope 等信息自包含在 token 里。资源服务器用 JWKS 端点拿到的公钥验签，正是上一篇 JWT 讲的 RS256 非对称签名的典型应用场景。</li>
+    <li><strong>单点登录 SSO：</strong>OIDC 在 OAuth2 之上加的 <code>id_token</code>，本质上就是实现 SSO 的核心机制——多个子系统都信任同一个授权服务器颁发的身份令牌，用户在一处登录后，其它系统凭 id_token 就能确认身份，不需要重复输入密码。这也是"用 GitHub 登录""企业内部统一门户"这类场景背后的协议基础。</li>
+    <li><strong>API Gateway 鉴权：</strong>在微服务架构里，客户端凭证模式（Client Credentials）常用于服务间调用鉴权，API Gateway 可以在入口统一校验 <code>access_token</code>（无论是 JWT 还是 opaque token），验证通过后再把请求转发给具体业务服务，业务服务本身就不用重复实现鉴权逻辑——这是"关注点分离"思想在网关层的具体落地。</li>
+    <li><strong>Spring Security 的 Filter 链与 AOP：</strong><code>oauth2ResourceServer().jwt()</code> 和自定义 <code>JwtAuthFilter</code>（见上一篇）解决的是同一个问题，只是实现方式不同：前者是 Spring Security 提供的标准化组件，通过配置声明式接入，本质上仍然是在 <code>SecurityFilterChain</code> 上插入一个 Filter，校验通过后把认证信息写入 <code>SecurityContext</code>，后续 Controller 通过 <code>@PreAuthorize</code> 等注解做的其实是一种 AOP 式的权限拦截。</li>
+    <li><strong>CSRF 与 Web 安全基础：</strong>授权码模式中的 <code>state</code> 参数本质上是 CSRF Token 的一种应用——防止攻击者构造一个指向自己账号的授权回调，诱导用户在不知情的情况下把自己的账号绑定到攻击者的 Session 上（OAuth2 CSRF 攻击）。这和表单提交场景下防 CSRF 的思路完全一致，都是靠"一次性、不可预测的随机值"来确认请求确实来自预期的发起方。</li>
+    <li><strong>最小权限原则与设计模式中的接口隔离：</strong>OAuth2 的 <code>scope</code> 机制是"最小权限原则"（Principle of Least Privilege）在授权协议层面的体现，和面向对象设计中的接口隔离原则（ISP）思路相通——都是通过拆分细粒度的能力单元，让调用方只能拿到、只需要申请自己真正要用到的那一部分权限，而不是笼统地"全有或全无"。</li>
+  </ul>
+
   <hr>
 
   <div class="nav-footer">

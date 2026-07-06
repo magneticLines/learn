@@ -128,6 +128,30 @@
     <strong>* 也能取参数</strong>:在组件里 <code>const params = useParams()</code>,通配匹配到的路径存在 <code>params['*']</code> 里。可以用它记录"用户想访问但不存在的路径",上报日志分析哪些死链最多。
   </div>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>带着 v5 的思维在 v6 里纠结通配路由的位置</strong>:v5 的 <code>&lt;Switch&gt;</code> 是"从上到下第一个匹配就用",<code>path="*"</code> 放错位置(比如放在最前面或没写 <code>exact</code> 的 <code>/</code> 之后)会提前拦截所有路由。v6 换成了"最佳匹配"算法,<code>*</code> 特异度最低永远垫底,放哪里结果都一样——但仍应放在最后,否则读代码的人会误以为顺序敏感,增加理解成本。</li>
+    <li><strong>忘记服务器端的 fallback 配置,导致刷新页面直接 404</strong>:SPA 的路由匹配完全在浏览器里的 JS 完成,如果用户直接刷新 <code>/about</code> 或分享这个链接给别人打开,请求会先打到服务器,如果服务器没有配置"所有路径都回退到 <code>index.html</code>"(如 nginx 的 <code>try_files</code>),会命中服务器真正的 404,连 React 代码都没机会跑起来,看到的是一片毫无样式的错误页。</li>
+    <li><strong>误以为前端的 404 页面等同于真正的 HTTP 404</strong>:即使正确显示了 <code>&lt;NotFound /&gt;</code> 组件,HTTP 响应状态码通常仍是 200(服务器认为自己正常返回了 <code>index.html</code>)。搜索引擎爬虫看到的是"这个页面存在且正常",对 SEO 不友好。如果业务在意这一点,得用 SSR 方案在服务端真正返回 404 状态码。</li>
+    <li><strong>嵌套路由里忘了给每个模块单独兜底,导致局部 404 变成整站空白</strong>:只在最外层 <code>&lt;Routes&gt;</code> 加了一个全局 <code>path="*"</code>,某个带侧栏布局的模块内部路径打错时,会直接跳出布局显示整站级的 404,用户瞬间"丢失"了导航栏和上下文。应该在每个有独立布局的嵌套路由里也放一个局部的 <code>path="*"</code>。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>React Router v6 里 <code>path="*"</code> 的匹配规则是什么,和 v5 有什么本质区别?</strong>—— v6 使用"最佳匹配"(rank by specificity)算法,会评估所有 <code>&lt;Route&gt;</code> 并挑选特异度最高的一个渲染,<code>*</code> 特异度最低,只有其他路由都没命中时才会生效,因此不再需要关心声明顺序。v5 的 <code>&lt;Switch&gt;</code> 则是严格从上到下第一个匹配就采用,顺序错了会导致某些路由永远匹配不到。</li>
+    <li><strong>为什么 SPA 前端 404 页面配合 HTTP 200 状态码会有问题?怎么解决?</strong>—— 因为路由匹配发生在浏览器端的 JS 里,服务器对任何路径请求(经过 fallback 配置后)都会返回同一个 <code>index.html</code>,状态码天然是 200。这让搜索引擎爬虫误判页面存在,损害 SEO。解决办法是引入 SSR(如 Next.js),在服务端就能判断路由不存在并返回真正的 404 状态码。</li>
+    <li><strong>为什么部署 SPA 时必须配置服务器的路径回退(fallback)规则?</strong>—— 因为客户端路由完全依赖 JS 加载后在浏览器里做匹配,如果用户直接访问或刷新一个非根路径(如 <code>/about</code>),这个请求会先发到服务器;如果服务器没有配置"找不到对应静态文件就返回 index.html",就会命中服务器自身的 404,页面直接空白报错,JS 都没机会执行。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>Outlet 占位符 / 布局路由：</strong>局部 404 之所以能"保留布局外壳"，靠的就是把 <code>path="*"</code> 作为某个布局路由的子路由放进去——未匹配的子路径依然会先命中父级 Outlet，再由通配路由渲染兜底内容，而不是跳出整个布局显示一片空白。</li>
+    <li><strong>index 路由：</strong>index 路由和通配路由分别覆盖"父路径被精确命中"与"什么都没匹配上"这两种边界情况，二者互不冲突、可以在同一个父路由下共存，合起来让所有访问路径都有明确的渲染结果，不留渲染空白。</li>
+    <li><strong>Navigate 重定向：</strong>404 有时不是终点而是中转站——比如识别到某个失效的旧路径模式后，不展示"页面走丢了"，而是在 404 组件内部渲染 <code>&lt;Navigate to="/new-path" replace /&gt;</code> 悄悄迁移用户，这是通配路由和声明式重定向的常见组合。</li>
+    <li><strong>Query 参数与 useSearchParams：</strong>通配路由只匹配路径部分，完全不检查 query 参数——这意味着任何带着奇怪 <code>?xxx=yyy</code> 的已知路径依然会正常匹配到对应页面，只有路径本身不认识时才会落到 404，这也印证了 query 参数"不参与路由匹配、只是附加信息"的定位。</li>
+    <li><strong>createBrowserRouter 与 loader：</strong>数据路由用 <code>errorElement</code> 统一处理 loader/action 抛出的异常，这和 <code>path="*"</code> 处理"路径未匹配"是两套不同的兜底机制——前者管"数据获取失败"，后者管"路由本身不存在"，实际项目里往往需要同时配置两者才能覆盖完整的异常场景。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="88-Navigate重定向.html" class="nav-btn">← Navigate 重定向</a>

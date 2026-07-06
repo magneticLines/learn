@@ -164,6 +164,14 @@
     <li><strong>本质是 AOP 代理：</strong>和 <code>@Transactional</code> 一样存在自调用失效问题，排查思路可以完全复用。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>自定义 UserDetailsService：</strong><code>@PreAuthorize</code> 表达式里能写 <code>authentication.principal.id</code>，前提是自定义的 <code>UserDetails</code> 实现类暴露了业务字段（比如用户主键）——这是本篇授权判断和前面认证环节之间的直接数据依赖，如果 <code>UserDetailsService</code> 返回的是官方内置的 <code>User</code> 类而不是自定义子类，很多参数级判断根本写不出来。</li>
+    <li><strong>Spring Security 自动配置默认行为：</strong>本篇讲的 URL 级别 <code>authorizeHttpRequests</code> 和方法级别 <code>@PreAuthorize</code> 是同一套 Security 体系里两道互补的防线——URL 级别负责"整个接口谁能访问"的粗粒度拦截（在 Filter 链里完成，比 Controller 更早），方法级别负责"具体到某条数据"的细粒度判断（在 Service/Controller 方法调用时通过 AOP 完成），两者可以同时存在，一层比一层收得更紧。</li>
+    <li><strong>DispatcherServlet 请求处理流程：</strong>URL 级别的 <code>authorizeHttpRequests</code> 是在请求到达 <code>DispatcherServlet</code> 之前的 Filter 阶段拦截；而 <code>@PreAuthorize</code> 是在 <code>DispatcherServlet</code> 把请求分派给 Controller 之后，通过 Spring 容器的 AOP 代理在方法调用层面拦截——理解这两个拦截点在请求链路上的先后顺序，才能定位"为什么这里 401 而那里是 403"这类问题分别发生在哪一层。</li>
+    <li><strong>无状态会话与 JWT 整合：</strong>不管认证信息来自 Session 还是 JWT 解析出来的 <code>Authentication</code>，<code>@PreAuthorize</code> 的判断逻辑完全不关心这一点——它只读取当前线程 <code>SecurityContextHolder</code> 里已经放好的 <code>Authentication</code> 对象，这正体现了 Spring Security 把"认证方式"和"授权判断"彻底解耦的设计：换掉登录方式，所有 <code>@PreAuthorize</code> 表达式都不需要改一行。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

@@ -347,6 +347,17 @@
     3. <strong>迭代器持快照</strong>：创建时绑定当前数组引用，遍历期间外部任何修改都不影响它，永不抛 CME，但也看不到新数据。
   </div>
 
+  <!-- 10. 与其他知识点的联系 -->
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>JMM 与 volatile happens-before：</strong>COW 读不加锁能安全，根本原因是 <code>array</code> 字段被 <code>volatile</code> 修饰，写线程对它的写 happens-before 读线程对它的读。这和后面要学的 <code>ConcurrentHashMap</code> 中 table 数组用 volatile、以及单例模式的双重检查锁定（DCL）里 instance 字段必须加 volatile 是同一套底层保证，理解这里就理解了那两处的"为什么"。</li>
+    <li><strong>与 ConcurrentHashMap 的设计对比：</strong>ConcurrentHashMap 用分段锁/CAS+synchronized 让读写都能高并发，是"读写都要快"的方案；CopyOnWriteArrayList 直接放弃写性能换读性能极致，是"读多写少"场景的另一种极端取舍。两者代表了并发容器设计中"细粒度锁"与"空间换时间"两条不同路线。</li>
+    <li><strong>与 ConcurrentLinkedQueue / BlockingQueue 的取舍：</strong>如果业务需要的是队列语义（生产者-消费者）而不是索引访问的 List 语义，即使读多写少也不该选 COW，而应该用下一节要讲的 <code>BlockingQueue</code> 或 <code>ConcurrentLinkedQueue</code>——选型的第一步永远是先看数据结构语义，再看并发特性。</li>
+    <li><strong>迭代器弱一致性与 fail-fast 的对比：</strong>普通 <code>ArrayList</code> 的 fail-fast 迭代器靠 modCount 在遍历时检测到修改就抛 CME，本质是"宁可抛异常也不给脏数据"；COW 的弱一致性迭代器是"宁可给旧数据也不抛异常"。这是同一个问题（遍历时被修改）两种截然不同的设计哲学，面试常问二者取舍原因。</li>
+    <li><strong>观察者模式与线程池任务队列：</strong>本文的 EventBus 示例本质是观察者模式的并发安全实现；这种"遍历监听器列表并逐个回调"的写法在 Spring 的 ApplicationListener 广播、Netty 的 ChannelPipeline 中都能看到影子，理解 COW 的适用边界有助于理解这些框架为何选择或不选择类似方案。</li>
+    <li><strong>面试高频对比：</strong>"COW 和 synchronized 容器的区别""COW 为什么不适合写多场景"是高频题，本质考察的是对"读写分离＋不可变快照"这一设计模式的理解，而不只是记住 API。</li>
+  </ul>
+
   <hr />
 
   <!-- 导航 -->

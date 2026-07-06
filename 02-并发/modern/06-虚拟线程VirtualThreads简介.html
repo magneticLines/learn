@@ -138,6 +138,15 @@
     <li><strong>价值：</strong>用最朴素的同步阻塞写法，获得接近异步编程的吞吐量，大幅降低高并发服务端编程的复杂度。</li>
   </ul>
 
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>关联知识点：ThreadPoolExecutor 的存在意义被部分改写。</strong>本模块开篇讲线程池的核心价值之一是"复用昂贵的线程资源"，而虚拟线程创建成本极低、天生不建议池化——这不是否定线程池，而是提醒我们线程池要解决的"创建销毁开销"问题在虚拟线程场景下已经不存在了，但线程池另一个价值"控制并发度、防止资源耗尽"在虚拟线程下依然存在，只是需要用 <code>Semaphore</code> 等其他手段限流，而不是靠固定线程数的线程池。</li>
+    <li><strong>关联知识点：synchronized 的锁膨胀与虚拟线程钉住（pinning）。</strong>本节提到 <code>synchronized</code> 块会让虚拟线程"钉住"载体线程，这跟前面学 <code>synchronized</code> 底层锁升级（无锁→偏向锁→轻量级锁→重量级锁）时讲的"进入 synchronized 会涉及对象头 Mark Word 和监视器锁"有关——虚拟线程调度器无法安全地把一个正持有 monitor 的虚拟线程从载体线程上卸下来，所以只能选用不涉及 monitor 的 <code>ReentrantLock</code> 才能获得完整的让出能力。</li>
+    <li><strong>关联知识点：ForkJoinPool 与任务类型的边界。</strong>本模块前面讲 ForkJoinPool 适合 CPU 密集型的分治任务，这里明确虚拟线程只对 IO 密集型任务有意义——两节放在一起看，正好划出了"CPU 密集用 ForkJoinPool/并行流，IO 密集用虚拟线程"这条清晰的选型分界线，面试里常被拿来一起问"什么场景该用什么并发工具"。</li>
+    <li><strong>关联知识点：CompletableFuture/CompletionService 的异步编排是否还需要。</strong>虚拟线程让"同步阻塞写法"重新变得高效，但这不意味着 <code>CompletableFuture</code> 的链式编排（thenApply/thenCombine）失去价值——虚拟线程解决的是"阻塞等待浪费线程资源"的问题，而异步编排解决的是"多个任务之间的依赖组合关系"，两者维度不同，实践中常常是"虚拟线程负责并发承载，CompletableFuture 负责逻辑编排"配合使用。</li>
+    <li><strong>关联知识点：JMM 与 happens-before。</strong>虚拟线程的挂起/恢复本质上是把调用栈从一个载体线程搬到另一个载体线程，这个搬迁过程由 JVM 保证了跨线程的可见性和有序性，开发者不需要额外关心——但虚拟线程之间共享可变状态时，仍然要遵守 JMM 里 happens-before 的规则（该加锁、该用 volatile 的地方一样不能省），虚拟线程只是改变了"线程便宜不便宜"，没有改变并发安全的底层规则。</li>
+  </ul>
+
   <hr />
 
   <div class="nav-footer">

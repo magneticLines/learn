@@ -409,6 +409,18 @@ AbstractQueuedSynchronizer
     <li><strong>Condition.await() 与 Object.wait() 的核心区别？</strong>——Condition 与 <code>Lock</code> 绑定，支持一个锁对应多个条件队列；Object.wait 只能有一个 Monitor 等待集合。</li>
   </ul>
 
+  <!-- ===================== 与其他知识点的联系 ===================== -->
+  <h2>与其他知识点的联系</h2>
+
+  <ul>
+    <li><strong>ReentrantLock / ReadWriteLock：</strong>本节第 4 节的 <code>Mutex</code> 示例展示了 AQS 骨架的通用性——<code>ReentrantLock</code> 只是把 <code>tryAcquire</code> 实现成"CAS + 重入计数判断"，<code>ReentrantReadWriteLock</code> 则把 <code>state</code> 拆成高低 16 位分别实现 <code>tryAcquireShared</code>（读锁）和 <code>tryAcquire</code>（写锁）。理解了 AQS 的模板方法结构，再看这两把锁的源码就是在填 5 个钩子方法，而不是各自发明一套排队逻辑。</li>
+    <li><strong>CAS 与原子类：</strong>AQS 的 <code>compareAndSetState</code> 本质上就是对 <code>state</code> 字段调用 <code>Unsafe.compareAndSwapInt</code>，和「CAS 与原子类」一节讲的 <code>AtomicInteger.compareAndSet</code> 是同一条 CPU 指令（<code>LOCK CMPXCHG</code>）。区别在于 AQS 在 CAS 失败后不是简单自旋重试，而是把线程封装成 Node 挂到 CLH 队列上再 park——这正是"乐观尝试失败后退化为悲观阻塞"的完整闭环。</li>
+    <li><strong>ABA 问题：</strong>AQS 的 <code>state</code> 虽然也是 <code>volatile int</code> 配合 CAS，但不会遇到 ABA 问题，因为它的语义是单调的计数（重入次数、许可数、剩余计数），线程只关心"当前值是否等于期望值"，不存在"节点被复用导致地址相同但状态已变"的场景。这也帮助划清 ABA 问题的适用边界：只有涉及引用/指针复用的无锁结构才需要担心。</li>
+    <li><strong>JMM / happens-before：</strong>本节面试考点里提到 state 是 <code>volatile</code>，这不是随手加的关键字，而是 AQS 正确性的地基——<code>release()</code> 里对 state 的写入建立 happens-before，<code>acquire()</code> 里对 state 的读取（CAS 成功）才能保证看到释放线程之前的所有修改。这也是为什么第 8 节陷阱强调 <code>tryRelease</code> 必须在真正释放后才返回 true：提前返回 true 意味着提前唤醒后继线程，而此时可见性保证还没建立。</li>
+    <li><strong>CountDownLatch / Semaphore（共享模式）：</strong>第 5 节讲的"传播唤醒"（<code>doReleaseShared</code>）正是 <code>CountDownLatch.countDown()</code> 归零后能一次性放行所有等待线程的底层机制——每个共享节点被唤醒后会检查后继是否也是共享模式，是则继续唤醒，从而形成链式传播，而不像独占模式那样只唤醒一个节点。</li>
+    <li><strong>分布式锁对比：</strong>Redisson 等分布式锁库在设计等待机制时会借鉴 AQS 的思路（比如用 Redis 的发布订阅模拟"唤醒队首等待者"），但因为没有本地内存里的 CLH 队列，通常要靠客户端自旋轮询或订阅频道来模拟"park/unpark"，可靠性和延迟都无法达到 AQS 这种进程内 CAS + LockSupport 的量级，这也是面试时对比"JVM 锁 vs 分布式锁"常被问到的点。</li>
+  </ul>
+
   <!-- ===================== 小结 ===================== -->
   <hr />
 

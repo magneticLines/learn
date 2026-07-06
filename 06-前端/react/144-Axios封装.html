@@ -167,6 +167,32 @@ request.get('/user');
     <li>封装 axios 只负责"怎么发请求",不负责缓存和状态管理,这些留给下一篇的 TanStack Query 组合使用。</li>
   </ul>
 
+  <h2>常见陷阱</h2>
+  <ul>
+    <li><strong>response 拦截器直接 return response.data,丢了状态信息。</strong> 拆包确实方便,但如果某个接口需要读 <code>headers</code>(比如分页信息放在 <code>X-Total-Count</code>)或者要判断 <code>status</code> 而不是靠 axios 自动 reject,拆包之后这些信息就没了。常见做法是给这类特殊接口单独传一个配置(如自定义 <code>skipUnwrap</code>),而不是所有接口都强制走同一套拆包逻辑。</li>
+    <li><strong>拦截器里忘了 <code>return Promise.reject(error)</code>,错误被静默吞掉。</strong> 如果 response 拦截器的失败回调只顾着弹 toast,没有把 <code>error</code> 继续 reject 出去,这个 Promise 就会变成"resolved 但值是 undefined"——调用方的 <code>try/catch</code> 和 TanStack Query 的 <code>isError</code> 都感知不到失败,组件可能拿着 <code>undefined</code> 去渲染,直接白屏或报错,却完全找不到原因。</li>
+    <li><strong>多个模块共用一个 axios 实例,却各自修改它的默认配置。</strong> 比如某个模块因为要传文件,临时把公共实例的 <code>headers['Content-Type']</code> 改成 <code>multipart/form-data</code>,这个修改是全局的、持久的——之后所有请求都被污染了。凡是"只在某次请求里生效"的配置,应该传进那次调用的 <code>config</code> 参数,而不是改实例的默认值。</li>
+    <li><strong>401 刷新 token 的逻辑写在拦截器里,没考虑并发请求。</strong> 如果页面同时发出 5 个请求,且 token 恰好过期,5 个请求会几乎同时收到 401,若刷新逻辑没有加锁,会触发 5 次刷新 token 的请求,其中大概率互相覆盖导致刷新失败。正确做法是维护一个"刷新中"的标记和等待队列:第一个 401 触发刷新,其余 401 先挂起等待,刷新成功后统一用新 token 重试。</li>
+    <li><strong>组件卸载后,拦截器里的副作用(如 <code>toast.error</code>)还在执行。</strong> 如果请求发出后组件被卸载(比如用户快速切换了页面),response 拦截器仍会在响应回来时执行,如果这段逻辑里有依赖组件状态的操作而不是纯粹的全局提示,就可能报"在已卸载组件上更新状态"的警告。拦截器本身适合放"全局无状态"的副作用,组件级别的取消应该用 <code>AbortController</code> 配合 <code>useEffect</code> 的清理函数处理,而不是依赖拦截器兜底。</li>
+  </ul>
+
+  <h2>面试高频考点</h2>
+  <ol>
+    <li><strong>为什么要用 axios.create() 而不是直接用默认的 axios 对象发请求?</strong>—— 默认的 axios 对象是全局单例,它的 <code>defaults</code>(比如 <code>baseURL</code>、<code>headers</code>)一旦被某处代码修改,会影响项目里所有用到 axios 的地方。<code>axios.create(config)</code> 会返回一个独立的实例,拥有自己的一份 <code>defaults</code> 和拦截器链,不同业务域(比如对接不同后端服务)可以创建互不干扰的多个实例。</li>
+    <li><strong>request 拦截器和 response 拦截器的执行顺序是怎样的?</strong>—— 一次请求会先按注册顺序依次执行所有 request 拦截器,把 <code>config</code> 层层加工后真正发出网络请求;响应回来后再按注册顺序依次执行所有 response 拦截器。本质上 axios 内部把"发请求"这个动作也包装成了一个 Promise,拦截器就是在这个 Promise 链的头部和尾部插入 <code>then</code>/<code>catch</code> 节点,所以它遵循 Promise 链式调用的顺序规则,而不是什么特殊机制。</li>
+    <li><strong>如何在拦截器里统一处理 401 刷新 token 并自动重试原请求?</strong>—— 核心思路是在 response 拦截器的失败回调里捕获 401,先判断是否已经在刷新(用一个模块级变量标记),如果没有则发起刷新 token 的请求,拿到新 token 后把原来失败的请求配置(<code>error.config</code>)里的 <code>Authorization</code> 头替换掉,用 <code>request(error.config)</code> 重新发出去并把这个 Promise 返回;如果已经在刷新中,则把当前请求推入一个等待队列,刷新完成后统一用新 token 重试队列里的所有请求。关键是要避免并发 401 导致重复刷新。</li>
+    <li><strong>axios 和 fetch 相比,封装层面解决了 fetch 的哪些痛点?</strong>—— fetch 本身不会对非 2xx 状态码 reject(需要手动判断 <code>res.ok</code>),没有内置的请求/响应拦截机制,没有自带的超时和取消(取消要靠 <code>AbortController</code> 手动接),也没有自动的 JSON 序列化/反序列化。axios 把这些都做成了内置能力,拦截器又提供了一个"集中处理横切关注点"的钩子位置,这正是本文封装能够成立的前提——如果用 fetch 硬写同样的效果,需要自己包装出等价的拦截层。</li>
+  </ol>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>与 useEffect 数据请求、竟态条件的关系:</strong> 封装出来的 <code>request</code> 实例只解决"怎么发一次干净的请求",并不会自动处理"组件卸载后响应才回来""userId 快速切换导致新旧响应互相覆盖"这类竟态问题——这些仍然需要配合 <code>AbortController</code>(下面第 146 篇)手动取消过期请求,或者干脆交给 TanStack Query 内置的取消机制去管。</li>
+    <li><strong>与下一篇 145(TanStack Query)的关系:</strong> 本篇解决的是"怎么发请求"这一层,还完全没有涉及缓存、loading/error 状态管理、多组件共享同一份数据去重这些问题——这些正是下一篇要引入 TanStack Query 来补上的那一层。封装好的 <code>request</code> 实例几乎可以原封不动地作为 <code>queryFn</code> 传给 <code>useQuery</code>,两层各司其职。</li>
+    <li><strong>与表单提交(143 篇)的关系:</strong> 143 篇 RHF 的 <code>onSubmit</code> 回调拿到的是校验通过、类型安全的表单数据,而这份数据下一步要做的事通常就是调用本篇封装的请求函数发出去——表单校验解决"数据合不合法",本篇解决"合法的数据怎么可靠地发出去",两者在 <code>onSubmit(data) =&gt; request.post('/login', data)</code> 这样的写法里自然地衔接起来。</li>
+    <li><strong>与拦截器统一处理 loading/错误提示的关系:</strong> request 拦截器和 response 拦截器承担的是"每个请求都要做的通用副作用"(挂 token、401 跳转、错误 toast),这和后面 TanStack Query 里 <code>isLoading</code>/<code>isError</code> 这类"针对某一次具体查询的状态"是两个不同粒度的关注点——拦截器管全局通用逻辑,组件/查询层管这一次调用该怎么响应,不应该把两者的职责混在一起写。</li>
+    <li><strong>与 Promise 链式调用的关系:</strong> 拦截器的执行顺序本质上遵循 Promise 链的 <code>then</code>/<code>catch</code> 规则,拦截器处理完错误后仍要 <code>Promise.reject(error)</code> 才能让这个"失败"信号继续沿着 Promise 链传递下去——这也是为什么下一篇 TanStack Query 能在拦截器已经处理过一轮错误之后,依然感知到 <code>isError</code> 并进入自己的错误状态。</li>
+  </ul>
+
   <hr>
   <div class="nav-footer">
     <a href="143-RHF与Zod resolver整合.html" class="nav-btn">← RHF + Zod resolver 整合</a>
