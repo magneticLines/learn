@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>工具调用(Function Calling)机制 — Agent开发核心</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / Agent开发核心 / 工具调用(Function Calling)机制
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Agent开发核心</div>
+    <h1>工具调用(Function Calling)机制</h1>
+    <p>模型本身不能"调用"任何东西——Function Calling 的真相是模型只负责"说出"要调用什么、参数是什么,真正的执行永远是外部代码在做。</p>
+  </div>
+
+  <h2>一个常见的误解</h2>
+  <p>
+    很多人听到"模型调用了一个工具",会以为模型内部真的执行了这段代码。但 LLM 本质上只是一个"输入文本 → 输出文本"的函数,
+    它没有网络权限、没有文件系统访问权限,也不能真的运行任何程序。<strong>Function Calling 的真实机制</strong>是:
+  </p>
+  <ol>
+    <li>开发者预先把每个工具的<strong>名称、功能描述、参数 schema</strong>(通常是 JSON Schema)一起打包塞进发给模型的请求里;</li>
+    <li>模型根据当前上下文,判断"这一步该调用哪个工具、参数该填什么",并输出一段<strong>结构化的 JSON</strong>(而不是自然语言);</li>
+    <li>外部代码解析这段 JSON,真正去执行对应的函数(调 API、查数据库、跑脚本);</li>
+    <li>把执行的真实结果重新拼进对话历史,作为下一轮输入喂回模型。</li>
+  </ol>
+  <div class="callout info">
+    <strong>类比:</strong>模型更像一个只能"打电话下指令"的甲方——它说"帮我查一下北京的天气,参数是城市=北京",
+    但电话那头真正"跑腿去查"的是外部代码这个乙方。模型自己永远不会亲自去接触真实世界。
+  </div>
+
+  <h2>工具定义与模型输出示例</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>① 开发者提供的工具 Schema</span></div>
+    <pre>{
+  <span class="var">"name"</span>: <span class="str">"get_weather"</span>,
+  <span class="var">"description"</span>: <span class="str">"查询指定城市当天的天气情况,返回天气状况和气温"</span>,
+  <span class="var">"parameters"</span>: {
+    <span class="var">"type"</span>: <span class="str">"object"</span>,
+    <span class="var">"properties"</span>: {
+      <span class="var">"city"</span>: { <span class="var">"type"</span>: <span class="str">"string"</span>, <span class="var">"description"</span>: <span class="str">"城市名称,如 北京"</span> }
+    },
+    <span class="var">"required"</span>: [<span class="str">"city"</span>]
+  }
+}</pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>② 模型返回的"调用意图" JSON</span></div>
+    <pre>{
+  <span class="var">"tool_call"</span>: {
+    <span class="var">"name"</span>: <span class="str">"get_weather"</span>,
+    <span class="var">"arguments"</span>: { <span class="var">"city"</span>: <span class="str">"北京"</span> }
+  }
+}
+<span class="com">// 外部代码收到这段 JSON 后,真正去调用天气 API,
+// 再把结果(如"北京今天有雨")作为 Observation 拼回下一轮请求</span></pre>
+  </div>
+  <p>
+    整个过程和上一篇"ReAct 循环"里的 Action → Observation 是同一件事的两种描述方式:Function Calling 是 Action 在工程上的具体实现形式,
+    很多现代 LLM API(如 OpenAI、Claude)都把这套机制原生集成进了接口,不再需要开发者自己解析模型输出的自然语言来猜测"它想调用什么"。
+  </p>
+
+  <h2>陷阱一:模型会"幻觉"出不存在的调用</h2>
+  <div class="callout warn">
+    <strong>模型可能编造根本不存在的函数名,或者给已有函数编造不合法的参数</strong>(比如城市名瞎写、传入了 schema 里没有的字段、数值类型传成了字符串)。
+    这是 LLM 生成式本质决定的——它只是在"模仿"一个看起来合理的调用,并不保证这个调用一定合法。
+    因此外部代码在真正执行之前,<strong>必须做严格校验</strong>:函数名是否在白名单里、参数是否符合 JSON Schema、必填字段是否缺失,
+    校验失败要能给模型一个明确的错误 Observation,而不是让程序直接崩溃或者悄悄地把错误参数传给下游系统。
+  </div>
+
+  <h2>陷阱二:工具描述本身就是"给模型看的文档"</h2>
+  <div class="callout warn">
+    如果 <code>description</code> 写得含糊(比如两个工具的描述都是"查询数据"),模型很容易选错工具,或者对参数的含义理解错误。
+    工具描述不是写给同事看的代码注释,而是模型在推理时唯一能依赖的"文档"——需要像写 API 文档一样精心打磨:
+    说清楚这个工具是做什么的、什么场景该用它、参数的格式和取值范围。工具描述质量的高低,直接决定了 Function Calling 的可靠性上限。
+  </div>
+
+  <h2>和前后内容的联系</h2>
+  <ul>
+    <li>呼应"什么是 Agent"里说的"手"——工具调用就是 Agent 具备操作真实世界能力的具体实现机制。</li>
+    <li>模型幻觉调用、工具描述不清晰这两个问题,是"开发难点与业界解法"一篇里"工具调用可靠性"话题的直接源头。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-ReAct循环.html" class="nav-btn">← ReAct 循环(Reason + Act)</a>
+    <a href="./03-记忆机制.html" class="nav-btn next">记忆机制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

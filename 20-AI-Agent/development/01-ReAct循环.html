@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ReAct 循环(Reason + Act) — Agent开发核心</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / Agent开发核心 / ReAct 循环(Reason + Act)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Agent开发核心</div>
+    <h1>ReAct 循环(Reason + Act)</h1>
+    <p>ReAct 是让 LLM 从"一次性吐出答案"变成"边想边做"的核心机制——让模型显式输出思考,再把行动的真实观察结果喂回去,一步步逼近答案。</p>
+  </div>
+
+  <h2>为什么需要"边想边做"</h2>
+  <p>
+    如果只是让模型一次性写出"第一步做什么、第二步做什么、第三步做什么"的完整计划,再按计划机械执行,现实中会经常翻车——
+    因为计划是在<strong>没有任何真实反馈</strong>的情况下拍脑袋写出来的。比如计划第二步是"调用天气 API",但如果 API 报错或者返回的城市名对不上,
+    后面所有依赖这个结果的步骤都会跟着错,而模型对此一无所知,因为它压根没看到中间发生了什么。
+  </p>
+  <p>
+    ReAct(Reason + Act)论文提出的思路很直接:让模型每一步都输出两件事——<strong>Thought</strong>(这一步该做什么、为什么这么做的思考过程)
+    和 <strong>Action</strong>(具体要执行的动作,比如调用哪个工具)。动作执行后,把真实的执行结果作为 <strong>Observation</strong>(观察)喂回给模型,
+    模型基于这个真实观察继续下一轮 Thought。如此循环,直到模型判断任务已经完成,输出 <strong>Final Answer</strong>。
+  </p>
+
+  <h2>循环示意</h2>
+  <div class="tree">
+    <span class="hi">Thought</span>(思考下一步该做什么)<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">Action</span>(执行一个具体动作,如调用工具)<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">Observation</span>(拿到这个动作的真实结果)<br>
+    &nbsp;&nbsp;↓ 喂回给模型,回到<br>
+    <span class="hi">Thought</span>(基于新观察继续思考)<br>
+    &nbsp;&nbsp;↓ ... 重复若干轮 ...<br>
+    <span class="hi">Final Answer</span>(模型判断信息已足够,给出最终答案)
+  </div>
+
+  <h2>一个简化示例</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>ReAct 多轮文本示例(简化)</span></div>
+    <pre><span class="com">Thought: 我需要先查一下北京今天的天气,才能判断要不要提醒带伞</span>
+<span class="fn">Action</span>: get_weather(<span class="var">city</span>=<span class="str">"北京"</span>)
+<span class="com">Observation: 今天北京有雨,气温 18~25℃</span>
+
+<span class="com">Thought: 已经知道今天有雨了,需要提醒用户带伞,不需要再调用其他工具</span>
+<span class="fn">Final Answer</span>: 今天北京有雨,建议出门带伞,气温 18~25℃,注意保暖。</pre>
+  </div>
+  <p>
+    注意这里的关键:第二轮 Thought 是<strong>基于第一轮真实拿到的 Observation</strong>("有雨")做出的判断,
+    而不是模型在开始时就已经"预判"好了要不要带伞。如果 Observation 变成"今天晴天",第二轮 Thought 和 Final Answer 会完全不同——
+    这正是 ReAct 相比"一次性规划"更灵活、更贴近真实世界的地方。
+  </p>
+
+  <h2>常见陷阱:先想后做 ≠ ReAct</h2>
+  <div class="callout warn">
+    <strong>误区:"模型先输出一段完整计划,再按计划顺序执行"就是 ReAct。</strong>
+    这其实是"一次性规划"(Plan-and-Execute),和 ReAct 有本质区别。一次性规划的所有步骤是在<strong>看不到任何真实执行结果</strong>的情况下写死的,
+    一旦中间某一步的真实结果和预期不符(API 报错、数据格式变了、查到的信息和假设的不一样),后面的步骤大概率会跟着失效,
+    而模型此时并不会重新调整计划。ReAct 的核心价值恰恰在于<strong>每一步的思考都锚定在上一步的真实观察结果上</strong>,
+    做到"边做边想",能及时根据实际情况调整下一步动作。
+  </div>
+
+  <h2>三种模式对比</h2>
+  <table>
+    <thead>
+      <tr><th>模式</th><th>是否显式思考</th><th>是否根据真实反馈调整</th><th>典型问题</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>纯 Chain-of-Thought</strong></td>
+        <td>是,输出详细推理过程</td>
+        <td>否,不调用外部工具,全靠模型自身知识推理到底</td>
+        <td>没有外部信息校验,容易在需要实时数据或精确计算的任务上出错</td>
+      </tr>
+      <tr>
+        <td><strong>纯 Act</strong></td>
+        <td>否,直接输出动作,不显式暴露思考过程</td>
+        <td>是,但决策过程是"黑盒",难以调试和追溯为什么选了这个动作</td>
+        <td>出错时难以定位是哪一步的判断出了问题,可解释性差</td>
+      </tr>
+      <tr>
+        <td><strong>ReAct</strong></td>
+        <td>是</td>
+        <td>是,每步思考基于上一步真实 Observation</td>
+        <td>需要更多轮模型调用,上下文会随循环增长(见"开发难点"一节)</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <strong>关键心法:</strong>ReAct 把模型的"思考过程"显式写出来,不仅仅是为了让模型自己想得更清楚(有点像人做数学题写演算过程),
+    更重要的是这段 Thought 会被<strong>持久化在日志里</strong>,让开发者能追溯 Agent 每一步"为什么这么做",这对调试和信任建立至关重要。
+  </div>
+
+  <h2>和后面内容的联系</h2>
+  <ul>
+    <li>ReAct 循环里的 Action 具体怎么落地,就是下一篇"工具调用(Function Calling)机制"要讲的内容。</li>
+    <li>循环轮数一多,Observation 不断累积进上下文,会带来"上下文爆炸"问题,在"开发难点与业界解法"一篇里会给出具体解法。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="../ai-agent-roadmap.html" class="nav-btn">← AI Agent 路线图</a>
+    <a href="./02-工具调用FunctionCalling机制.html" class="nav-btn next">工具调用(Function Calling)机制 →</a>
+  </div>
+
+</div>
+</body>
+</html>

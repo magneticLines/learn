@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Event-Stream 机制 — OpenHands源码拆解</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c2d12; }
+  .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / OpenHands源码拆解 / Event-Stream 机制
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">OpenHands源码拆解</div>
+    <h1>Event-Stream 机制(Agent → Action → Observation)</h1>
+    <p>OpenHands 把 Agent 和 Runtime 之间的所有交互,都建模成了一条只能追加(append-only)的事件流。这一篇讲清楚:为什么不用直接的方法调用,事件流到底换来了什么。</p>
+  </div>
+
+  <h2>为什么不是"Agent 直接调用 Runtime 的方法"</h2>
+  <p>
+    最直观的实现方式是:Agent 决定"运行命令 <code>ls -la</code>",直接调 <code>runtime.execute("ls -la")</code>,拿到返回值继续处理。
+    这种写法在玩具项目里完全够用,但放到一个要长期运行、支持多用户、需要可观测性的系统里,会暴露出三个问题:
+  </p>
+  <ul>
+    <li><strong>没有完整的可回放历史</strong>——函数调用完就完了,除非你额外写日志,否则"Agent 到底经历了哪些步骤"没有一份天然、结构化的记录,调试和向用户展示执行过程都很困难。</li>
+    <li><strong>无法让多个组件同时消费同一份交互</strong>——前端要实时展示"Agent 正在做什么",日志系统要记录审计信息,Agent 自己要读历史做下一步决策。如果是直接函数调用,这些需求就得各自埋点、各写一套。</li>
+    <li><strong>难以中断和恢复</strong>——如果任务执行到一半用户断线了,或者需要暂停排查,直接函数调用模型里"当前进行到哪一步"这个状态很难被完整保存下来。</li>
+  </ul>
+  <div class="callout info">
+    <strong>核心思路:</strong>把"Agent 说要做什么"和"Runtime 说结果如何"都变成一条不断追加的<strong>事件流</strong>(EventStream),
+    上面三个问题就都变成了这份数据结构自带的性质——历史就是这条流本身,谁想订阅就去监听这条流,想恢复任务就把这条流重新加载进来。
+  </div>
+
+  <h2>事件的基本结构</h2>
+  <p>
+    可以把 EventStream 里的事件粗略理解成两大类:<strong>Action</strong>(Agent 想做什么)和 <strong>Observation</strong>(Runtime 执行后看到了什么)。
+    一个简化的示意结构大致是这样(伪代码,非真实源码):
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>伪代码示意:Action / Observation 事件结构</span></div>
+    <pre><span class="com">// Agent 产生的 Action 事件——"我想做什么"</span>
+<span class="kw">Event</span> {
+  <span class="var">id</span>: <span class="num">42</span>,
+  <span class="var">type</span>: <span class="str">"CmdRunAction"</span>,      <span class="com">// 动作类型:运行 shell 命令</span>
+  <span class="var">source</span>: <span class="str">"agent"</span>,
+  <span class="var">args</span>: { <span class="var">command</span>: <span class="str">"pytest tests/"</span> }
+}
+
+<span class="com">// Runtime 执行后产生的 Observation 事件——"结果是什么"</span>
+<span class="kw">Event</span> {
+  <span class="var">id</span>: <span class="num">43</span>,
+  <span class="var">type</span>: <span class="str">"CmdOutputObservation"</span>,
+  <span class="var">source</span>: <span class="str">"runtime"</span>,
+  <span class="var">causeId</span>: <span class="num">42</span>,          <span class="com">// 指回触发它的那个 Action</span>
+  <span class="var">content</span>: <span class="str">"3 passed, 1 failed ..."</span>,
+  <span class="var">exitCode</span>: <span class="num">1</span>
+}</pre>
+  </div>
+  <p>
+    注意 Observation 里带着一个 <code>causeId</code> 指回触发它的 Action——这让整条事件流不是一堆散落的记录,而是一条能追溯"哪个动作导致了哪个结果"的因果链。
+  </p>
+
+  <h2>一次完整交互的事件序列</h2>
+  <p>
+    把这些事件按时间顺序串起来,一次"帮我跑一下测试并修复失败用例"的任务,事件流大致长这样:
+  </p>
+  <div class="tree">
+    <span class="hi">UserMessage</span>&nbsp;"帮我跑一下测试,修复失败的用例"<br>
+    &nbsp;&nbsp;↓ Agent 推理:应该先跑一下测试看看现状<br>
+    <span class="hi">CmdRunAction</span>&nbsp;command: "pytest tests/"<br>
+    &nbsp;&nbsp;↓ Runtime 在沙箱容器里执行<br>
+    <span class="hi">CmdOutputObservation</span>&nbsp;"3 passed, 1 failed: test_login"<br>
+    &nbsp;&nbsp;↓ Agent 读取这条 Observation,推理下一步:该去看看失败用例的代码<br>
+    <span class="hi">FileEditAction</span>&nbsp;修改 login.py 里的一处逻辑<br>
+    &nbsp;&nbsp;↓ Runtime 执行文件编辑<br>
+    <span class="hi">FileEditObservation</span>&nbsp;"修改已应用"<br>
+    &nbsp;&nbsp;↓ Agent 再次验证<br>
+    <span class="hi">CmdRunAction</span>&nbsp;command: "pytest tests/"<br>
+    &nbsp;&nbsp;↓ Runtime 再次执行<br>
+    <span class="hi">CmdOutputObservation</span>&nbsp;"4 passed"<br>
+    &nbsp;&nbsp;↓ Agent 判断任务已完成<br>
+    <span class="hi">FinishAction</span>&nbsp;"已修复失败用例,全部测试通过"
+  </div>
+  <p>
+    可以看到,Agent 每一步的决策都建立在"读取 EventStream 里已经发生的历史"之上——它不需要额外的状态变量来记住"我刚才跑过测试、修了哪个文件",
+    这些信息都天然地存在于事件流里。这正是上一篇提到的"EventStream 即短期记忆"的具体体现。
+  </p>
+
+  <h2>陷阱:事件流会不断增长</h2>
+  <div class="callout warn">
+    <strong>上下文爆炸的具体化。</strong>EventStream 是只追加的,任务跑得越久、步骤越多,累积的事件就越多。
+    但 Agent 每一步做决策时,并不能把无限增长的历史原样喂给 LLM——这正是"概念与AI基础"一篇提到的
+    <strong>Context Window 有限且昂贵</strong>这个问题,在真实系统里的具体体现。
+    OpenHands 需要做<strong>历史截断</strong>(只保留最近若干步的完整细节)或<strong>历史摘要</strong>(把久远的事件压缩成一段摘要文本)
+    等机制,才能让 Agent 在长任务里既不"失忆"又不会把上下文塞爆、成本飙升。
+  </div>
+  <p>
+    这也是事件流架构的一个有意思的张力:它的优点是"完整记录一切",但完整记录本身又会成为下一步要解决的工程问题——
+    如何在"保留足够信息做出正确决策"和"控制喂给 LLM 的上下文体积"之间做取舍,是任何基于事件流/历史回放做记忆机制的 Agent 系统都绕不开的课题。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./01-整体架构总览.html" class="nav-btn">← 整体架构总览</a>
+    <a href="./03-Docker沙箱与Runtime隔离设计.html" class="nav-btn next">Docker 沙箱与 Runtime 隔离设计 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent 与 Runtime 解耦的设计取舍 — OpenHands源码拆解</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero h1 .adv { font-size: 0.7rem; color: #fbbf24; border: 1px solid #92400e; border-radius: 4px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; font-weight: 600; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c2d12; }
+  .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / OpenHands源码拆解 / Agent 与 Runtime 解耦的设计取舍
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">OpenHands源码拆解</div>
+    <h1>Agent 与 Runtime 解耦的设计取舍<span class="adv">进阶</span></h1>
+    <p>前三篇分别看了整体架构、事件流机制、沙箱隔离。这一篇跳出具体机制,站在架构设计的高度问一个问题:把决策和执行拆成两个独立组件,到底值不值。</p>
+  </div>
+
+  <h2>解耦带来了什么好处</h2>
+  <p>
+    OpenHands 把"决策逻辑"(Agent)和"执行环境"(Runtime)设计成两个通过 Action/Observation 标准协议通信的独立组件,
+    而不是把两者写在同一个进程、同一套调用栈里。这个决定带来三个明显的好处:
+  </p>
+  <ul>
+    <li>
+      <strong>Runtime 可以水平扩展。</strong>多用户场景下,每个用户的任务会话对应一个独立的 Runtime 实例(独立的容器),
+      互相之间没有共享状态,天然支持并发扩容——需要支持更多并发用户,加更多 Runtime 实例就行,不需要改 Agent 的任何代码。
+    </li>
+    <li>
+      <strong>Runtime 的具体实现可以替换。</strong>只要遵守同一套 Action/Observation 协议,Runtime 背后到底是本地 Docker、
+      远程沙箱服务、还是云端 VM,对 Agent 完全透明。今天用本地容器,明天想换成托管的远程执行服务,Agent 的决策逻辑不需要动一行。
+    </li>
+    <li>
+      <strong>安全加固可以独立进行。</strong>资源配额、网络策略、执行超时这些"上一篇"提到的多层防护,都是 Runtime 内部的事情,
+      可以单独迭代、单独测试,不会牵扯到 Agent 的推理逻辑,职责边界很干净。
+    </li>
+  </ul>
+
+  <h2>解耦的代价</h2>
+  <div class="callout warn">
+    <strong>没有免费的架构。</strong>解耦换来了灵活性和可扩展性,但也实实在在地引入了三类成本:
+  </div>
+  <ul>
+    <li>
+      <strong>通信开销。</strong>Agent 和 Runtime 不再是一次函数调用那么轻——Action 和 Observation 需要被序列化(比如变成 JSON)、
+      通过某种传输机制(进程间通信、网络请求)在两个组件之间传递,再反序列化回结构化数据。相比直接的内存内函数调用,这多出来的序列化和网络往返是实打实的延迟成本。
+    </li>
+    <li>
+      <strong>调试复杂度上升。</strong>出问题时,你不能只看一份调用栈——需要同时关注 Agent 侧"为什么决定发这个 Action"
+      和 Runtime 侧"这个 Action 执行时到底发生了什么"两边的日志,再靠 EventStream 里的因果关系把两边对上,排查链路变长了。
+    </li>
+    <li>
+      <strong>职责边界容易模糊。</strong>比如"命令执行超时该谁来判断"——是 Agent 在决策层设置一个等待上限,还是 Runtime
+      在执行层强制熔断？边界设计得不好,容易出现两边都做了一部分、逻辑重复,或者两边都没做、留下漏洞的情况。这种"到底该谁负责"的判断,
+      在解耦架构里是需要持续打磨的设计难点,而不是拆开组件就自动解决的。
+    </li>
+  </ul>
+
+  <h2>类比:前后端分离</h2>
+  <div class="callout tip">
+    <strong>这套取舍并不陌生。</strong>Agent/Runtime 的解耦,本质上跟 Web 开发里"前后端分离"是同一种架构思路——
+    前端(Agent)只管展示和决策("用户想要什么、下一步该做什么"),后端(Runtime)只管真正执行操作("落库、跑逻辑、返回结果"),
+    两者通过一套约定好的接口(HTTP API ↔ Action/Observation)通信。好处一样:前后端可以独立部署、独立扩容、各自替换技术栈;
+    代价也一样:多了一层网络往返,调试要同时看两端日志,接口契约设计不好就会出现"这个校验到底前端做还是后端做"的扯皮。
+    理解了前后端分离的取舍,就能直接类比理解 Agent/Runtime 解耦的取舍。
+  </div>
+
+  <h2>回顾整个 Tab</h2>
+  <p>
+    四篇文章串起来,是一条从整体到局部、再到架构反思的完整认知路径:
+  </p>
+  <div class="tree">
+    <span class="hi">01 整体架构总览</span> —— 用户界面 → Session/Controller → Agent ↔ EventStream ↔ Runtime,建立全局地图<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">02 Event-Stream 机制</span> —— Agent 和 Runtime 之间"怎么通信":一切皆事件,换来可回放、可订阅、可恢复<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">03 Docker 沙箱与隔离设计</span> —— Runtime 内部"怎么安全地执行":隔离容器 + 多层防护限制爆炸半径<br>
+    &nbsp;&nbsp;↓<br>
+    <span class="hi">04 Agent/Runtime 解耦取舍</span> —— 跳出机制细节,审视这种架构模式本身的收益与代价
+  </div>
+  <p>
+    这套从"整体架构"到"通信机制"到"安全设计"再到"架构取舍"的分析思路,不只是用来理解 OpenHands——
+    当你自己动手设计一个 Agent 系统时(下一个 Tab 就是实战演练),同样要面对这几个问题:用什么模型描述 Agent 和执行环境之间的交互、
+    执行环境要不要隔离、隔离到什么程度、决策和执行要不要拆成独立组件。这四篇文章给出的不是唯一答案,而是一套可以直接搬过去用的思考框架。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-Docker沙箱与Runtime隔离设计.html" class="nav-btn">← Docker 沙箱与 Runtime 隔离设计</a>
+    <a href="../ai-agent-roadmap.html" class="nav-btn next">AI Agent 路线图 →</a>
+  </div>
+
+</div>
+</body>
+</html>

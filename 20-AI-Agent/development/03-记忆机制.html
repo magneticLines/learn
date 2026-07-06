@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>记忆机制:短期上下文 vs 长期记忆(向量库) — Agent开发核心</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / Agent开发核心 / 记忆机制
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Agent开发核心</div>
+    <h1>记忆机制:短期上下文 vs 长期记忆(向量库)</h1>
+    <p>Agent 的"记忆"分两层——受 Token 上限约束、随对话增长会被挤掉的短期上下文,和把知识转成向量存起来、按需检索的长期记忆。</p>
+  </div>
+
+  <h2>短期记忆:其实就是上下文窗口本身</h2>
+  <p>
+    很多人以为 Agent 需要专门的"记忆模块"才能记住之前说过的话,但最基础的短期记忆机制其实非常朴素——
+    <strong>把完整的对话历史(包括之前的 Thought、Action、Observation)原样拼接进每一次发给模型的请求里</strong>。
+    模型本身是无状态的,它并不会"记得"上一轮对话,每次调用都是一次全新的、独立的推理,记忆感完全来自于"把历史重新喂给它看一遍"。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱:短期记忆会"忘记"早期内容。</strong>上下文窗口(Context Window)的大小是有硬性上限的(比如 128K token),
+    随着 ReAct 循环轮数增多,历史记录会不断膨胀,一旦超出窗口上限,要么请求直接报错,要么早期的内容被截断丢弃。
+    工程上常见做法是对早期历史做<strong>摘要压缩</strong>(把第 1~5 轮的对话浓缩成一句话摘要),或者只保留"最近 N 轮 + 关键结论"。
+  </div>
+
+  <h2>长期记忆:把知识"外部化"存进向量库</h2>
+  <p>
+    如果信息需要跨越多次会话依然被记住(比如用户的长期偏好、过去处理过的历史事实、大量文档知识),
+    塞进每次都要重新传输的上下文窗口既不现实也不经济。长期记忆的做法是:把这些信息提前转成 <strong>Embedding</strong> 向量,
+    存入专门的向量数据库;需要用到的时候,把当前的问题也转成向量,在库里检索"语义距离最近"的若干条记忆,
+    只把这几条相关的内容拼回本次的上下文,而不是把所有历史一股脑塞进去。
+  </p>
+  <div class="callout info">
+    <strong>类比:</strong>短期记忆像是你脑子里"正在想的这件事"——容量有限,想的东西一多,前面想的就被挤出去了;
+    长期记忆像是你的笔记本或者搜索引擎——内容存在别处,需要的时候才翻出来查,而不是随时都摆在眼前。
+  </div>
+
+  <h2>两者对比</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>短期记忆</th><th>长期记忆</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>存储位置</strong></td>
+        <td>本次请求的上下文窗口(内存中,随请求发送)</td>
+        <td>外部向量数据库(持久化存储,跨会话保留)</td>
+      </tr>
+      <tr>
+        <td><strong>容量</strong></td>
+        <td>受模型 Context Window 硬上限约束,通常几万到几十万 Token</td>
+        <td>理论上不受限,可存海量文档、历史记录</td>
+      </tr>
+      <tr>
+        <td><strong>检索方式</strong></td>
+        <td>无需检索,全部原样拼接进请求</td>
+        <td>按语义相似度检索(Embedding 距离),只取最相关的若干条</td>
+      </tr>
+      <tr>
+        <td><strong>典型问题</strong></td>
+        <td>早期内容被挤出/截断,导致"失忆"</td>
+        <td>召回内容可能"语义相关但答非所问"</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>陷阱:向量检索不是精确匹配</h2>
+  <div class="callout warn">
+    向量检索找到的是"语义上接近"的内容,而不是"逻辑上正确回答问题"的内容。比如问"如何取消订单",
+    可能召回一篇讲"如何修改订单"的文档——两者向量距离很近,但答案完全对不上。
+    工程上常见的补救方式是<strong>混合检索</strong>(向量检索 + 关键字检索一起做,互相补充),
+    或者在检索结果之上再加一层 <strong>Rerank</strong>(用一个专门的模型对召回结果重新打分排序,把真正相关的排到前面)。
+    单纯依赖"向量距离最近"作为唯一判断标准,在真实业务场景里往往不够可靠。
+  </div>
+
+  <h2>和前面内容的联系</h2>
+  <p>
+    向量检索的底层原理,直接复用了"概念与AI基础"Tab 里讲过的 Embedding——语义相近的内容,向量空间里的距离也相近。
+    如果对 Embedding 的原理还不熟悉,建议先回顾
+    <a href="../concepts/02-AI模型基础概念.html" style="color:#38bdf8;">《AI 模型基础概念》</a> 里对 Embedding 的讲解,再来看长期记忆的检索机制会更容易建立直觉。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-工具调用FunctionCalling机制.html" class="nav-btn">← 工具调用(Function Calling)机制</a>
+    <a href="./04-规划与任务分解.html" class="nav-btn next">规划与任务分解 →</a>
+  </div>
+
+</div>
+</body>
+</html>

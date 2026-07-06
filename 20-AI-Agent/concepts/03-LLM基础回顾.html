@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LLM 基础回顾:Prompt / Token / Context Window — 概念与AI基础</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #818cf8; }
+  p code, li code { color: #818cf8; }
+  h2 { color: #818cf8; border-left-color: #818cf8; }
+  .hero .tag { color: #818cf8; border-color: #3730a3; }
+  .nav-btn.next { color: #818cf8; border-color: #3730a3; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / 概念与AI基础 / LLM 基础回顾:Prompt / Token / Context Window
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">概念与AI基础</div>
+    <h1>LLM 基础回顾:Prompt / Token / Context Window</h1>
+    <p>在写 Agent 代码之前,先把和"输入输出"最直接相关的三个词钉死:Prompt 到底长什么样、Token 怎么计费、Context Window 的边界在哪。这三者是后面所有工程约束的源头。</p>
+  </div>
+
+  <h2>Prompt 不是"一句话",而是一份结构化输入</h2>
+  <p>
+    初学者常把 Prompt 理解成"你打在输入框里的那句话",但对模型 API 来说,Prompt 实际上是一个<strong>带角色的消息列表</strong>——
+    每条消息都有一个 <code>role</code>(角色)和 <code>content</code>(内容)。常见的三种角色:
+  </p>
+  <ul>
+    <li><strong>system</strong>——设定模型的身份、行为约束、输出格式要求,通常只出现一次,贯穿整个对话</li>
+    <li><strong>user</strong>——用户实际输入的问题或指令</li>
+    <li><strong>assistant</strong>——模型之前的回复,多轮对话中会被重新传回去,让模型"记得"自己说过什么</li>
+  </ul>
+  <div class="code-block">
+    <div class="cb-header"><span>多轮对话的 message 结构(JSON 片段)</span></div>
+    <pre><span class="punct">[</span>
+  <span class="punct">{</span> <span class="var">"role"</span><span class="punct">:</span> <span class="str">"system"</span><span class="punct">,</span> <span class="var">"content"</span><span class="punct">:</span> <span class="str">"你是一个只回答天气相关问题的助手"</span> <span class="punct">}</span><span class="punct">,</span>
+  <span class="punct">{</span> <span class="var">"role"</span><span class="punct">:</span> <span class="str">"user"</span><span class="punct">,</span> <span class="var">"content"</span><span class="punct">:</span> <span class="str">"北京今天天气怎么样"</span> <span class="punct">}</span><span class="punct">,</span>
+  <span class="punct">{</span> <span class="var">"role"</span><span class="punct">:</span> <span class="str">"assistant"</span><span class="punct">,</span> <span class="var">"content"</span><span class="punct">:</span> <span class="str">"北京今天多云,25℃"</span> <span class="punct">}</span><span class="punct">,</span>
+  <span class="punct">{</span> <span class="var">"role"</span><span class="punct">:</span> <span class="str">"user"</span><span class="punct">,</span> <span class="var">"content"</span><span class="punct">:</span> <span class="str">"那要不要带伞"</span> <span class="punct">}</span>
+<span class="punct">]</span></pre>
+  </div>
+  <p>
+    关键点在于:<strong>模型本身没有"记忆"</strong>,它每次调用都是无状态的——第二轮问"那要不要带伞"时,模型能听懂"那"指代什么,
+    完全是因为整个历史消息数组被<strong>原样重新传了一遍</strong>。这也是为什么多轮对话越长,每一次调用要传的内容就越多——
+    Agent 里的"记忆机制"要解决的核心问题之一,正是"历史太长该怎么裁剪、摘要、检索",而不是无脑全部塞进去。
+  </p>
+
+  <h2>Token:计费和截断的最小单位</h2>
+  <p>
+    上一篇提到过,模型看到的不是"字"而是 Token。这里从工程视角再强调两个直接影响开发的事实:
+  </p>
+  <ul>
+    <li><strong>计费按 Token 算</strong>——输入(prompt token)和输出(completion token)通常分别计价,而且输出往往比输入更贵。
+      Agent 每多循环一轮,就要把之前的工具调用结果也当作输入重新传一遍,Token 消耗是滚雪球式增长的。</li>
+    <li><strong>截断按 Token 算,不是按字符数</strong>——当你的输入超过模型上限时,系统会按 Token 边界截断,可能截断在一个词/字的中间语义单元上,
+      导致模型"看到"的是不完整甚至错乱的内容。</li>
+  </ul>
+  <div class="callout warn">
+    <strong>常见误区:</strong>不要用字符数或字数去估算成本和长度限制,一定要用 Token 数。中文一段 1000 字的文本,
+    Token 数可能在 1300~2000 之间浮动(取决于分词器),用"字数"去逼近上下文上限,很容易实际调用时才发现已经超限报错。
+  </div>
+
+  <h2>Context Window:模型一次能"看到"多少</h2>
+  <p>
+    <strong>Context Window(上下文窗口)</strong>的本质,是模型单次推理时能够接纳的 Token 总量上限——包括输入的所有历史消息、
+    system prompt、工具定义、以及即将生成的输出,全部加起来不能超过这个数字。比如一个 128K 上下文窗口的模型,
+    输入 + 输出的 Token 总数不能超过 128000。
+  </p>
+  <p>
+    这个限制的根源在上一篇提到的注意力机制——计算量随序列长度呈平方级增长,窗口越大,推理成本和延迟也越高,
+    这不是一个可以无限放大的免费资源。
+  </p>
+  <div class="callout warn">
+    <strong>陷阱:上下文窗口越大越好?</strong>很多人看到"这个模型支持 100 万 Token 上下文"就认为可以放心地把所有资料一股脑塞进去,
+    但这忽略了两个现实问题:
+    <ol>
+      <li><strong>成本</strong>——上下文越长,每次调用的输入 Token 费用越高,哪怕只问一个简单问题,也要为无关的历史内容付费。</li>
+      <li><strong>Lost in the middle</strong>——研究发现,当相关信息被放在很长上下文的<strong>中间部分</strong>时,
+        模型对它的利用率明显下降,反而是开头和结尾的信息更容易被"注意到"。也就是说,"塞得下"不等于"记得住、用得好"。</li>
+    </ol>
+  </div>
+  <div class="callout tip">
+    <strong>工程启示:</strong>面对上下文限制,常见的应对策略包括——只保留最近几轮对话 + 摘要更早的历史、
+    用 Embedding 检索出真正相关的片段再拼接进 Prompt(即 RAG)、把关键指令放在开头或结尾而不是中间。
+    这些策略会在后面"开发难点"一节的"上下文爆炸"话题里具体展开。
+  </div>
+
+  <h2>三者的关系</h2>
+  <div class="tree">
+    <span class="hi">Prompt</span>(结构化消息列表:system/user/assistant)<br>
+    &nbsp;&nbsp;↓ 全部拼接后按 Tokenizer 切分<br>
+    <span class="hi">Token 序列</span> —— 计费和长度限制的最小单位<br>
+    &nbsp;&nbsp;↓ 总量不能超过<br>
+    <span class="hi">Context Window</span> —— 单次推理能接纳的 Token 上限(输入+输出)
+  </div>
+
+  <h2>和前后内容的联系</h2>
+  <ul>
+    <li>上一篇讲的 Tokenization 是这里"Token 计费"的底层机制,Embedding 则是解决"上下文塞不下"问题的关键技术(RAG)。</li>
+    <li>Context Window 的有限性,是"Agent 开发核心"里"上下文爆炸"这个开发难点的根本原因——多轮工具调用会不断消耗窗口空间。</li>
+    <li>下一篇会讲模型是"怎么被训练出来"的,理解训练过程有助于理解为什么 system prompt 对某些模型特别管用,对另一些模型效果有限。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-AI模型基础概念.html" class="nav-btn">← AI 模型基础概念</a>
+    <a href="./04-主流大模型训练方法.html" class="nav-btn next">主流大模型训练方法 →</a>
+  </div>
+
+</div>
+</body>
+</html>

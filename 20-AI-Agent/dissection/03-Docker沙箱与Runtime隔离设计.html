@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Docker 沙箱与 Runtime 隔离设计 — OpenHands源码拆解</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #fb923c; }
+  p code, li code { color: #fb923c; }
+  h2 { color: #fb923c; border-left-color: #fb923c; }
+  .hero .tag { color: #fb923c; border-color: #7c2d12; }
+  .nav-btn.next { color: #fb923c; border-color: #7c2d12; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / OpenHands源码拆解 / Docker 沙箱与 Runtime 隔离设计
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">OpenHands源码拆解</div>
+    <h1>Docker 沙箱与 Runtime 隔离设计</h1>
+    <p>Agent 生成的命令和代码是 LLM"猜"出来的,不可能保证 100% 正确安全。Runtime 把执行环境关进 Docker 容器,本质上是在给"猜错了怎么办"这件事上保险。</p>
+  </div>
+
+  <h2>为什么执行必须隔离</h2>
+  <p>
+    Agent 的"手"(Runtime)要做的事情包括跑 shell 命令、执行代码、改文件。这些操作都来自 LLM 的生成结果——而 LLM 会犯错。
+    可能生成的命令语法对但语义错(比如把 <code>rm -rf ./build</code> 误写成 <code>rm -rf /</code> 的变体),
+    也可能在处理不受信任的网页内容、第三方代码时,被注入进恶意指令(prompt injection 导致的间接攻击)。
+    如果这些命令直接跑在宿主机上,一次"猜错"就可能删掉重要文件、影响其他正在运行的服务,甚至波及同一台机器上其他用户的会话。
+  </p>
+  <div class="callout warn">
+    <strong>核心问题:</strong>你没办法要求 LLM 生成的每一条命令都绝对正确安全,那能做的就是<strong>限制"猜错了"的爆炸半径</strong>。
+    把执行环境放进一个隔离的 Docker 容器,就是把"最坏情况"框定在容器内部——容器可以被销毁重建,宿主机和其他会话不受影响。
+  </div>
+
+  <h2>Runtime 容器里通常有什么</h2>
+  <p>
+    一个编程 Agent 要完成"写代码、跑代码、调试报错、查资料"这类任务,Runtime 容器里通常会准备好这几类能力:
+  </p>
+  <table>
+    <thead>
+      <tr><th>能力</th><th>用途</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Shell 执行环境</strong>(如 SSH)</td>
+        <td>让 Agent 能运行任意命令行工具——装依赖、跑测试、查看文件、执行脚本</td>
+      </tr>
+      <tr>
+        <td><strong>Jupyter Kernel</strong></td>
+        <td>支持逐步执行 Python 代码并<strong>保持状态</strong>(变量、已导入的库不会每次执行都清空),适合数据探索、调试这类需要"接着上次结果继续跑"的场景</td>
+      </tr>
+      <tr>
+        <td><strong>浏览器自动化</strong></td>
+        <td>让 Agent 能像人一样打开网页、点击、读取页面内容,用于查资料、验证 Web 应用的实际效果</td>
+      </tr>
+      <tr>
+        <td><strong>文件系统</strong></td>
+        <td>提供一份隔离的工作目录,Agent 在这里读写、编辑代码文件,不会碰到宿主机的真实文件系统</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    这些能力共同的特点是:它们都跑在<strong>同一个隔离容器</strong>内,Agent(在容器外,作为决策进程)通过 Action/Observation
+    这套接口跟容器内的能力打交道,自己完全不直接接触宿主机资源。
+  </p>
+
+  <h2>陷阱:沙箱不是银弹</h2>
+  <div class="callout warn">
+    <strong>容器隔离降低风险,但不等于零风险。</strong>生产级系统至少还要考虑以下几层加固,单纯"套一层 Docker"并不够:
+  </div>
+  <ul>
+    <li><strong>容器逃逸风险</strong>——容器隔离依赖内核层面的命名空间和 cgroup,历史上出现过容器逃逸漏洞,不能假设容器天生绝对安全,需要跟进安全补丁、避免用特权模式启动容器。</li>
+    <li><strong>资源限制</strong>——需要给容器设置 CPU、内存配额,否则一个失控的死循环脚本可能耗尽宿主机资源,影响同机的其他会话。</li>
+    <li><strong>网络访问控制</strong>——容器如果能不受限地访问外网,沙箱内的代码理论上可以对外发起攻击(比如被诱导执行了一段恶意生成的爬虫/攻击脚本),需要按需限制出站网络访问。</li>
+    <li><strong>执行超时与命令黑名单</strong>——给单次命令执行设置超时,拦截明显危险的命令模式(比如清空磁盘、修改系统关键配置),作为在沙箱之外的又一层防护。</li>
+  </ul>
+  <p>
+    换句话说,沙箱解决的是"把爆炸半径限制在一个可控范围内",但这个范围本身还需要额外的资源限额、网络策略、超时熔断来收窄,
+    是一套<strong>多层防护(defense in depth)</strong>,而不是加一层容器就能一劳永逸的问题。
+  </p>
+
+  <h2>联系:这是"直接执行模型生成代码"这个老问题的工业级解法</h2>
+  <p>
+    "AI 框架"Tab 讨论 smolagents 时提到过一个尖锐的问题:让 LLM 直接生成并执行代码,天然存在安全风险——毕竟你没法完全信任模型的输出。
+    OpenHands 面对的是同一个问题,只是场景更重(要跑任意 shell 命令、装依赖、操作浏览器,而不只是执行一段 Python 代码片段)。
+    它给出的答案就是这一篇讲的:<strong>不追求模型输出绝对正确,而是用运行时的隔离机制兜底</strong>——这也是"安全性"在 Agent
+    系统设计里的通用思路:与其试图让决策层完美无缺,不如在执行层建立可靠的护栏。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./02-EventStream机制.html" class="nav-btn">← Event-Stream 机制</a>
+    <a href="./04-Agent与Runtime解耦的设计取舍.html" class="nav-btn next">Agent 与 Runtime 解耦的设计取舍 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>主流大模型训练方法:预训练→SFT→对齐(RLHF/DPO) — 概念与AI基础</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #818cf8; }
+  p code, li code { color: #818cf8; }
+  h2 { color: #818cf8; border-left-color: #818cf8; }
+  .hero .tag { color: #818cf8; border-color: #3730a3; }
+  .nav-btn.next { color: #818cf8; border-color: #3730a3; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / 概念与AI基础 / 主流大模型训练方法:预训练→SFT→对齐(RLHF/DPO)
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">概念与AI基础</div>
+    <h1>主流大模型训练方法:预训练→SFT→对齐(RLHF/DPO)</h1>
+    <p>今天能"听懂人话、按指令做事"的大模型,不是一步训出来的,而是经过预训练、监督微调、对齐三个阶段层层加工的结果。理解这条流水线,才能理解为什么同一个"底座"模型,经过不同的微调会变成风格迥异的产品。</p>
+  </div>
+
+  <h2>第一阶段:预训练(Pretraining)——打地基</h2>
+  <p>
+    预训练是整个流程里消耗算力最大的一步。做法非常"朴素":从互联网、书籍、代码仓库等收集海量<strong>无标注</strong>文本,
+    让模型反复做同一件事——<strong>给定前面的文字,预测下一个词是什么</strong>。这个任务本身没有任何人工标注的"正确答案",
+    答案就是语料里本来就存在的下一个词。
+  </p>
+  <p>
+    正是这个看似简单的任务,在数万亿 Token 的语料规模下,逼着模型学会了语法结构、事实性知识、逻辑关系,甚至一定程度的推理能力——
+    因为要把"下一个词"预测准,模型必须在参数里编码大量关于世界如何运作的隐式知识。这一阶段结束后得到的模型称为<strong>基座模型(base model)</strong>,
+    它虽然"知道很多",但不会好好"跟你聊天"——你问它一个问题,它可能只是接着你的话续写,而不是给出一个针对性的回答。
+  </p>
+  <div class="callout info">
+    <strong>类比:</strong>预训练就像一个人把一座图书馆里所有书都读了一遍,积累了海量知识和语感,但从没有人教过他"怎么跟人对话、怎么按要求回答问题"——
+    你问他"帮我写封请假条",他可能开始给你背诵一段关于请假条格式的百科介绍,而不是真的帮你写一封。
+  </div>
+
+  <h2>第二阶段:监督微调(SFT)——学"听指令"</h2>
+  <p>
+    <strong>SFT(Supervised Fine-Tuning)</strong> 在基座模型之上,用规模小得多但质量精心打磨的<strong>"指令-回答"配对数据</strong>继续训练——
+    每条数据都是"一个指令 + 一个人工写的高质量回答"。通过这批数据,模型学会了"当收到一个指令格式的输入时,应该生成一个针对性的、
+    符合对话礼仪的回答",而不是像基座模型那样自由续写。
+  </p>
+  <p>
+    这一步也是模型学会遵循 system prompt、按格式输出、拒绝一些不当请求的雏形来源——但此时模型的行为主要是"模仿标注数据里的回答风格",
+    还没有一个显式的机制去衡量"这个回答到底好不好"。
+  </p>
+  <div class="callout info">
+    <strong>类比:</strong>如果说预训练是"读遍图书馆",SFT 就是"上一个培训班",有老师(标注员)手把手示范"客户这样问,你应该这样答",
+    让模型从"漫无目的地续写"转变成"按格式规规矩矩地回应"。
+  </div>
+
+  <h2>第三阶段:对齐(Alignment)——学"什么回答更好"</h2>
+  <p>
+    SFT 让模型学会了"回答的样子",但同一个问题往往有多种都"说得通"的回答,哪个更简洁、更安全、更符合人类偏好?
+    这就是<strong>对齐</strong>要解决的问题,主流有两种技术路线:
+  </p>
+  <p>
+    <strong>RLHF(Reinforcement Learning from Human Feedback)</strong>——先收集人类对"同一问题的多个候选回答"做偏好排序
+    (比如"回答 A 比回答 B 更好"),用这些排序数据训练出一个<strong>奖励模型(Reward Model)</strong>,让它学会给任意回答打一个"人类会有多喜欢"的分数;
+    再用强化学习算法(如 PPO),让语言模型不断生成回答、被奖励模型打分、根据分数调整参数,目标是让生成的回答获得更高的奖励分。
+  </p>
+  <p>
+    <strong>DPO(Direct Preference Optimization)</strong>——RLHF 流程复杂、需要额外训练和维护一个奖励模型,训练也不稳定。
+    DPO 的思路是跳过"训练一个独立奖励模型 + 强化学习"这两步,<strong>直接用人类偏好数据(A 比 B 好)构造一个损失函数</strong>,
+    让模型直接从偏好对比中学习"提高好回答的概率、降低差回答的概率",数学上被证明和 RLHF 的目标等价,但实现和训练过程都简单得多,
+    是目前很多开源模型对齐阶段的首选方案。
+  </p>
+  <div class="callout info">
+    <strong>类比:</strong>对齐阶段像是有个导师全程跟着你,不直接告诉你"标准答案"是什么,而是不断地说"这个回答比那个回答更让人满意",
+    你根据这种相对反馈持续调整自己的表达方式——最终变得更"讨喜"、更安全、更符合大多数人的期待。
+  </div>
+
+  <h2>三阶段对比</h2>
+  <table>
+    <thead>
+      <tr><th>阶段</th><th>数据类型</th><th>目标</th><th>典型方法</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>预训练</strong></td>
+        <td>海量无标注文本(网页、书籍、代码)</td>
+        <td>学习语言规律和世界知识,形成通用能力底座</td>
+        <td>自回归"预测下一个词"</td>
+      </tr>
+      <tr>
+        <td><strong>SFT</strong></td>
+        <td>人工标注的"指令-回答"配对数据</td>
+        <td>学会听懂指令、按对话格式回应</td>
+        <td>监督学习(交叉熵损失)</td>
+      </tr>
+      <tr>
+        <td><strong>对齐</strong></td>
+        <td>人类对多个候选回答的偏好排序</td>
+        <td>让回答更符合人类偏好、更安全可靠</td>
+        <td>RLHF(奖励模型 + 强化学习)/ DPO(直接偏好优化)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>常见误区</h2>
+  <div class="callout warn">
+    <strong>"参数量决定一切"是个误区。</strong>参数量决定的是模型的知识容量上限,但真正决定一个模型"好不好用"的,
+    往往是 SFT 和对齐阶段<strong>数据的质量和针对性</strong>。一个参数量更小但对齐数据精心打磨过的模型,
+    在实际任务(比如遵循复杂指令、拒绝有害请求、输出稳定格式)上的表现,完全可能超过一个参数量更大但对齐比较粗糙的模型。
+    这也是为什么"跑分高的大模型不一定好用,榜单第二名的模型可能体验反而更顺手"这种现象普遍存在。
+  </div>
+
+  <h2>和前后内容的联系</h2>
+  <ul>
+    <li>预训练阶段学到的 Token 预测能力,和前两篇讲的 Tokenization、Context Window 是同一套底层机制的两个视角。</li>
+    <li>SFT 阶段"学会听指令"的能力,直接决定了后面 Prompt Engineering(如 system prompt、Few-shot)能起多大作用。</li>
+    <li>下一篇会讲"怎么评价一个模型训得好不好",评测基准某种程度上就是在检验这三个阶段各自训练得是否到位。</li>
+  </ul>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./03-LLM基础回顾.html" class="nav-btn">← LLM 基础回顾</a>
+    <a href="./05-如何评价大模型的好坏.html" class="nav-btn next">如何评价大模型的好坏 →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>多 Agent 协作模式 — Agent开发核心</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+  .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+  .hero { margin-bottom: 40px; }
+  .hero .tag { font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+  .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .hero p { color: #64748b; font-size: 0.9rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+  p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
+  .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+  .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+  .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+  .kw{color:#c084fc} .ty{color:#60a5fa} .str{color:#86efac} .num{color:#fbbf24}
+  .com{color:#64748b} .fn{color:#60a5fa} .punct{color:#475569} .var{color:#e2e8f0} .ann{color:#f87171}
+  .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+  .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+  .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+  .callout.tip  { background: #1f3528; border-color: #4ade80; color: #86efac; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+  th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+  td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+  tr:nth-child(even) td { background: #13151f; }
+  td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+  p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; }
+  hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+  ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+  .tree { font-family: "Fira Code",Consolas,monospace; font-size: 0.82rem; color: #64748b; background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 16px 20px; margin: 16px 0; line-height: 1.9; }
+  .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+  .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+  .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+  .adv { font-size: 0.62rem; color: #4ade80; border: 1px solid #166534; border-radius: 3px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; }
+
+  /* 主题色补丁 */
+  .tree .hi { color: #38bdf8; }
+  p code, li code { color: #38bdf8; }
+  h2 { color: #38bdf8; border-left-color: #38bdf8; }
+  .hero .tag { color: #38bdf8; border-color: #1e3a5f; }
+  .nav-btn.next { color: #38bdf8; border-color: #1e3a5f; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 面包屑 -->
+  <div class="breadcrumb">
+    <a href="../ai-agent-roadmap.html">AI Agent 路线图</a> / Agent开发核心 / 多 Agent 协作模式
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="tag">Agent开发核心</div>
+    <h1>多 Agent 协作模式<span class="adv">进阶</span></h1>
+    <p>一个 Agent 包打天下,职责一多 Prompt 就会臃肿、注意力就会分散——让多个专职 Agent 分工协作,是应对复杂任务的另一条路。</p>
+  </div>
+
+  <h2>为什么不用一个大 Agent 搞定一切</h2>
+  <p>
+    随着任务复杂度上升,给单一 Agent 塞进的职责会越来越多:既要会规划任务,又要会调用十几种工具,还要负责检查自己的输出对不对。
+    这会导致它的 <strong>System Prompt 越写越长、越写越啰嗦</strong>——里面混杂着"如何规划""何时调用哪个工具""如何自我检查"等一堆规则,
+    模型在推理时的<strong>注意力被分散</strong>到太多互相无关的指令上,反而更容易在某个环节掉链子。
+  </p>
+  <div class="callout info">
+    <strong>类比:</strong>这就像一个团队让一个人身兼产品经理、程序员、测试三个角色——不是不可能,但这个人脑子里要同时装下三套完全不同的思维方式,
+    效果通常不如让三个人各自专注做好一件事,再通过明确的交接流程配合起来。多 Agent 协作就是把这种"团队分工"的思路搬到 Agent 系统里:
+    每个 Agent 只负责一个明确的角色,Prompt 更短、更聚焦,推理时不会被无关指令干扰。
+  </div>
+
+  <h2>三种常见协作模式</h2>
+  <h3>① 流水线式(Pipeline)</h3>
+  <p>
+    多个 Agent 按固定顺序排成一条线,前一个 Agent 的输出直接作为后一个的输入。比如"资料收集 Agent → 摘要 Agent → 报告撰写 Agent",
+    每一环节职责单一、边界清晰,类似工厂流水线的分工模式。
+  </p>
+  <h3>② 主管-worker 模式(Orchestrator-Worker)</h3>
+  <p>
+    一个 <strong>Orchestrator Agent</strong> 负责理解总目标、把任务拆分派发给多个专职 <strong>Worker Agent</strong>(比如"搜索 Agent""代码执行 Agent""数据分析 Agent"),
+    每个 Worker 各自完成子任务后把结果汇报回 Orchestrator,由它负责汇总、判断是否需要进一步调整分工。
+  </p>
+  <h3>③ 辩论式(Debate)</h3>
+  <p>
+    让多个 Agent 针对同一个问题独立作答,再互相质疑、指出对方答案里的漏洞,经过几轮交锋后再给出最终结论,
+    常用于对准确性要求较高的场景(比如代码审查、事实核查),原理类似"多人评审比一个人自查更容易发现问题"。
+  </p>
+
+  <div class="tree">
+    <span class="hi">流水线式</span>: Agent A → Agent B → Agent C(单向传递)<br>
+    <span class="hi">主管-worker</span>: Orchestrator ⇄ Worker1 / Worker2 / Worker3(分派 + 汇总)<br>
+    <span class="hi">辩论式</span>: Agent A ⇄ Agent B ⇄ Agent C(互相质疑,收敛到共识)
+  </div>
+
+  <h2>陷阱:多 Agent 不是免费的午餐</h2>
+  <div class="callout warn">
+    引入多 Agent 协作会带来实打实的额外成本:①<strong>协调开销</strong>——需要额外的逻辑决定"任务该分给谁、什么时候该交给下一个 Agent";
+    ②<strong>消息传递成本</strong>——Agent 之间传递的上下文本身也要消耗 Token,多一层传递就多一份开销;
+    ③<strong>上下文不一致</strong>——如果各个 Agent 拿到的背景信息不完全同步,很容易出现"各说各话"的问题,比如 Worker Agent 基于过时的假设做出了和 Orchestrator 预期不符的判断。
+    <strong>不是所有场景都值得引入多 Agent 的复杂度</strong>——如果单一 Agent 配合清晰的 Prompt 和有限的工具集就能稳定解决问题,
+    往往比拆成多个 Agent 更简单、更容易调试、成本也更低。
+  </div>
+
+  <h2>和前面内容的联系</h2>
+  <p>
+    多 Agent 协作本质上是把"规划与任务分解"里的思路进一步升级——不只是把大目标拆成小步骤,而是把小步骤的<strong>执行主体</strong>也拆分给不同的专职 Agent。
+    每个子 Agent 内部,依然遵循前面几篇讲过的 ReAct 循环、工具调用、记忆机制这套基本运作方式。
+  </p>
+
+  <hr />
+
+  <!-- 导航 -->
+  <div class="nav-footer">
+    <a href="./04-规划与任务分解.html" class="nav-btn">← 规划与任务分解</a>
+    <a href="./06-开发难点与业界解法.html" class="nav-btn next">开发难点与业界解法 →</a>
+  </div>
+
+</div>
+</body>
+</html>
