@@ -77,6 +77,42 @@
     这种设计的好处是足够通用:无论是"两个 Agent 互相辩论找出更优方案",还是"多个 Agent 群聊分工完成任务",
     都能用同一套对话机制表达。
   </p>
+  <div class="code-block">
+    <div class="cb-header"><span>team.py</span><span>python · AutoGen AgentChat 真实 API</span></div>
+    <pre><span class="kw">import</span> <span class="var">asyncio</span>
+<span class="kw">from</span> <span class="var">autogen_agentchat</span><span class="punct">.</span><span class="var">agents</span> <span class="kw">import</span> <span class="ty">AssistantAgent</span>
+<span class="kw">from</span> <span class="var">autogen_agentchat</span><span class="punct">.</span><span class="var">conditions</span> <span class="kw">import</span> <span class="ty">TextMentionTermination</span>
+<span class="kw">from</span> <span class="var">autogen_agentchat</span><span class="punct">.</span><span class="var">teams</span> <span class="kw">import</span> <span class="ty">RoundRobinGroupChat</span>
+<span class="kw">from</span> <span class="var">autogen_agentchat</span><span class="punct">.</span><span class="var">ui</span> <span class="kw">import</span> <span class="ty">Console</span>
+<span class="kw">from</span> <span class="var">autogen_ext</span><span class="punct">.</span><span class="var">models</span><span class="punct">.</span><span class="var">openai</span> <span class="kw">import</span> <span class="ty">OpenAIChatCompletionClient</span>
+
+<span class="var">model_client</span> <span class="punct">=</span> <span class="ty">OpenAIChatCompletionClient</span>(<span class="var">model</span><span class="punct">=</span><span class="str">"gpt-4o-2024-08-06"</span>)
+
+<span class="com"># 两个角色不是通过"注册工具"分工,而是靠 system_message 里的自然语言描述各自的职责</span>
+<span class="var">primary_agent</span> <span class="punct">=</span> <span class="ty">AssistantAgent</span>(
+    <span class="str">"primary"</span><span class="punct">,</span> <span class="var">model_client</span><span class="punct">=</span><span class="var">model_client</span><span class="punct">,</span>
+    <span class="var">system_message</span><span class="punct">=</span><span class="str">"You are a helpful AI assistant."</span><span class="punct">,</span>
+<span class="punct">)</span>
+<span class="var">critic_agent</span> <span class="punct">=</span> <span class="ty">AssistantAgent</span>(
+    <span class="str">"critic"</span><span class="punct">,</span> <span class="var">model_client</span><span class="punct">=</span><span class="var">model_client</span><span class="punct">,</span>
+    <span class="var">system_message</span><span class="punct">=</span><span class="str">"Provide constructive feedback. Respond with 'APPROVE' when satisfied."</span><span class="punct">,</span>
+<span class="punct">)</span>
+
+<span class="com"># 终止条件是显式声明的:消息里出现 "APPROVE" 就结束这一轮对话,而不是靠某个 Agent 自己决定停止</span>
+<span class="var">termination</span> <span class="punct">=</span> <span class="ty">TextMentionTermination</span>(<span class="str">"APPROVE"</span>)
+<span class="var">team</span> <span class="punct">=</span> <span class="ty">RoundRobinGroupChat</span>([<span class="var">primary_agent</span><span class="punct">,</span> <span class="var">critic_agent</span>]<span class="punct">,</span> <span class="var">termination_condition</span><span class="punct">=</span><span class="var">termination</span>)
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>()<span class="punct">:</span>
+    <span class="com"># 两个 Agent 轮流发言,共享同一份对话上下文,直到 critic 说出 "APPROVE"</span>
+    <span class="kw">await</span> <span class="ty">Console</span>(<span class="var">team</span>.<span class="fn">run_stream</span>(<span class="var">task</span><span class="punct">=</span><span class="str">"写一段关于 Agent 记忆机制的简介"</span>))
+
+<span class="var">asyncio</span>.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+  </div>
+  <div class="callout info">
+    <strong>来源说明:</strong>以上代码取自 AutoGen 官方 AgentChat 教程的真实示例结构。可以看到协作规则(谁先发言、什么时候停)
+    是靠 <code>RoundRobinGroupChat</code> + <code>TextMentionTermination</code> 这两个显式组件拼出来的——AutoGen 把"对话如何终止"
+    这件事交给开发者显式声明,而不是让某个 Agent 自己"感觉聊完了"就停下来,这是它比看起来更"工程化"的地方。
+  </div>
 
   <h2>CrewAI:用"团队角色分工"驱动协作</h2>
   <p>
@@ -85,6 +121,49 @@
     就像招聘时写清楚这个岗位是做什么的、期望达成什么;然后定义一系列 <strong>Task(任务)</strong>,
     按顺序或依赖关系分派给团队里合适的 Agent 去执行。这种心智模型更贴近"管理一个人类团队"的直觉,上手门槛相对更低。
   </p>
+  <div class="code-block">
+    <div class="cb-header"><span>crew.py</span><span>python · CrewAI 真实 API</span></div>
+    <pre><span class="kw">from</span> <span class="var">crewai</span> <span class="kw">import</span> <span class="ty">Agent</span><span class="punct">,</span> <span class="ty">Task</span><span class="punct">,</span> <span class="ty">Crew</span>
+
+<span class="com"># role/goal/backstory 三者共同构成这个 Agent 的"人设",模型会把这些内容当作 system prompt 的一部分</span>
+<span class="var">researcher</span> <span class="punct">=</span> <span class="ty">Agent</span>(
+    <span class="var">role</span><span class="punct">=</span><span class="str">"Researcher"</span><span class="punct">,</span>
+    <span class="var">goal</span><span class="punct">=</span><span class="str">"Gather relevant information on a given topic"</span><span class="punct">,</span>
+    <span class="var">backstory</span><span class="punct">=</span><span class="str">"An expert at finding and analyzing information."</span><span class="punct">,</span>
+<span class="punct">)</span>
+<span class="var">writer</span> <span class="punct">=</span> <span class="ty">Agent</span>(
+    <span class="var">role</span><span class="punct">=</span><span class="str">"Writer"</span><span class="punct">,</span>
+    <span class="var">goal</span><span class="punct">=</span><span class="str">"Produce a clear, concise summary of the research findings"</span><span class="punct">,</span>
+    <span class="var">backstory</span><span class="punct">=</span><span class="str">"Skilled at summarizing information into reports."</span><span class="punct">,</span>
+<span class="punct">)</span>
+
+<span class="com"># Task 是分派给某个具体 Agent 的一份工作说明,expected_output 明确"完成的标准长什么样"</span>
+<span class="var">research_task</span> <span class="punct">=</span> <span class="ty">Task</span>(
+    <span class="var">description</span><span class="punct">=</span><span class="str">"Research the current best practices for AI agent memory"</span><span class="punct">,</span>
+    <span class="var">expected_output</span><span class="punct">=</span><span class="str">"A bullet list of key findings"</span><span class="punct">,</span>
+    <span class="var">agent</span><span class="punct">=</span><span class="var">researcher</span><span class="punct">,</span>
+<span class="punct">)</span>
+<span class="var">writing_task</span> <span class="punct">=</span> <span class="ty">Task</span>(
+    <span class="var">description</span><span class="punct">=</span><span class="str">"Write a short summary based on the research findings"</span><span class="punct">,</span>
+    <span class="var">expected_output</span><span class="punct">=</span><span class="str">"A 200-word summary"</span><span class="punct">,</span>
+    <span class="var">agent</span><span class="punct">=</span><span class="var">writer</span><span class="punct">,</span>
+<span class="punct">)</span>
+
+<span class="com"># Crew 把 agents 和 tasks 组装起来;默认按 Sequential(顺序)流程逐个执行 task</span>
+<span class="var">crew</span> <span class="punct">=</span> <span class="ty">Crew</span>(<span class="var">agents</span><span class="punct">=</span>[<span class="var">researcher</span><span class="punct">,</span> <span class="var">writer</span>]<span class="punct">,</span> <span class="var">tasks</span><span class="punct">=</span>[<span class="var">research_task</span><span class="punct">,</span> <span class="var">writing_task</span>])
+<span class="var">result</span> <span class="punct">=</span> <span class="var">crew</span>.<span class="fn">kickoff</span>()
+<span class="fn">print</span>(<span class="var">result</span>)</pre>
+  </div>
+  <div class="callout info">
+    <strong>来源说明:</strong>以上结构取自 CrewAI 官方文档的真实用法。除了这种直接在代码里定义 Agent 的方式,
+    CrewAI 官方更推荐用 <strong>YAML 文件</strong>集中定义 <code>role</code>/<code>goal</code>/<code>backstory</code>,
+    代码里只负责加载配置和组装 <code>Crew</code>——团队规模变大之后,把"人设定义"和"编排逻辑"分开会更好维护。
+  </div>
+  <div class="callout warn">
+    <strong>执行顺序不是你以为的"并行":</strong>上面的 <code>Crew</code> 默认是 <strong>Sequential(顺序)</strong> 流程——
+    <code>writing_task</code> 会等 <code>research_task</code> 完全跑完才开始,即使两者看起来"能不能并行"和业务逻辑相关而非自动推断。
+    需要更复杂的编排(条件分支、动态生成任务)时,CrewAI 提供了更底层的 <strong>Flow</strong> API,而不是继续在 <code>Crew</code> 里堆参数。
+  </div>
 
   <h2>AutoGen vs CrewAI</h2>
   <table>

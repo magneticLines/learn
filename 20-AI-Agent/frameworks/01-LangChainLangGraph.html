@@ -94,42 +94,73 @@
     这样一来,"循环"、"分支"、"重试"都变成了图上可以画出来、可以打日志追踪的显式结构,而不是埋在框架内部的黑盒调度。
   </p>
 
+  <p>下面是 LangGraph 官方文档中的真实 API 用法(不是伪代码,可以直接安装 <code>langgraph</code> 运行):</p>
   <div class="code-block">
-    <div class="cb-header"><span>LangGraph 风格伪代码</span><span>python</span></div>
-    <pre><span class="kw">from</span> <span class="var">langgraph</span> <span class="kw">import</span> <span class="ty">StateGraph</span>
+    <div class="cb-header"><span>state.py</span><span>python · 状态定义</span></div>
+    <pre><span class="kw">from</span> <span class="var">langchain</span><span class="punct">.</span><span class="var">messages</span> <span class="kw">import</span> <span class="ty">AnyMessage</span>
+<span class="kw">from</span> <span class="var">typing_extensions</span> <span class="kw">import</span> <span class="ty">TypedDict</span><span class="punct">,</span> <span class="ty">Annotated</span>
+<span class="kw">import</span> <span class="var">operator</span>
 
-<span class="com"># 1. 定义节点:每个节点是一个处理状态的函数</span>
-<span class="kw">def</span> <span class="fn">call_llm</span>(<span class="var">state</span>):
-    <span class="var">response</span> = <span class="var">model</span>.<span class="fn">invoke</span>(<span class="var">state</span>[<span class="str">"messages"</span>])
-    <span class="kw">return</span> {<span class="str">"messages"</span>: <span class="var">state</span>[<span class="str">"messages"</span>] + [<span class="var">response</span>]}
+<span class="com"># State 是流转在图上的那份共享数据;Annotated + operator.add 告诉 LangGraph:</span>
+<span class="com"># 每个节点返回新消息时是"追加"到 messages 列表,而不是整体替换掉</span>
+<span class="kw">class</span> <span class="ty">MessagesState</span>(<span class="ty">TypedDict</span>)<span class="punct">:</span>
+    <span class="var">messages</span><span class="punct">:</span> <span class="ty">Annotated</span>[<span class="fn">list</span>[<span class="ty">AnyMessage</span>], <span class="var">operator</span>.<span class="fn">add</span>]
+    <span class="var">llm_calls</span><span class="punct">:</span> <span class="ty">int</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>graph.py</span><span>python · 组装图</span></div>
+    <pre><span class="kw">from</span> <span class="var">langgraph</span><span class="punct">.</span><span class="var">graph</span> <span class="kw">import</span> <span class="ty">StateGraph</span><span class="punct">,</span> <span class="ty">START</span><span class="punct">,</span> <span class="ty">END</span>
 
-<span class="kw">def</span> <span class="fn">call_tool</span>(<span class="var">state</span>):
-    <span class="var">result</span> = <span class="var">run_tool</span>(<span class="var">state</span>[<span class="str">"messages"</span>][-<span class="num">1</span>])
-    <span class="kw">return</span> {<span class="str">"messages"</span>: <span class="var">state</span>[<span class="str">"messages"</span>] + [<span class="var">result</span>]}
+<span class="com"># add_node 注册处理函数(llm_call/tool_node 的具体实现略,分别对应"调用模型"和"执行工具")</span>
+<span class="var">agent_builder</span> = <span class="ty">StateGraph</span>(<span class="ty">MessagesState</span>)
+<span class="var">agent_builder</span>.<span class="fn">add_node</span>(<span class="str">"llm_call"</span>, <span class="var">llm_call</span>)
+<span class="var">agent_builder</span>.<span class="fn">add_node</span>(<span class="str">"tool_node"</span>, <span class="var">tool_node</span>)
 
-<span class="com"># 2. 定义条件边:决定循环还是结束</span>
-<span class="kw">def</span> <span class="fn">should_continue</span>(<span class="var">state</span>):
-    <span class="kw">if</span> <span class="var">state</span>[<span class="str">"messages"</span>][-<span class="num">1</span>].<span class="var">has_tool_call</span>:
-        <span class="kw">return</span> <span class="str">"call_tool"</span>
-    <span class="kw">return</span> <span class="str">"end"</span>
+<span class="com"># START/END 是 LangGraph 内置的两个特殊节点,标记图的入口和出口</span>
+<span class="var">agent_builder</span>.<span class="fn">add_edge</span>(<span class="ty">START</span>, <span class="str">"llm_call"</span>)
 
-<span class="com"># 3. 组装成图并编译</span>
-<span class="var">graph</span> = <span class="ty">StateGraph</span>()
-<span class="var">graph</span>.<span class="fn">add_node</span>(<span class="str">"call_llm"</span>, <span class="var">call_llm</span>)
-<span class="var">graph</span>.<span class="fn">add_node</span>(<span class="str">"call_tool"</span>, <span class="var">call_tool</span>)
-<span class="var">graph</span>.<span class="fn">add_conditional_edges</span>(<span class="str">"call_llm"</span>, <span class="var">should_continue</span>)
-<span class="var">graph</span>.<span class="fn">add_edge</span>(<span class="str">"call_tool"</span>, <span class="str">"call_llm"</span>)  <span class="com"># 工具执行完,回到 LLM 继续推理</span>
-<span class="var">graph</span>.<span class="fn">set_entry_point</span>(<span class="str">"call_llm"</span>)
+<span class="com"># add_conditional_edges: should_continue 返回值决定走向 tool_node 还是直接结束(END)</span>
+<span class="com"># 这就是 ReAct 循环里"要不要继续调用工具"这个判断的显式图结构</span>
+<span class="var">agent_builder</span>.<span class="fn">add_conditional_edges</span>(
+    <span class="str">"llm_call"</span><span class="punct">,</span>
+    <span class="var">should_continue</span><span class="punct">,</span>
+    [<span class="str">"tool_node"</span>, <span class="ty">END</span>]
+)
+<span class="var">agent_builder</span>.<span class="fn">add_edge</span>(<span class="str">"tool_node"</span>, <span class="str">"llm_call"</span>)  <span class="com"># 工具执行完,回到 llm_call 继续推理——循环由这条边构成</span>
 
-<span class="var">app</span> = <span class="var">graph</span>.<span class="fn">compile</span>()
-<span class="var">app</span>.<span class="fn">invoke</span>({<span class="str">"messages"</span>: [<span class="str">"帮我查一下北京天气"</span>]})</pre>
+<span class="var">agent</span> = <span class="var">agent_builder</span>.<span class="fn">compile</span>()
+
+<span class="kw">from</span> <span class="var">langchain</span><span class="punct">.</span><span class="var">messages</span> <span class="kw">import</span> <span class="ty">HumanMessage</span>
+<span class="var">messages</span> = [<span class="ty">HumanMessage</span>(<span class="var">content</span>=<span class="str">"帮我查一下北京天气"</span>)]
+<span class="var">result</span> = <span class="var">agent</span>.<span class="fn">invoke</span>({<span class="str">"messages"</span>: <span class="var">messages</span>})
+<span class="kw">for</span> <span class="var">m</span> <span class="kw">in</span> <span class="var">result</span>[<span class="str">"messages"</span>]<span class="punct">:</span>
+    <span class="var">m</span>.<span class="fn">pretty_print</span>()</pre>
+  </div>
+  <div class="callout info">
+    <strong>来源说明:</strong>以上代码取自 LangGraph 官方 Quickstart 文档的真实示例(截至撰写时的 API),
+    <code>llm_call</code>、<code>tool_node</code>、<code>should_continue</code> 三个函数的具体实现在官方教程里有完整版本,
+    这里只保留图结构的搭建部分——重点是让你看清"节点/边/条件边"这三个要素在真实代码里长什么样,而不是抄一份能跑的完整脚本。
+    实际使用前建议对照 <a href="https://docs.langchain.com/oss/python/langgraph/quickstart" target="_blank" rel="noopener">官方文档</a> 确认最新 API。
   </div>
 
   <div class="callout tip">
-    <strong>和前面内容的联系:</strong>可以看到 <code>call_llm</code> → <code>call_tool</code> → 回到 <code>call_llm</code> 这条边,
+    <strong>和前面内容的联系:</strong>可以看到 <code>llm_call</code> → <code>tool_node</code> → 回到 <code>llm_call</code> 这条边,
     就是"Agent 开发核心"Tab 里 ReAct 循环的显式结构化版本——LangGraph 并没有发明新的原理,而是把原本靠代码隐式控制的循环,
     变成了一份可以画出来、可以单独测试每个节点的图结构。
   </div>
+
+  <h2>生产落地时会用到的能力:持久化与流式输出</h2>
+  <p>
+    上面的最小示例每次 <code>invoke()</code> 都是一次性跑完,状态不会保留。真实产品里的对话通常要支持"用户中途断开、下次回来接着聊",
+    LangGraph 对此提供了 <strong>Checkpointer</strong>(检查点)机制——给 <code>compile(checkpointer=...)</code> 传入一个存储后端
+    (内存、SQLite、Postgres 均有官方适配),图在每个节点执行完都会自动把当前 State 存一份快照,下次用同一个
+    <code>thread_id</code> 调用时会自动从上次的状态继续,而不需要自己维护"这个用户聊到哪一步了"这份状态。
+  </p>
+  <p>
+    另外,示例里的 <code>agent.invoke(...)</code> 是等整个图跑完才拿到结果,真实产品体验通常需要"模型一边生成一边显示",
+    对应官方提供的 <code>agent.stream(...)</code> / <code>astream(...)</code> 接口,可以流式拿到每个节点产生的中间消息——
+    这也是为什么"手写最小 Agent"一节的收尾会提到框架内置了"流式输出支持"这件事,在 LangGraph 里就是这一组 API。
+  </p>
 
   <h2>陷阱:不要为了"看起来专业"而引入</h2>
   <div class="callout warn">
