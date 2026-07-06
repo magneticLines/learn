@@ -65,8 +65,12 @@
   <h2>目标:一个会查天气的最小 Agent</h2>
   <p>
     还是"什么是 Agent"里那个例子:用户问<strong>"北京今天天气怎么样,要不要带伞"</strong>。这句话本身模型答不了——它不知道"今天"的实时天气,
-    必须先调用一个天气工具拿到数据,再结合数据给出建议。这一篇要做的,就是用纯 Java 代码把这个"先查再答"的过程跑通,不依赖 LangChain、Spring AI 等任何框架,
-    LLM 调用部分用伪代码表示(实际项目里换成 OpenAI/通义千问等真实 SDK 调用即可)。
+    必须先调用一个天气工具拿到数据,再结合数据给出建议。这一篇要做的,就是用纯 Java 代码把这个"先查再答"的过程跑通,不依赖 LangChain、Spring AI 等任何框架——
+    包括真实调用外部天气 API、真实调用 LLM 接口,全部用 JDK 自带的 <code>HttpClient</code> 手写,不依赖第三方 SDK。
+  </p>
+  <div class="callout warn">
+    <strong>跑之前需要准备:</strong>一个 OpenAI 兼容的 API Key,通过环境变量 <code>LLM_API_KEY</code> 传入(下面 <code>LlmClient</code> 会读取)。
+    天气工具用的 Open-Meteo 免费无需注册,不需要额外准备。
   </p>
   <div class="callout info">
     <strong>整体思路:</strong>Agent 的核心不是"调用了 LLM",而是一个<strong>循环</strong>——每一轮把"目标 + 历史记录 + 可用工具清单"拼成 Prompt 丢给 LLM,
@@ -96,37 +100,99 @@
 <span class="punct">}</span></pre>
   </div>
 
-  <h2>第二步:实现一个 mock 天气工具</h2>
+  <h2>第二步:实现一个真实调用外部 API 的天气工具</h2>
   <p>
-    真实项目里这里会换成一次 HTTP 请求(调和风天气、高德天气等 API)。教学场景下用固定规则 mock 返回结果,重点在于展示"Agent 怎么调用工具",
-    而不是"怎么对接天气 API"。
+    很多教程到这一步就用一个写死的 <code>Map</code> mock 数据糊弄过去,但这样看不出"工具真正对接外部世界"时要处理的问题——网络请求会失败、
+    会超时、返回的数据要解析。这里改用 <strong>Open-Meteo</strong>(免费、无需 API Key 的天气服务)做一次真实的两段式调用:
+    先用城市名查经纬度(地理编码),再用经纬度查当前气温。
   </p>
   <div class="code-block">
-    <div class="cb-header"><span>WeatherTool.java</span><span>mock 实现</span></div>
-    <pre><span class="kw">public</span> <span class="kw">class</span> <span class="ty">WeatherTool</span> <span class="kw">implements</span> <span class="ty">Tool</span> <span class="punct">{</span>
+    <div class="cb-header"><span>Json.java</span><span>极简 JSON 取值工具</span></div>
+    <pre><span class="kw">import</span> <span class="ty">java.util.regex.Matcher</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.util.regex.Pattern</span><span class="punct">;</span>
+
+<span class="com">// 生产项目请直接用 Jackson/Gson——这里手写是为了不引入任何第三方依赖</span>
+<span class="com">// 只支持从"扁平"JSON 里按 key 取字符串/数值,足够应付本文的两个 API,不是通用解析器</span>
+<span class="kw">final</span> <span class="kw">class</span> <span class="ty">Json</span> <span class="punct">{</span>
+    <span class="kw">static</span> <span class="ty">String</span> <span class="fn">extractString</span><span class="punct">(</span><span class="ty">String</span> <span class="var">json</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">key</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="ty">Matcher</span> <span class="var">m</span> <span class="punct">=</span> <span class="ty">Pattern</span><span class="punct">.</span><span class="fn">compile</span><span class="punct">(</span><span class="str">"\""</span> <span class="punct">+</span> <span class="var">key</span> <span class="punct">+</span> <span class="str">"\"\\s*:\\s*\"([^\"]*)\""</span><span class="punct">).</span><span class="fn">matcher</span><span class="punct">(</span><span class="var">json</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">m</span><span class="punct">.</span><span class="fn">find</span><span class="punct">())</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">IllegalArgumentException</span><span class="punct">(</span><span class="str">"missing key: "</span> <span class="punct">+</span> <span class="var">key</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">m</span><span class="punct">.</span><span class="fn">group</span><span class="punct">(</span><span class="num">1</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">static</span> <span class="kw">double</span> <span class="fn">extractDouble</span><span class="punct">(</span><span class="ty">String</span> <span class="var">json</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">key</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="ty">Matcher</span> <span class="var">m</span> <span class="punct">=</span> <span class="ty">Pattern</span><span class="punct">.</span><span class="fn">compile</span><span class="punct">(</span><span class="str">"\""</span> <span class="punct">+</span> <span class="var">key</span> <span class="punct">+</span> <span class="str">"\"\\s*:\\s*(-?[0-9.]+)"</span><span class="punct">).</span><span class="fn">matcher</span><span class="punct">(</span><span class="var">json</span><span class="punct">);</span>
+        <span class="kw">if</span> <span class="punct">(!</span><span class="var">m</span><span class="punct">.</span><span class="fn">find</span><span class="punct">())</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">IllegalArgumentException</span><span class="punct">(</span><span class="str">"missing key: "</span> <span class="punct">+</span> <span class="var">key</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="ty">Double</span><span class="punct">.</span><span class="fn">parseDouble</span><span class="punct">(</span><span class="var">m</span><span class="punct">.</span><span class="fn">group</span><span class="punct">(</span><span class="num">1</span><span class="punct">));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>WeatherTool.java</span><span>真实 HTTP 调用</span></div>
+    <pre><span class="kw">import</span> <span class="ty">java.net.URI</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.net.URLEncoder</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.net.http.HttpClient</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.net.http.HttpRequest</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.net.http.HttpResponse</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.nio.charset.StandardCharsets</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.time.Duration</span><span class="punct">;</span>
+
+<span class="kw">public</span> <span class="kw">class</span> <span class="ty">WeatherTool</span> <span class="kw">implements</span> <span class="ty">Tool</span> <span class="punct">{</span>
+
+    <span class="com">// HttpClient 建议全局复用一个实例(内部维护连接池),不要每次请求都 new 一个</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">HttpClient</span> <span class="var">http</span> <span class="punct">=</span> <span class="ty">HttpClient</span><span class="punct">.</span><span class="fn">newBuilder</span><span class="punct">()</span>
+        <span class="punct">.</span><span class="fn">connectTimeout</span><span class="punct">(</span><span class="ty">Duration</span><span class="punct">.</span><span class="fn">ofSeconds</span><span class="punct">(</span><span class="num">5</span><span class="punct">))</span>
+        <span class="punct">.</span><span class="fn">build</span><span class="punct">();</span>
 
     <span class="ann">@Override</span>
-    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">name</span><span class="punct">()</span> <span class="punct">{</span>
-        <span class="kw">return</span> <span class="str">"get_weather"</span><span class="punct">;</span>
-    <span class="punct">}</span>
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">name</span><span class="punct">()</span> <span class="punct">{</span> <span class="kw">return</span> <span class="str">"get_weather"</span><span class="punct">;</span> <span class="punct">}</span>
 
     <span class="ann">@Override</span>
     <span class="kw">public</span> <span class="ty">String</span> <span class="fn">description</span><span class="punct">()</span> <span class="punct">{</span>
-        <span class="com">// 明确参数格式和返回格式,减少模型"自由发挥"传错参数的空间</span>
-        <span class="kw">return</span> <span class="str">"查询城市天气。参数为城市名(如 北京),返回该城市今天的天气与气温"</span><span class="punct">;</span>
+        <span class="kw">return</span> <span class="str">"查询城市当前气温。参数为城市名(建议英文拼写,如 Beijing),返回该城市当前气温"</span><span class="punct">;</span>
     <span class="punct">}</span>
 
     <span class="ann">@Override</span>
     <span class="kw">public</span> <span class="ty">String</span> <span class="fn">execute</span><span class="punct">(</span><span class="ty">String</span> <span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>
-        <span class="com">// mock 数据:用城市名做一个简单哈希,让不同城市返回不同结果</span>
-        <span class="com">// 只是为了让示例看起来"像真的",生产环境这里是一次真实的 HTTP 调用</span>
         <span class="ty">String</span> <span class="var">city</span> <span class="punct">=</span> <span class="var">args</span><span class="punct">.</span><span class="fn">trim</span><span class="punct">();</span>
-        <span class="kw">boolean</span> <span class="var">rainy</span> <span class="punct">=</span> <span class="var">city</span><span class="punct">.</span><span class="fn">hashCode</span><span class="punct">()</span> <span class="punct">%</span> <span class="num">2</span> <span class="punct">==</span> <span class="num">0</span><span class="punct">;</span>
-        <span class="kw">return</span> <span class="var">rainy</span>
-            <span class="punct">?</span> <span class="var">city</span> <span class="punct">+</span> <span class="str">" 今天有雨,18℃"</span>
-            <span class="punct">:</span> <span class="var">city</span> <span class="punct">+</span> <span class="str">" 今天晴,25℃"</span><span class="punct">;</span>
+        <span class="kw">try</span> <span class="punct">{</span>
+            <span class="kw">double</span><span class="punct">[]</span> <span class="var">coord</span> <span class="punct">=</span> <span class="fn">geocode</span><span class="punct">(</span><span class="var">city</span><span class="punct">);</span>
+            <span class="kw">return</span> <span class="fn">forecast</span><span class="punct">(</span><span class="var">coord</span><span class="punct">[</span><span class="num">0</span><span class="punct">],</span> <span class="var">coord</span><span class="punct">[</span><span class="num">1</span><span class="punct">],</span> <span class="var">city</span><span class="punct">);</span>
+        <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">Exception</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="com">// 网络请求随时可能失败(超时/限流/城市名查不到),绝不能让异常直接抛出炸掉整个 Agent 循环</span>
+            <span class="com">// 把错误信息当作正常的 Observation 返回,交给模型自己判断下一步(换个拼写重试,还是如实告知用户)</span>
+            <span class="kw">return</span> <span class="str">"查询失败: "</span> <span class="punct">+</span> <span class="var">e</span><span class="punct">.</span><span class="fn">getMessage</span><span class="punct">();</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private</span> <span class="kw">double</span><span class="punct">[]</span> <span class="fn">geocode</span><span class="punct">(</span><span class="ty">String</span> <span class="var">city</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="ty">String</span> <span class="var">url</span> <span class="punct">=</span> <span class="str">"https://geocoding-api.open-meteo.com/v1/search?count=1&amp;name="</span>
+            <span class="punct">+</span> <span class="ty">URLEncoder</span><span class="punct">.</span><span class="fn">encode</span><span class="punct">(</span><span class="var">city</span><span class="punct">,</span> <span class="ty">StandardCharsets</span><span class="punct">.</span><span class="var">UTF_8</span><span class="punct">);</span>
+        <span class="ty">String</span> <span class="var">body</span> <span class="punct">=</span> <span class="fn">get</span><span class="punct">(</span><span class="var">url</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="kw">new</span> <span class="kw">double</span><span class="punct">[]</span> <span class="punct">{</span> <span class="ty">Json</span><span class="punct">.</span><span class="fn">extractDouble</span><span class="punct">(</span><span class="var">body</span><span class="punct">,</span> <span class="str">"latitude"</span><span class="punct">),</span> <span class="ty">Json</span><span class="punct">.</span><span class="fn">extractDouble</span><span class="punct">(</span><span class="var">body</span><span class="punct">,</span> <span class="str">"longitude"</span><span class="punct">)</span> <span class="punct">};</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private</span> <span class="ty">String</span> <span class="fn">forecast</span><span class="punct">(</span><span class="kw">double</span> <span class="var">lat</span><span class="punct">,</span> <span class="kw">double</span> <span class="var">lon</span><span class="punct">,</span> <span class="ty">String</span> <span class="var">city</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="ty">String</span> <span class="var">url</span> <span class="punct">=</span> <span class="ty">String</span><span class="punct">.</span><span class="fn">format</span><span class="punct">(</span>
+            <span class="str">"https://api.open-meteo.com/v1/forecast?latitude=%.4f&amp;longitude=%.4f&amp;current=temperature_2m"</span><span class="punct">,</span> <span class="var">lat</span><span class="punct">,</span> <span class="var">lon</span><span class="punct">);</span>
+        <span class="ty">String</span> <span class="var">body</span> <span class="punct">=</span> <span class="fn">get</span><span class="punct">(</span><span class="var">url</span><span class="punct">);</span>
+        <span class="kw">double</span> <span class="var">temp</span> <span class="punct">=</span> <span class="ty">Json</span><span class="punct">.</span><span class="fn">extractDouble</span><span class="punct">(</span><span class="var">body</span><span class="punct">,</span> <span class="str">"temperature_2m"</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">city</span> <span class="punct">+</span> <span class="str">" 当前气温 "</span> <span class="punct">+</span> <span class="var">temp</span> <span class="punct">+</span> <span class="str">"℃"</span><span class="punct">;</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private</span> <span class="ty">String</span> <span class="fn">get</span><span class="punct">(</span><span class="ty">String</span> <span class="var">url</span><span class="punct">)</span> <span class="kw">throws</span> <span class="ty">Exception</span> <span class="punct">{</span>
+        <span class="ty">HttpRequest</span> <span class="var">req</span> <span class="punct">=</span> <span class="ty">HttpRequest</span><span class="punct">.</span><span class="fn">newBuilder</span><span class="punct">(</span><span class="ty">URI</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="var">url</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">timeout</span><span class="punct">(</span><span class="ty">Duration</span><span class="punct">.</span><span class="fn">ofSeconds</span><span class="punct">(</span><span class="num">5</span><span class="punct">)).</span><span class="fn">GET</span><span class="punct">().</span><span class="fn">build</span><span class="punct">();</span>
+        <span class="ty">HttpResponse</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">resp</span> <span class="punct">=</span> <span class="var">http</span><span class="punct">.</span><span class="fn">send</span><span class="punct">(</span><span class="var">req</span><span class="punct">,</span> <span class="ty">HttpResponse</span><span class="punct">.</span><span class="ty">BodyHandlers</span><span class="punct">.</span><span class="fn">ofString</span><span class="punct">());</span>
+        <span class="com">// 每次请求都显式检查状态码——不判断直接读 body,一旦对方返回错误页会在解析阶段才炸,定位更麻烦</span>
+        <span class="kw">if</span> <span class="punct">(</span><span class="var">resp</span><span class="punct">.</span><span class="fn">statusCode</span><span class="punct">()</span> <span class="punct">!=</span> <span class="num">200</span><span class="punct">)</span> <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">RuntimeException</span><span class="punct">(</span><span class="str">"HTTP "</span> <span class="punct">+</span> <span class="var">resp</span><span class="punct">.</span><span class="fn">statusCode</span><span class="punct">());</span>
+        <span class="kw">return</span> <span class="var">resp</span><span class="punct">.</span><span class="fn">body</span><span class="punct">();</span>
     <span class="punct">}</span>
 <span class="punct">}</span></pre>
+  </div>
+  <div class="callout tip">
+    <strong>为什么选 Open-Meteo 而不是随便找个天气 API 举例:</strong>它免注册、免费、无需 API Key,这份代码复制下来就能直接跑,
+    不需要读者先去申请密钥才能验证效果——这是选教学示例 API 时值得考虑的一个实际因素。
   </div>
 
   <h2>第三步:约定模型的输出格式</h2>
@@ -182,7 +248,11 @@
     <span class="com">// 用工具名做 key,查找 O(1),避免每次遍历 List 做字符串比较</span>
     <span class="kw">private</span> <span class="kw">final</span> <span class="ty">Map</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">,</span> <span class="ty">Tool</span><span class="punct">&gt;</span> <span class="var">tools</span><span class="punct">;</span>
 
-    <span class="kw">public</span> <span class="fn">Agent</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Tool</span><span class="punct">&gt;</span> <span class="var">toolList</span><span class="punct">)</span> <span class="punct">{</span>
+    <span class="com">// LLM 调用被抽成独立的 LlmClient(见第五步),Agent 只关心"给 Prompt、拿文本",不关心 HTTP 细节</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">LlmClient</span> <span class="var">llmClient</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="fn">Agent</span><span class="punct">(</span><span class="ty">List</span><span class="punct">&lt;</span><span class="ty">Tool</span><span class="punct">&gt;</span> <span class="var">toolList</span><span class="punct">,</span> <span class="ty">LlmClient</span> <span class="var">llmClient</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">llmClient</span> <span class="punct">=</span> <span class="var">llmClient</span><span class="punct">;</span>
         <span class="var">tools</span> <span class="punct">=</span> <span class="var">toolList</span><span class="punct">.</span><span class="fn">stream</span><span class="punct">()</span>
             <span class="punct">.</span><span class="fn">collect</span><span class="punct">(</span><span class="ty">Collectors</span><span class="punct">.</span><span class="fn">toMap</span><span class="punct">(</span><span class="ty">Tool</span><span class="punct">::</span><span class="fn">name</span><span class="punct">,</span> <span class="var">t</span> <span class="punct">-&gt;</span> <span class="var">t</span><span class="punct">));</span>
     <span class="punct">}</span>
@@ -248,23 +318,104 @@
     <span class="punct">}</span>
 
     <span class="kw">private</span> <span class="ty">String</span> <span class="fn">callLLM</span><span class="punct">(</span><span class="ty">String</span> <span class="var">prompt</span><span class="punct">)</span> <span class="punct">{</span>
-        <span class="com">// 这里替换成你的实际 LLM SDK 调用,比如:</span>
-        <span class="com">// return openAiClient.chatCompletion(prompt);</span>
-        <span class="com">// 教学场景下直接模拟模型第一轮决定查天气、第二轮给出最终答案</span>
-        <span class="kw">throw</span> <span class="kw">new</span> <span class="ty">UnsupportedOperationException</span><span class="punct">(</span><span class="str">"替换成真实的 LLM API 调用"</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="var">llmClient</span><span class="punct">.</span><span class="fn">complete</span><span class="punct">(</span><span class="var">prompt</span><span class="punct">);</span> <span class="com">// 见下一节 LlmClient 的真实实现</span>
     <span class="punct">}</span>
 <span class="punct">}</span></pre>
   </div>
 
+  <h2>第五步:接入真实 LLM API(而不是留一个占位方法)</h2>
+  <p>
+    上面的 <code>callLLM</code> 不能只是一句"这里换成真实调用"就带过——真实调用要处理三件事:<strong>怎么发请求</strong>(HTTP + JSON body)、
+    <strong>怎么应对失败</strong>(网络抖动、被限流)、<strong>密钥怎么管理</strong>(绝不能硬编码进代码)。下面是一个对接 OpenAI 兼容
+    <code>/v1/chat/completions</code> 接口的最小可用实现,同样只用 JDK 自带的 <code>HttpClient</code>,不引入第三方 SDK。
+  </p>
+  <div class="code-block">
+    <div class="cb-header"><span>LlmClient.java</span><span>真实 HTTP 调用 + 重试</span></div>
+    <pre><span class="kw">import</span> <span class="ty">java.io.IOException</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.net.URI</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.net.http.HttpClient</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.net.http.HttpRequest</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.net.http.HttpResponse</span><span class="punct">;</span>
+<span class="kw">import</span> <span class="ty">java.time.Duration</span><span class="punct">;</span>
+
+<span class="kw">public</span> <span class="kw">class</span> <span class="ty">LlmClient</span> <span class="punct">{</span>
+
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">HttpClient</span> <span class="var">http</span> <span class="punct">=</span> <span class="ty">HttpClient</span><span class="punct">.</span><span class="fn">newHttpClient</span><span class="punct">();</span>
+
+    <span class="com">// 密钥一律从环境变量读,绝不写进源码或提交进版本库——这是最容易被忽视也最容易泄露的一步</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">String</span> <span class="var">apiKey</span> <span class="punct">=</span> <span class="ty">System</span><span class="punct">.</span><span class="fn">getenv</span><span class="punct">(</span><span class="str">"LLM_API_KEY"</span><span class="punct">);</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="ty">String</span> <span class="var">endpoint</span> <span class="punct">=</span> <span class="str">"https://api.openai.com/v1/chat/completions"</span><span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="ty">String</span> <span class="fn">complete</span><span class="punct">(</span><span class="ty">String</span> <span class="var">prompt</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// 手写 JSON 转义,只处理反斜杠/双引号/换行三种最常见的破坏字符——够用但不是通用实现</span>
+        <span class="ty">String</span> <span class="var">escaped</span> <span class="punct">=</span> <span class="var">prompt</span><span class="punct">.</span><span class="fn">replace</span><span class="punct">(</span><span class="str">"\\"</span><span class="punct">,</span> <span class="str">"\\\\"</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">replace</span><span class="punct">(</span><span class="str">"\""</span><span class="punct">,</span> <span class="str">"\\\""</span><span class="punct">).</span><span class="fn">replace</span><span class="punct">(</span><span class="str">"\n"</span><span class="punct">,</span> <span class="str">"\\n"</span><span class="punct">);</span>
+        <span class="ty">String</span> <span class="var">requestBody</span> <span class="punct">=</span> <span class="str">"{\"model\":\"gpt-4o-mini\",\"temperature\":0,\"messages\":[{\"role\":\"user\",\"content\":\""</span>
+            <span class="punct">+</span> <span class="var">escaped</span> <span class="punct">+</span> <span class="str">"\"}]}"</span><span class="punct">;</span>
+
+        <span class="ty">HttpRequest</span> <span class="var">req</span> <span class="punct">=</span> <span class="ty">HttpRequest</span><span class="punct">.</span><span class="fn">newBuilder</span><span class="punct">(</span><span class="ty">URI</span><span class="punct">.</span><span class="fn">create</span><span class="punct">(</span><span class="var">endpoint</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">timeout</span><span class="punct">(</span><span class="ty">Duration</span><span class="punct">.</span><span class="fn">ofSeconds</span><span class="punct">(</span><span class="num">30</span><span class="punct">))</span> <span class="com">// 推理请求比普通 API 慢得多,超时要给够,但也不能无限等</span>
+            <span class="punct">.</span><span class="fn">header</span><span class="punct">(</span><span class="str">"Content-Type"</span><span class="punct">,</span> <span class="str">"application/json"</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">header</span><span class="punct">(</span><span class="str">"Authorization"</span><span class="punct">,</span> <span class="str">"Bearer "</span> <span class="punct">+</span> <span class="var">apiKey</span><span class="punct">)</span>
+            <span class="punct">.</span><span class="fn">POST</span><span class="punct">(</span><span class="ty">HttpRequest</span><span class="punct">.</span><span class="ty">BodyPublishers</span><span class="punct">.</span><span class="fn">ofString</span><span class="punct">(</span><span class="var">requestBody</span><span class="punct">))</span>
+            <span class="punct">.</span><span class="fn">build</span><span class="punct">();</span>
+
+        <span class="kw">return</span> <span class="fn">sendWithRetry</span><span class="punct">(</span><span class="var">req</span><span class="punct">,</span> <span class="num">3</span><span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="kw">private</span> <span class="ty">String</span> <span class="fn">sendWithRetry</span><span class="punct">(</span><span class="ty">HttpRequest</span> <span class="var">req</span><span class="punct">,</span> <span class="kw">int</span> <span class="var">maxRetries</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">int</span> <span class="var">attempt</span> <span class="punct">=</span> <span class="num">0</span><span class="punct">;</span>
+        <span class="kw">while</span> <span class="punct">(</span><span class="kw">true</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="kw">try</span> <span class="punct">{</span>
+                <span class="ty">HttpResponse</span><span class="punct">&lt;</span><span class="ty">String</span><span class="punct">&gt;</span> <span class="var">resp</span> <span class="punct">=</span> <span class="var">http</span><span class="punct">.</span><span class="fn">send</span><span class="punct">(</span><span class="var">req</span><span class="punct">,</span> <span class="ty">HttpResponse</span><span class="punct">.</span><span class="ty">BodyHandlers</span><span class="punct">.</span><span class="fn">ofString</span><span class="punct">());</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">resp</span><span class="punct">.</span><span class="fn">statusCode</span><span class="punct">()</span> <span class="punct">==</span> <span class="num">200</span><span class="punct">)</span> <span class="punct">{</span>
+                    <span class="kw">return</span> <span class="ty">Json</span><span class="punct">.</span><span class="fn">extractString</span><span class="punct">(</span><span class="var">resp</span><span class="punct">.</span><span class="fn">body</span><span class="punct">(),</span> <span class="str">"content"</span><span class="punct">);</span>
+                <span class="punct">}</span>
+                <span class="com">// 429(被限流)和 5xx(对方服务端临时故障)值得重试;4xx 参数错误重试没有意义,直接暴露问题</span>
+                <span class="kw">if</span> <span class="punct">(</span><span class="var">resp</span><span class="punct">.</span><span class="fn">statusCode</span><span class="punct">()</span> <span class="punct">==</span> <span class="num">429</span> <span class="punct">||</span> <span class="var">resp</span><span class="punct">.</span><span class="fn">statusCode</span><span class="punct">()</span> <span class="punct">&gt;=</span> <span class="num">500</span><span class="punct">)</span> <span class="punct">{</span>
+                    <span class="kw">if</span> <span class="punct">(++</span><span class="var">attempt</span> <span class="punct">&gt;</span> <span class="var">maxRetries</span><span class="punct">)</span> <span class="punct">{</span>
+                        <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">RuntimeException</span><span class="punct">(</span><span class="str">"LLM 调用重试耗尽: HTTP "</span> <span class="punct">+</span> <span class="var">resp</span><span class="punct">.</span><span class="fn">statusCode</span><span class="punct">());</span>
+                    <span class="punct">}</span>
+                    <span class="com">// 指数退避:第 1 次等 1s,第 2 次 2s,第 3 次 4s —— 避免在对方限流窗口内继续加压,让情况更糟</span>
+                    <span class="ty">Thread</span><span class="punct">.</span><span class="fn">sleep</span><span class="punct">(</span><span class="num">1000L</span> <span class="punct">&lt;&lt;</span> <span class="punct">(</span><span class="var">attempt</span> <span class="punct">-</span> <span class="num">1</span><span class="punct">));</span>
+                    <span class="kw">continue</span><span class="punct">;</span>
+                <span class="punct">}</span>
+                <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">RuntimeException</span><span class="punct">(</span><span class="str">"LLM 调用失败,不可重试: HTTP "</span> <span class="punct">+</span> <span class="var">resp</span><span class="punct">.</span><span class="fn">statusCode</span><span class="punct">());</span>
+            <span class="punct">}</span> <span class="kw">catch</span> <span class="punct">(</span><span class="ty">IOException</span> <span class="punct">|</span> <span class="ty">InterruptedException</span> <span class="var">e</span><span class="punct">)</span> <span class="punct">{</span>
+                <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">RuntimeException</span><span class="punct">(</span><span class="str">"LLM 调用异常"</span><span class="punct">,</span> <span class="var">e</span><span class="punct">);</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <div class="callout warn">
+    <strong>这里还有意简化了一处:</strong><code>Json.extractString(body, "content")</code> 假设响应体里 <code>content</code> 字段是唯一的、
+    格式扁平的。真实的 Chat Completions 响应是嵌套结构(<code>choices[0].message.content</code>),用正则硬取字段名在这种场景下能凑合工作,
+    但严格来说不安全——如果换一个把 <code>content</code> 作为其他字段值的接口就会取错。这也是"极简 JSON 工具"的边界所在,
+    真实项目请换成 Jackson/Gson 这类做过完整测试的解析库。
+  </div>
+
   <h2>跑一遍完整流程</h2>
-  <p>假设 <code>callLLM</code> 真的接了模型,一次典型的运行过程会是这样:</p>
+  <p>把前面几步组装起来,一个真实可编译的 <code>main</code> 方法长这样(设置好 <code>LLM_API_KEY</code> 环境变量后可以直接运行):</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Main.java</span><span>组装并运行</span></div>
+    <pre><span class="kw">import</span> <span class="ty">java.util.List</span><span class="punct">;</span>
+
+<span class="kw">public</span> <span class="kw">class</span> <span class="ty">Main</span> <span class="punct">{</span>
+    <span class="kw">public</span> <span class="kw">static</span> <span class="kw">void</span> <span class="fn">main</span><span class="punct">(</span><span class="ty">String</span><span class="punct">[]</span> <span class="var">args</span><span class="punct">)</span> <span class="punct">{</span>
+        <span class="ty">Agent</span> <span class="var">agent</span> <span class="punct">=</span> <span class="kw">new</span> <span class="fn">Agent</span><span class="punct">(</span><span class="ty">List</span><span class="punct">.</span><span class="fn">of</span><span class="punct">(</span><span class="kw">new</span> <span class="fn">WeatherTool</span><span class="punct">()),</span> <span class="kw">new</span> <span class="fn">LlmClient</span><span class="punct">());</span>
+        <span class="ty">System</span><span class="punct">.</span><span class="var">out</span><span class="punct">.</span><span class="fn">println</span><span class="punct">(</span><span class="var">agent</span><span class="punct">.</span><span class="fn">run</span><span class="punct">(</span><span class="str">"北京今天天气怎么样,要不要带伞"</span><span class="punct">));</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>一次典型的运行过程会是这样:</p>
   <div class="tree">
     <span class="hi">Step 1</span> 模型看到目标"北京今天天气怎么样,要不要带伞",输出<br>
-    &nbsp;&nbsp;<span class="hi">Action: get_weather(北京)</span><br>
-    &nbsp;&nbsp;→ Agent 调用 WeatherTool,得到 "北京 今天有雨,18℃"<br>
-    &nbsp;&nbsp;→ 写入 history: <span class="hi">Observation: 北京 今天有雨,18℃</span><br><br>
+    &nbsp;&nbsp;<span class="hi">Action: get_weather(Beijing)</span><br>
+    &nbsp;&nbsp;→ Agent 调用 WeatherTool,真实请求 Open-Meteo,得到 "Beijing 当前气温 16.2℃"<br>
+    &nbsp;&nbsp;→ 写入 history: <span class="hi">Observation: Beijing 当前气温 16.2℃</span><br><br>
     <span class="hi">Step 2</span> 模型看到 history 里已经有天气数据,输出<br>
-    &nbsp;&nbsp;<span class="hi">Final Answer: 北京今天有雨,18℃,建议带伞</span><br>
+    &nbsp;&nbsp;<span class="hi">Final Answer: 北京当前气温 16.2℃,建议穿薄外套,暂时不需要带伞</span><br>
     &nbsp;&nbsp;→ 循环检测到 Final Answer,直接返回结果,结束
   </div>
   <p>
@@ -275,9 +426,9 @@
   <h2>手写之后回头看框架</h2>
   <div class="callout tip">
     <strong>写完这个最小实现,再回头看 LangChain / LangGraph 这类框架,会发现它们的核心骨架其实就是这里的 <code>run()</code> 循环</strong>——
-    Prompt 拼接、Action 解析、工具路由、历史管理这几件事框架都做了,只是做得更完善:用 Function Calling 替代脆弱的字符串匹配、
-    内置了几十种现成工具(搜索、代码执行、文件读写)、有更完整的错误重试和流式输出支持。理解了这个最小循环,
-    再学框架就不是"记 API",而是"认出它在哪一步做了什么增强",这一点在对比框架选型取舍时会更有体感。
+    只是做得更完善:用 <strong>Function Calling</strong>(结构化 JSON)替代这里脆弱的正则字符串匹配、内置了几十种现成工具(搜索、代码执行、文件读写)、
+    重试策略比这里的固定指数退避更精细(区分不同错误类型、支持熔断)、还有流式输出支持(边生成边展示,而不是等一整轮推理完才拿到结果)。
+    理解了这个最小循环再学框架,就不是"记 API",而是"认出它在哪一步做了什么增强",这一点在对比框架选型取舍时会更有体感。
   </div>
 
   <hr />

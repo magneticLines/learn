@@ -78,37 +78,72 @@
     模型可以直接写 <code>if/for</code> 而不必受限于简单的文本协议。
   </p>
 
-  <h2>精简示例代码</h2>
+  <h2>真实可跑的示例代码</h2>
+  <p>
+    下面这份代码基于 smolagents 的公开 API(<code>@tool</code> 装饰器 + <code>CodeAgent</code>),没有用 mock 数据——
+    <code>get_weather</code> 真的会去请求 <strong>Open-Meteo</strong>(免费、无需 API Key 的天气服务),先按城市名做地理编码拿到经纬度,
+    再查当前气温。只要装好依赖、配置好模型的 API Key,这份代码可以直接跑起来。
+  </p>
   <div class="code-block">
-    <div class="cb-header"><span>weather_agent.py</span><span>smolagents 风格</span></div>
-    <pre><span class="kw">from</span> <span class="var">smolagents</span> <span class="kw">import</span> <span class="fn">CodeAgent</span><span class="punct">,</span> <span class="fn">tool</span>
+    <div class="cb-header"><span>weather_agent.py</span><span>smolagents(真实 API)</span></div>
+    <pre><span class="com"># 依赖: pip install smolagents requests</span>
+<span class="kw">import</span> <span class="var">os</span>
+<span class="kw">import</span> <span class="var">requests</span>
+<span class="kw">from</span> <span class="var">smolagents</span> <span class="kw">import</span> <span class="fn">CodeAgent</span><span class="punct">,</span> <span class="fn">tool</span><span class="punct">,</span> <span class="fn">OpenAIModel</span>
 
 <span class="ann">@tool</span>
 <span class="kw">def</span> <span class="fn">get_weather</span><span class="punct">(</span><span class="var">city</span><span class="punct">:</span> <span class="ty">str</span><span class="punct">)</span> <span class="punct">-></span> <span class="ty">str</span><span class="punct">:</span>
-    <span class="str">"""查询指定城市今天的天气。
+    <span class="str">"""查询指定城市当前气温(数据源: Open-Meteo,免费无需 Key)。
 
     Args:
-        city: 城市名,例如 "北京"
+        city: 城市名,建议用英文拼写以提高地理编码命中率,例如 "Beijing"
     """</span>
-    <span class="com"># mock 数据代替真实天气 API 调用,重点是让 Agent 跑通整个流程</span>
-    <span class="com"># 真实项目里把这里换成 requests.get(weather_api_url) 即可,工具签名不用变</span>
-    <span class="var">mock_data</span> <span class="punct">=</span> <span class="punct">{</span><span class="str">"北京"</span><span class="punct">:</span> <span class="str">"晴,25℃"</span><span class="punct">,</span> <span class="str">"上海"</span><span class="punct">:</span> <span class="str">"小雨,18℃"</span><span class="punct">}</span>
-    <span class="kw">return</span> <span class="var">mock_data</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="var">city</span><span class="punct">,</span> <span class="str">"晴,20℃"</span><span class="punct">)</span>
+    <span class="com"># smolagents 对 docstring 的 Args 段有硬性要求——它会被原样解析成</span>
+    <span class="com"># 喂给模型的参数说明,写得含糊,模型传参出错的概率就越高</span>
+    <span class="var">geo</span> <span class="punct">=</span> <span class="var">requests</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span>
+        <span class="str">"https://geocoding-api.open-meteo.com/v1/search"</span><span class="punct">,</span>
+        <span class="var">params</span><span class="punct">={</span><span class="str">"name"</span><span class="punct">:</span> <span class="var">city</span><span class="punct">,</span> <span class="str">"count"</span><span class="punct">:</span> <span class="num">1</span><span class="punct">},</span>
+        <span class="var">timeout</span><span class="punct">=</span><span class="num">5</span><span class="punct">,</span>
+    <span class="punct">).</span><span class="fn">json</span><span class="punct">()</span>
+    <span class="kw">if</span> <span class="kw">not</span> <span class="var">geo</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span><span class="str">"results"</span><span class="punct">):</span>
+        <span class="com"># 工具执行失败不能让整个 Agent 崩掉,把原因当作正常返回值交回给模型</span>
+        <span class="com"># 模型看到这句话,大概率会自己决定换个拼写或者告知用户查询失败</span>
+        <span class="kw">return</span> <span class="kw">f</span><span class="str">"找不到城市: {city},请确认拼写"</span>
 
-<span class="com"># CodeAgent 内部就是一个和上一篇 Java 版本类似的循环:</span>
-<span class="com"># 拼 Prompt → 调用 LLM → 模型这次直接生成 Python 代码 → 执行代码拿到结果 → 判断是否结束</span>
-<span class="com"># 但这一切都被框架封装掉了,你只需要声明"有哪些工具"和"任务目标"</span>
-<span class="var">agent</span> <span class="punct">=</span> <span class="fn">CodeAgent</span><span class="punct">(</span><span class="var">tools</span><span class="punct">=[</span><span class="var">get_weather</span><span class="punct">],</span> <span class="var">model</span><span class="punct">=</span><span class="var">default_model</span><span class="punct">)</span>
+    <span class="var">lat</span> <span class="punct">=</span> <span class="var">geo</span><span class="punct">[</span><span class="str">"results"</span><span class="punct">][</span><span class="num">0</span><span class="punct">][</span><span class="str">"latitude"</span><span class="punct">]</span>
+    <span class="var">lon</span> <span class="punct">=</span> <span class="var">geo</span><span class="punct">[</span><span class="str">"results"</span><span class="punct">][</span><span class="num">0</span><span class="punct">][</span><span class="str">"longitude"</span><span class="punct">]</span>
+
+    <span class="var">weather</span> <span class="punct">=</span> <span class="var">requests</span><span class="punct">.</span><span class="fn">get</span><span class="punct">(</span>
+        <span class="str">"https://api.open-meteo.com/v1/forecast"</span><span class="punct">,</span>
+        <span class="var">params</span><span class="punct">={</span><span class="str">"latitude"</span><span class="punct">:</span> <span class="var">lat</span><span class="punct">,</span> <span class="str">"longitude"</span><span class="punct">:</span> <span class="var">lon</span><span class="punct">,</span> <span class="str">"current"</span><span class="punct">:</span> <span class="str">"temperature_2m"</span><span class="punct">},</span>
+        <span class="var">timeout</span><span class="punct">=</span><span class="num">5</span><span class="punct">,</span>
+    <span class="punct">).</span><span class="fn">json</span><span class="punct">()</span>
+    <span class="var">temp</span> <span class="punct">=</span> <span class="var">weather</span><span class="punct">[</span><span class="str">"current"</span><span class="punct">][</span><span class="str">"temperature_2m"</span><span class="punct">]</span>
+    <span class="kw">return</span> <span class="kw">f</span><span class="str">"{city} 当前气温 {temp}摄氏度"</span>
+
+
+<span class="com"># OpenAIModel 是 smolagents 内置的模型封装之一,对接任意 OpenAI 兼容接口</span>
+<span class="com"># API Key 从环境变量读取,绝不写死在代码里——这一点无论 Java 还是 Python 都一样</span>
+<span class="var">model</span> <span class="punct">=</span> <span class="fn">OpenAIModel</span><span class="punct">(</span><span class="var">model_id</span><span class="punct">=</span><span class="str">"gpt-4o-mini"</span><span class="punct">,</span> <span class="var">api_key</span><span class="punct">=</span><span class="var">os</span><span class="punct">.</span><span class="var">environ</span><span class="punct">[</span><span class="str">"LLM_API_KEY"</span><span class="punct">])</span>
+
+<span class="com"># max_steps 就是"开发核心"一节反复强调的死循环护栏,框架已经内置,不用自己写</span>
+<span class="var">agent</span> <span class="punct">=</span> <span class="fn">CodeAgent</span><span class="punct">(</span><span class="var">tools</span><span class="punct">=[</span><span class="var">get_weather</span><span class="punct">],</span> <span class="var">model</span><span class="punct">=</span><span class="var">model</span><span class="punct">,</span> <span class="var">max_steps</span><span class="punct">=</span><span class="num">5</span><span class="punct">)</span>
 
 <span class="var">result</span> <span class="punct">=</span> <span class="var">agent</span><span class="punct">.</span><span class="fn">run</span><span class="punct">(</span><span class="str">"北京今天穿什么合适"</span><span class="punct">)</span>
 <span class="fn">print</span><span class="punct">(</span><span class="var">result</span><span class="punct">)</span>
-<span class="com"># 输出类似: "北京今天晴,25℃,建议穿短袖、薄外套,注意防晒"</span></pre>
+<span class="com"># 输出类似: "北京当前气温 16.2摄氏度,建议穿薄外套或长袖"</span></pre>
   </div>
 
   <div class="callout info">
-    <strong>这里做了简化:</strong><code>get_weather</code> 用一个写死的字典 mock 数据,代替真实天气 API 调用;
-    <code>default_model</code> 也省略了具体的模型初始化细节(真实项目里是接一个具体的 LLM,比如通过 <code>InferenceClientModel</code> 或
-    OpenAI 兼容接口)。这些都是为了让示例聚焦在"Agent 怎么组织"这件事上,替换成真实调用只是改几行配置,不影响整体结构。
+    <strong>CodeAgent 运行时实际发生了什么:</strong>模型不会直接输出"调用 get_weather"这样的约定文本,而是被要求<strong>直接生成一段 Python 代码</strong>,
+    大致相当于 <code>print(get_weather("Beijing"))</code>;smolagents 在一个受限的 Python 解释器里执行这段代码,把 <code>print</code> 输出的内容当作
+    Observation 喂回给模型,模型再决定是否要生成新一轮代码或者直接给出最终答案。这就是"框架生态"一节提到的
+    <strong>Code Agent</strong> 范式,比传统 Function Calling 更自然地支持"先查天气,再判断温度区间,再拼穿衣建议"这种带条件逻辑的多步操作。
+  </div>
+  <div class="callout warn">
+    <strong>安全提醒:</strong>执行模型生成的代码存在风险(模型可能写出访问文件系统、发起意外网络请求的代码),
+    smolagents 默认会限制可用的内置函数和模块;生产环境如果开放给不受信任的用户输入,建议参考"OpenHands 源码拆解"一节讲的
+    <strong>Docker 沙箱隔离</strong>思路,把执行环境完全隔离出去,而不是依赖语言层面的沙箱。
   </div>
 
   <h2>和上一篇 Java 版本对比</h2>
