@@ -89,24 +89,37 @@
     OpenAI 的 Codex CLI(开源,Apache 2.0)最值得学的设计,是把<strong>沙箱(sandbox)</strong>和<strong>审批策略(approval policy)</strong>
     做成两个独立的控制维度,而不是混成一个"允许/不允许"的开关:
   </p>
-  <table>
-    <thead><tr><th>维度</th><th>作用</th></tr></thead>
-    <tbody>
-      <tr><td><strong>沙箱模式</strong>(如 <code>workspace-write</code> / <code>danger-full-access</code>)</td>
-        <td>定义技术边界——Agent 能碰哪些文件、命令能不能访问网络,这是"能力上限"</td></tr>
-      <tr><td><strong>审批策略</strong></td>
-        <td>定义流程边界——即使技术上允许,遇到某类操作时是否要先停下来等人确认,这是"流程闸门"</td></tr>
-    </tbody>
-  </table>
+  <p>下面两组枚举取自 <code>openai/codex</code> 仓库真实的 Rust 源码(<code>codex-rs/protocol/src/config_types.rs</code>),而不是转述:</p>
+  <div class="code-block">
+    <div class="cb-header"><span>config_types.rs</span><span>rust · 节选自真实源码</span></div>
+    <pre><span class="com">// 沙箱模式:定义"能力上限"——Agent 技术上能碰到什么</span>
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ty">SandboxMode</span> <span class="punct">{</span>
+    <span class="ty">ReadOnly</span><span class="punct">,</span>          <span class="com">// "read-only",默认值:只能读,不能写、不能联网</span>
+    <span class="ty">WorkspaceWrite</span><span class="punct">,</span>    <span class="com">// "workspace-write":可以在工作目录内读写、执行常规命令</span>
+    <span class="ty">DangerFullAccess</span><span class="punct">,</span>  <span class="com">// "danger-full-access":不设限制,仅在明确需要时使用</span>
+<span class="punct">}</span>
+
+<span class="com">// 审批策略:定义"流程闸门"——技术上允许,但要不要先停下来问一声</span>
+<span class="kw">type</span> <span class="ty">AskForApproval</span> <span class="punct">=</span> <span class="str">"untrusted"</span> <span class="punct">|</span> <span class="str">"on-request"</span> <span class="punct">|</span> <span class="str">"never"</span>
+    <span class="punct">|</span> <span class="punct">{</span> <span class="var">granular</span><span class="punct">:</span> <span class="punct">{</span> <span class="var">sandbox_approval</span><span class="punct">,</span> <span class="var">rules</span><span class="punct">,</span> <span class="var">skill_approval</span><span class="punct">,</span> <span class="var">request_permissions</span><span class="punct">,</span> <span class="var">mcp_elicitations</span> <span class="punct">}</span> <span class="punct">};</span></pre>
+  </div>
   <p>
-    默认的 <code>workspace-write</code> 模式下,命令执行默认禁用网络访问、文件操作被限定在当前目录树内——这和"OpenHands 拆解"Tab 讲的
+    真实的默认沙箱模式是 <strong><code>read-only</code></strong>(比很多资料里说的"默认 workspace-write"更保守),
+    命令执行默认禁用网络访问、文件操作被限定在当前目录树内——这和"OpenHands 拆解"Tab 讲的
     风险分级确认机制(<code>SecurityRisk</code> + <code>ConfirmationPolicy</code>)是同一类设计思路的不同实现:<strong>不是让 Agent 自证清白,
     而是无论 Agent 怎么决策,外层都有一道它绕不过去的技术闸门</strong>。
   </p>
+  <div class="callout tip">
+    <strong>一个很值得记住的细节:</strong>审批请求默认路由给谁审批,也是可配置的——<code>ApprovalsReviewer</code> 除了默认的
+    <code>User</code>(人工审批),还支持 <code>AutoReview</code>:官方注释原文是"uses a carefully prompted subagent to gather relevant
+    context and apply a risk-based decision framework before approving or denying the request"(用一个精心设计 Prompt 的子代理,
+    收集上下文并套用风险决策框架,来决定批准还是拒绝)。也就是说<strong>连"要不要批准这个危险操作"这件事,都可以交给另一个 Agent 去做风险评估</strong>——
+    这是"用 AI 审查 AI"这个模式在真实生产系统里的具体落地,和"如何使用 Agent"Tab 里"让另一个视角复查"的建议是同一个思路。
+  </div>
   <div class="callout info">
-    <strong>架构演进也值得一看:</strong>Codex CLI 正在从 TypeScript 实现迁移到 Rust 原生实现,原因是 Rust 版本没有运行时 GC 停顿、性能更可控,
-    同时定义了一套"线协议(wire protocol)"允许用 TypeScript/Python/MCP 等不同语言扩展 Agent 行为——这和 OpenHands 用标准化 Action/Observation 协议解耦
-    Agent 与 Runtime 是同一个道理:协议标准化之后,底层实现语言反而成了可以自由替换的细节。
+    <strong>架构演进也值得一看:</strong>Codex CLI 的实现语言已经从 TypeScript 迁移成了 Rust(仓库里的真实目录就叫 <code>codex-rs</code>),
+    原因是 Rust 版本没有运行时 GC 停顿、性能更可控,同时定义了一套"线协议(wire protocol)"允许用不同语言扩展 Agent 行为——
+    这和 OpenHands 用标准化 Action/Observation 协议解耦 Agent 与 Runtime 是同一个道理:协议标准化之后,底层实现语言反而成了可以自由替换的细节。
   </div>
 
   <h2>OpenCode:客户端/服务端分离 + 编译器真实反馈闭环</h2>
