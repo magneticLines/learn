@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · 第一个 Netty 程序:EchoServer 与 EchoClient</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fb923c; border: 1px solid #9a3412; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fb923c; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fb923c; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fb923c; border-color: #9a3412; } .nav-btn.next:hover { background: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 核心概念与架构 / 第一个 Netty 程序</div>
+  <div class="hero">
+    <div class="tag">Netty · 核心概念与架构</div>
+    <h1>第一个 Netty 程序:EchoServer 与 EchoClient</h1>
+    <p>跑通一个最简单的回显服务,把上一篇讲的抽象概念(事件驱动、Channel)对应到具体代码上。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 2 章「你的第一个 Netty 应用」 · 🔧 配套:<a href="https://github.com/sanshengshui/netty-learning-example" target="_blank" rel="noopener">netty-learning-example/netty-helloworld</a></p>
+  </div>
+
+  <h2>一、服务端:ServerBootstrap 组装启动流程</h2>
+  <p>Netty 的服务端搭建遵循一套固定套路:准备两组线程(<code>EventLoopGroup</code>)、用 <code>ServerBootstrap</code> 把各个组件"装配"起来、最后绑定端口启动。先看完整代码,再逐行拆解每个组件在干什么。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>EchoServer.java</span></div>
+    <pre><span class="ty">EventLoopGroup</span> bossGroup = <span class="kw">new</span> <span class="ty">NioEventLoopGroup</span>(<span class="nu">1</span>);   <span class="cm">// 只负责 accept 新连接</span>
+<span class="ty">EventLoopGroup</span> workerGroup = <span class="kw">new</span> <span class="ty">NioEventLoopGroup</span>();  <span class="cm">// 负责已建立连接的读写与业务处理</span>
+<span class="kw">try</span> {
+    <span class="ty">ServerBootstrap</span> b = <span class="kw">new</span> <span class="ty">ServerBootstrap</span>();
+    b.<span class="fn">group</span>(bossGroup, workerGroup)
+     .<span class="fn">channel</span>(<span class="ty">NioServerSocketChannel</span>.<span class="kw">class</span>)      <span class="cm">// 服务端用哪种 Channel 实现</span>
+     .<span class="fn">childHandler</span>(<span class="kw">new</span> <span class="ty">ChannelInitializer</span>&lt;<span class="ty">SocketChannel</span>&gt;() {
+         <span class="kw">protected void</span> <span class="fn">initChannel</span>(<span class="ty">SocketChannel</span> ch) {
+             ch.<span class="fn">pipeline</span>().<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">EchoServerHandler</span>());
+         }
+     });
+    <span class="ty">ChannelFuture</span> f = b.<span class="fn">bind</span>(<span class="nu">8080</span>).<span class="fn">sync</span>();  <span class="cm">// 绑定端口,同步等待启动完成</span>
+    f.<span class="fn">channel</span>().<span class="fn">closeFuture</span>().<span class="fn">sync</span>();     <span class="cm">// 阻塞主线程,直到服务端关闭</span>
+} <span class="kw">finally</span> {
+    bossGroup.<span class="fn">shutdownGracefully</span>();
+    workerGroup.<span class="fn">shutdownGracefully</span>();
+}</pre>
+  </div>
+  <table>
+    <tr><th>组件</th><th>职责</th></tr>
+    <tr><td><code>bossGroup</code></td><td>专职处理 <code>accept</code> 事件——有新连接进来时,负责接收并把它"甩给" workerGroup。通常只需要 1 个线程,因为 accept 本身很轻量。</td></tr>
+    <tr><td><code>workerGroup</code></td><td>负责已建立连接的实际 IO 读写和业务处理,默认线程数是 CPU 核数 × 2。</td></tr>
+    <tr><td><code>ServerBootstrap</code></td><td>一个"建造者",把 EventLoopGroup、Channel 类型、业务 Handler 这些零件组装起来,最后调用 <code>bind()</code> 才真正启动。</td></tr>
+    <tr><td><code>ChannelInitializer</code></td><td>每当有新连接建立,就会被调用一次,用来给这条新连接的 <code>pipeline</code> 装上业务 Handler——它本身执行完就会自动从 pipeline 移除,不会重复触发。</td></tr>
+  </table>
+  <div class="callout tip"><strong>类比:</strong>bossGroup 就像餐厅门口的迎宾,只负责把客人领进来分配到某张桌子,不负责点单上菜;workerGroup 就像各桌的服务员,真正处理这一桌接下来的所有交互。这种"接待"与"服务"分离的模型,就是后面要讲的<strong>主从 Reactor 线程模型</strong>的雏形。</div>
+
+  <h2>二、业务处理:ChannelHandler 里写什么</h2>
+  <p>真正的业务逻辑写在 <code>ChannelHandler</code> 里。Netty 的 IO 事件(连接建立、收到数据、连接断开、异常)都会经过 <code>ChannelPipeline</code> 依次传给注册在里面的 Handler。回显服务的逻辑很简单:收到什么就原样发回去。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>EchoServerHandler.java</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">EchoServerHandler</span> <span class="kw">extends</span> <span class="ty">ChannelInboundHandlerAdapter</span> {
+    <span class="kw">public void</span> <span class="fn">channelRead</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">Object</span> msg) {
+        ctx.<span class="fn">write</span>(msg);   <span class="cm">// 写入出站缓冲区,但还没真正发到网络上</span>
+        ctx.<span class="fn">flush</span>();      <span class="cm">// 把缓冲区里的数据真正冲刷到 Socket</span>
+    }
+    <span class="kw">public void</span> <span class="fn">exceptionCaught</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">Throwable</span> cause) {
+        cause.<span class="fn">printStackTrace</span>();
+        ctx.<span class="fn">close</span>();       <span class="cm">// 出异常时主动关闭连接,避免连接泄漏</span>
+    }
+}</pre>
+  </div>
+  <div class="callout warn"><strong>常见坑 1:只 write 不 flush。</strong><code>write()</code> 只是把数据放进了 Netty 内部的出站缓冲区,并不会立刻发送——真正触发系统调用把数据写到 Socket 的是 <code>flush()</code>。忘记调用 <code>flush()</code>,客户端就永远收不到回包,而且现象很隐蔽,不会报错,只是"卡住"。日常写法建议直接用 <code>ctx.writeAndFlush(msg)</code> 一步到位。</div>
+  <div class="callout warn"><strong>常见坑 2:忘记处理 exceptionCaught 导致连接泄漏。</strong>如果 Handler 抛出未捕获异常又没有覆写 <code>exceptionCaught</code>,Netty 默认只是打一条日志,<strong>不会自动关闭连接</strong>——这条连接会一直占着资源却再也不能正常工作。生产代码里 <code>exceptionCaught</code> 几乎是必写项。</div>
+
+  <h2>三、客户端:Bootstrap 与服务端的镜像结构</h2>
+  <p>客户端的搭建代码和服务端高度对称,区别只是不需要"accept"这个环节,因此只用一个 <code>EventLoopGroup</code>,用 <code>Bootstrap</code>(不带 Server 前缀)而不是 <code>ServerBootstrap</code>,并调用 <code>connect()</code> 而不是 <code>bind()</code>。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>EchoClient.java(核心片段)</span></div>
+    <pre><span class="ty">EventLoopGroup</span> group = <span class="kw">new</span> <span class="ty">NioEventLoopGroup</span>();
+<span class="kw">try</span> {
+    <span class="ty">Bootstrap</span> b = <span class="kw">new</span> <span class="ty">Bootstrap</span>();
+    b.<span class="fn">group</span>(group)
+     .<span class="fn">channel</span>(<span class="ty">NioSocketChannel</span>.<span class="kw">class</span>)
+     .<span class="fn">handler</span>(<span class="kw">new</span> <span class="ty">ChannelInitializer</span>&lt;<span class="ty">SocketChannel</span>&gt;() {
+         <span class="kw">protected void</span> <span class="fn">initChannel</span>(<span class="ty">SocketChannel</span> ch) {
+             ch.<span class="fn">pipeline</span>().<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">EchoClientHandler</span>());
+         }
+     });
+    <span class="ty">ChannelFuture</span> f = b.<span class="fn">connect</span>(<span class="st">"localhost"</span>, <span class="nu">8080</span>).<span class="fn">sync</span>();
+    f.<span class="fn">channel</span>().<span class="fn">closeFuture</span>().<span class="fn">sync</span>();
+} <span class="kw">finally</span> {
+    group.<span class="fn">shutdownGracefully</span>();
+}</pre>
+  </div>
+
+  <h2>四、跟着开源项目动手跑一遍</h2>
+  <p>光看代码片段建立不起真实的手感。配套仓库 <a href="https://github.com/sanshengshui/netty-learning-example" target="_blank" rel="noopener">netty-learning-example</a> 的 <code>netty-helloworld</code> 模块就是这个例子的完整可运行版本,建议动手做这几件事:</p>
+  <ul>
+    <li>clone 下来直接跑通,用 <code>telnet localhost 8080</code> 手动发几行字,观察是否原样回显。</li>
+    <li>故意注释掉 <code>flush()</code>,重新观察现象——验证"常见坑 1"里说的"卡住但不报错"。</li>
+    <li>在 <code>channelRead</code> 里手动抛一个 <code>RuntimeException</code>,不写 <code>exceptionCaught</code>,观察连接是否真的没有被关闭(可以用 <code>netstat</code> 查连接状态)。</li>
+  </ul>
+  <div class="callout info"><strong>为什么要这么折腾:</strong>这几个"故意搞坏"的实验,正是为了把上面两条陷阱从"我知道有这么回事"变成"我亲眼见过这个坑"——后者才是真正能在排查线上问题时派上用场的记忆。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>服务端套路:<code>bossGroup</code>(accept) + <code>workerGroup</code>(IO/业务) + <code>ServerBootstrap</code> 组装 + <code>bind()</code>。</li>
+    <li>客户端套路:单个 <code>EventLoopGroup</code> + <code>Bootstrap</code> + <code>connect()</code>,结构与服务端对称。</li>
+    <li>业务逻辑写在 <code>ChannelHandler</code> 里,通过 <code>ChannelPipeline</code> 按顺序被调用。</li>
+    <li>两个高频坑:忘记 <code>flush()</code> 导致数据发不出去;不写 <code>exceptionCaught</code> 导致异常连接不会被关闭。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>为什么需要 Netty:</strong>本篇的 <code>bossGroup</code>/<code>workerGroup</code> 拆分,正是上一篇讲的"用少量线程处理海量连接"思想的直接落地——accept 和 IO 处理各自用专门的 <code>EventLoopGroup</code>,而不是像 BIO 那样一个连接开一个线程。</li>
+    <li><strong>Channel / EventLoop / ChannelFuture(下一篇):</strong>这里出现的 <code>ChannelFuture.sync()</code>、<code>SocketChannel</code> 都是下一篇要拆解的核心接口,本篇先建立"它们组合起来长什么样"的直觉,下一篇再深入"每个接口单独负责什么"。</li>
+    <li><strong>Java 并发编程里的 try-finally 资源释放:</strong><code>shutdownGracefully()</code> 放在 <code>finally</code> 里是一种资源释放的通用范式,和 <a href="../../02-并发/exec/05-拒绝策略.html">线程池优雅关闭</a> 的思路是一致的——都要考虑"正在执行中的任务如何收尾"而不是粗暴 kill。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./01-为什么需要Netty从BIO到NIO再到Netty.html" class="nav-btn">← 上一篇:为什么需要 Netty</a>
+    <a href="./03-Channel-EventLoop-ChannelFuture三大核心接口.html" class="nav-btn next">下一篇:三大核心接口 →</a>
+  </div>
+</div>
+</body>
+</html>

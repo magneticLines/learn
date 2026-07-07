@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · ChannelHandler 与 ChannelPipeline 职责链</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #14532d; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #14532d; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 核心组件与线程模型 / ChannelHandler 与 Pipeline</div>
+  <div class="hero">
+    <div class="tag">Netty · 核心组件与线程模型</div>
+    <h1>ChannelHandler 与 ChannelPipeline 职责链</h1>
+    <p>为什么 Netty 里的编解码、业务逻辑、异常处理要拆成一个个独立的 Handler,而不是写在一个大方法里?</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 6 章「ChannelHandler 和 ChannelPipeline」</p>
+  </div>
+
+  <h2>一、ChannelPipeline:每条连接自带的一条流水线</h2>
+  <p>每个 <code>Channel</code> 创建时都会自动配备一个属于自己的 <code>ChannelPipeline</code>——本质上是一个由 <code>ChannelHandler</code> 组成的双向链表。一个数据包从网络进来,要依次经过 pipeline 里注册的一系列 <strong>入站(Inbound)Handler</strong> 处理(解码、业务逻辑);反过来,业务要发送数据出去,则依次经过一系列 <strong>出站(Outbound)Handler</strong> 处理(编码、加密)。这正是经典的<strong>职责链设计模式</strong>——每个 Handler 只关心自己那一小段职责,处理完决定"是否继续往下传"。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>装配一条 Pipeline</span></div>
+    <pre>ch.<span class="fn">pipeline</span>()
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">FrameDecoder</span>())      <span class="cm">// 入站:先解决拆包问题</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">ProtocolDecoder</span>())   <span class="cm">// 入站:再把字节解析成业务对象</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">BusinessHandler</span>())    <span class="cm">// 入站:业务逻辑</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">ProtocolEncoder</span>());  <span class="cm">// 出站:把响应对象编码回字节</span></pre>
+  </div>
+  <div class="callout tip"><strong>类比:</strong>Pipeline 就像工厂里的流水线——原材料(字节流)从一端进来,依次经过拆箱工位(拆包)、质检工位(解码校验)、组装工位(业务处理),最后成品(响应)从另一端出去。每个工位只做一件事,想加一道新工序(比如加个限流 Handler),只要往流水线上插一个工位,不需要改其他工位的代码。</div>
+
+  <h2>二、入站与出站:方向决定了 Pipeline 里的遍历顺序</h2>
+  <p>这是初学者最容易搞混的地方。<strong>入站事件按 addLast 的顺序从前往后遍历</strong>(模拟数据"流入"),<strong>出站事件按 addLast 的顺序从后往前遍历</strong>(模拟数据"流出")。用上面的例子:一条收到的消息会按 <code>FrameDecoder → ProtocolDecoder → BusinessHandler</code> 的顺序处理;而当 <code>BusinessHandler</code> 调用 <code>ctx.writeAndFlush()</code> 发出响应时,只会经过在它<strong>之后</strong>注册的出站 Handler(也就是 <code>ProtocolEncoder</code>),而不会重新回头经过前面的入站 Handler。</p>
+  <table>
+    <tr><th>Handler 类型</th><th>典型基类</th><th>遍历方向</th><th>职责举例</th></tr>
+    <tr><td>入站(Inbound)</td><td><code>ChannelInboundHandlerAdapter</code></td><td>从头到尾</td><td>解码、鉴权、业务处理</td></tr>
+    <tr><td>出站(Outbound)</td><td><code>ChannelOutboundHandlerAdapter</code></td><td>从尾到头</td><td>编码、加密、限流</td></tr>
+  </table>
+  <div class="callout warn"><strong>高频陷阱:Handler 添加顺序放错导致逻辑失效。</strong>如果把 <code>ProtocolDecoder</code> 加在 <code>BusinessHandler</code> 之后,那么 <code>BusinessHandler</code> 收到的还是原始字节而不是业务对象,大概率会直接抛出类型转换异常。Pipeline 的顺序不是随意的,必须和数据实际的处理先后顺序一致。</div>
+
+  <h2>三、ChannelHandlerContext:每个 Handler 与 Pipeline 之间的桥梁</h2>
+  <p>每个 <code>ChannelHandler</code> 被添加进 Pipeline 时,都会关联一个专属的 <code>ChannelHandlerContext</code>,它持有指向前一个、后一个 Handler 的引用。调用 <code>ctx.fireChannelRead(msg)</code> 会把事件传给<strong>下一个</strong>入站 Handler,而不是重新从头开始——这也是为什么想中断处理链、不再往下传,只要不调用 <code>fireChannelRead()</code> 就行。</p>
+  <div class="callout warn"><strong>另一个易错点:ctx.write() vs channel.write()。</strong><code>channel.write()</code> 会让事件从 Pipeline 的<strong>尾部</strong>开始重新走一遍所有出站 Handler;而 <code>ctx.write()</code> 只会从<strong>当前 Handler 的下一个</strong>出站 Handler 开始处理。如果你在中间某个 Handler 里想"跳过前面已经处理过的编码逻辑",用错 API 会导致数据被重复编码或者跳过了本该经过的处理环节。</div>
+
+  <h2>四、@Sharable:一个 Handler 实例能否被多个 Channel 共用</h2>
+  <p>默认情况下,建议为<strong>每个新连接创建一个新的 Handler 实例</strong>(通常在 <code>ChannelInitializer</code> 里 <code>new</code> 出来),因为很多 Handler 会保存与某条连接相关的状态(比如已经读到的半包数据)。但如果一个 Handler <strong>确实无状态</strong>(比如单纯做日志打印),可以用 <code>@Sharable</code> 注解标记后,让多个 Channel 的 Pipeline 共用同一个实例,省去重复创建的开销。</p>
+  <div class="callout warn"><strong>陷阱:给有状态的 Handler 加 @Sharable。</strong>如果一个 Handler 内部有实例字段用来记录某条连接的中间状态,却被错误地标记为 <code>@Sharable</code> 并在多个连接间共享,不同连接的数据会互相污染彼此的状态——这是一类隐蔽且难以复现的并发 bug,因为触发条件依赖多条连接的时序交织。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>ChannelPipeline 是职责链模式的应用:每条连接自带一条由 Handler 组成的双向链表,入站从头到尾、出站从尾到头。</li>
+    <li>Handler 的添加顺序必须和数据实际处理的先后顺序一致,顺序放错是最常见的入门坑。</li>
+    <li><code>ctx.write()</code> 只从当前节点往后走,<code>channel.write()</code> 会从尾部重新走一遍——两者语义不同,不能混用。</li>
+    <li>有状态的 Handler 每连接一个实例;确认无状态才能用 <code>@Sharable</code> 共享,否则会导致连接间状态污染。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>设计模式·职责链模式:</strong>ChannelPipeline 是职责链模式在网络框架里的教科书级应用,可以对照 <a href="../../03-设计模式/design-patterns-roadmap.html">设计模式</a> 模块里职责链模式的通用定义,理解 Netty 是如何把这个模式和"入站/出站双向遍历"结合起来的。</li>
+    <li><strong>Servlet 的 Filter 链:</strong>Java Web 开发里 <a href="../../07-Spring/web/07-全局异常处理.html">Filter/拦截器链</a> 和 ChannelPipeline 是同一种思路——把横切关注点(鉴权、日志、编解码)拆成独立、可插拔的处理单元,而不是耦合在业务代码里。</li>
+    <li><strong>线程封闭(承接 03):</strong>本篇的 Handler 之所以经常"每连接一个实例",本质上是在利用前面讲过的"一个 Channel 终身绑定一个 EventLoop"这条规则——既然同一 Channel 的处理是单线程串行的,Handler 内部的状态字段自然不需要加锁,但前提是这个实例真的只服务这一条连接。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./05-ByteBuf内存模型与引用计数.html" class="nav-btn">← 上一篇:ByteBuf 内存模型</a>
+    <a href="./07-EventLoop与EventLoopGroup线程分配.html" class="nav-btn next">下一篇:EventLoop 与 EventLoopGroup 线程分配 →</a>
+  </div>
+</div>
+</body>
+</html>

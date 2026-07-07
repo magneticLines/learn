@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · Netty 的单元测试 EmbeddedChannel</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #14532d; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #38bdf8; border-color: #1e3a8a; } .nav-btn.next:hover { background: #1e3a8a; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 核心组件与线程模型 / EmbeddedChannel 单元测试</div>
+  <div class="hero">
+    <div class="tag">Netty · 核心组件与线程模型</div>
+    <h1>Netty 的单元测试:EmbeddedChannel</h1>
+    <p>编解码器写完了,总不能每次改动都真的起一个 Server + Client 手动连接测试——EmbeddedChannel 就是为此而生。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 9 章「单元测试」</p>
+  </div>
+
+  <h2>一、为什么 Handler/编解码器的测试特别麻烦</h2>
+  <p>正常情况下,要验证一个 <code>ChannelHandler</code>(尤其是编解码器)的逻辑是否正确,似乎得启动一个真实的 <code>ServerBootstrap</code>,再用一个真实的客户端连接上去发数据、收数据,断言结果——这意味着每条测试用例都要真的占用一个端口、走一遍完整的网络协议栈,又慢又不稳定(端口冲突、时序问题),完全不适合放进 CI 里跑成百上千次。</p>
+
+  <h2>二、EmbeddedChannel:没有真实网络的 Channel</h2>
+  <p>Netty 提供了 <code>EmbeddedChannel</code>——一个不需要真实 Socket、不需要 EventLoop 线程池、完全在内存里模拟 Pipeline 行为的测试专用 Channel。它把"进网络"和"出网络"这两个动作,替换成了直接往 Pipeline 里塞数据、从 Pipeline 里取数据的方法调用,速度极快且完全确定,是测试 Handler/编解码器逻辑的标准工具。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>测试一个解码器:把 4 字节长度头 + 内容解码成完整帧</span></div>
+    <pre><span class="ty">EmbeddedChannel</span> channel = <span class="kw">new</span> <span class="ty">EmbeddedChannel</span>(<span class="kw">new</span> <span class="ty">LengthFieldBasedFrameDecoder</span>(<span class="nu">1024</span>, <span class="nu">0</span>, <span class="nu">4</span>));
+
+<span class="ty">ByteBuf</span> input = <span class="ty">Unpooled</span>.<span class="fn">buffer</span>();
+input.<span class="fn">writeInt</span>(<span class="nu">5</span>).<span class="fn">writeBytes</span>(<span class="st">"hello"</span>.<span class="fn">getBytes</span>());
+
+<span class="cm">// writeInbound 模拟"从网络收到了这段字节",触发入站 Handler 处理</span>
+channel.<span class="fn">writeInbound</span>(input);
+
+<span class="ty">ByteBuf</span> output = channel.<span class="fn">readInbound</span>();
+<span class="fn">assertEquals</span>(<span class="nu">5</span>, output.<span class="fn">readableBytes</span>()); <span class="cm">// 断言:解码后只剩下 "hello" 这 5 个字节的内容</span></pre>
+  </div>
+  <table>
+    <tr><th>API</th><th>作用</th></tr>
+    <tr><td><code>writeInbound(msg)</code></td><td>模拟"网络收到数据",触发这条数据依次经过所有入站 Handler</td></tr>
+    <tr><td><code>readInbound()</code></td><td>取出经过入站处理链之后、最终产出的结果对象</td></tr>
+    <tr><td><code>writeOutbound(msg)</code></td><td>模拟"业务代码要发送数据",触发它经过所有出站 Handler(如编码器)</td></tr>
+    <tr><td><code>readOutbound()</code></td><td>取出编码完成、最终会被写到网络上的字节数据</td></tr>
+    <tr><td><code>finish()</code></td><td>关闭这个测试 Channel,并返回是否还有未被读取的数据(常用来断言"没有遗留数据")</td></tr>
+  </table>
+
+  <h2>三、测试编码器同理:反过来用 writeOutbound</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>测试一个编码器:把业务对象编码成带长度头的字节</span></div>
+    <pre><span class="ty">EmbeddedChannel</span> channel = <span class="kw">new</span> <span class="ty">EmbeddedChannel</span>(<span class="kw">new</span> <span class="ty">LengthFieldPrepender</span>(<span class="nu">4</span>));
+
+channel.<span class="fn">writeOutbound</span>(<span class="ty">Unpooled</span>.<span class="fn">wrappedBuffer</span>(<span class="st">"hello"</span>.<span class="fn">getBytes</span>()));
+
+<span class="ty">ByteBuf</span> encoded = channel.<span class="fn">readOutbound</span>();
+<span class="fn">assertEquals</span>(<span class="nu">5</span>, encoded.<span class="fn">readInt</span>()); <span class="cm">// 断言:开头 4 字节是内容长度 5</span></pre>
+  </div>
+
+  <h2>四、为什么这比手写 Mock 更靠谱</h2>
+  <p>有人可能会想:直接 Mock 一个 <code>ChannelHandlerContext</code> 传给 Handler,不也能测?但 <code>ChannelHandlerContext</code> 和 Pipeline 之间的联动关系(<code>fireChannelRead</code> 传递给下一个 Handler、多个 Handler 的组合效果)非常复杂,手写 Mock 很容易漏掉边界情况,而且没法测试"多个 Handler 组合在一起会不会互相干扰"这种真正的集成场景。<code>EmbeddedChannel</code> 允许把整条 Pipeline(多个 Handler)一起塞进去测试,比孤立 Mock 单个 Handler 更接近真实运行环境,同时又不需要真实网络。</p>
+  <div class="callout tip"><strong>工程实践建议:</strong>写编解码器/协议相关 Handler 时,建议养成"每写一个,配一段 EmbeddedChannel 测试"的习惯——尤其是拆包/粘包这类边界条件特别多的逻辑(下一篇的主题),用 EmbeddedChannel 把"半包"“粘包"“刚好整包"这几种输入分别构造出来验证,比上线后被半包问题坑一次的成本低得多。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>EmbeddedChannel 是 Netty 官方提供的、不依赖真实网络和 EventLoop 的测试专用 Channel,用于单元测试 Handler/编解码器。</li>
+    <li>入站方向用 <code>writeInbound()</code> + <code>readInbound()</code>,出站方向用 <code>writeOutbound()</code> + <code>readOutbound()</code>,分别对应"模拟收到数据"和"模拟发送数据"。</li>
+    <li>相比手写 Mock,EmbeddedChannel 能测试多个 Handler 组合的真实联动效果,更接近生产环境的行为。</li>
+    <li>协议编解码这类边界条件密集的逻辑,强烈建议用 EmbeddedChannel 补齐单元测试,而不是只靠手动联调。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>单元测试与 Mock 的取舍:</strong>本篇"用真实 Pipeline 组合测试而非孤立 Mock"的思路,和 <a href="../../15-测试/mock/">测试</a> 模块里"该 Mock 到什么颗粒度"的讨论直接相关——过度 Mock 会让测试脱离真实协作关系,失去发现集成问题的能力。</li>
+    <li><strong>测试驱动开发(TDD):</strong>EmbeddedChannel 让"先写编解码逻辑的测试用例,再实现 Handler"变得可行且轻量,可以直接套用 <a href="../../15-测试/tdd/">TDD</a> 模块讲的红绿重构循环。</li>
+    <li><strong>TCP 粘包与拆包(下一篇):</strong>本篇提到的"半包/粘包/整包"这几种边界输入,正是下一篇要系统讲解的核心问题——这里先建立"如何低成本地验证这些边界情况"的工具储备。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./08-Bootstrap与ServerBootstrap启动流程.html" class="nav-btn">← 上一篇:Bootstrap 启动流程</a>
+    <a href="../codec/10-编解码器框架Decoder与Encoder.html" class="nav-btn next">下一篇:编解码器框架 →</a>
+  </div>
+</div>
+</body>
+</html>

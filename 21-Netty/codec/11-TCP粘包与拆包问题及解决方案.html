@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · TCP 粘包与拆包问题及解决方案</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #38bdf8; border: 1px solid #1e3a8a; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #38bdf8; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #38bdf8; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #38bdf8; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #38bdf8; border-color: #1e3a8a; } .nav-btn.next:hover { background: #1e3a8a; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 编解码与协议设计 / TCP 粘包与拆包</div>
+  <div class="hero">
+    <div class="tag">Netty · 编解码与协议设计 · 进阶</div>
+    <h1>TCP 粘包与拆包问题及解决方案</h1>
+    <p>Netty 面试里出现频率最高的问题之一,也是所有基于 TCP 做自定义协议时绕不开的第一道坎。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 编解码框架章节延伸(TCP 协议特性导致的通用问题)</p>
+  </div>
+
+  <h2>一、根源:TCP 是"流"协议,没有消息边界的概念</h2>
+  <p>UDP 是面向消息的协议——发送方调用一次 <code>send()</code>,接收方对应地能通过一次 <code>recv()</code> 收到完整的一条消息,消息边界天然保留。但 <strong>TCP 是面向字节流的协议</strong>,它只保证字节按发送顺序、不丢不重地到达,<strong>完全不关心"发送方调用了几次 write()"这件事</strong>——操作系统内核会根据 Nagle 算法、拥塞窗口、缓冲区状态等因素,自行决定把这些字节如何打包成 TCP 报文段发送,接收方每次 <code>read()</code> 拿到的字节数量,和发送方每次 <code>write()</code> 写入的字节数量<strong>完全没有对应关系</strong>。</p>
+  <div class="callout info"><strong>类比:</strong>UDP 像寄快递,一件一件包裹独立配送,拆开一个就是一件完整商品;TCP 像往一根水管里倒水,发送方倒了三杯水(三次 write),接收方在另一头接水时,可能一次接到一杯半,也可能一次接到三杯半——水管只保证"倒进去多少水,最终就流出来多少水,顺序不变",但完全不保留"分了几次倒"这个边界信息。</div>
+
+  <h2>二、粘包与半包(拆包):同一个问题的两种表现</h2>
+  <table>
+    <tr><th>现象</th><th>具体表现</th></tr>
+    <tr><td><strong>粘包</strong></td><td>发送方连续快速发送了消息 A 和消息 B,接收方一次 <code>read()</code> 却把 A 和 B 的字节粘在一起收到了。</td></tr>
+    <tr><td><strong>半包(拆包)</strong></td><td>发送方发送的一条较大的消息 C,被拆成了两次(甚至多次)<code>read()</code> 才收全,接收方第一次读到的只是 C 的前半段。</td></tr>
+  </table>
+  <div class="callout warn"><strong>为什么这在开发和测试阶段容易被忽略:</strong>在本机测试、消息很小、发送频率不高的情况下,巧合之下往往"一次 write 对应一次 read",看起来工作正常,这会让开发者误以为消息边界是自动保留的。但只要换到真实网络环境、消息变大、并发变高,粘包/半包必然会出现——这是 TCP 协议的本质决定的,不是"运气不好才会遇到"的边缘情况,而是<strong>必须在协议设计阶段就正面解决的问题</strong>。</div>
+
+  <h2>三、三种通用解决方案</h2>
+  <p>既然 TCP 本身不提供消息边界,就只能在<strong>应用层协议</strong>里自己定义边界规则。业界总结出的通用方案主要是这三类:</p>
+  <table>
+    <tr><th>方案</th><th>思路</th><th>Netty 对应实现</th><th>取舍</th></tr>
+    <tr><td>固定长度</td><td>每条消息都是固定的 N 字节,不够就补齐(padding)</td><td><code>FixedLengthFrameDecoder</code></td><td>实现最简单,但消息长度不固定的场景会浪费带宽</td></tr>
+    <tr><td>分隔符</td><td>消息之间用一个特殊字符(如 <code>\n</code>)分隔,读到分隔符就认为一条消息结束</td><td><code>LineBasedFrameDecoder</code>、<code>DelimiterBasedFrameDecoder</code></td><td>直观(如 HTTP 头、Redis 协议部分场景),但消息内容里如果恰好出现分隔符本身需要转义处理</td></tr>
+    <tr><td>长度字段</td><td>消息头部先写一个固定长度的字段表示"接下来的消息体有多长",解码器先读长度、再据此读够对应字节数</td><td><code>LengthFieldBasedFrameDecoder</code></td><td>最通用、最健壮,是绝大多数自定义二进制协议(RPC 框架、私有协议)的标准做法,下一篇会专门展开</td></tr>
+  </table>
+  <div class="callout tip"><strong>为什么长度字段方案是业界主流:</strong>固定长度浪费空间,分隔符方案需要处理转义、且需要扫描每个字节找分隔符效率较低;长度字段方案只需要先读一个固定大小的数字,就能一次性知道要读多少字节,既不浪费带宽也不需要逐字节扫描,这正是 Dubbo、RocketMQ、gRPC 等主流 RPC 框架私有协议的通用设计。</div>
+
+  <h2>四、用 EmbeddedChannel 验证一个自定义 Decoder 是否正确处理了粘包</h2>
+  <p>结合上一篇学到的测试工具,验证解码器是否正确处理粘包最有效的方式,就是故意构造一个"两条消息粘在一起"的输入:</p>
+  <div class="code-block">
+    <div class="cb-header"><span>用 EmbeddedChannel 模拟粘包场景</span></div>
+    <pre><span class="ty">ByteBuf</span> sticky = <span class="ty">Unpooled</span>.<span class="fn">buffer</span>();
+sticky.<span class="fn">writeInt</span>(<span class="nu">5</span>).<span class="fn">writeBytes</span>(<span class="st">"hello"</span>.<span class="fn">getBytes</span>()); <span class="cm">// 第一条消息</span>
+sticky.<span class="fn">writeInt</span>(<span class="nu">5</span>).<span class="fn">writeBytes</span>(<span class="st">"world"</span>.<span class="fn">getBytes</span>()); <span class="cm">// 第二条消息,和第一条粘在了同一个 ByteBuf 里</span>
+
+channel.<span class="fn">writeInbound</span>(sticky);
+<span class="fn">assertEquals</span>(<span class="st">"hello"</span>, channel.&lt;<span class="ty">ByteBuf</span>&gt;<span class="fn">readInbound</span>().<span class="fn">toString</span>(CharsetUtil.UTF_8));
+<span class="fn">assertEquals</span>(<span class="st">"world"</span>, channel.&lt;<span class="ty">ByteBuf</span>&gt;<span class="fn">readInbound</span>().<span class="fn">toString</span>(CharsetUtil.UTF_8)); <span class="cm">// 应该被正确拆成两条</span></pre>
+  </div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>粘包/半包的根源:TCP 是面向字节流的协议,不保留发送方每次 write 的消息边界。</li>
+    <li>这不是偶发问题,而是 TCP 的协议本质决定的,必须在应用层协议设计阶段就解决,不能靠"测试时看起来没问题"来判断。</li>
+    <li>三种通用解法:固定长度(简单但浪费)、分隔符(直观但需转义)、长度字段(高效、通用,是业界主流)。</li>
+    <li>用 EmbeddedChannel 构造粘包/半包输入进行单元测试,是验证自定义协议解码器正确性的标准做法。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>Nagle 算法与 TCP_NODELAY(承接 08):</strong>粘包现象经常是因为 Nagle 算法把多次小数据量的 write 合并成一次发送导致的——这也是为什么第 8 篇提到低延迟场景要关闭 <code>TCP_NODELAY</code>,但即便关闭了,粘包问题依然可能因为接收方的读取时机而出现,应用层协议的边界处理始终是必须的,不能指望关掉某个 TCP 参数就能规避。</li>
+    <li><strong>HTTP 协议的消息边界设计:</strong>HTTP/1.1 用 <code>Content-Length</code> 头(长度字段方案)或 <code>Transfer-Encoding: chunked</code>(类似分隔符+长度混合方案)解决同样的问题,可以对照 <a href="../../10-计算机网络/layer/05-常见HTTP状态码与方法.html">计算机网络</a> 模块里 HTTP 报文格式的设计一起理解——这是同一个 TCP 特性在不同协议里催生出的相似解法。</li>
+    <li><strong>内置解码器与自定义私有协议(下两篇):</strong>本篇讲的是"为什么需要处理"和"有哪几类通用思路",下一篇会具体展开 Netty 内置的 <code>LengthFieldBasedFrameDecoder</code> 这个最常用的实现,再下一篇则是把这些积木组合成一份完整的私有协议设计。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./10-编解码器框架Decoder与Encoder.html" class="nav-btn">← 上一篇:编解码器框架</a>
+    <a href="./12-内置解码器LengthFieldBasedFrameDecoder等.html" class="nav-btn next">下一篇:内置解码器 LengthFieldBasedFrameDecoder 等 →</a>
+  </div>
+</div>
+</body>
+</html>

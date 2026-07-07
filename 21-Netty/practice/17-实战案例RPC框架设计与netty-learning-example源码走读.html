@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · 实战案例:RPC 框架设计与源码走读</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #6b21a8; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 网络协议与实战 / RPC 框架实战</div>
+  <div class="hero">
+    <div class="tag">Netty · 网络协议与实战</div>
+    <h1>实战案例:RPC 框架设计与 netty-learning-example 源码走读</h1>
+    <p>把前面 16 篇的知识串成一条线:一次 RPC 调用从发起到返回,数据经过了哪些 Netty 组件。</p>
+    <p class="src">📖 来源:《Netty in Action》案例章节综合 · 🔧 配套:<a href="https://github.com/sanshengshui/netty-learning-example" target="_blank" rel="noopener">netty-learning-example</a> 全仓库回顾</p>
+  </div>
+
+  <h2>一、RPC 框架要解决的核心问题:让远程调用看起来像本地调用</h2>
+  <p>RPC(Remote Procedure Call)的目标是让调用方写 <code>userService.getUser(id)</code> 时,感觉不到这背后其实发生了一次网络通信。要实现这种"透明性",框架需要在背后完成:①把方法名、参数<strong>序列化</strong>成字节;②通过网络发送到远端;③远端<strong>反序列化</strong>还原出方法名和参数,反射调用真正的实现;④把结果序列化后传回来;⑤调用方阻塞等待(或者用 Future/回调异步等待)结果返回,再反序列化还原成 Java 对象返回给业务代码。而<strong>第②③④步的高性能网络通信层,正是 Netty 的用武之地</strong>。</p>
+
+  <h2>二、串联全篇:一次 RPC 调用经过的 Netty 组件</h2>
+  <table>
+    <tr><th>阶段</th><th>涉及组件</th><th>对应本模块的哪一篇</th></tr>
+    <tr><td>建立连接</td><td><code>Bootstrap</code> + <code>NioEventLoopGroup</code></td><td>第 2、4、7 篇</td></tr>
+    <tr><td>请求编码</td><td>自定义 <code>ProtocolEncoder</code> + <code>LengthFieldPrepender</code></td><td>第 10、12、13 篇</td></tr>
+    <tr><td>发送请求,不阻塞业务线程</td><td><code>ChannelFuture</code> + 监听器,或维护请求 ID → CompletableFuture 的映射表等待响应</td><td>第 3 篇</td></tr>
+    <tr><td>网络传输</td><td>Reactor 线程模型调度 EventLoop 处理 IO</td><td>第 1、4 篇</td></tr>
+    <tr><td>响应到达,处理粘包/半包</td><td><code>LengthFieldBasedFrameDecoder</code></td><td>第 11、12 篇</td></tr>
+    <tr><td>响应解码 + 反序列化</td><td>自定义 <code>ProtocolDecoder</code></td><td>第 10、13 篇</td></tr>
+    <tr><td>业务逻辑不阻塞 IO 线程</td><td>耗时的服务端方法调用丢给独立业务线程池</td><td>第 4 篇</td></tr>
+    <tr><td>连接保活</td><td><code>IdleStateHandler</code> 心跳检测</td><td>第 15 篇</td></tr>
+    <tr><td>内存管理</td><td><code>ByteBuf</code> 引用计数、池化</td><td>第 5 篇</td></tr>
+    <tr><td>单元测试编解码逻辑</td><td><code>EmbeddedChannel</code></td><td>第 9 篇</td></tr>
+  </table>
+  <div class="callout tip"><strong>这张表想说明的事:</strong>一个"能用"的 RPC 框架,几乎不需要任何 Netty 没有覆盖到的新概念——它只是把前面 16 篇讲的每一个组件,按照"通信 + 协议 + 线程模型"这条主线正确地组合了起来。这也是为什么理解 Netty 原理比死记 API 更重要:任何一个新的网络中间件需求,拆解开来看,大概率都是这些积木的不同排列组合。</div>
+
+  <h2>二、请求-响应模式的关联:requestId</h2>
+  <p>TCP 是一条连接上可能有多个并发请求在"飞行中"的(尤其是异步 RPC 允许一个连接上同时发出多个请求而不必等前一个返回)。要把某个响应正确匹配回它对应的那次调用,协议里必须带一个唯一的 <code>requestId</code>,客户端发送请求前生成、维护一个 <code>Map&lt;Long, CompletableFuture&lt;Response&gt;&gt;</code>,响应到达时按 <code>requestId</code> 找到对应的 <code>CompletableFuture</code> 并完成它。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>客户端:请求发送与响应回填的核心骨架</span></div>
+    <pre><span class="kw">private final</span> <span class="ty">Map</span>&lt;<span class="ty">Long</span>, <span class="ty">CompletableFuture</span>&lt;<span class="ty">Response</span>&gt;&gt; pending = <span class="kw">new</span> <span class="ty">ConcurrentHashMap</span>&lt;&gt;();
+
+<span class="ty">CompletableFuture</span>&lt;<span class="ty">Response</span>&gt; <span class="fn">send</span>(<span class="ty">Request</span> req) {
+    <span class="ty">CompletableFuture</span>&lt;<span class="ty">Response</span>&gt; future = <span class="kw">new</span> <span class="ty">CompletableFuture</span>&lt;&gt;();
+    pending.<span class="fn">put</span>(req.<span class="fn">getRequestId</span>(), future); <span class="cm">// 先登记,等响应回来再"认领"</span>
+    channel.<span class="fn">writeAndFlush</span>(req);
+    <span class="kw">return</span> future; <span class="cm">// 调用方可以 .get() 阻塞等,也可以 .thenAccept() 异步处理</span>
+}
+
+<span class="cm">// 收到响应的 Handler 里:</span>
+<span class="ty">CompletableFuture</span>&lt;<span class="ty">Response</span>&gt; future = pending.<span class="fn">remove</span>(response.<span class="fn">getRequestId</span>());
+<span class="kw">if</span> (future != <span class="kw">null</span>) future.<span class="fn">complete</span>(response);</pre>
+  </div>
+  <div class="callout warn"><strong>容易被忽视的陷阱:超时清理。</strong>如果服务端异常、网络丢包导致某个请求永远收不到响应,<code>pending</code> 这张 Map 里对应的 <code>CompletableFuture</code> 会永远留在那里得不到清理,长期运行会造成内存泄漏。生产级实现必须为每个请求配一个超时任务(可以用第 7 篇讲的 EventLoop 定时能力),超时后主动完成这个 Future 为异常状态并从 Map 中移除。</div>
+
+  <h2>三、去配套仓库里印证这套设计</h2>
+  <p>建议现在回到 <a href="https://github.com/sanshengshui/netty-learning-example" target="_blank" rel="noopener">netty-learning-example</a>,把整个仓库过一遍,重点关注这几件事:</p>
+  <ul>
+    <li>对照仓库里涉及 RPC/自定义协议的模块,看它的协议头设计和第 13 篇讲的有什么异同——真实项目往往会因为具体需求增删字段,理解"为什么这么改"比死记某一种标准格式更重要。</li>
+    <li>找一下仓库里是否有单元测试目录,对照第 9 篇看它是不是也用了 <code>EmbeddedChannel</code>,以及测试覆盖了哪些边界场景。</li>
+    <li>观察它的 <code>ChannelInitializer</code> 里 Pipeline 的组装顺序,验证是否符合第 6 篇讲的"入站从头到尾、出站从尾到头"的规则。</li>
+  </ul>
+  <div class="callout info"><strong>关于后续学习:</strong>把这本书的核心内容配合这个仓库跑通之后,再去读 Dubbo 或 RocketMQ 的网络层源码会容易得多——它们在协议设计、线程模型上的思路,和这里学到的东西是高度一致的,只是工程细节更复杂、健壮性处理更完善。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>RPC 框架的本质是"让远程调用看起来像本地调用",网络通信层的高性能实现正是 Netty 的核心价值所在。</li>
+    <li>一次完整的 RPC 调用,几乎串联了本模块讲过的全部核心组件——理解原理比记忆 API 更能应对新场景。</li>
+    <li><code>requestId</code> + <code>Map&lt;Long, CompletableFuture&gt;</code> 是异步 RPC 请求-响应匹配的标准做法,必须配合超时清理机制防止内存泄漏。</li>
+    <li>学完原理后回到配套开源仓库验证,是把"知道"转化为"会用"的关键一步。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>CompletableFuture 与异步编程:</strong>本篇 requestId 映射表的设计,是 <a href="../../02-并发/exec/03-CompletableFuture.html">CompletableFuture</a> 在网络编程场景下的典型应用——理解了 <code>CompletableFuture</code> 的 <code>complete()</code>/<code>thenAccept()</code>,这里的代码不需要额外学习新概念。</li>
+    <li><strong>分布式与微服务里的 RPC 选型:</strong>可以对照 <a href="../../14-分布式与微服务/distributed-roadmap.html">分布式与微服务</a> 模块,理解 Dubbo(基于 Netty)、gRPC(基于 HTTP/2)等主流 RPC 框架在协议、序列化、连接管理上的选型差异,本篇讲的是"最小可行版本",生产级框架还要考虑负载均衡、服务发现、熔断降级等更多问题。</li>
+    <li><strong>系统设计中的超时与重试:</strong>请求超时清理机制,呼应 <a href="../../19-系统设计/system-design-roadmap.html">系统设计</a> 里"任何跨网络调用都必须设置超时"这条通用原则——没有超时保护的远程调用,在网络分区发生时会拖垮整个调用链。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./16-UDP广播与组播.html" class="nav-btn">← 上一篇:UDP 广播与组播</a>
+    <a href="../netty-roadmap.html" class="nav-btn next">返回 Netty 路线图 →</a>
+  </div>
+</div>
+</body>
+</html>

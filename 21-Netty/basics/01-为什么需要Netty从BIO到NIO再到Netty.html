@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · 为什么需要 Netty(BIO → NIO → Netty)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fb923c; border: 1px solid #9a3412; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fb923c; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fb923c; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fb923c; border-color: #9a3412; } .nav-btn.next:hover { background: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 核心概念与架构 / 为什么需要 Netty</div>
+  <div class="hero">
+    <div class="tag">Netty · 核心概念与架构</div>
+    <h1>为什么需要 Netty(BIO → NIO → Netty)</h1>
+    <p>不先搞清楚 Netty 解决了什么问题,直接背 <code>ChannelPipeline</code>、<code>EventLoop</code> 这些概念只会是空中楼阁。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 1 章「Netty——异步与事件驱动」</p>
+  </div>
+
+  <h2>一、BIO 模型:一个连接一个线程,撑不住高并发</h2>
+  <p>Java 最早提供的网络编程模型是 <strong>BIO(Blocking IO,同步阻塞 IO)</strong>。它的编程模型非常直观:服务端 <code>accept()</code> 到一个连接,就为它分配一个线程,这个线程专门负责这条连接上的 <code>read()</code>/<code>write()</code>——读不到数据就一直阻塞在那儿,不会返回。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>BIO 典型写法</span></div>
+    <pre><span class="kw">while</span> (<span class="kw">true</span>) {
+    <span class="ty">Socket</span> socket = serverSocket.<span class="fn">accept</span>(); <span class="cm">// 阻塞,直到有新连接</span>
+    <span class="kw">new</span> <span class="ty">Thread</span>(() -> {
+        <span class="cm">// 这个线程专属于这条连接,read() 会一直阻塞到有数据可读</span>
+        <span class="ty">InputStream</span> in = socket.<span class="fn">getInputStream</span>();
+        in.<span class="fn">read</span>(buffer); <span class="cm">// 阻塞点</span>
+    }).<span class="fn">start</span>();
+}</pre>
+  </div>
+  <p>这个模型的痛点不在于"写起来复杂"——恰恰相反,它是所有模型里最好懂的。<strong>痛点在于线程本身的成本</strong>:一条连接占一个线程,而线程在 Linux 上通常对应一个轻量级进程,默认栈大小 512KB~1MB,操作系统调度它需要上下文切换开销。当并发连接数从几百涨到几万(即所谓 <strong>C10K 问题</strong>),线程数量跟着涨到几万,光是线程本身占用的内存和调度开销就能把机器拖垮——而绝大多数连接在绝大多数时间里其实<strong>什么数据都没有</strong>,线程却在死等,白白占着资源。</p>
+  <div class="callout warn"><strong>本质矛盾:</strong>BIO 把"连接数"和"线程数"死死绑在一起。连接是可以轻松开到几万的(内存占用很小),但线程不行——这是 BIO 在高并发场景下的天花板。</div>
+
+  <h2>二、NIO 带来的转机:一个线程管理成千上万个连接</h2>
+  <p>JDK 1.4 引入的 <strong>NIO(New IO / Non-blocking IO)</strong> 换了个思路:不再让线程阻塞等某一条连接的数据,而是用一个 <code>Selector</code> 同时"盯着"一大批 <code>Channel</code>,问操作系统"这些连接里哪些已经就绪、可以读写了",然后<strong>只处理真正就绪的那些</strong>。这在操作系统层面依赖的是 <code>select</code>/<code>poll</code>/<code>epoll</code> 这类 IO 多路复用机制(详见 <a href="../../11-操作系统/io/03-IO多路复用selectPollEpoll.html">11-操作系统/IO多路复用</a>)。</p>
+  <p>这样一来,<strong>一个线程就能同时服务成千上万个连接</strong>——因为线程不再为某一条连接死等,而是循环处理"当前就绪"的那一批,时间都花在真正有数据可处理的连接上。这正是 Redis、Nginx、Netty 这类高并发中间件的共同底座。</p>
+  <div class="callout info"><strong>类比:</strong>BIO 像餐厅给每桌配一个服务员,服务员就站在那桌边上等顾客点单,哪怕这桌客人还在看菜单发呆;NIO 像餐厅只有几个服务员来回巡视,谁的手举起来了(数据就绪了)就去服务谁——同样的服务员数量,能覆盖多得多的桌数。</div>
+
+  <h2>三、原生 NIO 的三个真实痛点</h2>
+  <p>既然 JDK 已经提供了 NIO,为什么还要 Netty?因为<strong>原生 NIO API 好用的部分只是表面,深挖下去全是坑</strong>:</p>
+  <table>
+    <tr><th>痛点</th><th>具体表现</th></tr>
+    <tr><td>API 复杂、心智负担重</td><td><code>Selector</code>/<code>SelectionKey</code>/<code>Channel</code>/<code>ByteBuffer</code> 一套概念要正确组合才能跑通,稍不注意就漏读、漏写或者死循环。</td></tr>
+    <tr><td>臭名昭著的 Epoll 空轮询 Bug</td><td>JDK 某些版本的 <code>Selector</code> 在 Linux 上会出现 <code>select()</code> 没有事件也立刻返回的 bug,导致 CPU 被空转到 100%,需要业务代码自己检测并重建 Selector 来规避。</td></tr>
+    <tr><td>没有现成的拆包/粘包处理与协议编解码框架</td><td>TCP 是流式协议,"一次 read 读到多少字节"和业务上"一条消息的边界"是两回事,原生 NIO 完全不管这个,得自己从零手写。</td></tr>
+  </table>
+  <div class="callout warn"><strong>陷阱提醒:</strong>不少初学者以为"用了 NIO 就自动获得高性能",直接拿 <code>Selector</code> 手撸一个服务端。真实项目里几乎没人这么干——不是因为 NIO 不够快,而是因为把它做稳、做对(处理好半包/粘包、异常断连、内存零拷贝、Bug 规避)所需的工程量,远超大多数团队愿意投入的成本。这正是 Netty 存在的意义。</div>
+
+  <h2>四、Netty 的定位:把"正确"和"好用"都封装好的 NIO 框架</h2>
+  <p>Netty 不是发明了新的 IO 模型,它的价值在于:<strong>在 JDK NIO 之上,把所有那些容易做错、做繁琐的部分封装成了统一、易用、经过大规模生产环境验证的 API</strong>。具体体现在:</p>
+  <ul>
+    <li><strong>统一的 Channel 抽象</strong>——屏蔽 NIO/OIO(阻塞 IO)的差异,业务代码基本不用关心底层用的是哪种 IO 模型。</li>
+    <li><strong>ChannelPipeline + ChannelHandler 职责链</strong>——把"编解码"“业务处理”“异常处理”拆成一个个可插拔的 Handler,而不是全部堆在一个巨大的 <code>if-else</code> 里。</li>
+    <li><strong>健壮性修复</strong>——自动检测并规避上面提到的 Epoll 空轮询 Bug 等一系列 JDK 层面的已知问题。</li>
+    <li><strong>零拷贝的 ByteBuf</strong>——比 JDK 的 <code>ByteBuffer</code> 更好用(支持自动扩容、读写指针分离),内存分配上还提供了池化机制减少 GC 压力。</li>
+    <li><strong>开箱即用的编解码器</strong>——常见的拆包策略(定长、分隔符、长度字段)、HTTP、WebSocket 等协议都有现成实现。</li>
+  </ul>
+  <p>所以准确地说:<strong>Netty 是一个基于 NIO 事件驱动模型、把工程实践中的坑都填平了的高性能网络编程框架</strong>,而不是一种全新的 IO 技术。业界大量中间件——Dubbo、RocketMQ、Elasticsearch(部分模块)、gRPC-java 的底层网络层——都是直接构建在 Netty 之上,而不是自己重新造轮子对接原生 NIO。</p>
+
+  <h2>小结</h2>
+  <ul>
+    <li>BIO:一条连接绑一个线程,并发连接数受限于操作系统能承受的线程数,C10K 问题的根源。</li>
+    <li>NIO:通过 <code>Selector</code> + IO 多路复用(select/poll/epoll),用少量线程管理海量连接,解决了并发瓶颈。</li>
+    <li>原生 NIO 的坑:API 繁琐、有已知 Bug(空轮询)、没有编解码/拆包框架,直接用于生产的工程成本很高。</li>
+    <li>Netty 的定位:在 NIO 之上封装一套统一、健壮、开箱即用的网络编程框架,而非另起炉灶的新技术。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>操作系统 IO 多路复用(select/poll/epoll):</strong>NIO 能用一个线程管理海量连接,底层就是靠这套系统调用——理解了 <a href="../../11-操作系统/io/03-IO多路复用selectPollEpoll.html">select/poll/epoll 的原理</a>,才能明白 Netty 的 <code>NioEventLoop</code> 内部到底在"等"什么、"通知"了什么。</li>
+    <li><strong>Java 并发编程:</strong>BIO 的"一连接一线程"本质上是线程池/多线程编程的一种应用场景,而 Netty 的 <code>EventLoop</code> 也是一种特殊的单线程执行器——理解 Java 并发的线程模型,能帮你更快理解 Netty 为什么要设计出 <code>EventLoop</code> 这个概念。</li>
+    <li><strong>Kafka / RocketMQ 等消息中间件:</strong>这些系统的网络通信层几乎都是基于 Netty(或类 Netty 的自研 NIO 框架)构建的——学完 Netty 回头看 <a href="../../13-消息队列/mq-roadmap.html">消息队列</a> 的网络层设计,会有一种"原来如此"的感觉。</li>
+    <li><strong>系统设计中的高并发架构:</strong>C10K 问题及其解法(多路复用、事件驱动)是系统设计里"如何支撑海量连接"的经典考点,和 <a href="../../19-系统设计/system-design-roadmap.html">系统设计</a> 里聊天系统、长连接推送系统的架构选型直接相关。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="../netty-roadmap.html" class="nav-btn">← 返回 Netty 路线图</a>
+    <a href="./02-第一个Netty程序EchoServer与EchoClient.html" class="nav-btn next">下一篇:第一个 Netty 程序 →</a>
+  </div>
+</div>
+</body>
+</html>

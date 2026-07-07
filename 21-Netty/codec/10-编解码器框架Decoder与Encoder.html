@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · 编解码器框架:Decoder 与 Encoder</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #38bdf8; border: 1px solid #1e3a8a; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #38bdf8; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #38bdf8; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #38bdf8; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #38bdf8; border-color: #1e3a8a; } .nav-btn.next:hover { background: #1e3a8a; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 编解码与协议设计 / 编解码器框架</div>
+  <div class="hero">
+    <div class="tag">Netty · 编解码与协议设计</div>
+    <h1>编解码器框架:Decoder 与 Encoder</h1>
+    <p>把字节流变成 Java 对象是解码,反过来是编码——Netty 为这套转换过程专门定义了一套模板类。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 10 章「编解码器框架」</p>
+  </div>
+
+  <h2>一、为什么不直接在业务 Handler 里手写字节解析</h2>
+  <p>理论上完全可以在一个 <code>ChannelInboundHandlerAdapter</code> 里直接对 <code>ByteBuf</code> 做各种 <code>readInt()</code>/<code>readBytes()</code> 手工解析,但这样做会把"从字节到业务对象"和"拿到业务对象后做什么"这两件完全不同的关注点耦合在一起——协议一旦有变化,业务逻辑代码也要跟着改,测试也没法把两者分开验证。Netty 把"解码"和"业务处理"拆成了两个独立的 Handler:<strong>Decoder 只管把字节转换成对象,转换完调用 <code>fireChannelRead()</code> 交给下一个 Handler</strong>,业务 Handler 只需要面对已经解析好的对象。</p>
+
+  <h2>二、ByteToMessageDecoder:处理"半包"问题的核心基类</h2>
+  <p>解码器最需要解决的问题是:<strong>TCP 是流式协议,一次 <code>channelRead()</code> 回调收到的字节,不一定刚好是一条完整的消息</strong>——可能只收到半条(半包),也可能一次收到好几条粘在一起(粘包,下一篇详细展开)。<code>ByteToMessageDecoder</code> 内部维护了一个累积缓冲区(cumulation buffer),自动处理"数据不够就先攒着,等下次数据到了再继续尝试解析"这件麻烦事,业务代码只需要专注于"给定足够的字节,如何解析出一条消息"这个相对简单的逻辑。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>一个简单的定长解码器:每 4 字节解析成一个 int</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">IntDecoder</span> <span class="kw">extends</span> <span class="ty">ByteToMessageDecoder</span> {
+    <span class="kw">protected void</span> <span class="fn">decode</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">ByteBuf</span> in, <span class="ty">List</span>&lt;<span class="ty">Object</span>&gt; out) {
+        <span class="kw">if</span> (in.<span class="fn">readableBytes</span>() &lt; <span class="nu">4</span>) {
+            <span class="kw">return</span>; <span class="cm">// 数据不够 4 字节,直接返回,框架会自动帮你等下一批数据到来后再调用</span>
+        }
+        out.<span class="fn">add</span>(in.<span class="fn">readInt</span>()); <span class="cm">// 够了就解析出来,放进 out;可以在一次调用里解析出多条</span>
+    }
+}</pre>
+  </div>
+  <div class="callout tip"><strong>这个模板方法的关键约定:</strong>如果当前累积的数据还不足以解析出一条完整消息,<code>decode()</code> 方法什么都不做直接返回即可——不需要自己写"数据不够怎么办"的分支逻辑,框架会记得这批不完整的数据,等下一次有新数据到达时,自动把新旧数据拼在一起再调用一次 <code>decode()</code>。这正是 <code>ByteToMessageDecoder</code> 存在的核心价值:把"攒够数据再处理"这件所有协议解析都要面对的通用逻辑,从具体的业务解析逻辑里抽离出来了。</div>
+
+  <h2>三、MessageToByteEncoder:反方向的模板</h2>
+  <p>编码方向的模板类是 <code>MessageToByteEncoder&lt;T&gt;</code>,泛型参数 <code>T</code> 指定这个编码器只处理哪种类型的出站消息(其他类型会被自动跳过,交给 pipeline 里下一个出站 Handler),避免每个编码器都要写一遍 <code>instanceof</code> 判断。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>把 Integer 编码成 4 字节</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">IntEncoder</span> <span class="kw">extends</span> <span class="ty">MessageToByteEncoder</span>&lt;<span class="ty">Integer</span>&gt; {
+    <span class="kw">protected void</span> <span class="fn">encode</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">Integer</span> msg, <span class="ty">ByteBuf</span> out) {
+        out.<span class="fn">writeInt</span>(msg);
+    }
+}</pre>
+  </div>
+
+  <h2>四、一步到位:同时处理编解码的 Codec 类</h2>
+  <p>如果一个协议的编码和解码逻辑天然是配对、共享状态的(比如某些需要维护会话上下文的协议),Netty 还提供了 <code>ByteToMessageCodec&lt;T&gt;</code>,把 <code>decode()</code> 和 <code>encode()</code> 合并到同一个类里,避免拆成两个 Handler 后还要额外传递共享状态的麻烦。但多数场景下,把编码和解码分成两个独立、职责单一的 Handler 依然是更推荐的做法——这符合 Pipeline 职责链"一个 Handler 只做一件事"的整体设计哲学。</p>
+
+  <h2>小结</h2>
+  <ul>
+    <li>Netty 把"解码"从业务 Handler 里独立出来,专门用 Decoder/Encoder 处理字节与业务对象的相互转换。</li>
+    <li><code>ByteToMessageDecoder</code> 内置累积缓冲区,自动处理"数据不够就先攒着"的半包问题,业务代码只需要写"数据足够时如何解析"的逻辑。</li>
+    <li><code>MessageToByteEncoder&lt;T&gt;</code> 通过泛型参数自动过滤消息类型,避免手写 <code>instanceof</code> 判断。</li>
+    <li>编解码逻辑独立、可复用、可单独用 EmbeddedChannel(上一篇)测试,是 Netty 编解码器设计的核心价值。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>TCP 粘包与拆包(下一篇):</strong>本篇讲的"半包"只是这个大问题的一半,下一篇会系统展开粘包(一次读到多条消息)以及几种通用的解决方案——理解了 <code>ByteToMessageDecoder</code> 的累积缓冲区机制,能更快理解为什么这几种方案都能配合这个基类工作。</li>
+    <li><strong>ChannelPipeline 职责链(承接第 6 篇):</strong>Decoder/Encoder 本质上就是特殊的入站/出站 Handler,只是 Netty 帮你抽出了处理半包这类通用逻辑的模板方法——理解了 Pipeline 的遍历顺序,才能理解 Decoder 产出的对象是如何继续往后传给业务 Handler 的。</li>
+    <li><strong>协议设计与序列化:</strong>编解码器最终要配合具体的协议格式(JSON、Protobuf、自定义二进制协议)使用,这和 <a href="../../00-Java基础/core/19-序列化.html">Java 序列化</a> 要解决的问题是同一类——都是"内存里的对象"与"可在网络/磁盘间传输的字节"之间的相互转换。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="../core/09-Netty的单元测试EmbeddedChannel.html" class="nav-btn">← 上一篇:EmbeddedChannel 单元测试</a>
+    <a href="./11-TCP粘包与拆包问题及解决方案.html" class="nav-btn next">下一篇:TCP 粘包与拆包问题 →</a>
+  </div>
+</div>
+</body>
+</html>

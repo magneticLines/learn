@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · ByteBuf 内存模型与引用计数</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #14532d; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #14532d; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 核心组件与线程模型 / ByteBuf</div>
+  <div class="hero">
+    <div class="tag">Netty · 核心组件与线程模型</div>
+    <h1>ByteBuf 内存模型与引用计数</h1>
+    <p>Netty 为什么不直接用 JDK 的 ByteBuffer,而要自己造一个 ByteBuf?答案藏在它的内存模型和引用计数机制里。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 5 章「ByteBuf」</p>
+  </div>
+
+  <h2>一、JDK ByteBuffer 的两个别扭之处</h2>
+  <p>JDK NIO 的 <code>ByteBuffer</code> 有两个用起来很拧巴的设计:①<strong>读写共用同一个 position 指针</strong>,写完数据后必须手动调用 <code>flip()</code> 切换到读模式,忘记调用就会读出一堆 0 或者读越界,这是原生 NIO 编程里最经典的踩坑点之一;②<strong>容量固定,不能自动扩容</strong>,一旦写入的数据超过预分配的容量就会抛异常,业务代码得自己提前算好或者手动做扩容搬迁。</p>
+
+  <h2>二、ByteBuf:读写指针分离 + 自动扩容</h2>
+  <p>Netty 的 <code>ByteBuf</code> 用<strong>两个独立的指针</strong> <code>readerIndex</code> 和 <code>writerIndex</code> 取代了 <code>ByteBuffer</code> 的单指针设计:写入数据只推进 <code>writerIndex</code>,读取数据只推进 <code>readerIndex</code>,两者互不干扰,<strong>永远不需要调用类似 flip() 的模式切换</strong>。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>ByteBuf 内部结构示意</span></div>
+    <pre>+-------------------+------------------+------------------+
+|  已丢弃的字节       |   可读字节(内容)  |    可写空间        |
++-------------------+------------------+------------------+
+0      <=      readerIndex   <=   writerIndex    <=    capacity</pre>
+  </div>
+  <p><code>readerIndex</code> 之前的部分是已经被读过、可以丢弃的字节;<code>readerIndex</code> 到 <code>writerIndex</code> 之间是当前可读的有效内容;<code>writerIndex</code> 到 <code>capacity</code> 是还能继续写入的空间。当可写空间不够时,<code>ByteBuf</code> 会<strong>按需自动扩容</strong>,不像 <code>ByteBuffer</code> 那样直接抛异常。</p>
+  <div class="callout tip"><strong>类比:</strong>ByteBuffer 像一盘只能单向转的磁带,录完必须倒回去(flip)才能放;ByteBuf 像一条传送带,货物(写)从一头进,取货(读)从另一头出,两个动作各走各的,互不打架。</div>
+
+  <h2>三、堆内存 vs 堆外内存,池化 vs 非池化</h2>
+  <p>Netty 提供了 4 种 <code>ByteBuf</code> 的组合,理解它们的取舍是调优网络程序的基础:</p>
+  <table>
+    <tr><th>类型</th><th>特点</th><th>适用场景</th></tr>
+    <tr><td>Heap ByteBuf</td><td>数据在 JVM 堆上,分配/回收快,但读写 Socket 时需要多一次拷贝到堆外</td><td>生命周期短、需要频繁被 GC 的场景</td></tr>
+    <tr><td>Direct ByteBuf(堆外)</td><td>数据在堆外内存,读写 Socket 时可以直接进行系统调用,少一次内存拷贝(更接近"零拷贝")</td><td>网络 IO 的收发缓冲区,Netty 默认在此场景使用</td></tr>
+    <tr><td>Pooled(池化)</td><td>预先分配一大块内存,按需切割复用,避免频繁 malloc/free 或触发 GC</td><td>高并发场景下的默认推荐,Netty 4.1 起默认开启</td></tr>
+    <tr><td>Unpooled(非池化)</td><td>每次用都重新分配,用完直接交给 GC(堆内存)或手动释放(堆外)</td><td>低频、小对象场景,或者调试内存问题时临时关闭池化</td></tr>
+  </table>
+  <div class="callout info"><strong>为什么堆外内存 + 池化是主流组合:</strong>网络 IO 的本质是"数据从 Socket 缓冲区搬到应用能处理的地方"。如果用堆内存,操作系统的系统调用没法直接操作 JVM 堆(会被 GC 移动),所以 JDK 底层实际上还是要先把堆内存的数据拷贝一份到一块临时的堆外内存,再交给系统调用——多了一次拷贝。直接用堆外内存能省掉这一次拷贝;而池化则是为了避免堆外内存"分配开销比堆内存更大、且不受 GC 管理容易泄漏"这个副作用被反复触发。</div>
+
+  <h2>四、引用计数:堆外内存必须手动管理生命周期</h2>
+  <p>堆外内存不受 JVM 垃圾回收器管理,如果没有人负责释放,就会造成<strong>内存泄漏</strong>——这在生产环境里是非常隐蔽且危险的问题(表现为进程常驻内存持续增长,但 JVM 堆本身看起来很正常)。Netty 为此给 <code>ByteBuf</code> 设计了<strong>引用计数</strong>机制:每个 <code>ByteBuf</code> 创建时引用计数为 1,调用 <code>retain()</code> 计数 +1,调用 <code>release()</code> 计数 -1,减到 0 时才真正释放底层内存。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>典型的引用计数使用场景</span></div>
+    <pre><span class="kw">public void</span> <span class="fn">channelRead</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">Object</span> msg) {
+    <span class="ty">ByteBuf</span> buf = (<span class="ty">ByteBuf</span>) msg;
+    <span class="kw">try</span> {
+        <span class="cm">// 处理 buf 里的数据……</span>
+    } <span class="kw">finally</span> {
+        buf.<span class="fn">release</span>(); <span class="cm">// 用完必须显式释放,否则堆外内存永远回不来</span>
+    }
+}</pre>
+  </div>
+  <div class="callout warn"><strong>高频陷阱:忘记 release() 导致内存泄漏。</strong>凡是自己主动 <code>retain()</code> 过、或者从 <code>ByteBufAllocator</code> 主动申请过的 <code>ByteBuf</code>,都必须保证有对应的 <code>release()</code>,通常放在 <code>finally</code> 块里。Netty 提供了 <code>ResourceLeakDetector</code>(可通过 <code>-Dio.netty.leakDetection.level=PARANOID</code> 开启更严格的检测级别)在开发/测试阶段专门帮你揪出忘记释放的 <code>ByteBuf</code>,发现日志里出现 <code>LEAK: ByteBuf.release() was not called</code> 就是这个问题。</div>
+  <div class="callout warn"><strong>另一个常见错误:重复 release() 导致 IllegalReferenceCountException。</strong>如果一个 ByteBuf 被传递给了下一个 Handler 处理(比如通过 <code>ctx.fireChannelRead(msg)</code> 继续往下传),那么释放它的责任也应该转移给最终消费它的那个 Handler——中间层不应该自己先 release 掉还要继续用的数据。什么时候该由谁释放,是设计 Pipeline 时需要想清楚的问题,不能"谁看见就顺手 release 一下"。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>ByteBuf 用 <code>readerIndex</code>/<code>writerIndex</code> 双指针取代 ByteBuffer 的单指针 + flip() 模式,读写互不干扰且支持自动扩容。</li>
+    <li>堆外(Direct)+ 池化(Pooled)是网络 IO 场景的主流组合:堆外少一次拷贝,池化避免频繁分配和 GC 压力。</li>
+    <li>堆外内存不受 GC 管理,Netty 用引用计数 + <code>release()</code> 手动管理生命周期,忘记释放会导致隐蔽的内存泄漏。</li>
+    <li>ResourceLeakDetector 是排查 ByteBuf 泄漏的第一工具,开发阶段建议开到较高检测级别。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>JVM 内存区域与堆外内存:</strong>Direct ByteBuf 本质上是 <a href="../../08-JVM/memory/11-常见OOM场景排查.html">JVM 直接内存(Direct Memory)</a> 的应用——它不计入 <code>-Xmx</code> 但同样受物理内存限制,配置不当同样会导致 OOM,只是报错信息和排查手段与堆内存 OOM 不同。</li>
+    <li><strong>零拷贝技术:</strong>堆外内存减少的那一次"堆内存 → 临时堆外内存"拷贝,与 <a href="../../11-操作系统/io/05-零拷贝技术.html">操作系统层面的零拷贝技术</a>(如 sendfile)是同一个优化方向在不同层次上的体现——都是想办法减少数据在内存里被多次搬运的次数。</li>
+    <li><strong>对象池化思想:</strong>Pooled ByteBuf 的设计和 <a href="../../02-并发/exec/05-拒绝策略.html">线程池</a>、数据库连接池是同一种工程套路——"创建成本高的资源不要用完就扔,回收复用"。</li>
+    <li><strong>手动资源管理的通用范式:</strong>引用计数 + 手动 release() 和 C++ 里的智能指针、Java 里 try-with-resources 管理 <code>Closeable</code> 资源,都是在解决同一类问题:没有 GC 自动兜底的资源,必须显式约定"谁申请、谁负责释放"。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="../basics/04-Reactor线程模型与Netty的实现.html" class="nav-btn">← 上一篇:Reactor 线程模型</a>
+    <a href="./06-ChannelHandler与ChannelPipeline职责链.html" class="nav-btn next">下一篇:ChannelHandler 与 Pipeline 职责链 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · WebSocket 协议实现与聊天室</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #6b21a8; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 网络协议与实战 / WebSocket 与聊天室</div>
+  <div class="hero">
+    <div class="tag">Netty · 网络协议与实战</div>
+    <h1>WebSocket 协议实现与聊天室</h1>
+    <p>前面十几篇讲的都是"造轮子"的原理,这一篇用 Netty 内置的编解码器直接组装一个可运行的多人聊天室。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 11 章「WebSocket」 · 🔧 配套:<a href="https://github.com/sanshengshui/netty-learning-example" target="_blank" rel="noopener">netty-learning-example/netty-websocket</a></p>
+  </div>
+
+  <h2>一、为什么需要 WebSocket:HTTP 短连接的天然局限</h2>
+  <p>HTTP 是"请求-响应"模式:客户端问一句,服务端答一句,服务端没法主动推送消息给客户端。传统做法是客户端不断轮询("每隔几秒问一次有没有新消息"),既浪费资源又有明显延迟。<strong>WebSocket</strong> 在一次 HTTP 请求的基础上"升级"成一条全双工的长连接,之后服务端和客户端都能随时主动向对方发送数据——这正是聊天室、实时通知、股票行情推送等场景的标准选择。</p>
+
+  <h2>二、握手阶段:先是 HTTP,升级后才是 WebSocket</h2>
+  <p>WebSocket 连接建立的第一步依然是一个标准 HTTP 请求,只是带上几个特殊头部表明"我想升级成 WebSocket":</p>
+  <div class="code-block">
+    <div class="cb-header"><span>WebSocket 握手请求(简化)</span></div>
+    <pre>GET /chat HTTP/1.1
+Host: example.com
+<span class="kw">Upgrade</span>: websocket
+<span class="kw">Connection</span>: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13</pre>
+  </div>
+  <p>服务端如果同意升级,会返回 <code>101 Switching Protocols</code>,之后这条 TCP 连接上的通信就完全切换成 WebSocket 自己的帧格式,不再是 HTTP 报文。Netty 把这套复杂的握手协商流程封装进了 <code>WebSocketServerProtocolHandler</code>,业务代码基本不需要关心握手细节。</p>
+
+  <h2>三、组装一个最小可用的聊天室 Pipeline</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>WebSocket 服务端 Pipeline</span></div>
+    <pre>ch.<span class="fn">pipeline</span>()
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">HttpServerCodec</span>())               <span class="cm">// 先按 HTTP 协议解析(握手阶段需要）</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">ChunkedWriteHandler</span>())         <span class="cm">// 支持大数据分块写(可选,常见配置）</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">HttpObjectAggregator</span>(<span class="nu">8192</span>)) <span class="cm">// 把 HTTP 请求的多个部分聚合成完整的 FullHttpRequest</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">WebSocketServerProtocolHandler</span>(<span class="st">"/chat"</span>)) <span class="cm">// 处理握手协商,握手完成后自动把后续帧转换成 WebSocketFrame</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">ChatHandler</span>());               <span class="cm">// 业务逻辑:处理聊天消息</span></pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>ChatHandler:群发消息给所有在线连接</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">ChatHandler</span> <span class="kw">extends</span> <span class="ty">SimpleChannelInboundHandler</span>&lt;<span class="ty">TextWebSocketFrame</span>&gt; {
+    <span class="cm">// ChannelGroup 是 Netty 提供的线程安全容器,专门用来管理一批 Channel 并支持批量操作</span>
+    <span class="kw">private static final</span> <span class="ty">ChannelGroup</span> ONLINE_USERS =
+        <span class="kw">new</span> <span class="ty">DefaultChannelGroup</span>(<span class="ty">GlobalEventExecutor</span>.INSTANCE);
+
+    <span class="kw">public void</span> <span class="fn">handlerAdded</span>(<span class="ty">ChannelHandlerContext</span> ctx) {
+        ONLINE_USERS.<span class="fn">add</span>(ctx.<span class="fn">channel</span>()); <span class="cm">// 新连接握手完成后加入群组</span>
+    }
+    <span class="kw">protected void</span> <span class="fn">channelRead0</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">TextWebSocketFrame</span> msg) {
+        <span class="cm">// 收到一条消息,原样广播给所有在线用户(含自己)</span>
+        ONLINE_USERS.<span class="fn">writeAndFlush</span>(<span class="kw">new</span> <span class="ty">TextWebSocketFrame</span>(msg.<span class="fn">text</span>()));
+    }
+    <span class="kw">public void</span> <span class="fn">handlerRemoved</span>(<span class="ty">ChannelHandlerContext</span> ctx) {
+        ONLINE_USERS.<span class="fn">remove</span>(ctx.<span class="fn">channel</span>()); <span class="cm">// 连接断开自动从群组移除,ChannelGroup 内部也会做失效检测</span>
+    }
+}</pre>
+  </div>
+  <div class="callout tip"><strong>ChannelGroup 为什么重要:</strong>聊天室、广播推送这类场景,天然要维护一批"当前在线的连接",而这些连接可能分布在 workerGroup 里的不同 EventLoop 线程上——直接用普通的 <code>List&lt;Channel&gt;</code> 会有多线程安全问题(不同连接的 add/remove 可能来自不同 EventLoop 线程)。<code>ChannelGroup</code> 是 Netty 提供的线程安全实现,并且它的 <code>writeAndFlush()</code> 已经处理好了"把消息分别路由到每个 Channel 各自绑定的 EventLoop 上执行"这件事,业务代码不需要操心线程安全问题。</div>
+
+  <h2>四、SimpleChannelInboundHandler 与自动 release 的便利与陷阱</h2>
+  <p>上面用的是 <code>SimpleChannelInboundHandler&lt;T&gt;</code> 而不是 <code>ChannelInboundHandlerAdapter</code>——它有两个特点:①泛型参数 <code>T</code> 会自动过滤消息类型,不匹配的消息自动传给下一个 Handler;②<strong>处理完 <code>channelRead0()</code> 之后,会自动帮你调用 <code>ReferenceCountUtil.release(msg)</code></strong>,不需要像第 5 篇讲的那样手动 <code>release()</code>。</p>
+  <div class="callout warn"><strong>陷阱:如果需要把消息转发给下一个 Handler 或者异步处理后再释放,不能用 SimpleChannelInboundHandler 的自动释放。</strong>如果业务逻辑是把消息丢给一个异步线程池处理(呼应第 4 篇的教训),而 <code>channelRead0()</code> 本身已经返回,<code>SimpleChannelInboundHandler</code> 会在异步任务还没跑完时就已经把消息 release 掉了,等异步任务真正读取 <code>msg</code> 时会遇到已经被释放的 <code>ByteBuf</code>,抛出 <code>IllegalReferenceCountException</code>。这种场景应该用普通的 <code>ChannelInboundHandlerAdapter</code> 自己控制 release 的时机,或者在丢给异步线程前调用 <code>retain()</code> 增加一次引用计数。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>WebSocket 握手复用 HTTP,通过 <code>Upgrade</code> 头协商升级成全双工长连接,解决了 HTTP 短连接无法服务端主动推送的问题。</li>
+    <li>Netty 用 <code>WebSocketServerProtocolHandler</code> 封装了整个握手协商流程,业务代码只需处理升级完成后的 <code>WebSocketFrame</code>。</li>
+    <li><code>ChannelGroup</code> 是管理一批在线连接、支持线程安全广播的标准容器,聊天室/推送场景的必备组件。</li>
+    <li><code>SimpleChannelInboundHandler</code> 会自动释放消息,如果要异步处理消息,必须手动 <code>retain()</code> 或改用非自动释放的基类。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>HTTP 协议基础:</strong>WebSocket 握手复用 HTTP 请求/响应格式,理解 <a href="../../10-计算机网络/layer/05-常见HTTP状态码与方法.html">HTTP 状态码与头部机制</a> 能帮助更快看懂 <code>101 Switching Protocols</code> 这个不太常见的状态码背后的含义。</li>
+    <li><strong>ByteBuf 引用计数(承接第 5 篇):</strong>本篇 SimpleChannelInboundHandler 的自动 release 陷阱,正是对第 5 篇引用计数机制的一次实战应用——原理没吃透的话,遇到 <code>IllegalReferenceCountException</code> 会一头雾水。</li>
+    <li><strong>系统设计里的实时推送架构:</strong>ChannelGroup 广播的思路,和 <a href="../../19-系统设计/system-design-roadmap.html">系统设计</a> 模块里聊天系统/Feed 流的"扇出(fan-out)"策略是同一个问题在不同规模下的体现——小规模可以直接遍历所有连接广播,超大规模则需要引入消息队列做异步扇出。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="../codec/13-自定义私有协议设计.html" class="nav-btn">← 上一篇:自定义私有协议设计</a>
+    <a href="./15-心跳检测与空闲连接IdleStateHandler.html" class="nav-btn next">下一篇:心跳检测与 IdleStateHandler →</a>
+  </div>
+</div>
+</body>
+</html>

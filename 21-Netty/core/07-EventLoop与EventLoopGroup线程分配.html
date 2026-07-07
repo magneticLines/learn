@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · EventLoop 与 EventLoopGroup 线程分配</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #4ade80; border: 1px solid #14532d; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #4ade80; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #4ade80; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #4ade80; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #4ade80; border-color: #14532d; } .nav-btn.next:hover { background: #14532d; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 核心组件与线程模型 / EventLoopGroup 线程分配</div>
+  <div class="hero">
+    <div class="tag">Netty · 核心组件与线程模型</div>
+    <h1>EventLoop 与 EventLoopGroup 线程分配</h1>
+    <p>一个 EventLoopGroup 里到底装了几个 EventLoop?新连接进来时具体是怎么被分配到某一个上面的?</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 7 章「EventLoop 和线程模型」</p>
+  </div>
+
+  <h2>一、EventLoopGroup 是 EventLoop 的容器与调度者</h2>
+  <p>回顾第 3 篇讲过的:<code>EventLoop</code> 是单线程的事件循环,<code>EventLoopGroup</code> 则是若干个 <code>EventLoop</code> 的集合,负责对外提供"分配一个 EventLoop"的能力。以最常用的 <code>NioEventLoopGroup</code> 为例,不传参数时默认创建的线程数是 <code>CPU 核数 × 2</code>——这是一个经过 Netty 官方权衡后的默认值:既能利用多核并行处理不同连接,又不会因为线程数过多导致上下文切换开销反噬性能。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>显式指定线程数</span></div>
+    <pre><span class="ty">EventLoopGroup</span> group = <span class="kw">new</span> <span class="ty">NioEventLoopGroup</span>(<span class="nu">4</span>); <span class="cm">// 固定 4 个 EventLoop 线程</span></pre>
+  </div>
+
+  <h2>二、新 Channel 如何被分配到某个 EventLoop</h2>
+  <p>当 <code>bossGroup</code> accept 到一条新连接后,需要把这条连接注册到 <code>workerGroup</code> 里的某一个 <code>EventLoop</code> 上。Netty 默认采用<strong>轮询(Round-Robin)</strong>策略:第 1 条连接分给 EventLoop-0,第 2 条给 EventLoop-1,以此类推,循环往复。这样能保证长期运行下,每个 EventLoop 上挂的连接数大致均衡。</p>
+  <div class="callout tip"><strong>为什么不是"选负载最轻的那个"?</strong>看起来"挑当前连接数最少的 EventLoop"更聪明,但这需要额外维护和比较每个 EventLoop 的实时负载,本身就有开销,而且"连接数少"不等于"当前 CPU 负载低"(可能那几个连接反而是重度活跃的)。轮询策略简单、无锁、开销几乎为零,在绝大多数场景下已经足够均衡——这也是很多分布式系统里"负载均衡算法选型"时的常见取舍:简单策略在绝大多数场景下往往比复杂策略的性价比更高。</div>
+
+  <h2>三、bossGroup 只需要 1 个线程,为什么还要传 EventLoopGroup</h2>
+  <p>不少人会疑惑:既然 accept 操作很轻量,<code>bossGroup</code> 通常只放 1 个 <code>EventLoop</code>,为什么 API 上还是要求传一个 <code>EventLoopGroup</code> 而不是单个 <code>EventLoop</code>?原因是:①API 设计上 boss 和 worker 保持同一种类型(<code>EventLoopGroup</code>),使用更一致;②某些特殊场景下(比如需要同时监听多个端口),给 bossGroup 配置多个线程依然是有意义的,每个线程负责一个端口的 accept。</p>
+
+  <h2>四、EventLoop 既跑 IO,也跑普通任务</h2>
+  <p>容易被忽视的一点:<code>EventLoop</code> 不仅处理网络 IO 事件,它本身也是一个通用的任务执行器,实现了 <code>ScheduledExecutorService</code> 接口。可以直接把普通任务甚至定时任务提交给它执行:</p>
+  <div class="code-block">
+    <div class="cb-header"><span>向 Channel 绑定的 EventLoop 提交任务</span></div>
+    <pre>ctx.<span class="fn">channel</span>().<span class="fn">eventLoop</span>().<span class="fn">execute</span>(() -> {
+    <span class="cm">// 这个任务会排队进入该 Channel 绑定的 EventLoop 的任务队列,
+    // 和这条连接上的 IO 事件处理共享同一条时间线、串行执行</span>
+});
+
+ctx.<span class="fn">channel</span>().<span class="fn">eventLoop</span>().<span class="fn">schedule</span>(() -> {
+    <span class="cm">// 定时任务,同样运行在这个 EventLoop 线程上</span>
+}, <span class="nu">5</span>, <span class="ty">TimeUnit</span>.SECONDS);</pre>
+  </div>
+  <div class="callout warn"><strong>陷阱:把这个能力当成通用线程池滥用。</strong>提交给 EventLoop 的任务和这条连接的 IO 事件处理<strong>共享同一个线程</strong>——如果提交了一个耗时任务,效果和"在 Handler 里直接写耗时逻辑"是完全一样的,会阻塞这个 EventLoop 上其他所有连接的处理(呼应上一篇讲的核心陷阱)。这个 API 应该只用来提交与该连接相关、执行很快的小任务(比如安排一次心跳检查),真正的重活儿依然要丢给独立的业务线程池。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>EventLoopGroup 默认线程数为 <code>CPU 核数 × 2</code>,是并行能力与调度开销之间的权衡结果。</li>
+    <li>新连接默认按轮询策略分配给 EventLoopGroup 里的某个 EventLoop,简单、无锁、足够均衡。</li>
+    <li>bossGroup 通常只需 1 个线程,但 API 上依然使用 EventLoopGroup 类型,保持一致性并支持多端口监听场景。</li>
+    <li>EventLoop 本身也是通用任务执行器,但提交给它的任务会占用该连接所在的那唯一一个线程,只适合放轻量任务。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>负载均衡算法(承接 10-计算机网络):</strong>EventLoopGroup 内部的轮询分配策略,和 <a href="../../10-计算机网络/security/05-负载均衡的常见算法.html">负载均衡的常见算法</a> 里"轮询 vs 加权 vs 最小连接数"是同一类问题在不同尺度上的重现——一个是分配 Channel 给 EventLoop,一个是分配请求给服务器实例,权衡逻辑高度相似。</li>
+    <li><strong>Java 的 ScheduledExecutorService:</strong>EventLoop 实现这个接口意味着它可以直接套用 <a href="../../02-并发/exec/05-拒绝策略.html">JUC 线程池</a> 的定时任务用法,理解了 JDK 的 <code>ScheduledThreadPoolExecutor</code>,这里的 API 就是现成的知识迁移。</li>
+    <li><strong>心跳检测与 IdleStateHandler(后续章节):</strong>EventLoop 的 <code>schedule()</code> 能力正是 Netty 内置的 <code>IdleStateHandler</code> 检测空闲连接的实现基础——理解了本篇,再学心跳检测会更容易看懂它的内部原理而不只是会用 API。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./06-ChannelHandler与ChannelPipeline职责链.html" class="nav-btn">← 上一篇:ChannelHandler 与 Pipeline 职责链</a>
+    <a href="./08-Bootstrap与ServerBootstrap启动流程.html" class="nav-btn next">下一篇:Bootstrap 启动流程 →</a>
+  </div>
+</div>
+</body>
+</html>

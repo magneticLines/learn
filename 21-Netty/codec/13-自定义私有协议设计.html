@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · 自定义私有协议设计</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #38bdf8; border: 1px solid #1e3a8a; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #38bdf8; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #38bdf8; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #38bdf8; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #6b21a8; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 编解码与协议设计 / 自定义私有协议设计</div>
+  <div class="hero">
+    <div class="tag">Netty · 编解码与协议设计 · 进阶</div>
+    <h1>自定义私有协议设计</h1>
+    <p>把前面几篇的积木(长度字段解码、编解码器框架)拼起来,设计一份 RPC 框架常用的私有协议格式。</p>
+    <p class="src">📖 来源:综合前几章实践 + Dubbo/RocketMQ 等主流 RPC 框架协议设计的通用套路</p>
+  </div>
+
+  <h2>一、一份典型私有协议的头部结构</h2>
+  <p>几乎所有基于 Netty 的 RPC 框架私有协议,头部都会包含这几类字段,只是具体字节数和顺序有差异:</p>
+  <div class="code-block">
+    <div class="cb-header"><span>典型协议头部设计(共 16 字节头部)</span></div>
+    <pre>┌──────────┬────────┬────────┬──────────┬──────────┬──────────────┐
+│  魔数(4B) │版本(1B)│类型(1B)│序列化方式(1B)│ 保留(1B) │ 消息体长度(4B) │
+└──────────┴────────┴────────┴──────────┴──────────┴──────────────┘
+                                                          ↓
+                                                     消息体(变长字节)</pre>
+  </div>
+  <table>
+    <tr><th>字段</th><th>作用</th></tr>
+    <tr><td>魔数(Magic Number)</td><td>固定的特征字节(比如 <code>0xCAFEBABE</code>),解码时第一件事就是校验它——如果不匹配,说明这根本不是本协议的合法数据(可能是别的服务误连、或者数据已损坏/被篡改),直接关闭连接,避免继续用错误的方式解析后续字节。</td></tr>
+    <tr><td>版本号</td><td>协议升级的兼容性开关——不同版本的客户端/服务端可以根据这个字段决定如何解析剩余字段,支撑协议的平滑演进。</td></tr>
+    <tr><td>消息类型</td><td>区分这是请求、响应、心跳包等不同种类的消息,不同类型的消息体结构和处理逻辑可能完全不同。</td></tr>
+    <tr><td>序列化方式</td><td>标明消息体是用 JSON、Protobuf 还是 Hessian 等哪种方式序列化的,支持一个协议兼容多种序列化实现,便于按场景选择性能或兼容性更好的方案。</td></tr>
+    <tr><td>消息体长度</td><td>正是第 12 篇讲的长度字段,交给 <code>LengthFieldBasedFrameDecoder</code> 处理粘包/半包。</td></tr>
+  </table>
+  <div class="callout tip"><strong>为什么要有魔数这一步:</strong>试想一个端口被误用(比如运维不小心把一个 HTTP 探活请求打到了 RPC 服务的端口上),没有魔数校验的协议会尝试把这些不相关的字节按自己的格式解析,极大概率会得到荒谬的"长度"值(参考第 12 篇的 maxFrameLength 陷阱)甚至引发异常堆栈刷屏。魔数校验相当于协议解析的第一道"是不是自己人"的关卡,成本极低(通常就是比较 4 个字节)但收益很高。</div>
+
+  <h2>二、组装完整的编解码 Pipeline</h2>
+  <div class="code-block">
+    <div class="cb-header"><span>私有协议的完整 Pipeline 组装</span></div>
+    <pre>ch.<span class="fn">pipeline</span>()
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">LengthFieldBasedFrameDecoder</span>(
+        <span class="nu">65536</span>,  <span class="cm">// maxFrameLength</span>
+        <span class="nu">12</span>,     <span class="cm">// lengthFieldOffset:头部前 12 字节(魔数+版本+类型+序列化方式+保留）之后才是长度字段</span>
+        <span class="nu">4</span>))     <span class="cm">// lengthFieldLength</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">MyProtocolDecoder</span>())  <span class="cm">// 校验魔数、解析头部字段、按序列化方式反序列化消息体</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">MyProtocolEncoder</span>())  <span class="cm">// 反过来:写魔数、写头部、序列化消息体、附加长度字段</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">BusinessHandler</span>());</pre>
+  </div>
+  <p>注意这里没有单独使用 <code>LengthFieldPrepender</code>——因为消息头本身还有魔数、版本号等字段需要一起写,通常会把"加长度字段"这个动作也合并进自定义的 <code>MyProtocolEncoder</code> 里,而不是拆成两个 Handler,这属于第 10 篇提到的"编解码逻辑天然耦合时可以合并"的场景。</p>
+
+  <h2>三、心跳消息类型:为什么协议里要专门留一种消息类型</h2>
+  <p>长连接场景下(RPC 调用、IM),TCP 连接可能因为中间网络设备(NAT、防火墙)的空闲超时策略被悄悄断开,而两端应用层却毫无感知("假死连接")。解决方案是定期发送轻量的<strong>心跳包</strong>维持连接活跃——这正是为什么消息类型字段里通常会专门留一个 <code>HEARTBEAT</code> 类型,配合下一部分"网络协议与实战"里要讲的 <code>IdleStateHandler</code> 使用。</p>
+
+  <h2>四、协议设计中最容易被忽视的一点:版本兼容性</h2>
+  <div class="callout warn"><strong>陷阱:协议上线后不留扩展空间,后续升级只能推倒重来。</strong>很多团队第一版协议设计时图省事,头部字段写死、没有版本号、也没有为将来预留字段——等半年后需要新增一个字段(比如链路追踪 ID),就会发现新旧版本互相不认识对方的协议格式,只能被迫做一次不兼容的大升级,牵连所有客户端同时更新。哪怕第一版用不上,协议设计时预留版本号字段和若干保留字节(reserved bytes),是用极小的成本换未来平滑演进空间的典型工程实践。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>典型私有协议头部包含:魔数(身份校验)、版本号(兼容性)、消息类型(区分请求/响应/心跳)、序列化方式、消息体长度。</li>
+    <li>魔数校验是防止"误连接/数据损坏被当作合法数据解析"的低成本高收益防御手段。</li>
+    <li>心跳消息类型 + 后续要讲的 IdleStateHandler,是解决长连接"假死"问题的标准组合拳。</li>
+    <li>协议设计要提前预留版本号和保留字段,为将来平滑升级留出空间,避免推倒重来。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>RPC 框架与消息队列的私有协议:</strong>本篇的设计思路正是 Dubbo、RocketMQ 等框架私有协议的通用套路,可以对照 <a href="../../13-消息队列/kafka/01-Topic与Partition的设计.html">消息队列</a> 模块里 Kafka 协议设计的相关讨论,看同样的问题在不同中间件里的具体解法。</li>
+    <li><strong>API 版本兼容性设计:</strong>协议里的版本号字段,和 <a href="../../07-Spring/web/">Spring Web</a> 里 REST API 的版本管理是同一个工程问题——如何在系统演进过程中,让新旧版本的通信双方都能各自正常工作。</li>
+    <li><strong>心跳检测与 IdleStateHandler(下一篇):</strong>本篇提到的心跳消息类型只是"协议里预留了这个能力",具体怎么检测连接空闲、怎么触发发送心跳包,是下一篇的主题。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./12-内置解码器LengthFieldBasedFrameDecoder等.html" class="nav-btn">← 上一篇:内置解码器</a>
+    <a href="../practice/14-WebSocket协议实现与聊天室.html" class="nav-btn next">下一篇:WebSocket 协议实现与聊天室 →</a>
+  </div>
+</div>
+</body>
+</html>

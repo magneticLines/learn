@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · 内置解码器 LengthFieldBasedFrameDecoder 等</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #38bdf8; border: 1px solid #1e3a8a; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #38bdf8; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #38bdf8; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #38bdf8; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #38bdf8; border-color: #1e3a8a; } .nav-btn.next:hover { background: #1e3a8a; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 编解码与协议设计 / 内置解码器</div>
+  <div class="hero">
+    <div class="tag">Netty · 编解码与协议设计</div>
+    <h1>内置解码器:LengthFieldBasedFrameDecoder 等</h1>
+    <p>上一篇讲了长度字段方案是业界主流,这一篇具体看 Netty 是怎么把这个方案封装成一个开箱即用的解码器的。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 10 章「提供的 ChannelHandler 和编解码器」</p>
+  </div>
+
+  <h2>一、LengthFieldBasedFrameDecoder:把"长度字段方案"参数化</h2>
+  <p>长度字段方案的核心思路虽然简单("先读长度、再按长度读内容"),但真实协议里长度字段的位置、大小、是否包含自身长度等细节千差万别。Netty 用一个高度参数化的 <code>LengthFieldBasedFrameDecoder</code> 覆盖了几乎所有变体,不需要每种协议都手写一个新的 Decoder。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>核心构造参数</span></div>
+    <pre><span class="kw">new</span> <span class="ty">LengthFieldBasedFrameDecoder</span>(
+    <span class="nu">1024</span>,     <span class="cm">// maxFrameLength:一帧最大允许多少字节,超过直接抛异常防止恶意超大包耗尽内存</span>
+    <span class="nu">0</span>,        <span class="cm">// lengthFieldOffset:长度字段距离帧起始处有多少字节(前面可能还有魔数/版本号等）</span>
+    <span class="nu">4</span>,        <span class="cm">// lengthFieldLength:长度字段本身占多少字节(常见是 2 或 4 字节)</span>
+    <span class="nu">0</span>,        <span class="cm">// lengthAdjustment:长度字段的值和"实际还要再读多少字节"之间的偏移修正</span>
+    <span class="nu">4</span>         <span class="cm">// initialBytesToStrip:解析完成后,从最终结果里去掉开头多少字节(通常是去掉长度字段本身）</span>
+);</pre>
+  </div>
+  <table>
+    <tr><th>参数</th><th>直觉理解</th></tr>
+    <tr><td><code>maxFrameLength</code></td><td>安全阀:防止协议解析出一个荒谬的巨大长度值(可能是恶意攻击或数据损坏),内存被撑爆之前先报错拒绝。</td></tr>
+    <tr><td><code>lengthFieldOffset</code></td><td>长度字段不一定在最开头,前面可能还有别的头部字段,这个参数告诉解码器"跳过多少字节才能找到长度字段"。</td></tr>
+    <tr><td><code>lengthFieldLength</code></td><td>长度字段自己占几个字节,决定了这个协议理论上支持的最大帧长度。</td></tr>
+    <tr><td><code>lengthAdjustment</code></td><td>有些协议里"长度字段的值"指的是整个包(含头部)的长度,而不是纯内容长度,需要用这个参数修正差值。</td></tr>
+    <tr><td><code>initialBytesToStrip</code></td><td>最终交给业务 Handler 的数据,通常不需要再看到长度字段本身,这个参数负责把它去掉。</td></tr>
+  </table>
+  <div class="callout warn"><strong>maxFrameLength 不是可选项,而是安全底线。</strong>如果不设置合理的上限,一旦客户端(无论是恶意还是 bug)发送了一个声称"长度为 2GB"的畸形包,解码器会尝试为这条"消息"累积分配对应的缓冲区,直接把服务端内存耗尽——这是一类真实存在的拒绝服务风险,协议解析层必须对"外部输入的长度值"保持怀疑,永远设一个业务上合理的上限。</div>
+
+  <h2>二、配套的编码器:LengthFieldPrepender</h2>
+  <p>解码是"剥掉长度字段",编码就要反过来"在内容前面加上长度字段"——<code>LengthFieldPrepender</code> 正是干这件事的:计算即将发送的 <code>ByteBuf</code> 有多少字节,把这个长度值写在内容前面。它和 <code>LengthFieldBasedFrameDecoder</code> 是最常搭配使用的一对编解码器。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>编解码器成对装入 Pipeline</span></div>
+    <pre>ch.<span class="fn">pipeline</span>()
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">LengthFieldBasedFrameDecoder</span>(<span class="nu">1024</span>, <span class="nu">0</span>, <span class="nu">4</span>, <span class="nu">0</span>, <span class="nu">4</span>)) <span class="cm">// 入站:拆包</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">LengthFieldPrepender</span>(<span class="nu">4</span>))                          <span class="cm">// 出站:加长度头</span>
+  .<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">MyProtocolCodec</span>());  <span class="cm">// 再往上才是"字节 ↔ 业务对象"的转换</span></pre>
+  </div>
+
+  <h2>三、其他两种通用方案对应的内置实现</h2>
+  <table>
+    <tr><th>类</th><th>对应方案</th></tr>
+    <tr><td><code>FixedLengthFrameDecoder</code></td><td>固定长度方案,每帧固定 N 字节</td></tr>
+    <tr><td><code>LineBasedFrameDecoder</code></td><td>分隔符方案,专门按行(<code>\n</code>)切分,内部实现是逐字节扫描找换行符</td></tr>
+    <tr><td><code>DelimiterBasedFrameDecoder</code></td><td>分隔符方案的通用版,可以自定义任意分隔符序列</td></tr>
+  </table>
+  <div class="callout tip"><strong>什么时候直接用内置的,什么时候自己写:</strong>只要协议能被归纳成"固定长度 / 分隔符 / 长度字段"这三种通用模式之一,优先用内置实现,不要重复造轮子——它们经过大规模生产验证,边界条件(半包、恰好等于 maxFrameLength、多帧粘在一起)都处理得很稳妥。只有当协议本身有内置实现覆盖不了的特殊结构(比如变长的长度字段编码,类似 Protobuf 的 Varint)时,才需要继承 <code>ByteToMessageDecoder</code> 自己实现。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li><code>LengthFieldBasedFrameDecoder</code> 通过 5 个参数把"长度字段方案"的各种协议变体都覆盖了,不需要每种协议都手写。</li>
+    <li><code>maxFrameLength</code> 是防御性设计,避免畸形/恶意超长长度值把服务端内存耗尽。</li>
+    <li><code>LengthFieldPrepender</code> 是配套的编码器,自动在内容前面写入长度字段。</li>
+    <li>固定长度、分隔符两种方案也都有对应的内置解码器,能用内置的就不要自己重复实现。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>拒绝服务攻击与输入校验:</strong>maxFrameLength 的设计思路和 <a href="../../18-Web安全/attack/05-文件上传漏洞.html">Web 安全</a> 里"永远不要相信外部输入的大小/类型声明"是同一个安全原则的不同应用场景——协议层面的长度字段和 HTTP 层面的 <code>Content-Length</code>、文件上传的大小限制,本质上都是同一类攻击面。</li>
+    <li><strong>Protobuf 的 Varint 编码:</strong>提到的"变长长度字段"典型代表就是 Protobuf 的 Varint 编码——用可变字节数表示整数,小数值用更少字节,这是长度字段方案的一种更精细的变体,常见于 gRPC 等现代 RPC 框架。</li>
+    <li><strong>自定义私有协议设计(下一篇):</strong>本篇的内置解码器是搭建私有协议的"标准积木",下一篇会把它和魔数校验、版本号、序列化方式选择等结合起来,组装成一份完整可用的协议设计。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./11-TCP粘包与拆包问题及解决方案.html" class="nav-btn">← 上一篇:TCP 粘包与拆包问题</a>
+    <a href="./13-自定义私有协议设计.html" class="nav-btn next">下一篇:自定义私有协议设计 →</a>
+  </div>
+</div>
+</body>
+</html>

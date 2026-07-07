@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · Reactor 线程模型与 Netty 的实现</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fb923c; border: 1px solid #9a3412; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fb923c; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fb923c; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fb923c; border-color: #9a3412; } .nav-btn.next:hover { background: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 核心概念与架构 / Reactor 线程模型</div>
+  <div class="hero">
+    <div class="tag">Netty · 核心概念与架构</div>
+    <h1>Reactor 线程模型与 Netty 的实现</h1>
+    <p>为什么 bossGroup 和 workerGroup 要分开?为什么 workerGroup 默认是 CPU 核数 × 2 而不是 1?这一篇把线程分工的全貌讲清楚。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 3~4 章「EventLoop 与线程模型」延伸</p>
+  </div>
+
+  <h2>一、Reactor 模式:事件驱动架构的通用范式</h2>
+  <p><strong>Reactor 模式</strong>是一种应对高并发 IO 的经典架构范式,核心思想是:用一个(或多个)<strong>Reactor 线程</strong>通过 <code>Selector</code> 统一监听一批连接上的事件,一旦某个事件就绪,就把它<strong>分发(dispatch)</strong>给对应的 <code>Handler</code> 去处理——而不是像 BIO 那样让每个连接各自占用一个线程死等。这不是 Netty 独有的发明,Redis、Nginx、Node.js 的事件循环都是这一模式的不同变体。</p>
+  <p>Reactor 模式有三种经典演进形态,理解这条演进线,就能理解 Netty 为什么最终选择了它现在的实现:</p>
+
+  <h3>1. 单 Reactor 单线程</h3>
+  <p>一个线程既做事件监听(accept、read、write 事件的分发),又亲自执行业务逻辑。结构最简单,但<strong>致命问题是无法利用多核</strong>——CPU 有 8 核,却只有 1 个线程在干活,而且一旦某个业务逻辑处理慢了(比如做了一次耗时的数据库查询),会卡住这唯一的线程,导致所有其他连接的事件都得不到及时处理。</p>
+
+  <h3>2. 单 Reactor 多线程</h3>
+  <p>监听和分发还是由 1 个 Reactor 线程做,但真正的业务逻辑丢给一个独立的<strong>线程池</strong>去执行,处理完再由 Reactor 线程把结果写回去。这样业务逻辑能利用多核了,但<strong>Reactor 线程本身仍然只有一个</strong>——它既要处理新连接的 accept,又要处理所有已建立连接的事件分发,当连接数极大时,这一个线程的分发能力会成为瓶颈。</p>
+
+  <h3>3. 主从 Reactor 多线程(Netty 的选择)</h3>
+  <p>把 Reactor 本身也拆成多个:<strong>主 Reactor</strong>(对应 <code>bossGroup</code>)只负责 <code>accept</code> 新连接,接到后立刻"甩给"<strong>从 Reactor 组</strong>(对应 <code>workerGroup</code>,内部是多个独立的 <code>EventLoop</code> 线程)中的某一个,由它全权负责这条连接后续所有的事件监听、分发乃至业务处理。这样 accept 和已连接的 IO 处理各自都能并行扩展,不再有单一环节的瓶颈。</p>
+  <div class="callout tip"><strong>回顾上一篇的绑定规则:</strong>"一个 Channel 终身绑定一个 EventLoop"正是主从 Reactor 模型的具体实现方式——新连接一旦被某个从 Reactor(EventLoop)接管,这个绑定关系就固定下来,不会来回切换,这也是为什么同一连接上的 Handler 调用天然线程安全。</div>
+
+  <table>
+    <tr><th>模型</th><th>典型代表</th><th>核心限制</th></tr>
+    <tr><td>单 Reactor 单线程</td><td>Redis(单机核心命令处理)</td><td>无法利用多核;一件慢事卡住全部连接</td></tr>
+    <tr><td>单 Reactor 多线程</td><td>较少见的过渡形态</td><td>Reactor 分发本身仍是单线程瓶颈</td></tr>
+    <tr><td>主从 Reactor 多线程</td><td><strong>Netty</strong>、Nginx(多进程各自单 Reactor 变体)</td><td>实现复杂度更高,但扩展性最好</td></tr>
+  </table>
+  <div class="callout info"><strong>为什么 Redis 反而选择单线程?</strong>Redis 的核心命令处理是纯内存操作,CPU 消耗极低,瓶颈根本不在"计算",而在网络 IO 和内存带宽——用单线程换取"不用加锁、没有上下文切换开销"的简单性价比更高。而 Netty 面对的是通用网络框架,业务逻辑复杂度不可控(可能是几十毫秒的调用),所以必须支持多线程并行处理,不能像 Redis 那样赌"业务足够轻"。</div>
+
+  <h2>二、Netty 里主从 Reactor 的具体落地</h2>
+  <p>对照回第二篇的代码:<code>bossGroup</code> 就是主 Reactor(通常只放 1 个线程,因为 accept 本身极快,1 个线程完全够用),<code>workerGroup</code> 就是从 Reactor 组(默认 <code>CPU 核数 × 2</code> 个线程)。一条新连接进来后:</p>
+  <ol>
+    <li>bossGroup 里的 EventLoop 监听到 <code>OP_ACCEPT</code> 事件,调用 <code>accept()</code> 拿到新的 <code>SocketChannel</code>。</li>
+    <li>bossGroup 按一定策略(默认轮询)从 workerGroup 里挑一个 EventLoop,把这个新 Channel 注册到它上面。</li>
+    <li>此后这条连接上所有的读写事件、Handler 调用,都固定由这一个被选中的 EventLoop 线程处理,直到连接关闭。</li>
+  </ol>
+
+  <h2>三、最容易踩的坑:在 EventLoop 线程里做耗时操作</h2>
+  <p>既然一个 EventLoop 要服务多个 Channel,那么<strong>任何一个 Channel 上的 Handler 如果执行了耗时操作(比如同步调用数据库、远程 RPC、复杂计算),都会阻塞这同一个 EventLoop 线程</strong>——而这个线程上挂着的其他所有连接,在这段时间里全都得不到处理,哪怕它们的数据早就已经就绪。</p>
+  <div class="callout warn"><strong>反例 → 问题:</strong>在 <code>channelRead</code> 里直接同步调用一个耗时 200ms 的数据库查询。假设这个 EventLoop 上还绑定了 5000 个空闲连接,这 200ms 里,这 5000 个连接的任何事件(哪怕只是要发一个心跳包)都会被硬生生延迟,整个服务的 P99 延迟会急剧劣化,而且是那种"偶发、难复现"的劣化,排查起来很痛苦。</div>
+  <div class="callout tip"><strong>正例:</strong>把耗时的业务逻辑提交到一个独立的业务线程池去执行,EventLoop 线程只负责快速的编解码和分发,拿到业务结果后再切回 EventLoop 线程把响应写回去。</div>
+  <div class="code-block">
+    <div class="cb-header"><span>正确写法:业务逻辑不占用 EventLoop 线程</span></div>
+    <pre><span class="kw">public void</span> <span class="fn">channelRead</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">Object</span> msg) {
+    businessExecutor.<span class="fn">execute</span>(() -> {
+        <span class="ty">Object</span> result = doSlowBusinessLogic(msg); <span class="cm">// 耗时逻辑丢给独立线程池</span>
+        ctx.<span class="fn">writeAndFlush</span>(result); <span class="cm">// 写回操作会自动切回该 Channel 绑定的 EventLoop 执行,线程安全</span>
+    });
+}</pre>
+  </div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>Reactor 模式演进:单 Reactor 单线程(无法利用多核)→ 单 Reactor 多线程(分发仍是瓶颈)→ 主从 Reactor 多线程(accept 与 IO 处理都能并行扩展)。</li>
+    <li>Netty 用 bossGroup(主 Reactor,处理 accept)+ workerGroup(从 Reactor组,处理已连接的 IO 与业务)实现主从 Reactor 多线程模型。</li>
+    <li>一条连接一旦分配给某个 EventLoop 就终身绑定,这是"同一 Channel 上 Handler 无需加锁"的根源。</li>
+    <li>最大陷阱:在 EventLoop 线程里做耗时操作会阻塞该线程上挂着的所有其他连接,必须把耗时业务丢到独立线程池。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>操作系统 IO 多路复用:</strong>Reactor 模式里"用 Selector 统一监听一批 Channel"这件事,底层就是 <a href="../../11-操作系统/io/03-IO多路复用selectPollEpoll.html">select/poll/epoll</a> 的应用——Reactor 模式是这套系统调用之上的一层编程范式抽象。</li>
+    <li><strong>Redis 单线程模型:</strong>Redis 选择单 Reactor 单线程,与 Netty 选择主从 Reactor 多线程,是同一套 Reactor 思想在不同场景(纯内存计算 vs 通用网络框架)下的不同权衡,可以对照 <a href="../../12-缓存/cache-roadmap.html">缓存</a> 模块里 Redis 单线程为什么快的讨论一起理解。</li>
+    <li><strong>系统设计中的长连接架构:</strong>聊天系统、消息推送系统这类需要维护海量长连接的场景,选型时常会直接对比"要不要用 Netty、要撑多少并发连接",而这背后就是本篇讲的主从 Reactor 能扩展到多核的能力,呼应 <a href="../../19-系统设计/system-design-roadmap.html">系统设计</a> 模块。</li>
+    <li><strong>Java 线程池的任务提交:</strong>"耗时业务丢给独立线程池"这个套路,和 <a href="../../02-并发/exec/05-拒绝策略.html">线程池</a> 里"IO 线程与计算线程分离"的设计理念完全一致——本质都是不要让宝贵的、数量有限的调度线程被业务逻辑的执行时间拖住。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./03-Channel-EventLoop-ChannelFuture三大核心接口.html" class="nav-btn">← 上一篇:三大核心接口</a>
+    <a href="../netty-roadmap.html" class="nav-btn next">返回路线图,查看后续内容 →</a>
+  </div>
+</div>
+</body>
+</html>

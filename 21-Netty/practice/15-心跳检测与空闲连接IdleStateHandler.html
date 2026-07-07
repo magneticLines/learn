@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · 心跳检测与空闲连接 IdleStateHandler</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #6b21a8; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 网络协议与实战 / 心跳检测</div>
+  <div class="hero">
+    <div class="tag">Netty · 网络协议与实战</div>
+    <h1>心跳检测与空闲连接 IdleStateHandler</h1>
+    <p>TCP 连接看起来是"建立"的,但对方可能早就已经不在了——这就是长连接场景下最经典的"假死连接"问题。</p>
+    <p class="src">📖 来源:《Netty in Action》案例延伸 + 第 13 篇"协议设计"里心跳消息类型的具体落地</p>
+  </div>
+
+  <h2>一、为什么长连接会"假死"</h2>
+  <p>TCP 本身并不会主动、及时地告诉你"对方是否还活着"——如果双方都不发数据,一条连接可以在没有任何数据交互的情况下保持"已建立"状态很长时间。但现实网络环境里存在大量中间设备(NAT 网关、负载均衡器、防火墙)出于资源限制,会对<strong>长时间没有数据流动的连接</strong>做超时清理:它们悄悄丢弃了这条连接的路由状态,但两端应用程序完全不知情,还以为连接依然正常——这就是所谓的<strong>假死连接</strong>。等真正需要发数据时才会发现连接早已不可用,而这个发现过程本身可能需要等待一次较长的 TCP 超时才能确认。</p>
+  <div class="callout tip"><strong>类比:</strong>假死连接就像打电话时对方已经把听筒放下了,但线路本身还没有物理挂断的信号传回来——你以为对方还在听,一直在讲话,直到讲了很久才发现根本没人回应。</div>
+
+  <h2>二、解决方案:定期心跳,主动确认对方存活</h2>
+  <p>解决假死连接的标准做法是<strong>心跳机制</strong>:连接两端定期(比如每 30 秒)发送一个很小的心跳包,只要能正常收发,就说明连接依然活着,同时"有数据流动"这件事本身也能防止中间设备把这条连接当作空闲连接清理掉。Netty 提供了 <code>IdleStateHandler</code>,专门用来检测"连接多久没有读/写数据了",省去自己维护定时器的麻烦。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>配置 IdleStateHandler:30 秒没收到数据就触发事件</span></div>
+    <pre>ch.<span class="fn">pipeline</span>().<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">IdleStateHandler</span>(
+    <span class="nu">30</span>, <span class="cm">// readerIdleTime:超过 30 秒没有读到任何数据,触发 READER_IDLE 事件</span>
+    <span class="nu">0</span>,  <span class="cm">// writerIdleTime:0 表示不检测写空闲</span>
+    <span class="nu">0</span>,  <span class="cm">// allIdleTime:0 表示不检测读写都空闲</span>
+    <span class="ty">TimeUnit</span>.SECONDS
+));
+ch.<span class="fn">pipeline</span>().<span class="fn">addLast</span>(<span class="kw">new</span> <span class="ty">HeartbeatHandler</span>());</pre>
+  </div>
+  <div class="code-block">
+    <div class="cb-header"><span>响应空闲事件:主动断开或发送心跳</span></div>
+    <pre><span class="kw">public class</span> <span class="ty">HeartbeatHandler</span> <span class="kw">extends</span> <span class="ty">ChannelInboundHandlerAdapter</span> {
+    <span class="kw">public void</span> <span class="fn">userEventTriggered</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">Object</span> evt) {
+        <span class="kw">if</span> (evt <span class="kw">instanceof</span> <span class="ty">IdleStateEvent</span>) {
+            <span class="ty">IdleStateEvent</span> event = (<span class="ty">IdleStateEvent</span>) evt;
+            <span class="kw">if</span> (event.state() == <span class="ty">IdleState</span>.READER_IDLE) {
+                <span class="cm">// 服务端场景:太久没收到客户端消息,判定连接已死,主动关闭释放资源</span>
+                ctx.<span class="fn">close</span>();
+            }
+        } <span class="kw">else</span> {
+            <span class="fn">super</span>.<span class="fn">userEventTriggered</span>(ctx, evt); <span class="cm">// 不是空闲事件,交给下一个 Handler</span>
+        }
+    }
+}</pre>
+  </div>
+  <div class="callout warn"><strong>陷阱:忘记调用 super.userEventTriggered(ctx, evt)。</strong>如果 Pipeline 上还有其他 Handler 也需要处理用户自定义事件(而不仅仅是 <code>IdleStateEvent</code>),而当前 Handler 处理完自己关心的分支就直接结束,没有把不认识的事件继续往下传,会导致后面的 Handler 永远收不到本该属于它们的事件——这是职责链模式里"处理完记得决定是否继续传递"这条规则在事件通知场景下的具体体现,和第 6 篇讲的 Pipeline 处理逻辑是同一个原理。</div>
+
+  <h2>三、客户端与服务端的心跳策略通常不对称</h2>
+  <table>
+    <tr><th>角色</th><th>常见策略</th><th>原因</th></tr>
+    <tr><td>客户端</td><td>配置 <code>writerIdleTime</code>,空闲时主动发送心跳包</td><td>客户端数量庞大,主动定期"报个到"成本分摊在每个客户端自己身上</td></tr>
+    <tr><td>服务端</td><td>配置 <code>readerIdleTime</code>,超时没收到任何数据(含心跳)就判定连接已死并关闭</td><td>服务端只需要被动检测超时,不需要主动轮询海量连接是否存活,节省服务端资源</td></tr>
+  </table>
+  <div class="callout info"><strong>为什么服务端超时时间通常要比客户端心跳间隔更宽松:</strong>如果客户端每 30 秒发一次心跳,服务端却也设置 30 秒判定超时,一次网络抖动导致的心跳延迟就可能被误判为连接已死。实践中服务端超时时间一般设为客户端心跳间隔的 2~3 倍(比如客户端 30 秒发一次,服务端 90 秒没收到才判定超时),给网络抖动留出容错空间。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>假死连接:中间网络设备清理了空闲连接的路由状态,但两端应用层毫不知情,只有真正发数据时才会发现。</li>
+    <li><code>IdleStateHandler</code> 负责检测读/写/读写空闲,触发 <code>IdleStateEvent</code> 通知业务代码,不需要自己维护定时器。</li>
+    <li>典型策略是客户端主动发心跳(写空闲触发),服务端被动检测超时并关闭(读空闲触发)。</li>
+    <li>服务端超时阈值应比客户端心跳间隔宽松几倍,避免网络抖动导致连接被误判关闭。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>EventLoop 的定时任务能力(承接第 7 篇):</strong><code>IdleStateHandler</code> 内部正是利用了第 7 篇讲过的 EventLoop <code>schedule()</code> 能力来周期性检查空闲状态——理解了 EventLoop 是通用任务执行器,这里的实现原理就不再是黑盒。</li>
+    <li><strong>自定义私有协议里的心跳消息类型(承接第 13 篇):</strong>本篇讲的是"如何检测该不该发心跳、该不该断连",第 13 篇讲的是"心跳包在协议格式里长什么样"——两者合起来才是一套完整的心跳机制实现。</li>
+    <li><strong>TCP Keepalive 与应用层心跳的区别:</strong>操作系统的 TCP 层也有一个 <code>SO_KEEPALIVE</code>(第 8 篇提到过)用于检测连接存活,但它的默认探测间隔通常长达 2 小时且不可跨平台精细控制,应用层心跳能自主控制频率、还能携带业务语义(如同时上报客户端状态),这是实践中几乎总是选择应用层心跳而非只依赖 TCP Keepalive 的原因。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./14-WebSocket协议实现与聊天室.html" class="nav-btn">← 上一篇:WebSocket 协议实现与聊天室</a>
+    <a href="./16-UDP广播与组播.html" class="nav-btn next">下一篇:UDP 广播与组播 →</a>
+  </div>
+</div>
+</body>
+</html>

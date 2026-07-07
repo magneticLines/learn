@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · UDP 广播与组播</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #c084fc; border: 1px solid #6b21a8; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #c084fc; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #c084fc; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #c084fc; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #c084fc; border-color: #6b21a8; } .nav-btn.next:hover { background: #6b21a8; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 网络协议与实战 / UDP 广播与组播</div>
+  <div class="hero">
+    <div class="tag">Netty · 网络协议与实战</div>
+    <h1>UDP 广播与组播</h1>
+    <p>前面十几篇几乎都在讲 TCP,但 Netty 同样是一个通用的网络框架——UDP 场景下它一样好用。</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 12 章「用 UDP 广播事件」</p>
+  </div>
+
+  <h2>一、UDP 与 TCP 的关键差异回顾</h2>
+  <p>UDP 是无连接、不保证可靠交付的协议:没有握手,发送方直接把数据报(Datagram)丢出去,不管对方收没收到,也不管顺序对不对。这些"缺点"恰恰在特定场景下变成了优点:没有连接建立/维护的开销,没有丢包重传导致的延迟抖动,天然支持<strong>一对多</strong>的广播(Broadcast)和组播(Multicast)——这是基于连接的 TCP 完全做不到的。</p>
+  <div class="callout info"><strong>为什么面向连接的 TCP 没法做广播:</strong>TCP 连接是"一对一"的点对点通道,给 100 个客户端广播消息就得维护 100 条独立连接、发送 100 次。UDP 不需要事先建立连接,一个数据报可以直接发往一个广播地址或组播地址,底层网络设备负责把它复制分发给多个接收方,发送方只需要发一次。</div>
+
+  <h2>二、Netty 里 UDP 的 Channel 类型:NioDatagramChannel</h2>
+  <p>UDP 场景下不再需要区分"服务端/客户端"或"bossGroup/workerGroup"——因为 UDP 本身没有连接的概念,自然也没有 accept 这回事。只需要一个 <code>Bootstrap</code>(不是 <code>ServerBootstrap</code>)配合 <code>NioDatagramChannel</code>:</p>
+  <div class="code-block">
+    <div class="cb-header"><span>广播消息的最小示例</span></div>
+    <pre><span class="ty">EventLoopGroup</span> group = <span class="kw">new</span> <span class="ty">NioEventLoopGroup</span>();
+<span class="kw">try</span> {
+    <span class="ty">Bootstrap</span> b = <span class="kw">new</span> <span class="ty">Bootstrap</span>();
+    b.<span class="fn">group</span>(group)
+     .<span class="fn">channel</span>(<span class="ty">NioDatagramChannel</span>.<span class="kw">class</span>)
+     .<span class="fn">option</span>(<span class="ty">ChannelOption</span>.SO_BROADCAST, <span class="kw">true</span>) <span class="cm">// 允许发送广播包</span>
+     .<span class="fn">handler</span>(<span class="kw">new</span> <span class="ty">SimpleChannelInboundHandler</span>&lt;<span class="ty">DatagramPacket</span>&gt;() {
+         <span class="kw">protected void</span> <span class="fn">channelRead0</span>(<span class="ty">ChannelHandlerContext</span> ctx, <span class="ty">DatagramPacket</span> packet) {
+             <span class="cm">// 处理收到的数据报,packet.sender() 能拿到发送方地址</span>
+         }
+     });
+    <span class="ty">Channel</span> ch = b.<span class="fn">bind</span>(<span class="nu">0</span>).<span class="fn">sync</span>().<span class="fn">channel</span>(); <span class="cm">// 绑定到一个随机可用端口</span>
+    <span class="ty">ByteBuf</span> data = <span class="ty">Unpooled</span>.<span class="fn">copiedBuffer</span>(<span class="st">"discovery"</span>.<span class="fn">getBytes</span>());
+    ch.<span class="fn">writeAndFlush</span>(<span class="kw">new</span> <span class="ty">DatagramPacket</span>(
+        data, <span class="kw">new</span> <span class="ty">InetSocketAddress</span>(<span class="st">"255.255.255.255"</span>, <span class="nu">8888</span>) <span class="cm">// 广播地址</span>
+    )).<span class="fn">sync</span>();
+} <span class="kw">finally</span> {
+    group.<span class="fn">shutdownGracefully</span>();
+}</pre>
+  </div>
+  <p>可以看到 UDP 场景下收发的消息类型是 <code>DatagramPacket</code>,它把"数据内容"和"目标/来源地址"打包在了一起——因为 UDP 没有像 TCP 那样"连上之后地址就固定"的概念,每个数据报都要独立指明地址。</p>
+
+  <h2>三、组播:比广播更精确的"订阅式"分发</h2>
+  <p>广播会发给同一网段内的<strong>所有</strong>设备,不管它是否关心这条消息,浪费带宽也存在安全隐患(任何设备都能收到)。<strong>组播(Multicast)</strong>则是让接收方先"加入"一个特定的组播地址(相当于订阅一个频道),发送方发往这个地址的数据,只有加入了这个组的接收方才会收到。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>加入组播组接收消息</span></div>
+    <pre><span class="ty">NioDatagramChannel</span> ch = (<span class="ty">NioDatagramChannel</span>) b.<span class="fn">bind</span>(<span class="nu">8888</span>).<span class="fn">sync</span>().<span class="fn">channel</span>();
+<span class="ty">InetSocketAddress</span> groupAddress = <span class="kw">new</span> <span class="ty">InetSocketAddress</span>(<span class="st">"230.0.0.1"</span>, <span class="nu">8888</span>); <span class="cm">// 组播地址范围 224.0.0.0~239.255.255.255</span>
+ch.<span class="fn">joinGroup</span>(groupAddress).<span class="fn">sync</span>(); <span class="cm">// 加入这个组播组,之后能收到发往这个地址的消息</span></pre>
+  </div>
+  <div class="callout tip"><strong>实际应用场景:</strong>服务发现(新启动的服务节点通过组播向局域网内的其他节点广播自己的存在)、集群内部状态同步、局域网内的设备发现协议(如 UPnP)等,是 UDP 广播/组播的典型用武之地——这些场景的共同特点是:参与方数量不固定、不要求可靠交付(丢一次可以靠下一次心跳补上)、追求低延迟和简单性。</div>
+
+  <h2>四、为什么这些场景能容忍 UDP 的不可靠性</h2>
+  <div class="callout warn"><strong>关键判断:UDP 是否合适,取决于"丢一条消息的后果是否可以接受"。</strong>服务发现场景里,即便某一次广播丢失了,新节点通常会定期重复发送("我还在这里"),下一次广播大概率就能被收到——单次丢失的代价很低。但如果是转账这类每一条消息都必须送达、且不能重复的业务,UDP 的不可靠性是不可接受的,必须用 TCP 或者在 UDP 之上自己实现确认重传机制(类似 QUIC 协议的做法)。选择 UDP 还是 TCP,本质上是在"性能/简单性"与"可靠性保证"之间做业务层面的权衡,不存在绝对更优的一方。</div>
+
+  <h2>小结</h2>
+  <ul>
+    <li>UDP 无连接、不保证可靠交付,但天然支持广播和组播这种一对多分发,这是 TCP 做不到的。</li>
+    <li>Netty 用 <code>NioDatagramChannel</code> + <code>Bootstrap</code>(无需 bossGroup/workerGroup 区分)支持 UDP,消息类型是携带地址信息的 <code>DatagramPacket</code>。</li>
+    <li>组播比广播更精确,只有主动 <code>joinGroup()</code> 的接收方才会收到消息,节省带宽也减少无关方接收到消息的风险。</li>
+    <li>是否用 UDP,取决于业务能否容忍消息丢失——服务发现、状态同步这类"丢了会自愈"的场景是理想用武之地。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>TCP 与 UDP 的本质区别:</strong>本篇是 <a href="../../10-计算机网络/transport/01-TCP与UDP的本质区别.html">计算机网络</a> 模块里 TCP/UDP 对比理论的实际编程落地——协议层面学到的取舍,在这里变成了具体要不要调用 <code>joinGroup()</code>、要不要处理丢包重传的工程决策。</li>
+    <li><strong>分布式系统的服务发现:</strong>UDP 组播是服务发现的一种实现方式,可以对照 <a href="../../14-分布式与微服务/microservice/04-服务发现与注册中心.html">分布式与微服务</a> 模块里基于注册中心(如 ZooKeeper、Nacos)的服务发现方案,理解"轻量组播 vs 中心化注册中心"两种思路的取舍——前者简单但仅适合局域网内的小规模场景,后者更适合大规模、跨网段的生产环境。</li>
+    <li><strong>QUIC 协议:</strong>"在 UDP 之上自己实现可靠传输"正是 HTTP/3 底层 QUIC 协议的设计思路,值得在学完 <a href="../../10-计算机网络/network-roadmap.html">计算机网络</a> 现代基础设施部分后回头对照理解。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./15-心跳检测与空闲连接IdleStateHandler.html" class="nav-btn">← 上一篇:心跳检测与 IdleStateHandler</a>
+    <a href="./17-实战案例RPC框架设计与netty-learning-example源码走读.html" class="nav-btn next">下一篇:实战案例:RPC 框架与源码走读 →</a>
+  </div>
+</div>
+</body>
+</html>

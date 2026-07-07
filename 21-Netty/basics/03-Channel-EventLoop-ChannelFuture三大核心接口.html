@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netty · Channel / EventLoop / ChannelFuture 三大核心接口</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; }
+    .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 28px; }
+    .hero .tag { font-size: 0.72rem; color: #fb923c; border: 1px solid #9a3412; border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    .src { font-size: 0.76rem; color: #475569; margin-top: 10px; }
+    .src b { color: #818cf8; }
+    h2 { font-size: 1rem; font-weight: 600; color: #fb923c; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #fb923c; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
+    strong { color: #e2e8f0; }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+    .cm { color: #64748b; } .kw { color: #fb923c; } .ty { color: #38bdf8; } .st { color: #fdba74; } .nu { color: #fbbf24; } .fn { color: #60a5fa; } .text { color: #e2e8f0; } .punct { color: #475569; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip  { background: #422006; border-color: #fb923c; color: #fdba74; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.82rem; color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: #fb923c; border-color: #9a3412; } .nav-btn.next:hover { background: #7c2d12; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../netty-roadmap.html">Netty 路线图</a> / 核心概念与架构 / 三大核心接口</div>
+  <div class="hero">
+    <div class="tag">Netty · 核心概念与架构</div>
+    <h1>Channel / EventLoop / ChannelFuture 三大核心接口</h1>
+    <p>上一篇代码里出现的这几个类,到底各自负责什么、为什么要拆成三个独立的抽象?</p>
+    <p class="src">📖 来源:<b>《Netty in Action》</b> 第 3 章「Netty 的组件与设计」</p>
+  </div>
+
+  <h2>一、Channel:一条网络连接的统一抽象</h2>
+  <p><code>Channel</code> 代表一条到远端的连接,是对 Socket 的封装。它统一了不同传输类型的操作方式——不管底层是 NIO 的 <code>NioSocketChannel</code>、还是本地进程内通信的 <code>LocalChannel</code>、还是用于测试的 <code>EmbeddedChannel</code>,业务代码面对的都是同一套 <code>Channel</code> 接口:<code>read()</code>、<code>write()</code>、<code>connect()</code>、<code>close()</code>。</p>
+  <p>除了这些基本 IO 操作,<code>Channel</code> 还携带了几样重要的"随身物品":</p>
+  <ul>
+    <li><strong>它自己的 <code>ChannelPipeline</code></strong>——决定这条连接上的数据要经过哪些 Handler 处理。</li>
+    <li><strong>它当前的状态</strong>(是否打开、是否已注册到 EventLoop、是否活跃)。</li>
+    <li><strong>它绑定的 <code>EventLoop</code></strong>——见下一节,这是理解 Netty 线程模型的关键。</li>
+  </ul>
+  <div class="callout tip"><strong>类比:</strong>如果把网络通信比作打电话,<code>Channel</code> 就是那根已经拨通的电话线本身——你可以往里面说话(write)、挂断它(close),但它不负责"什么时候轮到你说话"这件事,那是接下来 <code>EventLoop</code> 的工作。</div>
+
+  <h2>二、EventLoop:一个 Channel 一辈子只认一个线程</h2>
+  <p><code>EventLoop</code> 本质上是一个<strong>单线程的事件循环执行器</strong>,它做两件事:①不断轮询它名下所有 <code>Channel</code> 的 IO 事件(可读、可写、有新连接等)并触发相应处理;②执行提交给它的普通任务(比如 <code>ctx.channel().eventLoop().execute(task)</code>)。</p>
+  <p>Netty 的设计里有一条<strong>贯穿全局、极其重要的规则</strong>:<strong>一个 Channel 在其生命周期内,永远只会被同一个 EventLoop 线程处理</strong>——即"一对一但非严格双向绑定":一个 EventLoop 可以同时服务多个 Channel(一个 <code>EventLoopGroup</code> 里线程数有限,Channel 数量却可以远超线程数),但一个特定的 Channel 一旦分配给某个 EventLoop,就终身绑定,不会中途切换到别的线程上处理。</p>
+  <div class="callout info"><strong>这条规则解决了什么问题:</strong>如果一个 Channel 上的事件可能被不同线程处理,那么 <code>ChannelHandler</code> 里的状态(比如一个计数器字段)就需要加锁保护,否则会有并发安全问题。而"终身绑定同一线程"意味着<strong>同一个 Channel 上的所有 Handler 调用天然是单线程串行的</strong>,不需要在 Handler 内部做任何同步——这是 Netty 编程模型简单、高效的根本原因之一。</div>
+  <table>
+    <tr><th>维度</th><th>EventLoop</th><th>普通线程池(如 ThreadPoolExecutor)</th></tr>
+    <tr><td>处理对象</td><td>IO 事件 + 普通任务,都在同一条时间线上串行执行</td><td>只处理提交的任务,任务之间通常没有顺序保证</td></tr>
+    <tr><td>与资源的绑定关系</td><td>一个 Channel 终身绑定一个 EventLoop</td><td>任务和线程没有固定绑定关系,谁空闲谁执行</td></tr>
+    <tr><td>并发安全含义</td><td>同一 Channel 上的 Handler 无需加锁</td><td>任务间如果共享状态通常仍需自行加锁</td></tr>
+  </table>
+
+  <h2>三、ChannelFuture:异步操作的"回执单"</h2>
+  <p>Netty 里几乎所有可能耗时的操作——<code>connect()</code>、<code>write()</code>、<code>close()</code>——都是<strong>异步</strong>的:调用后立刻返回,不会阻塞当前线程等结果。既然不阻塞等待,那怎么知道操作到底成功没成功?答案就是 <code>ChannelFuture</code>——它是"操作尚未完成"这个状态的占位符,后续要么注册监听器等它完成时被动通知,要么调用 <code>sync()</code>/<code>await()</code> 主动阻塞等待。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>推荐写法:注册监听器,不阻塞</span></div>
+    <pre>channel.<span class="fn">writeAndFlush</span>(msg).<span class="fn">addListener</span>(<span class="ty">ChannelFutureListener</span> future -> {
+    <span class="kw">if</span> (future.<span class="fn">isSuccess</span>()) {
+        <span class="cm">// 发送成功后的回调逻辑</span>
+    } <span class="kw">else</span> {
+        future.<span class="fn">cause</span>().<span class="fn">printStackTrace</span>(); <span class="cm">// 拿到失败原因</span>
+    }
+});</pre>
+  </div>
+  <div class="callout warn"><strong>致命陷阱:在 EventLoop 线程里调用 future.sync() 或 future.await() 会死锁。</strong>回忆上一节的规则——一个 Channel 的所有操作(包括让这个 <code>ChannelFuture</code> 变为"已完成"状态的那个通知)都是在它绑定的 EventLoop 线程上执行的。如果你在<strong>同一个 EventLoop 线程</strong>里调用 <code>future.sync()</code> 去阻塞等待这个 future 完成,就等于让这个线程"自己等自己"——而恰恰是这同一个线程本该去执行"让 future 完成"的那个任务,结果它却被 <code>sync()</code> 卡住动弹不得,永远等不到。<strong>正确做法:</strong> 只在业务线程(比如 <code>main</code> 方法里)调用 <code>sync()</code>/<code>await()</code>,在 <code>ChannelHandler</code> 内部一律用监听器(<code>addListener</code>),绝不做阻塞等待。</div>
+  <div class="callout tip"><strong>对比 JDK 的 Future:</strong>JDK 原生的 <code>java.util.concurrent.Future</code> 只能通过阻塞的 <code>get()</code> 拿结果,没有"完成时自动回调"的能力(要到 JDK 8 的 <code>CompletableFuture</code> 才补上,可参考 <a href="../../02-并发/exec/03-CompletableFuture.html">02-并发/CompletableFuture</a>)。Netty 的 <code>ChannelFuture</code> 从一开始就是"Future + 回调监听器"的组合体,这恰好是因为网络编程里"绝不能阻塞 IO 线程"是硬性要求,监听器模式是唯一安全的选择。</div>
+
+  <h2>四、三者如何协同工作</h2>
+  <p>把三个概念串起来看一次完整的写数据流程:业务代码调用 <code>channel.writeAndFlush(msg)</code> → 这个调用被提交为一个任务,如果调用方不是 Channel 绑定的那个 <code>EventLoop</code> 线程,任务会被加入该 EventLoop 的任务队列排队执行 → <code>EventLoop</code> 线程串行执行这个写任务,真正把数据写到 Socket → 写操作完成后,<code>EventLoop</code> 线程回过头来把对应的 <code>ChannelFuture</code> 标记为完成,并依次触发注册在它上面的监听器回调。</p>
+
+  <h2>小结</h2>
+  <ul>
+    <li><code>Channel</code>:一条连接的统一抽象,携带自己的 pipeline、状态、绑定的 EventLoop。</li>
+    <li><code>EventLoop</code>:单线程事件循环,一个 Channel 终身绑定同一个 EventLoop,因此同一 Channel 上的处理天然线程安全、无需加锁。</li>
+    <li><code>ChannelFuture</code>:异步操作的占位符,配合监听器实现非阻塞回调;绝不能在 EventLoop 线程里同步阻塞等待自己的 future,否则死锁。</li>
+  </ul>
+
+  <h2>与其他知识点的联系</h2>
+  <ul>
+    <li><strong>Reactor 线程模型(下一篇):</strong>本篇讲的是"单个 EventLoop 内部"的执行规则,下一篇要放大到"多个 EventLoop 之间如何分工"——即 bossGroup/workerGroup 为什么要拆成两组、组内多个 EventLoop 又是怎么分配 Channel 的。</li>
+    <li><strong>Java 并发里的线程封闭(Thread Confinement):</strong>"一个 Channel 终身绑定一个线程"正是 <a href="../../02-并发/basics/11-对象的组合与同步策略.html">线程封闭</a> 这一并发设计手法的经典应用——通过设计上就不共享,而不是靠锁来保证安全,这比事后加锁更简单也更快。</li>
+    <li><strong>CompletableFuture 与回调编程:</strong><code>ChannelFuture</code> 的监听器模式和 <code>CompletableFuture</code> 的 <code>thenAccept</code>/<code>whenComplete</code> 是同一种"异步编程避免阻塞"的思路,理解一个能很快迁移到另一个。</li>
+  </ul>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="./02-第一个Netty程序EchoServer与EchoClient.html" class="nav-btn">← 上一篇:第一个 Netty 程序</a>
+    <a href="./04-Reactor线程模型与Netty的实现.html" class="nav-btn next">下一篇:Reactor 线程模型 →</a>
+  </div>
+</div>
+</body>
+</html>
