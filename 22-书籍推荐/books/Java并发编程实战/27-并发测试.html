@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>并发测试：正确性测试与性能测试</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 并发测试：正确性测试与性能测试</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第12-16章·JMM与测试</div>
+    <h1>并发测试：正确性测试与性能测试</h1>
+    <p>并发 bug 藏在不确定的线程交错里——测试的全部艺术，就是把"偶发"逼成"必现"，再用数据说清"快"与"稳"。</p>
+  </div>
+
+  <h2>一、为什么并发测试这么难</h2>
+  <p>写并发代码难，<strong>测</strong>并发代码更难。单线程测试的黄金假设是"确定性"：相同输入 → 相同输出 → 断言稳定通过或稳定失败。而并发程序的行为取决于线程的<strong>交错顺序（interleaving）</strong>，这个顺序由 OS 调度器决定，你无法控制、也无法复现。于是并发缺陷有了三个折磨人的特征：</p>
+
+  <ul>
+    <li><strong>概率性</strong>：竞态窗口可能只有几纳秒，成千上万次运行才踩中一次。</li>
+    <li><strong>不可复现</strong>：这次挂了，再跑一遍又好了——调试时最抓狂的场景。</li>
+    <li><strong>海森堡 bug（Heisenbug）</strong>：你一加日志 / 一挂调试器，时序被改变，bug 就"躲"起来了——观测行为本身改变了被观测对象。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>陷阱：测试通过 ≠ 没有并发 bug。</strong>并发测试和普通测试的证明能力天差地别——它只能<em>提高</em>你对正确性的信心，永远无法<em>证明</em>不存在数据竞争。一个跑了一百万次都绿的测试，也可能在生产环境第一天就崩。所以并发正确性的第一道防线永远是<strong>正确的设计</strong>（不可变、线程封闭、正确同步），测试是第二道防线，不是替代品。这也是本书把"测试"放在"设计"章节之后的深意。
+  </div>
+
+  <h2>二、先分清测什么：正确性 vs 性能</h2>
+  <p>并发测试大致分两大阵营，目标、手段、成功标准完全不同，动手前必须想清楚自己在测哪一类：</p>
+
+  <table>
+    <tr><th>维度</th><th>正确性测试（Safety / Liveness）</th><th>性能测试（Performance）</th></tr>
+    <tr><td><strong>问的问题</strong></td><td>"在任何交错下结果都对吗？会死锁吗？"</td><td>"够快吗？加线程能等比例变快吗？"</td></tr>
+    <tr><td><strong>关注指标</strong></td><td>数据一致性、无丢失/重复、无死锁活锁</td><td>吞吐量、响应时间/延迟、可伸缩性</td></tr>
+    <tr><td><strong>核心手段</strong></td><td>多线程压测 + 校验和、屏障制造真并发、超时检测死锁</td><td>基准测试（JMH）、预热、多次采样取分布</td></tr>
+    <tr><td><strong>成功标准</strong></td><td>大量交错下断言从不失败</td><td>数据稳定、可解释、能对比方案优劣</td></tr>
+    <tr><td><strong>最大天敌</strong></td><td>竞态窗口太窄，测不出来</td><td>JIT/GC/死代码消除让测量失真</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>建立联系。</strong>正确性测试是在验证前面所学的《什么是线程安全性》《竞态条件》《安全发布》有没有落到实处；性能测试则是在给《性能权衡》那一篇的三笔"隐藏税"和 Amdahl 定律做实证。两者都绕不开一个前提：<em>真正让多个线程同时冲进临界区</em>，否则你测的根本不是并发。
+  </div>
+
+  <h2>三、正确性测试（一）：先当单线程测基本属性</h2>
+  <p>再复杂的并发类，也应先用单线程验证它的<strong>基本契约</strong>——这些 bug 和并发无关，却常被忽略。例如一个有界缓冲区 <code>BoundedBuffer</code>：新建时应 <code>isEmpty()==true</code> 且 <code>isFull()==false</code>；放满 N 个后应 <code>isFull()==true</code>。这些确定性断言能先排除一大批低级错误，别急着上多线程。</p>
+
+  <div class="callout tip">
+    <strong>方法论：从确定性到非确定性，层层加压。</strong>顺序是 —— ① 单线程测基本功能 → ② 单线程测边界（空取、满放的阻塞语义）→ ③ 多线程测安全性 → ④ 多线程测阻塞与中断 → ⑤ 长时间压测抓偶发。每一层都建立在上一层通过的基础上，出问题时更容易定位到底是"逻辑错"还是"并发错"。
+  </div>
+
+  <h2>四、正确性测试（二）：用校验和逼出安全性 bug</h2>
+  <p>这是本章最经典的技术，来自书中的 <code>PutTakeTest</code>。要检验"生产者放进去的东西，消费者一个不多、一个不少、一个不错地取出来"，难点是：多线程下你根本无法逐一比对。解法是<strong>顺序无关的校验和（order-insensitive checksum）</strong>——用异或/加法把所有元素揉成一个数：</p>
+
+  <div class="formula">Σ<sub>put</sub> 全部生产的校验和 <span class="hl">==</span> Σ<sub>take</sub> 全部消费的校验和</div>
+
+  <p>只要两边总和相等，就说明没有元素丢失、重复或损坏——而<strong>加法/异或天然满足交换律</strong>，与元素被取出的顺序完全无关，正好适配并发的不确定性。</p>
+
+  <div class="callout warn">
+    <strong>关键陷阱：校验和的输入必须"不可预测"，否则会被优化掉。</strong>如果生产的数据是 <code>0,1,2,3...</code> 这种可预测序列，聪明的 JIT 编译器可能<em>提前算出总和</em>甚至把整段循环消掉，测试就形同虚设。正确做法是用一个廉价但结果不可预知的伪随机数发生器（书中的 <code>xorShift</code>）现场生成数据，让编译器无法预测——这个细节同样是后面性能测试要反复对付的"死代码消除"。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>PutTakeTest 核心：屏障 + 校验和</span><span>生产/消费总和相等 ⇒ 无丢失无重复</span></div>
+    <pre><span class="kw">public</span> <span class="kw">class</span> <span class="typ">PutTakeTest</span> {
+    <span class="kw">private</span> <span class="kw">final</span> <span class="typ">BoundedBuffer</span>&lt;<span class="typ">Integer</span>&gt; bb;
+    <span class="kw">private</span> <span class="kw">final</span> <span class="typ">CyclicBarrier</span> barrier;   <span class="com">// 让所有线程"同时起跑/同时收工"</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="typ">AtomicInteger</span> putSum  = <span class="kw">new</span> <span class="typ">AtomicInteger</span>(<span class="num">0</span>);
+    <span class="kw">private</span> <span class="kw">final</span> <span class="typ">AtomicInteger</span> takeSum = <span class="kw">new</span> <span class="typ">AtomicInteger</span>(<span class="num">0</span>);
+    <span class="kw">private</span> <span class="kw">final</span> <span class="kw">int</span> nTrials, nPairs;
+
+    <span class="com">// 廉价的伪随机：结果不可预测 → 阻止 JIT 提前算出校验和</span>
+    <span class="kw">static</span> <span class="kw">int</span> <span class="fn">xorShift</span>(<span class="kw">int</span> y) {
+        y ^= (y &lt;&lt; <span class="num">6</span>); y ^= (y &gt;&gt;&gt; <span class="num">21</span>); y ^= (y &lt;&lt; <span class="num">7</span>);
+        <span class="kw">return</span> y;
+    }
+
+    <span class="kw">class</span> <span class="typ">Producer</span> <span class="kw">implements</span> <span class="typ">Runnable</span> {
+        <span class="kw">public</span> <span class="kw">void</span> <span class="fn">run</span>() {
+          <span class="kw">try</span> {
+            <span class="kw">int</span> seed = (<span class="kw">this</span>.<span class="fn">hashCode</span>() ^ (<span class="kw">int</span>) <span class="typ">System</span>.<span class="fn">nanoTime</span>());
+            <span class="kw">int</span> sum = <span class="num">0</span>;
+            barrier.<span class="fn">await</span>();                 <span class="com">// ① 等齐所有线程，一起冲</span>
+            <span class="kw">for</span> (<span class="kw">int</span> i = nTrials; i &gt; <span class="num">0</span>; i--) {
+                bb.<span class="fn">put</span>(seed);
+                sum += seed;                <span class="com">// 本线程放入值的累加</span>
+                seed = <span class="fn">xorShift</span>(seed);
+            }
+            putSum.<span class="fn">getAndAdd</span>(sum);          <span class="com">// 汇总到全局 putSum</span>
+            barrier.<span class="fn">await</span>();                 <span class="com">// ② 等齐所有线程，一起收</span>
+          } <span class="kw">catch</span> (<span class="typ">Exception</span> e) { <span class="kw">throw</span> <span class="kw">new</span> <span class="typ">RuntimeException</span>(e); }
+        }
+    }
+    <span class="com">// Consumer 对称：take() 后 takeSum.getAndAdd(...)</span>
+
+    <span class="kw">void</span> <span class="fn">test</span>() {
+        <span class="typ">ExecutorService</span> pool = <span class="typ">Executors</span>.<span class="fn">newCachedThreadPool</span>();
+        <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; nPairs; i++) {
+            pool.<span class="fn">execute</span>(<span class="kw">new</span> <span class="typ">Producer</span>());
+            pool.<span class="fn">execute</span>(<span class="kw">new</span> <span class="typ">Consumer</span>());
+        }
+        <span class="com">// barrier 的屏障动作里可断言：缓冲区已空</span>
+        <span class="fn">assertEquals</span>(putSum.<span class="fn">get</span>(), takeSum.<span class="fn">get</span>());  <span class="com">// 核心断言</span>
+    }
+}</pre>
+  </div>
+
+  <div class="callout info">
+    <strong>为什么一定要用 <code>CyclicBarrier</code>？</strong>如果直接 <code>start()</code> 一堆线程就完事，第一个线程可能早已跑完，最后一个才刚创建——它们<em>根本没有真正重叠</em>，等于退化成串行，竞态窗口一次都没打开。<code>CyclicBarrier</code> 让所有线程在起跑线（第一个 <code>await</code>）集结、一声令下同时冲，又在终点线（第二个 <code>await</code>）集合，把并发的"密度"拉到最大。这正是《同步工具》里 barrier 的教科书用法。
+  </div>
+
+  <div class="diagram">没有屏障 vs 有屏障：并发"密度"的区别
+
+  ✗ 直接 start：              ✓ CyclicBarrier 集结起跑：
+  T1 ├──run──┤                       await ↓ 一声令下
+  T2      ├──run──┤            T1  ····│├───run───┤│····
+  T3           ├──run──┤       T2  ····│├───run───┤│····
+  T4               ├──run┤     T3  ····│├───run───┤│····
+      几乎没有重叠                     └ 真正同时冲进临界区 ┘
+   竞态窗口 ≈ 0，测了个寂寞         竞态窗口最大化，bug 无处遁形</div>
+
+  <h2>五、正确性测试（三）：阻塞、中断与资源泄漏</h2>
+  <p>并发类还有一类"活跃度"契约要测：<code>take()</code> 在空缓冲区上必须<strong>阻塞</strong>，且能被 <code>interrupt()</code> 唤醒。测法是：起一个线程去 <code>take()</code>，主线程 <code>sleep</code> 一小会儿确认它<strong>没</strong>结束（说明确实阻塞了），再 <code>interrupt</code> 它，并断言它抛出 <code>InterruptedException</code> 后干净退出。</p>
+
+  <div class="callout warn">
+    <strong>陷阱：用 <code>Thread.getState()</code> 断言线程"处于 BLOCKED/WAITING"是不可靠的。</strong>线程状态是给<em>调试和监控</em>用的，规范并不保证时序，JVM 可能用自旋等待而根本不进入 WAITING 状态。正确做法是靠"线程是否已终止"这种<em>确定性事实</em>来间接判断阻塞，而不是去窥探它的内部状态。这是初学者写并发测试最常见的误区之一。
+  </div>
+
+  <p>资源泄漏（尤其是内存泄漏）也要测：往缓冲区放入大对象、取出后，被取走的对象应能被 GC 回收。可以持有一个 <code>WeakReference</code>，在若干次 <code>System.gc()</code> 后断言它被清空，验证缓冲区没有意外地长期持有已消费元素的强引用（这类"忘了置 null"的坑在自研容器里很常见）。</p>
+
+  <h2>六、制造更多交错：把偶发变必现</h2>
+  <p>竞态窗口太窄怎么办？主动"搅乱"调度，让不同的交错更容易出现：</p>
+
+  <ul>
+    <li><strong>线程数远超 CPU 核数</strong>：制造频繁的上下文切换，交错更丰富。</li>
+    <li><strong>在关键点插入 <code>Thread.yield()</code> 或极短的随机 <code>sleep</code></strong>：主动交出 CPU，增大"别的线程正好插进来"的概率。</li>
+    <li><strong>反复运行（迭代成千上万次）</strong>：靠次数堆概率。</li>
+  </ul>
+
+  <p>这背后有个朴素但有力的概率模型：设单次运行触发某个竞态的概率是 <code>p</code>（哪怕小到 0.001），跑 <code>N</code> 次，至少命中一次的概率是：</p>
+
+  <div class="formula">P(至少触发一次) = <span class="hl">1 − (1 − p)</span><sup>N</sup></div>
+
+  <p>当 <code>p=0.001</code>、<code>N=10000</code> 时，这个概率已高达约 99.995% —— 这就是"迭代压测 + yield 加噪"能把偶发 bug 逼出来的数学依据。<code>yield</code> 提升的正是那个 <code>p</code>，而循环提升的是 <code>N</code>，两者相乘威力惊人。</p>
+
+  <div class="callout tip">
+    <strong>建立联系：现代工具已把这套思路工程化。</strong>OpenJDK 官方的 <strong>jcstress</strong> 就是专门做并发正确性压测的框架——它自动生成海量交错、内置 CPU 亲和/噪声注入、把"内存模型层面"的重排序都翻出来，比手写 yield 循环靠谱得多。测底层无锁算法（CAS、<code>volatile</code> 可见性、《并发陷阱》要讲的指令重排）时，jcstress 几乎是标配。手写 <code>PutTakeTest</code> 用来理解原理，实战抓 JMM 级 bug 请上 jcstress。
+  </div>
+
+  <h2>七、性能测试：三个不同的"快"</h2>
+  <p>切到性能测试，先明确你要的是哪个"快"——它们经常互相矛盾（回顾《性能权衡》）：</p>
+
+  <table>
+    <tr><th>指标</th><th>含义</th><th>典型场景</th></tr>
+    <tr><td><strong>吞吐量<br>throughput</strong></td><td>单位时间完成多少任务（TPS/QPS）</td><td>批处理、消息队列消费</td></tr>
+    <tr><td><strong>响应时间/延迟<br>latency</strong></td><td>单个请求从发出到完成多久（常看 P99）</td><td>在线接口、交互式服务</td></tr>
+    <tr><td><strong>可伸缩性<br>scalability</strong></td><td>加 CPU/线程，处理能力能否等比例上涨</td><td>评估架构能否横向扩展</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>别只看平均值，要看分布。</strong>平均响应时间是最会骗人的指标：平均 20ms 可能藏着 1% 的请求卡了 2 秒。用户感受由<em>尾延迟</em>（P95/P99/P999）决定。性能测试要采集<strong>大量样本看分布直方图</strong>，而不是report一个均值了事——这与正确性测试"多次运行"的思路一脉相承：并发世界里，单次采样毫无意义。
+  </div>
+
+  <h2>八、性能测试的五大陷阱</h2>
+  <p>JVM 是个"活的"运行时——它会即时编译、垃圾回收、内联优化。天真地"记个时间戳、跑个循环、再记个时间戳"测出来的数几乎全是错的。书中列出五大陷阱：</p>
+
+  <table>
+    <tr><th>陷阱</th><th>它如何污染你的数据</th><th>对策</th></tr>
+    <tr><td><strong>① 动态编译（JIT 预热）</strong></td><td>前几千次是解释执行的"慢速版"，之后才被编译成机器码，混在一起测数据偏慢</td><td>充分<em>预热（warmup）</em>后再计时</td></tr>
+    <tr><td><strong>② 垃圾回收</strong></td><td>测量窗口里恰好触发一次 Full GC，数据凭空暴涨</td><td>要么测足够久让 GC 摊平，要么用 <code>-verbose:gc</code> 剔除受影响的批次</td></tr>
+    <tr><td><strong>③ 死代码消除</strong></td><td>结果没被使用，JIT 把整段计算删掉，你测了个空循环</td><td><em>消费</em>掉结果（返回/累加/黑洞）</td></tr>
+    <tr><td><strong>④ 代码路径不真实</strong></td><td>单测只走了热路径，JIT 按单一场景激进优化，上线后走别的分支性能崩</td><td>模拟真实的输入分布与分支比例</td></tr>
+    <tr><td><strong>⑤ 竞争程度不真实</strong></td><td>基准里线程只做同步、不做别的事，竞争被人为放大或缩小</td><td>让线程也做与生产相当的"真实工作量"</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>最阴险的是"死代码消除"和"常量折叠"。</strong>如果你的基准循环算出的结果没人用，JIT 完全有权把它当死代码删光——于是你以为"这算法快如闪电"，其实它<em>根本没运行</em>。同理，若输入是编译期常量，JIT 会<em>常量折叠</em>提前算好答案。判断基准是否被"优化没了"有个土办法：把问题规模翻倍，耗时若<strong>没</strong>接近翻倍，基本可以断定代码被删了。
+  </div>
+
+  <h2>九、别手写计时循环，用 JMH</h2>
+  <p>要正确对付上面五个陷阱，几乎不可能靠手写代码全兼顾。业界标准答案是 <strong>JMH（Java Microbenchmark Harness）</strong>——由 JDK 团队打造、和 JVM 优化"斗智斗勇"的官方基准框架。对比一下天真写法与 JMH：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 手写计时：几乎必错</div>
+      <pre>long t0 = System.currentTimeMillis();
+long sum = 0;
+for (int i = 0; i &lt; N; i++) {
+    sum += compute(i);   // 结果可能被
+}                        // 死代码消除删掉
+long t1 = System.currentTimeMillis();
+System.out.println(t1 - t0);
+// ① 没预热，混进解释执行
+// ② 没处理 GC 抖动
+// ③ sum 没被消费 → 可能整段被删
+// ④ 只测了一次，没有分布
+// 结论：这个数字毫无意义</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ JMH：把陷阱都替你处理了</div>
+      <pre>@Benchmark
+@BenchmarkMode(Mode.Throughput)
+@Warmup(iterations = 5)      // 强制预热
+@Measurement(iterations = 10)// 多次采样
+@Fork(2)                     // 独立 JVM,隔离
+public void bench(Blackhole bh) {
+    long sum = 0;
+    for (int i = 0; i &lt; N; i++)
+        sum += compute(i);
+    bh.consume(sum);         // 黑洞:防止
+}                            // 死代码消除
+// 预热/多轮/独立进程/黑洞
+// 全帮你做好了,数据可信可对比</pre>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <strong><code>Blackhole</code> 是精髓。</strong>JMH 的"黑洞"专门用来<em>消费</em>结果——把计算结果喂给它，JVM 就无法证明该结果"没被使用"，于是不敢删掉你的代码。这正是针对陷阱③的对症下药。此外 <code>@Fork</code> 在独立 JVM 里跑，避免上一个基准的 JIT profile 污染下一个；<code>@State</code> 管理测试数据的作用域来模拟真实竞争。测并发数据结构性能（比如对比 <code>synchronized</code> vs <code>ReentrantLock</code> vs <code>LongAdder</code>）时，JMH 的 <code>@Threads</code> 注解能一键拉起多线程压测。
+  </div>
+
+  <h2>十、测试之外：三道互补防线</h2>
+  <p>测试永远无法穷尽所有交错，所以必须配合其他手段，形成纵深防御：</p>
+
+  <table>
+    <tr><th>手段</th><th>抓什么</th><th>工具</th></tr>
+    <tr><td><strong>代码审查</strong></td><td>人脑能发现测试盖不到的设计缺陷，性价比极高</td><td>结对/评审，对照本书的同步策略清单</td></tr>
+    <tr><td><strong>静态分析</strong></td><td>不运行代码就扫出可疑模式：未同步字段、双重检查锁、<code>wait</code> 不在循环里、锁顺序不一致</td><td><code>SpotBugs</code>（原 FindBugs）、ErrorProne</td></tr>
+    <tr><td><strong>剖析与监控</strong></td><td>运行时抓锁竞争、线程阻塞、GC、CPU 热点</td><td>JFR / async-profiler / <code>jstack</code></td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>面试高频：并发测试的经典误区盘点。</strong>① 认为"测试通过就没有并发 bug"——它只能增强信心；② 不用屏障就 <code>start()</code> 一堆线程，线程根本没重叠，测了个假并发；③ 手写计时循环不预热、不消费结果，测出来的数被 JIT 优化污染；④ 用 <code>Thread.getState()</code> 断言阻塞状态；⑤ 只看平均延迟不看 P99；⑥ 校验和用可预测数据，被编译器提前算掉。这六条几乎覆盖了工程里所有"自以为测过了"的翻车现场。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>并发测试的本质是"对抗不确定性"。<strong>正确性测试</strong>要主动<em>制造并发</em>——用 <code>CyclicBarrier</code> 让线程同时起跑把竞态窗口拉满，用<em>顺序无关的校验和</em>验证不丢不重不错，用<em>迭代 + <code>yield</code> 加噪</em>把偶发 bug 按 <code>1−(1−p)ᴺ</code> 的概率逼成必现，用超时和终止事实（而非线程状态）验证阻塞与中断；<strong>性能测试</strong>则要对抗 JVM 的"活性"——警惕<em>动态编译、GC、死代码消除、路径与竞争不真实</em>五大陷阱，绝不手写计时循环，一律交给 <strong>JMH</strong>（<code>@Warmup</code> 预热、<code>@Fork</code> 隔离、<code>Blackhole</code> 防删），并看<em>分布而非均值</em>。最后牢记：<em>测试提高信心，但正确的设计（不可变/线程封闭/正确同步）才是根本，代码审查与静态分析是不可或缺的第二、第三道防线。</em>
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="26-安全初始化与双重检查锁DCL.html" class="nav-btn">← 安全初始化与双重检查锁（DCL）</a>
+    <a href="28-并发陷阱.html" class="nav-btn next">并发陷阱 →</a>
+  </div>
+</div>
+</body>
+</html>

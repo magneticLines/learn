@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReentrantLock：可中断、定时、公平</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / ReentrantLock：可中断、定时、公平</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第10-11章·显式锁与原子变量</div>
+    <h1>ReentrantLock：可中断、定时、公平</h1>
+    <p>当内置锁"只能死等、不能反悔、无法排队"的天花板挡住你时，把加锁从关键字变成一个可编程的对象。</p>
+  </div>
+
+  <h2>一、承上：synchronized 撞到了哪三堵墙</h2>
+  <p>上一章我们已经确认：<code>synchronized</code> 简单、自动、不会忘记释放，是加锁的<strong>默认首选</strong>。既然如此，JDK 5 为什么还要在 <code>java.util.concurrent.locks</code> 里再造一把 <code>ReentrantLock</code>？答案不是"更快"（现代 JVM 两者性能已非常接近），而是内置锁有三件事<em>根本做不到</em>：</p>
+
+  <div class="diagram">synchronized 的三堵墙 ─────────────────────────────
+  ① 拿不到锁只能"死等"    ── 无法响应中断，线程卡死无法取消 / 优雅关停
+  ② 要么阻塞、要么立刻    ── 不能"等 2 秒还拿不到就放弃"，无法探测/规避死锁
+  ③ 抢锁靠运气            ── 无法选择公平排队，也只有一个 wait 队列
+────────────────────────────────────────────────
+  ReentrantLock 把加锁做成"方法调用" → 三堵墙全部可编程</div>
+
+  <p>核心思想一句话：<strong><code>synchronized</code> 是语法（由 JVM 托管），<code>ReentrantLock</code> 是一个普通对象（由你调用方法控制）</strong>。加锁一旦变成方法调用，就能给它加参数（超时时间）、加返回值（能否加锁）、加可中断语义——这正是"可中断、定时、公平"三大能力的来源。</p>
+
+  <h2>二、基本用法：为什么 unlock() 必须写在 finally</h2>
+  <p>灵活性是有代价的：内置锁进出块自动加解锁，而 <code>ReentrantLock</code> 把释放锁的责任<strong>交还给你</strong>。忘记释放，或在临界区抛异常后跳过了 <code>unlock()</code>，这把锁就永远泄漏——后续所有线程全部卡死。所以有一条铁律：</p>
+
+  <div class="formula">
+    lock() 之后<span class="hl">立刻</span> try，unlock() 永远放进 <span class="hl">finally</span>
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · unlock 可能被跳过</div>
+<pre><span class="var">lock</span>.<span class="fn">lock</span>()<span class="punct">;</span>
+doWork()<span class="punct">;</span>        <span class="com">// 若这里抛异常…</span>
+<span class="var">lock</span>.<span class="fn">unlock</span>()<span class="punct">;</span>   <span class="com">// …这行永远执行不到</span>
+<span class="com">// 锁泄漏，所有等待者永久阻塞 💥</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · finally 保证释放</div>
+<pre><span class="var">lock</span>.<span class="fn">lock</span>()<span class="punct">;</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    doWork()<span class="punct">;</span>
+<span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+    <span class="var">lock</span>.<span class="fn">unlock</span>()<span class="punct">;</span>  <span class="com">// 无论正常/异常都释放</span>
+<span class="punct">}</span></pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>三个高频翻车点：</strong>
+    <br>· <strong>lock() 不能写在 try 里面。</strong>要写在 try 之前——如果 <code>lock()</code> 本身抛异常（几乎不会，但语义上），你并没有持有锁，finally 里的 <code>unlock()</code> 反而会抛 <code>IllegalMonitorStateException</code>。
+    <br>· <strong>lock() / unlock() 必须一一配平。</strong>因为它可重入，加了几次就要解几次；解多了直接 <code>IllegalMonitorStateException</code>。
+    <br>· <strong>不同线程不能替对方解锁。</strong>锁认的是"持有线程"，A 加的锁只能 A 来解。
+  </div>
+
+  <div class="callout tip">
+    <strong>建立联系：</strong>这正是 <code>synchronized</code> 的价值所在——它把"finally 里释放锁"这件极易出错的事编进了 JVM，出块或抛异常自动 <code>monitorexit</code>。所以书里反复强调：<em>不需要那三大高级能力时，就别用 <code>ReentrantLock</code></em>，多写的每一个 try-finally 都是一次潜在的泄漏风险。
+  </div>
+
+  <h2>三、能力一 · 可中断：lockInterruptibly()</h2>
+  <p><code>synchronized</code> 等锁时是"聋子"——你对它 <code>interrupt()</code> 毫无作用，线程会一直阻塞到天荒地老。这在需要<strong>优雅取消 / 超时关停</strong>的场景（线程池 shutdown、用户点了"取消"）是致命的：一个卡在锁上的任务永远无法退出。</p>
+
+  <table>
+    <thead>
+      <tr><th>方法</th><th>拿不到锁时的行为</th><th>能否响应中断</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>lock()</code></td><td>阻塞直到拿到（死等）</td><td>✗ 不响应</td></tr>
+      <tr><td><code>lockInterruptibly()</code></td><td>阻塞，但可被打断</td><td>✓ 抛 <code>InterruptedException</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>可中断地获取锁</span><span>等锁期间被 interrupt() 就抛出，得以退出</span></div>
+<pre><span class="kw">public void</span> <span class="fn">doTask</span>() <span class="kw">throws</span> <span class="typ">InterruptedException</span> <span class="punct">{</span>
+    <span class="var">lock</span>.<span class="fn">lockInterruptibly</span>()<span class="punct">;</span>   <span class="com">// 等锁时若被中断 → 抛异常，不再傻等</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+        <span class="com">// ... 临界区 ...</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span>
+        <span class="var">lock</span>.<span class="fn">unlock</span>()<span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>为什么这很关键？</strong>中断是 Java 里线程间"请你停下来"的<em>协作式</em>信号（不是强杀）。一个无法响应中断的阻塞点，就是取消链条上的一个"黑洞"。<code>lockInterruptibly()</code> 让"等待获取锁"这个阻塞点也变得可取消，与 <code>Thread.sleep()</code>、<code>BlockingQueue.take()</code>、<code>Future.get()</code> 等其他可中断阻塞点拉齐，让整个任务能被一致地、干净地取消。
+  </div>
+
+  <h2>四、能力二 · 定时与轮询：tryLock()</h2>
+  <p><code>tryLock()</code> 把"要么拿到、要么阻塞"这个二选一，变成了带返回值的<strong>可判断动作</strong>：拿到返回 <code>true</code>，拿不到返回 <code>false</code>——决定权回到你手里。</p>
+
+  <table>
+    <thead>
+      <tr><th>调用形式</th><th>语义</th><th>典型用途</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>tryLock()</code></td><td>立刻尝试，拿不到马上返回 <code>false</code>（不阻塞）</td><td>抢不到就干别的，绝不排队</td></tr>
+      <tr><td><code>tryLock(t, unit)</code></td><td>在超时时间内轮询等待，超时返回 <code>false</code></td><td>限时等待，可响应中断</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>一个反直觉的坑：<code>tryLock()</code> 无参版本会"插队"。</strong>即使你构造的是<em>公平锁</em>，无参 <code>tryLock()</code> 也会无视队列直接抢——只要锁当前空闲就拿走。这是 JDK 有意为之（源码注释里明确说 barging 是可接受的）。要保持公平语义，应使用 <code>tryLock(0, TimeUnit.SECONDS)</code>，它会遵守排队规则。
+  </div>
+
+  <h3>定时锁最经典的用武之地：规避死锁</h3>
+  <p>上一节《死锁的检测与避免》讲过，两个线程以相反顺序获取两把锁就会抱死。用 <code>synchronized</code> 你只能靠"固定加锁顺序"来预防；而 <code>tryLock</code> 提供了另一条路——<strong>拿不到第二把锁就退避、释放已持有的锁、稍后重试</strong>，从机制上让死锁无法形成。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 嵌套死等，顺序相反即抱死</div>
+<pre><span class="com">// 线程1: transfer(A, B)</span>
+<span class="kw">synchronized</span> (a) <span class="punct">{</span>
+  <span class="kw">synchronized</span> (b) <span class="punct">{</span> move(a, b)<span class="punct">;</span> <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// 线程2: transfer(B, A) 顺序相反</span>
+<span class="com">// 1 持 a 等 b，2 持 b 等 a → 死锁 💥</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · tryLock 退避重试</div>
+<pre><span class="kw">while</span> (<span class="kw">true</span>) <span class="punct">{</span>
+  <span class="kw">if</span> (a.<span class="fn">tryLock</span>()) <span class="punct">{</span>
+    <span class="kw">try</span> <span class="punct">{</span>
+      <span class="kw">if</span> (b.<span class="fn">tryLock</span>()) <span class="punct">{</span>
+        <span class="kw">try</span> <span class="punct">{</span> move(a, b)<span class="punct">;</span> <span class="kw">return</span><span class="punct">;</span> <span class="punct">}</span>
+        <span class="kw">finally</span> <span class="punct">{</span> b.<span class="fn">unlock</span>()<span class="punct">;</span> <span class="punct">}</span>
+      <span class="punct">}</span>
+    <span class="punct">}</span> <span class="kw">finally</span> <span class="punct">{</span> a.<span class="fn">unlock</span>()<span class="punct">;</span> <span class="punct">}</span>
+  <span class="punct">}</span>
+  Thread.<span class="fn">sleep</span>(rnd())<span class="punct">;</span> <span class="com">// 退避，避免活锁</span>
+<span class="punct">}</span></pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>别把死锁换成活锁。</strong>如果所有线程"拿不到就立刻同步重试"，它们可能一直互相谦让、谁也不前进——这就是<em>活锁</em>。补救办法：重试前<strong>随机退避</strong>一小段时间（上例的 <code>sleep(rnd())</code>），打破对称性。这也是网络里 CSMA/CD 处理冲突的同一套思路。
+  </div>
+
+  <h2>五、能力三 · 公平锁：排队 vs 插队</h2>
+  <p>构造函数 <code>new ReentrantLock(true)</code> 得到<strong>公平锁</strong>，<code>false</code>（默认）是<strong>非公平锁</strong>。区别只在一件事：<em>当锁被释放的一瞬间，是让"排队最久的线程"拿到，还是允许"刚好路过、还没进队列"的新线程直接抢走</em>。</p>
+
+  <div class="diagram">非公平锁（默认） ── 锁一释放，谁先 CAS 抢到归谁
+  队列: [T2 等待中][T3 等待中]      新来的 T4 ──► 直接抢！ 可能插队成功
+       ↑ 排最久的 T2 可能反被 T4 抢先（吞吐高，但有饥饿风险）
+
+公平锁（true） ── 锁一释放，先看队列里有没有人排队
+  队列: [T2 等待中][T3 等待中]      新来的 T4 ──► 乖乖去队尾排队
+       ↑ 严格 FIFO，T2 必然先拿到（无饥饿，但吞吐低）</div>
+
+  <p>为什么<strong>默认是非公平</strong>？因为公平的代价很高。当锁释放时，公平锁必须唤醒队首那个正在<em>挂起</em>的线程——而唤醒一个线程涉及上下文切换，是重量级操作。在这段唤醒的空档里，如果一个新线程恰好跑来且锁空闲，非公平锁让它<strong>直接拿走并用完</strong>，避免了那次昂贵的唤醒，吞吐量因此高得多。直观感受一下差距：</p>
+
+  <h3>吞吐量对比（示意，激烈竞争下）</h3>
+  <div class="bar">
+    <span style="background:#f89820;width:82%">非公平锁 · 吞吐 ~高</span>
+    <span style="background:#475569;width:18%;color:#e2e8f0">公平锁</span>
+  </div>
+  <p style="font-size:0.78rem;color:#475569;">上图为高竞争场景下的相对示意：非公平锁靠"减少唤醒次数"换来数量级的吞吐优势，代价是个别线程可能长时间抢不到（饥饿）。</p>
+
+  <div class="callout tip">
+    <strong>什么时候才真该用公平锁？</strong>只有当"持锁时间较长"或"请求间隔较大"、且你<em>无法容忍某个线程被长期饿死</em>时（例如需要保证响应时间的公平性）。绝大多数场景下非公平锁是更好的默认——这也是 <code>ReentrantLock</code> 和 <code>synchronized</code>（本身就是非公平的）不约而同的选择。
+  </div>
+
+  <h2>六、原理揭秘：一切都建立在 AQS 之上</h2>
+  <p>把上面三大能力串起来的，是同一个引擎：<strong>AQS（AbstractQueuedSynchronizer，抽象队列同步器）</strong>。<code>ReentrantLock</code> 内部有一个继承自 AQS 的 <code>Sync</code>，几乎所有工作都委托给它。AQS 的模型极其简洁：</p>
+
+  <div class="diagram">AQS 的两个核心零件 ────────────────────────────────
+  ① 一个 volatile int state   ── 表示"锁被重入了几次"
+       0 = 没人持有；n = 持有线程重入了 n 次
+  ② 一个 FIFO 等待队列(CLH变体) ── 抢不到锁的线程在此排队挂起(park)
+
+  加锁 lock():   CAS 把 state 从 0 改成 1 成功 → 记下 exclusiveOwnerThread
+                若 owner 就是自己 → state++ (可重入！)
+                否则 → 进队列，LockSupport.park() 挂起
+  解锁 unlock(): state--，减到 0 才真正释放，唤醒队首线程 unpark()
+─────────────────────────────────────────────────</div>
+
+  <p>看懂了这个模型，三大能力就全部"自然长出来"了，你会发现它们不是硬塞的特性，而是把 AQS 的能力暴露成了不同的 API：</p>
+  <ul>
+    <li><strong>可重入</strong>：owner == 当前线程时 <code>state++</code>，与上一章内置锁"持有线程 + 计数器"完全同构——只是计数器从对象头 Mark Word 换成了 AQS 的 <code>state</code> 字段。</li>
+    <li><strong>可中断</strong>：排队挂起用的是 <code>LockSupport.park()</code>，它本就能被中断唤醒；<code>lockInterruptibly</code> 只是在被唤醒后检查中断标志并抛出异常。</li>
+    <li><strong>定时</strong>：<code>tryLock(t)</code> = 带 deadline 的 park（<code>parkNanos</code>）+ 到点就退出队列。</li>
+    <li><strong>公平/非公平</strong>：只差一行判断——加锁前是否调用 <code>hasQueuedPredecessors()</code>（前面是否有人排队）。公平锁问一句"有人排队吗"，非公平锁直接 CAS 抢。</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>建立联系：AQS 是整个 <code>java.util.concurrent</code> 的地基。</strong><code>ReentrantLock</code>、<code>Semaphore</code>、<code>CountDownLatch</code>、<code>ReentrantReadWriteLock</code>、<code>ThreadPoolExecutor</code> 里的 Worker……全都靠 AQS 的 <code>state</code> + 队列实现，区别只在于对 <code>state</code> 的解释不同（锁的重入次数 / 信号量的许可数 / 闭锁的计数）。这就是模板方法模式的教科书级应用：AQS 写好排队挂起的骨架，子类只填 <code>tryAcquire</code>/<code>tryRelease</code>。下一节的 <a href="21-ReadWriteLock与StampedLock.html" style="color:var(--c);text-decoration:none;border-bottom:1px dashed var(--c-dim);">ReadWriteLock</a> 更巧妙——它把一个 32 位的 <code>state</code> 拆成高 16 位记读锁、低 16 位记写锁。
+  </div>
+
+  <h2>七、终极对比：到底该用哪把锁</h2>
+  <p>把上一章的表格补完整。记住选择的<strong>顺序</strong>是：能不用锁就不用（用不可变对象 / <code>volatile</code> / 原子类）→ 需要互斥优先 <code>synchronized</code> → 确实需要下面这些高级能力，才升级到 <code>ReentrantLock</code>。</p>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th><code>synchronized</code></th><th><code>ReentrantLock</code></th></tr>
+    </thead>
+    <tbody>
+      <tr><td>加解锁</td><td>JVM 自动，出块/异常自动释放</td><td>手动，必须 <code>try...finally</code> 配平</td></tr>
+      <tr><td>可重入</td><td>✓（Mark Word 计数）</td><td>✓（AQS <code>state</code> 计数）</td></tr>
+      <tr><td>可中断等待</td><td>✗ 只能死等</td><td>✓ <code>lockInterruptibly()</code></td></tr>
+      <tr><td>定时/非阻塞尝试</td><td>✗</td><td>✓ <code>tryLock()</code> / <code>tryLock(t)</code></td></tr>
+      <tr><td>公平锁</td><td>✗ 只有非公平</td><td>✓ 构造参数可选</td></tr>
+      <tr><td>条件队列</td><td>单一 <code>wait/notify</code></td><td>多个 <code>Condition</code>，可分组唤醒</td></tr>
+      <tr><td>可否查询状态</td><td>✗</td><td>✓ <code>isLocked()</code> / <code>getHoldCount()</code> / <code>getQueueLength()</code></td></tr>
+      <tr><td>忘记释放风险</td><td>无</td><td>有（漏 <code>unlock</code> 即泄漏）</td></tr>
+      <tr><td>性能</td><td>有锁升级优化，现代 JVM 已很接近</td><td>高竞争下略优，差距通常可忽略</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>面试高频陷阱汇总：</strong>
+    <br>· <strong>"ReentrantLock 一定比 synchronized 快"是错的。</strong>JDK 6 起 <code>synchronized</code> 有偏向/轻量级锁升级，低竞争下几乎零开销；选 Lock 是为了功能，不是为了性能。
+    <br>· <strong>无参 <code>tryLock()</code> 会破坏公平性</strong>（barging），要公平请用 <code>tryLock(0, unit)</code>。
+    <br>· <strong><code>Condition</code> 的 <code>await/signal</code> 前必须先持有该 Lock</strong>，否则 <code>IllegalMonitorStateException</code>——和 <code>wait/notify</code> 必须在同步块里同理。
+    <br>· <strong><code>unlock()</code> 只能由持有线程调用</strong>，且加几次解几次。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong><code>ReentrantLock</code> 的本质，是把"加锁"从 JVM 托管的<em>关键字</em>降维成一个由你调用方法的<em>普通对象</em>——正因为变成了方法调用，才能给它加上<strong>可中断</strong>（<code>lockInterruptibly</code>，让等锁的线程能被取消）、<strong>可定时</strong>（<code>tryLock</code>，拿不到就退避，用来规避死锁）、<strong>可公平</strong>（构造参数，用排队换取无饥饿）这三种内置锁给不了的能力；而这三者背后是同一个引擎 <strong>AQS</strong>——一个 <code>volatile state</code> 计数 + 一条 FIFO 等待队列。代价是你必须亲手把 <code>unlock()</code> 放进 <code>finally</code>。所以准则始终是：<strong>默认用 <code>synchronized</code>，只有真正需要这三大能力时，才升级到 <code>ReentrantLock</code>。</strong>
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="19-锁分段与ConcurrentHashMap的设计.html" class="nav-btn">← 锁分段与 ConcurrentHashMap 的设计</a>
+    <a href="21-ReadWriteLock与StampedLock.html" class="nav-btn next">ReadWriteLock 与 StampedLock →</a>
+  </div>
+</div>
+</body>
+</html>

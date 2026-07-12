@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTTPS / TLS 握手</title>
+  <style>
+    :root { --c: #38bdf8; --c-dim: #164e63; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">计算机网络：自顶向下方法</a> / HTTPS / TLS 握手</div>
+  <div class="hero">
+    <div class="tag">计算机网络 · 第6-7章·链路层与安全</div>
+    <h1>HTTPS / TLS 握手</h1>
+    <p>HTTPS 不是"另一个协议"，而是给明文的 HTTP 垫了一层 TLS。看懂那几个来回的握手报文，你就同时看懂了对称加密、非对称加密、数字证书三件密码学积木如何在一次连接里协同起来。</p>
+  </div>
+
+  <h2>一、先想清楚：HTTP 明文到底怕什么</h2>
+  <p>HTTP 报文在网线上是<strong>明文</strong>裸奔的。你和银行之间隔着无数台路由器、WiFi 热点、运营商设备，任何一跳都能看到、甚至改写你的报文。具体有三种攻击，正好对应密码学要守住的<strong>三个目标</strong>：</p>
+  <table>
+    <tr><th>攻击</th><th>后果</th><th>要守住的目标</th><th>靠什么解决</th></tr>
+    <tr><td>窃听 (sniffing)</td><td>WiFi 抓包看到你的密码</td><td><strong>机密性</strong> Confidentiality</td><td>加密</td></tr>
+    <tr><td>篡改 (tampering)</td><td>页面被注入广告/木马</td><td><strong>完整性</strong> Integrity</td><td>消息认证码 MAC / AEAD</td></tr>
+    <tr><td>冒充 (spoofing)</td><td>假冒银行网站钓鱼</td><td><strong>身份认证</strong> Authentication</td><td>数字证书 + CA</td></tr>
+  </table>
+  <div class="callout info"><strong>为什么"加密"一件事解决不了全部？</strong>初学者常以为"加密了就安全了"。但假设你和一个<strong>冒充银行的中间人</strong>建立了加密通道——通道是加密的，可对面根本不是银行，你还是被骗了。所以 <strong>机密性 ≠ 安全</strong>。TLS 之所以要引入证书，正是因为"加密"只解决"别人看不懂"，解决不了"我在跟谁说话"。这三件事必须一起做，缺一不可。</div>
+
+  <h2>二、三块积木：对称、非对称、数字证书</h2>
+  <p>TLS 不是发明了新密码学，而是把三件成熟的工具拼起来。先分别理解它们的性格与短板。</p>
+
+  <h3>1. 对称加密：快，但密钥怎么给对方？</h3>
+  <p>对称加密（AES）用<strong>同一把钥匙</strong>加密和解密，速度极快、适合传大量数据。致命短板是<strong>密钥分发</strong>：你要先把这把钥匙安全地交给对方——可网线本身就不安全，你怎么在不安全的网线上安全地传一把钥匙？这就是著名的"<strong>先有鸡还是先有蛋</strong>"困境。</p>
+
+  <h3>2. 非对称加密：解决了密钥分发，但太慢</h3>
+  <p>非对称加密（RSA / ECC）有一对钥匙：<strong>公钥公开、私钥自己藏</strong>。公钥加密的只有私钥能解。于是密钥分发困境迎刃而解：对方把<strong>公钥</strong>大大方方发给你，你用公钥加密一个秘密发回去，只有握着私钥的它能解开。中间人抄到公钥也没用——公钥只能加密不能解密。代价是：非对称运算比对称慢<strong>成百上千倍</strong>，不可能拿来加密整个网页流量。</p>
+  <table>
+    <tr><th>维度</th><th>对称加密 (AES)</th><th>非对称加密 (RSA/ECC)</th></tr>
+    <tr><td>密钥</td><td>一把，双方共享</td><td>一对，公钥/私钥</td></tr>
+    <tr><td>速度</td><td>快（有硬件指令 AES-NI）</td><td>慢 100~1000 倍</td></tr>
+    <tr><td>核心难题</td><td>密钥如何安全分发</td><td>性能差，不适合大数据</td></tr>
+    <tr><td>TLS 里的角色</td><td>握手后<strong>加密应用数据</strong></td><td>握手时<strong>协商出对称密钥</strong></td></tr>
+  </table>
+  <div class="callout key"><strong>混合加密（hybrid）是 TLS 的灵魂：</strong>用<strong>慢但能解决密钥分发的非对称加密</strong>，只做一件小事——在握手阶段安全地协商出一把<strong>对称会话密钥</strong>；之后海量的应用数据全部用<strong>快的对称加密</strong>传输。一句话：<strong>非对称负责"交换钥匙"，对称负责"干活"</strong>。这就是"为什么 TLS 既要 RSA 又要 AES"的根本答案。</div>
+
+  <h3>3. 数字证书：怎么确认这个公钥真是银行的？</h3>
+  <p>还差最后一环。中间人可以在你和银行之间，把银行的公钥<strong>换成自己的公钥</strong>——你以为在用银行的公钥，其实在用攻击者的。这叫<strong>中间人攻击（MITM）</strong>。解决办法：引入一个双方都信任的<strong>权威第三方 CA（Certificate Authority）</strong>，由它给"公钥属于谁"这件事<strong>盖章背书</strong>。这个盖了章的文件就是<strong>数字证书</strong>。</p>
+  <div class="callout warn"><strong>面试高频陷阱：数字证书里到底装了什么？"数字签名"又是怎么防伪的？</strong><br>证书 = 域名 + 服务器公钥 + 有效期 + <strong>CA 用自己私钥对上述内容哈希后的签名</strong>。验证时，浏览器用<strong>内置的 CA 公钥</strong>去验签：把证书内容重新哈希，再用 CA 公钥解开签名，两者一致就说明"这份证书确实是该 CA 签发、且没被改过"。攻击者拿不到 CA 私钥，<strong>伪造不出合法签名</strong>，也就没法把公钥偷换成自己的。注意方向：<strong>签名用私钥、验签用公钥</strong>，和"加密用公钥、解密用私钥"正好相反——很多人在这里绕晕。</div>
+  <div class="diagram">证书信任链（浏览器为什么信你的证书）
+ 根 CA 证书  ── 内置在操作系统/浏览器的"信任库"里（自签名，信任锚）
+    │ 用根私钥签
+    ▼
+ 中间 CA 证书 ── DigiCert / Let's Encrypt 等
+    │ 用中间私钥签
+    ▼
+ 你的服务器证书 (leaf) ── CN/SAN = www.example.com
+
+ 校验：leaf ← 中间CA ← 根CA，逐级验签直到某一环在本地信任库里
+       任一环签名对不上、或域名不匹配、或过期 → 浏览器报"不安全"</div>
+  <div class="callout info"><strong>串联 JDK：这个"信任库"在 Java 里就是 <code>cacerts</code>。</strong>路径 <code>$JAVA_HOME/lib/security/cacerts</code>，是一个内置了几百个根 CA 公钥的 KeyStore（默认密码 <code>changeit</code>）。你调 <code>HttpsURLConnection</code> 或用 <code>RestTemplate</code> 访问 HTTPS 站点时，JSSE（Java Secure Socket Extension）就是拿服务器证书去 <code>cacerts</code> 里逐级验链。企业内网自签证书报 <code>PKIX path building failed</code>，本质就是这条链的根不在 <code>cacerts</code> 里——正确做法是 <code>keytool -importcert</code> 把内网根导进去，而不是关掉校验。</div>
+
+  <h2>三、TLS 握手全过程（以 TLS 1.2 为例）</h2>
+  <p>三块积木就位，现在看它们怎么在一次连接里协同。注意：<strong>TLS 跑在 TCP 之上</strong>——必须先完成 TCP 三次握手，才开始 TLS 握手。下面是 TLS 1.2 完整握手（ECDHE 密钥交换）：</p>
+  <div class="diagram">TCP 三次握手 (1 RTT) ── 完成后 ↓ 才开始 TLS
+
+ 客户端                                          服务器
+   │ ──── ClientHello ──────────────────────────► │   ① 我支持的 TLS 版本 / 密码套件列表
+   │      (随机数 ClientRandom, 支持的 cipher)     │      + 一个客户端随机数
+   │                                               │
+   │ ◄──── ServerHello ─────────────────────────── │   ② 敲定用哪个密码套件 + 服务器随机数
+   │ ◄──── Certificate ─────────────────────────── │   ③ 把证书链发来（含服务器公钥）
+   │ ◄──── ServerKeyExchange ───────────────────── │   ④ ECDHE 参数 + 用私钥签名（证明我持有私钥）
+   │ ◄──── ServerHelloDone ─────────────────────── │
+   │                                               │
+   │  【本地】验证书链 → 生成 ECDHE 密钥对          │
+   │  双方各自算出相同的 pre-master → master secret │
+   │                                               │
+   │ ──── ClientKeyExchange ────────────────────►  │   ⑤ 发客户端的 ECDHE 公开参数
+   │ ──── ChangeCipherSpec ─────────────────────►  │   ⑥ "接下来我改用对称加密了"
+   │ ──── Finished (加密) ──────────────────────►  │   ⑦ 用会话密钥加密的握手摘要，校验没被篡改
+   │                                               │
+   │ ◄──── ChangeCipherSpec ────────────────────── │   ⑧ 服务器也切换
+   │ ◄──── Finished (加密) ─────────────────────── │
+   │                                               │
+   │ ═══════ 之后：对称加密的应用数据 (HTTP) ══════ │</div>
+  <p>关键在于<strong>会话密钥怎么算出来的</strong>：双方交换 <em>ClientRandom</em>、<em>ServerRandom</em> 和 ECDHE 的公开参数，各自在本地用 DH 算法算出同一个 <strong>pre-master secret</strong>，再和两个随机数一起推导出 <strong>master secret</strong>，最终派生出对称会话密钥。妙处在于：<strong>真正的密钥从没在网线上传输过</strong>，中间人抄到所有公开参数也算不出私有的那部分。</p>
+  <div class="callout tip"><strong>那两个 <code>Finished</code> 报文常被忽略，其实是完整性的最后一道锁。</strong>它把<strong>之前所有握手报文</strong>做一次摘要，用刚协商好的会话密钥加密后发给对方校验。如果中间人偷偷改过 ClientHello 里的密码套件列表（想把你降级到弱加密，即<strong>降级攻击</strong>），双方算出的握手摘要就对不上，握手直接失败。所以握手过程自身也是被保护的。</div>
+
+  <h3>读懂那串"天书"：密码套件名到底在说什么</h3>
+  <p>ServerHello 里敲定的<strong>密码套件（cipher suite）</strong>，其实是把这次握手要用的每种算法都写进了名字。用 <code>openssl s_client</code> 抓一次握手，就能看到它：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>命令行 · 用 openssl 观察真实握手</span><span>shell</span></div>
+    <pre><span class="com"># 连上目标站点，看协商结果与证书链</span>
+<span class="fn">openssl</span> s_client -connect example.com:<span class="num">443</span> -servername example.com
+
+<span class="com"># 输出里会看到类似这一行 —— 拆开读：</span>
+<span class="com"># TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256</span>
+<span class="com">#  │    │     │        │       │    └─ SHA256：派生密钥/摘要用的哈希</span>
+<span class="com">#  │    │     │        │       └────── GCM   ：AEAD 模式，加密同时保完整性</span>
+<span class="com">#  │    │     │        └────────────── AES-128：真正加密应用数据的对称算法</span>
+<span class="com">#  │    │     └─────────────────────── RSA  ：服务器用 RSA 私钥签名证明身份</span>
+<span class="com">#  │    └───────────────────────────── ECDHE：临时 DH 密钥交换 → 前向保密</span>
+<span class="com">#  └────────────────────────────────── TLS  ：协议族</span></pre>
+  </div>
+  <div class="callout tip"><strong>看懂这一行，等于看懂了三块积木如何分工。</strong>同一串名字里，<code>ECDHE</code> 管交换密钥、<code>RSA</code> 管身份签名、<code>AES-128-GCM</code> 管高速加密数据、<code>SHA256</code> 管派生与校验——正是前两节讲的对称 + 非对称 + 完整性各就各位。TLS 1.3 把这串精简成如 <code>TLS_AES_128_GCM_SHA256</code>（密钥交换固定 ECDHE、签名算法另行协商，所以名字里不再写）。</div>
+
+  <h2>四、TLS 1.2 vs 1.3：为什么新版本快一半</h2>
+  <p>上面 TLS 1.2 的完整握手要<strong>两个来回</strong>（2 RTT）才能开始传数据，加上 TCP 的 1 RTT，打开一个 HTTPS 页面前先花 3 个 RTT。TLS 1.3 把握手压到 <strong>1 RTT</strong>，还支持会话恢复时的 <strong>0-RTT</strong>。</p>
+  <div class="formula">首字节时延 = TCP(<span class="hl">1</span>) + TLS握手 + 请求(1)
+  <br>1.2: 1+<span class="hl">2</span>+1 ≈ 4·RTT&nbsp;&nbsp;|&nbsp;&nbsp;1.3: 1+<span class="hl">1</span>+1 ≈ 3·RTT</div>
+  <table>
+    <tr><th>维度</th><th>TLS 1.2</th><th>TLS 1.3</th></tr>
+    <tr><td>完整握手 RTT</td><td>2 RTT</td><td><strong>1 RTT</strong></td></tr>
+    <tr><td>会话恢复</td><td>Session ID / Ticket，1 RTT</td><td><strong>0-RTT</strong>（首个数据随 ClientHello 发出）</td></tr>
+    <tr><td>密钥交换</td><td>RSA 或 ECDHE 都允许</td><td><strong>只保留 ECDHE</strong>（强制前向保密）</td></tr>
+    <tr><td>密码套件</td><td>几百种，含不安全的老算法</td><td>精简到 5 种，全是 AEAD</td></tr>
+    <tr><td>降级/弱算法</td><td>RC4、SHA1、CBC 等历史包袱</td><td>一律移除</td></tr>
+  </table>
+  <p>TLS 1.3 的核心提速技巧：客户端在 <strong>ClientHello 里就把 ECDHE 公开参数（key_share）一起带上</strong>，赌服务器会选它支持的曲线；服务器回 ServerHello 时也带上自己的 key_share。这样<strong>一个来回双方就都凑齐了算密钥的材料</strong>，省掉了 1.2 里专门交换密钥的那个 RTT。</p>
+  <div class="callout warn"><strong>0-RTT 虽快，却有"重放攻击"隐患，别乱用。</strong>0-RTT 数据在握手完成前就发出，攻击者可以录下这段密文<strong>原样重发</strong>。若这条请求是"转账 100 元"这种<strong>非幂等</strong>操作，重放会造成重复扣款。所以规范要求 0-RTT <strong>只用于幂等的 GET</strong>，写操作必须走完整握手——这和你在 HTTP/RESTful 里学的"GET 幂等、POST 非幂等"是同一套安全直觉。</div>
+
+  <h2>五、前向保密（PFS）：为什么 1.3 干脆抛弃 RSA 密钥交换</h2>
+  <p>TLS 1.2 允许一种老式的 <strong>RSA 密钥交换</strong>：客户端直接用<strong>服务器证书里的公钥</strong>加密 pre-master secret 发过去。它有个致命隐患：假设攻击者<strong>今天把你的加密流量全录下来</strong>，几年后设法拿到了服务器私钥（比如服务器被入侵、或 <em>Heartbleed</em> 这类漏洞），他就能<strong>回溯解密所有历史流量</strong>——因为所有会话密钥都是用那把长期私钥保护的。</p>
+  <p><strong>ECDHE（临时椭圆曲线 DH）</strong>解决了这个问题：每次握手都<strong>临时生成一对用完即弃的密钥对</strong>，会话密钥由临时密钥算出，握手结束就销毁。服务器的长期私钥只用来<strong>签名</strong>（证明身份），不参与算会话密钥。于是即便长期私钥日后泄露，<strong>也倒推不出任何一次历史会话密钥</strong>。这就是<strong>前向保密（Forward Secrecy）</strong>。</p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">无前向保密 — RSA 密钥交换</div>
+      <pre>会话密钥 = f(pre_master)
+pre_master 用<b>长期私钥</b>保护
+
+私钥一旦泄露
+ → 录下的<b>所有历史流量</b>
+   全部可被回溯解密 ✗</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">有前向保密 — ECDHE</div>
+      <pre>每次握手<b>临时</b>生成 DH 密钥对
+会话密钥 = f(临时私钥)
+用完即销毁
+
+长期私钥只用于<b>签名</b>
+ → 泄露也解不了历史流量 ✓</pre>
+    </div>
+  </div>
+  <div class="callout info"><strong>联系操作系统与 JDK：临时密钥的"随机"从哪来？</strong>ECDHE 每次要生成不可预测的临时私钥，依赖高质量的随机数。Java 里是 <code>SecureRandom</code>，底层在 Linux 上取自内核熵池 <code>/dev/urandom</code>（由硬件中断时序、时钟抖动等熵源喂养）。历史上有 CVE 就是因为随机数可预测导致密钥被猜出。这也是为什么早年容器/虚拟机里熵不足会让 <code>SecureRandom.getInstanceStrong()</code> <strong>阻塞卡住</strong>——TLS 的安全性最终扎根在操作系统的随机性上。</div>
+
+  <h2>六、代码实战：Java 里正确 vs 错误地做 TLS 校验</h2>
+  <p>后端调第三方 HTTPS 接口时，最臭名昭著的坏味道就是：一遇到证书报错，就上网抄一段"信任所有证书"的 <code>TrustManager</code> 糊上去。这等于<strong>亲手把 TLS 的身份认证关掉</strong>，加密还在，但中间人可以随意冒充——机密性看似还在，安全性已归零。</p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">反例 — 信任一切，等于裸奔</div>
+      <pre><span class="com">// 抄来的"解决证书报错"代码</span>
+<span class="typ">TrustManager</span>[] all = { <span class="kw">new</span> <span class="typ">X509TrustManager</span>(){
+  <span class="kw">public void</span> <span class="fn">checkServerTrusted</span>(
+      <span class="typ">X509Certificate</span>[] c, <span class="typ">String</span> a){
+    <span class="com">// 空实现 = 任何证书都放行 ✗</span>
+  }
+  <span class="com">// getAcceptedIssuers 返回 null...</span>
+}};
+ctx.<span class="fn">init</span>(<span class="kw">null</span>, all, <span class="kw">new</span> <span class="typ">SecureRandom</span>());
+<span class="com">// MITM 可任意冒充，钓鱼站畅通无阻</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">正例 — 用默认信任库，需要时导入</div>
+      <pre><span class="com">// 直接用 JDK 默认校验（读 cacerts）</span>
+<span class="typ">HttpClient</span> client = <span class="typ">HttpClient</span>.<span class="fn">newHttpClient</span>();
+<span class="typ">HttpResponse</span>&lt;<span class="typ">String</span>&gt; r = client.<span class="fn">send</span>(
+    <span class="typ">HttpRequest</span>.<span class="fn">newBuilder</span>()
+      .<span class="fn">uri</span>(<span class="typ">URI</span>.<span class="fn">create</span>(<span class="str">"https://api.bank.com"</span>))
+      .<span class="fn">build</span>(),
+    <span class="typ">BodyHandlers</span>.<span class="fn">ofString</span>());
+<span class="com">// 内网自签证书？把根证书导入信任库：</span>
+<span class="com">// keytool -importcert -alias corp \</span>
+<span class="com">//   -file corp-root.crt -keystore cacerts</span></pre>
+    </div>
+  </div>
+  <div class="callout info"><strong>串联 Spring：给自己的服务开 HTTPS 只需几行配置。</strong>Spring Boot 里 <code>server.ssl.key-store=classpath:keystore.p12</code>、<code>server.ssl.key-store-type=PKCS12</code>、<code>server.ssl.key-store-password=...</code> 即可，底层由内嵌 Tomcat 通过 JSSE 完成 TLS 握手。生产环境更常见的是把 TLS <strong>卸载（offload）</strong>在 Nginx / 负载均衡 / 网关上——外网到网关走 HTTPS，网关到内部服务走明文 HTTP，减轻应用的握手开销。这也解释了为什么后端拿到的 <code>request.getScheme()</code> 常是 <code>http</code>，要靠 <code>X-Forwarded-Proto</code> 头还原真实协议。</div>
+
+  <h2>七、呼应第 8 章：HTTPS 只是密码学的一个应用</h2>
+  <p>本页看似讲"网络"，其实每一步都在用第 8 章<strong>网络安全</strong>的原语。把它们对齐一下，你会发现 TLS 就是密码学的一次"综合应用题"：</p>
+  <table>
+    <tr><th>第 8 章密码学原语</th><th>在 TLS 握手里的位置</th></tr>
+    <tr><td>对称加密（AES-GCM）</td><td>握手后加密应用数据，AEAD 同时保完整性</td></tr>
+    <tr><td>非对称加密 / 签名（RSA、ECDSA）</td><td>证书验签、ServerKeyExchange 签名</td></tr>
+    <tr><td>Diffie-Hellman 密钥交换（ECDHE）</td><td>不传密钥就协商出会话密钥、实现前向保密</td></tr>
+    <tr><td>哈希 / MAC（SHA-256、HMAC）</td><td>证书指纹、Finished 摘要、密钥派生</td></tr>
+    <tr><td>数字证书 / PKI 信任链</td><td>把公钥绑定到域名、抵御中间人</td></tr>
+  </table>
+  <div class="callout key"><strong>一句话收束：</strong>HTTPS = HTTP + TLS，而 TLS 握手的全部意义，就是在<strong>不安全的信道上安全地协商出一把对称会话密钥</strong>。它用三块积木各司其职——<strong>非对称加密/DH</strong> 负责在明网上交换密钥、<strong>数字证书</strong> 负责确认"对面真是它"、<strong>对称加密</strong> 负责之后高速传数据。记住三条判别线：<strong>加密解决机密性，证书解决身份认证，二者缺一不可</strong>；<strong>加密用公钥、验签用公钥而签名用私钥</strong>（方向别搞反）；<strong>ECDHE 带来前向保密，所以 TLS 1.3 抛弃了 RSA 密钥交换</strong>。把这张握手图刻进脑子，第 8 章的密码学就有了落地的抓手。</div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="23-以太网与交换机.html" class="nav-btn">← 以太网与交换机</a>
+    <a href="roadmap.html" class="nav-btn next">框架图 →</a>
+  </div>
+</div>
+</body>
+</html>

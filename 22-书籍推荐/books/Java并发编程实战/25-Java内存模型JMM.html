@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Java 内存模型（JMM）：happens-before 规则</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / Java 内存模型（JMM）：happens-before 规则</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第12-16章·JMM与测试</div>
+    <h1>Java 内存模型（JMM）：happens-before 规则</h1>
+    <p>JMM 不是硬件缓存的说明书，而是 JVM 与你签的一份"可见性合同"——happens-before 就是这份合同的全部条款。</p>
+  </div>
+
+  <h2>一、为什么需要一个"内存模型"</h2>
+  <p>先问一个反直觉的问题：下面这段代码，线程 2 有没有可能打印出 <code>x = 0</code>？</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Reordering.java</span><span>看似不可能，实则合法</span></div>
+    <pre><span class="kw">int</span> x = <span class="num">0</span>;
+<span class="kw">boolean</span> ready = <span class="kw">false</span>;
+
+<span class="com">// 线程 1</span>
+x = <span class="num">42</span>;          <span class="com">// ①</span>
+ready = <span class="kw">true</span>;      <span class="com">// ②</span>
+
+<span class="com">// 线程 2</span>
+<span class="kw">if</span> (ready) {         <span class="com">// ③</span>
+    <span class="fn">print</span>(x);       <span class="com">// ④  竟可能打印 0！</span>
+}</pre>
+  </div>
+
+  <p>答案是：<strong>会</strong>。原因有二：其一，编译器 / CPU 可能把 ① ② <em>重排序</em>（它们在单线程里无依赖，交换顺序不影响单线程结果）；其二，即使不重排，线程 1 写的 <code>x=42</code> 也可能还躺在它那颗 CPU 核的<em>写缓冲区</em>里，没刷回主内存，线程 2 读到的是旧值 0。</p>
+
+  <div class="callout info">
+    <strong>三重"捣乱者"：</strong>一次 <code>x = 42</code> 从源码到真正被别的线程看见，要过三道会打乱顺序的关卡——①<strong>编译器重排序</strong>（JIT 为优化调整指令顺序）；②<strong>CPU 指令级重排序</strong>（乱序执行、流水线）；③<strong>内存系统重排序</strong>（store buffer、缓存未同步，写"延迟可见"）。这三者叠加，多线程下"所见顺序"可以千奇百怪。JMM 存在的意义，就是在这片混沌之上，划出一条你能依赖的确定性边界。
+  </div>
+
+  <p>关键矛盾在于：这些重排序在<strong>单线程</strong>下是安全的——编译器 / CPU 会遵守 <em>as-if-serial（貌似串行）</em> 语义，保证单线程程序的运行结果和顺序执行一模一样。可一旦有第二个线程来观察，它看到的中间状态就可能"穿帮"。JMM 要回答的正是这个问题：<strong>一个线程的写，到底在什么条件下，对另一个线程保证可见？</strong></p>
+
+  <h2>二、JMM 的抽象模型：主内存与工作内存</h2>
+  <p>JMM 用一个<strong>抽象</strong>模型来描述多线程下的内存交互：所有共享变量存在<em>主内存（main memory）</em>；每个线程有自己的<em>工作内存（working memory）</em>，里面是它用到的共享变量的<strong>副本</strong>。线程只能操作自己的副本，不能直接读写别人的工作内存。</p>
+
+  <div class="diagram">          ┌───────────────── 主内存 (Main Memory) ─────────────────┐
+          │            共享变量  x=42   ready=true                  │
+          └───────────────────────────────────────────────────────┘
+               ▲   刷回 / 读取                  ▲   刷回 / 读取
+               │  (何时同步？由 JMM 规则决定)     │
+      ┌────────┴─────────┐              ┌────────┴─────────┐
+      │  线程1 工作内存    │              │  线程2 工作内存    │
+      │   x'=42  ready'=? │              │   x'=?   ready'=? │
+      └──────────────────┘              └──────────────────┘
+             线程1                              线程2
+
+  注意：主内存/工作内存是【逻辑抽象】，不等于 RAM/L1缓存/寄存器，
+       只是用来【定义可见性规则】的概念模型。</div>
+
+  <div class="callout warn">
+    <strong>陷阱一：别把 JMM 的"工作内存"当成真实硬件。</strong>很多人以为工作内存 = CPU 的 L1/L2 缓存、主内存 = 物理 RAM，这是错的。JMM 是一层<em>规范（specification）</em>，它只规定"程序的执行结果必须满足哪些约束"，至于 JVM 用寄存器、缓存还是别的手段去实现，它一概不管。用硬件去"具象"JMM 只能帮助建立直觉，真正做正确性推理时，请只依据 happens-before，而不是脑补缓存刷新时机。
+  </div>
+
+  <h2>三、happens-before：整套模型的核心契约</h2>
+  <p>如果每写一段并发代码都要去推演编译器、CPU、缓存三层重排序，人根本扛不住。所以 JSR-133（Java 5 起重写的内存模型）把这一切抽象成一个<strong>与硬件无关的偏序关系</strong>——<em>happens-before</em>。它是你和 JVM 之间的合同：<strong>只要你建立起 A happens-before B，JVM 就保证 A 的结果对 B 可见，且 A 不会被重排到 B 之后。</strong></p>
+
+  <div class="callout warn">
+    <strong>陷阱二（高频面试）：happens-before ≠ 时间上"先发生"。</strong>这个名字极具误导性。<code>A hb B</code> 的真正含义是"<em>A 的结果对 B 可见，且在语义上 A 排在 B 前</em>"，是一种<strong>可见性 + 有序性</strong>保证，不是墙上时钟的先后。反例：即便 A 在时间上确实早于 B 执行，只要两者间没有 happens-before 关系，B 依然可能看不到 A 的修改（就像第一节那段代码）。面试标准答话：<em>"happens-before 描述的是可见性顺序，不是发生时间顺序。"</em>
+  </div>
+
+  <p>它最强大的性质是<strong>传递性</strong>：能把一条条规则串成链，把可见性从一个变量"接力"传导到一批变量上。这正是安全发布得以成立的地基。</p>
+
+  <div class="formula">A <span class="hl">hb</span> B &nbsp; ∧ &nbsp; B <span class="hl">hb</span> C &nbsp; ⟹ &nbsp; A <span class="hl">hb</span> C</div>
+
+  <h2>四、happens-before 的全部规则</h2>
+  <p>《JCIP》第 16 章列出了 JMM 内建的这几条规则。几乎所有并发正确性推理，都是它们 + 传递性拼出来的。记住这张表，你就掌握了 JMM 的"语法"：</p>
+
+  <table>
+    <tr><th>规则</th><th>内容</th><th>典型用途</th></tr>
+    <tr><td><strong>程序顺序</strong></td><td>同一线程内，书写在前的操作 hb 书写在后的操作</td><td>串起同线程内其他规则</td></tr>
+    <tr><td><strong>监视器锁</strong></td><td>对一把锁的 <code>unlock</code> hb 后续对<em>同一把锁</em>的 <code>lock</code></td><td><code>synchronized</code> 的可见性来源</td></tr>
+    <tr><td><strong>volatile</strong></td><td>对 volatile 变量的<em>写</em> hb 后续对<em>同一变量</em>的<em>读</em></td><td>状态标志、安全发布</td></tr>
+    <tr><td><strong>线程启动</strong></td><td><code>Thread.start()</code> hb 新线程内的任何操作</td><td>主线程备好的数据子线程可见</td></tr>
+    <tr><td><strong>线程终止</strong></td><td>线程内所有操作 hb 其他线程从 <code>join()</code> 成功返回 / 检测到它已终止</td><td>收集子线程计算结果</td></tr>
+    <tr><td><strong>中断</strong></td><td><code>interrupt()</code> hb 被中断线程发现中断（抛异常或查到中断位）</td><td>取消 / 中断协作</td></tr>
+    <tr><td><strong>终结器</strong></td><td>对象构造函数结束 hb 该对象 <code>finalize()</code> 的开始</td><td>GC 回收前的清理</td></tr>
+    <tr><td><strong>传递性</strong></td><td>A hb B、B hb C ⟹ A hb C</td><td>把上面规则连成链</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>联系 JDK 源码：</strong>这些规则不是纸上谈兵。<code>AbstractQueuedSynchronizer</code>（AQS，<code>ReentrantLock</code> / <code>CountDownLatch</code> 的底层）用一个 <code>volatile int state</code> 承担同步状态的可见性；<code>ConcurrentHashMap</code> 的 <code>Node.val</code> / <code>Node.next</code> 都是 volatile；<code>Thread.join()</code> 内部靠对象锁 + <code>isAlive()</code> 实现终止规则。你日常用的每一个并发工具，正确性都建立在这几条 happens-before 之上——它们把"底层怎么插屏障"这件苦活封装掉了，只把契约暴露给你。
+  </div>
+
+  <h2>五、用 happens-before 破解开篇的 bug</h2>
+  <p>回到第一节那段会打印 0 的代码。它错在<strong>线程 1 的写和线程 2 的读之间没有任何 happens-before 边</strong>——程序顺序规则只在<em>单个线程内</em>有效，跨不过线程边界。修法：给 <code>ready</code> 加 <code>volatile</code>，用 volatile 规则搭一座跨线程的桥。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 无 hb 边，可能读到 x=0</div>
+      <pre>int x = 0;
+boolean ready = false;
+
+// 线程1
+x = 42;         // ①
+ready = true;   // ② 可与①重排
+
+// 线程2
+if (ready)      // ③
+  print(x);     // ④ 可能是 0
+// ①与④之间没有 hb 关系
+// → 结果未定义</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ volatile 搭出 hb 链</div>
+      <pre>int x = 0;
+volatile boolean ready = false;
+
+// 线程1
+x = 42;         // ①
+ready = true;   // ② volatile 写
+
+// 线程2
+if (ready)      // ③ volatile 读
+  print(x);     // ④ 一定是 42
+// ①hb②(程序序) hb③(volatile)
+//   hb④(程序序) → 传递: ①hb④</pre>
+    </div>
+  </div>
+
+  <div class="diagram">①  x = 42            [线程1, 普通写]
+       │  程序顺序规则   (① hb ②)
+       ▼
+②  ready = true      [线程1, volatile 写]
+       │  volatile 规则  (② hb ③)   ← 关键一跳，跨线程
+       ▼
+③  if (ready)        [线程2, volatile 读]
+       │  程序顺序规则   (③ hb ④)
+       ▼
+④  print(x)          [线程2, 普通读]
+
+  传递性把四步连成：①  hb  ④
+  ⟹ 线程1 对 x 的写，对线程2 完全可见（打印 42）</div>
+
+  <div class="callout info">
+    <strong>"搭便车（piggyback）"：</strong>注意 <code>x</code> 自己并不是 volatile，却借着 <code>ready</code> 这次 volatile 写，把可见性"免费"传导了出去。原理是 volatile 写前有 <em>StoreStore</em> 屏障（逼 <code>x=42</code> 先刷回），volatile 读后有 <em>LoadLoad/LoadStore</em> 屏障（逼读到 <code>ready</code> 后才读 <code>x</code>）。这正是 DCL 单例给 <code>instance</code> 加 <code>volatile</code> 能修好"半初始化对象"的根本原因——下一篇会专门拆解。
+  </div>
+
+  <h2>六、数据竞争：JMM 的"未定义行为"红线</h2>
+  <p>JMM 用 happens-before 精确定义了什么叫<strong>数据竞争（data race）</strong>：<em>两个线程访问同一个非 volatile 变量、至少一个是写、且这两个访问之间没有 happens-before 关系</em>——这就是一次数据竞争。含数据竞争的程序，JMM<strong>不保证任何结果</strong>（类似 C++ 的 undefined behavior）。</p>
+
+  <div class="formula">race = <span class="hl">同址</span> ∧ <span class="hl">至少一写</span> ∧ <span class="hl">无 hb 序</span></div>
+
+  <p>反过来，如果一个程序<strong>正确同步（correctly synchronized）</strong>——即所有对共享数据的冲突访问都被 happens-before 排好序——那么 JMM 保证它表现得<em>像顺序一致（sequentially consistent）</em>：所有线程看到的操作顺序一致，仿佛没有任何重排。这条被称为 <strong>DRF-SC 保证（Data-Race-Free ⟹ Sequential Consistency）</strong>，是现代内存模型的黄金定律。</p>
+
+  <div class="callout tip">
+    <strong>一句话记住：</strong>你不需要理解重排序的每个细节。<em>只要消除数据竞争（给共享访问建立 happens-before），JMM 就还你一个"没有重排、顺序一致"的世界。</em>这就是为什么"该同步的地方都同步了"之后，你可以放心地用直觉去推理并发代码。
+  </div>
+
+  <h2>七、被忽视的第三种手段：final 字段语义</h2>
+  <p>建立可见性的手段，除了 <code>volatile</code> 和锁，还有第三种常被忽略的——<strong><code>final</code> 字段</strong>。JSR-133 给 final 加了一条特殊保证：<em>只要对象在构造期间没有发生 this 逸出，那么其他线程即使通过数据竞争拿到该对象引用，也一定能看到构造函数中对 final 字段写入的正确值</em>，无需任何额外同步。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>FinalFieldSafe.java</span><span>final 保证构造完成后的可见性</span></div>
+    <pre><span class="kw">class</span> <span class="typ">Holder</span> {
+    <span class="kw">private</span> <span class="kw">final</span> <span class="kw">int</span>[] data;      <span class="com">// final：构造后不可变引用</span>
+
+    <span class="typ">Holder</span>() {
+        data = <span class="kw">new</span> <span class="kw">int</span>[]{<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>};  <span class="com">// 构造函数内写 final</span>
+    }                                <span class="com">// ← 构造结束时插入 freeze 屏障</span>
+
+    <span class="kw">int</span> <span class="fn">first</span>() { <span class="kw">return</span> data[<span class="num">0</span>]; }   <span class="com">// 任何线程读到都是 1，无需同步</span>
+}</pre>
+  </div>
+
+  <p>这条语义正是<strong>不可变对象（Immutable Object）天然线程安全</strong>的底层依据（呼应第 7 篇《不变性》）：<code>String</code>、<code>Integer</code>、<code>BigDecimal</code> 全靠 final 字段做到"发布即安全"。它也是"安全发布四种方式"里"用 final 域"那一种的原理。</p>
+
+  <div class="callout warn">
+    <strong>陷阱三：final 的保证有前提——构造期间 <code>this</code> 不能逸出。</strong>如果你在构造函数里把 <code>this</code> 注册到某个监听器、丢进静态集合、或启动一个引用了 <code>this</code> 的线程，别的线程就可能拿到一个 <em>final 字段还没写完</em> 的半成品对象，final 的可见性保证当场失效。所以构造函数里永远不要让 <code>this</code> 提前跑出去（this-escape）。
+  </div>
+
+  <h2>八、三种"同步手段"横向对比</h2>
+  <p>volatile、锁、final 都能建立 happens-before 边，但能力边界与代价差别很大。选型口诀：<em>能用 final 就别用 volatile，能用 volatile 就别上锁。</em></p>
+
+  <table>
+    <tr><th>手段</th><th>建立的 hb 边</th><th>原子性</th><th>适用场景</th><th>代价</th></tr>
+    <tr><td><code>final</code></td><td>构造结束 hb 引用可见后的读</td><td>—（只读）</td><td>不可变对象、安全发布</td><td>几乎为零</td></tr>
+    <tr><td><code>volatile</code></td><td>写 hb 后续读</td><td>✗ 仅单次读/写</td><td>状态标志、一写多读</td><td>低（读近乎免费）</td></tr>
+    <tr><td><code>synchronized</code> / <code>Lock</code></td><td>unlock hb 后续 lock</td><td>✓ 整个临界区</td><td>复合操作、多变量一致</td><td>较高（竞争/挂起）</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱四：happens-before 只约束"有依赖关系"的操作，不是全局排序。</strong>初学者常误以为"加了 volatile / 锁，所有代码就都按写的顺序跑了"。其实 JMM 只保证被 happens-before 串起来的那些操作有序、可见；毫无关系的两个操作，JVM 依然可以自由重排。它是一张<em>偏序（partial order）</em>网，不是全序（total order）——这也是为什么它能在保证正确性的同时，把优化空间尽量留给编译器和 CPU。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>JMM 是一份<strong>规范</strong>而非硬件说明书，它把"编译器 + CPU + 缓存"三层重排序的混沌，收敛成一个你能依赖的抽象——<strong>happens-before</strong>。记住三件事就够用：①<em>A hb B 意味着 A 的结果对 B 可见且排在 B 前，而非时间上先发生</em>；②所有可见性都来自那几条规则（程序顺序 / volatile / 锁 / start / join / final）+ 传递性拼成的链；③<em>只要消灭数据竞争，DRF-SC 就还你一个顺序一致的世界</em>。掌握这套"契约语言"，你就能像推公式一样证明并发代码的正确性——这正是从"背 API"迈向"懂并发"的分水岭，也是下一篇拆解<strong>双重检查锁（DCL）</strong>为何非 <code>volatile</code> 不可的理论地基。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="24-Atomic类与CAS原理.html" class="nav-btn">← Atomic 类与 CAS 原理</a>
+    <a href="26-安全初始化与双重检查锁DCL.html" class="nav-btn next">安全初始化与双重检查锁（DCL） →</a>
+  </div>
+</div>
+</body>
+</html>

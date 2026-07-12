@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>性能权衡：上下文切换、内存同步、锁竞争</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 性能权衡：上下文切换、内存同步、锁竞争</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第8-9章·活跃度与性能</div>
+    <h1>性能权衡：上下文切换、内存同步、锁竞争</h1>
+    <p>多线程从来不是"免费加速"——它先向你收三笔隐藏税：切换、同步、竞争。看懂这本账，才知道该往哪里砍。</p>
+  </div>
+
+  <h2>一、先分清两件事：性能 ≠ 可伸缩性</h2>
+  <p>很多人一提"多线程"就等同于"更快"，这是最大的误解。用线程的<strong>本意</strong>是提升性能，但线程本身<em>也要花钱</em>：创建、调度、协调、内存同步都有开销。一旦这些开销超过了并行带来的收益，多线程反而<strong>更慢</strong>。要谈清楚，得先拆开两个常被混为一谈的目标。</p>
+
+  <table>
+    <tr><th>目标</th><th>问的问题</th><th>怎么衡量</th><th>优化手段</th></tr>
+    <tr><td><strong>性能<br>（performance）</strong></td><td>"做同一件事有多快 / 用多少资源"</td><td>服务时间、延迟、单位资源吞吐</td><td>算法、少做重复工作、减少开销</td></tr>
+    <tr><td><strong>可伸缩性<br>（scalability）</strong></td><td>"加机器 / 加 CPU，处理能力能不能等比例涨"</td><td>吞吐量、单位时间完成量</td><td>减少串行部分、降低共享争用</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>它们经常互相打架。</strong>为了单次调用更快，我们常做缓存、复用对象、把工作合并——这些手段往往<em>引入更多共享状态和协调</em>，反而拖累可伸缩性。反过来，为了可伸缩，我们把大任务拆成许多小任务并行，<em>拆分与协调本身</em>又增加了单次工作的开销。所以第一课是：<strong>先想清楚你要优化哪一个</strong>。服务端应用通常优先可伸缩性——单个请求慢一点没关系，能扛住十倍流量才要命。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：先测量，再优化，别凭感觉。</strong>并发性能问题极其反直觉——你以为的瓶颈九成不是真瓶颈。"避免不成熟的优化，首先使程序正确，然后再加快——如果它还不够快的话"（JCP 原话）。用 profiler、<code>vmstat</code>（看上下文切换次数）、JMH 基准测试拿数据说话；任何"我觉得加锁很慢所以改成无锁"的改动，不带 benchmark 就是耍流氓。
+  </div>
+
+  <h2>二、Amdahl 定律：串行部分是并行的天花板</h2>
+  <p>为什么加了 8 个核，速度却远远到不了 8 倍？因为几乎任何程序都有<strong>无法并行、必须串行执行</strong>的部分（比如从共享队列里取任务、写同一份结果、加锁临界区）。Amdahl 定律给出了理论上限：</p>
+
+  <div class="formula">Speedup ≤ <span class="hl">1</span> / ( F + (1 − F) / N )</div>
+
+  <p>其中 <code>F</code> 是<em>必须串行</em>的比例，<code>N</code> 是处理器数量。让 <code>N → ∞</code>，加速比的极限就是 <code>1/F</code>——只要有 5% 串行，哪怕给你无限核，最多也就快 20 倍。串行部分才是真正的敌人。</p>
+
+  <h3>直观感受：串行占比 5% vs 25%（假设 N=8）</h3>
+  <div class="bar">
+    <span style="width:59%;background:#4ade80;">F=5% → 加速 ≈ 5.9×</span>
+    <span style="width:41%;background:#ef4444;">被串行拖住</span>
+  </div>
+  <div class="bar">
+    <span style="width:29%;background:#4ade80;">F=25% → 加速 ≈ 2.9×</span>
+    <span style="width:71%;background:#ef4444;">被串行拖住</span>
+  </div>
+
+  <div class="callout tip">
+    <strong>建立联系：这解释了上一篇《并发容器》的所有努力。</strong><code>Hashtable</code> 用一把大锁保护整表 —— 整个 <code>put/get</code> 都是串行的，<code>F</code> 很大，加再多线程也上不去。<code>ConcurrentHashMap</code> 把锁粒度缩到"单个桶"，绝大多数写操作互不冲突、可以并行，<em>大幅压低了 F</em>，于是可伸缩性一个数量级地领先。所有降低锁竞争的技巧，本质都是在做一件事：<strong>把 Amdahl 公式里的 F 往下压</strong>。
+  </div>
+
+  <h2>三、线程要收的三笔"隐藏税"</h2>
+  <p>引入线程能并行干活，但调度和协调线程本身要消耗资源。主要有三笔开销，下面逐一拆解：</p>
+
+  <table>
+    <tr><th>开销</th><th>它是什么</th><th>什么时候被触发</th></tr>
+    <tr><td><strong>① 上下文切换</strong></td><td>CPU 从一个线程切到另一个，要保存/恢复现场，还伴随缓存失效</td><td>可运行线程数 &gt; CPU 数；线程阻塞被挂起时</td></tr>
+    <tr><td><strong>② 内存同步</strong></td><td><code>synchronized</code>/<code>volatile</code> 插入的内存屏障，刷新缓存、禁止重排序</td><td>每次进出同步块、读写 volatile 变量</td></tr>
+    <tr><td><strong>③ 阻塞（锁竞争）</strong></td><td>抢不到锁的线程被挂起，涉及一次或多次上下文切换 + OS 调度</td><td>多个线程争抢同一把锁（竞争激烈时）</td></tr>
+  </table>
+
+  <h2>四、上下文切换：调度不是免费的午餐</h2>
+  <p>单个 CPU 核心同一时刻只能跑一个线程。当"可运行线程"多于核心数，OS 就得<strong>轮流</strong>给它们分配时间片。切换时，内核要保存当前线程的寄存器、程序计数器、栈指针等<em>执行现场</em>，再加载下一个线程的现场——这段纯管理开销叫<strong>上下文切换（context switch）</strong>。</p>
+
+  <div class="diagram">一次上下文切换发生了什么：
+
+  线程 A 运行中 ──► 时间片用完 / A 阻塞在锁上
+        │
+        ├─ ① 保存 A 的现场（寄存器、PC、栈指针）到内核
+        ├─ ② 内核调度器挑选下一个线程 B
+        ├─ ③ 加载 B 的现场，切换到 B 的地址空间
+        └─ ④ B 开始跑，但 CPU 缓存里全是 A 的数据……
+                └─► ⑤ B 频繁 cache miss，要从主存重新加载  ← 真正的大头
+
+  直接成本：现场保存/恢复 + 调度  ≈ 几千~上万时钟周期（几微秒）
+  间接成本：缓存被冲刷，新线程"冷启动"  ← 常常比直接成本更贵</div>
+
+  <div class="callout info">
+    <strong>真正贵的不是"切换"本身，而是"缓存失效"。</strong>直接的切换成本约 <strong>5000~10000 个时钟周期（几微秒）</strong>。但更隐蔽的代价是：线程 A 跑的时候，L1/L2 缓存里装满了它的热数据；切到 B 后，这些缓存对 B 毫无用处，B 要一次次 <em>cache miss</em> 去主存里捞数据（一次主存访问就是上百个周期）。所以刚被换上的线程，头一小段时间是"缓慢的冷启动"。这也是为什么 <em>频繁切换</em> 比"少数几次长任务"更伤性能。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：线程数不是越多越好，"过度切换"会让你越加线程越慢。</strong>很多人以为线程越多吞吐越高，于是开几百个线程。结果 CPU 大量时间耗在切换和缓存冷启动上，真正干活的时间反而变少——这叫<em>thrashing（颠簸）</em>。经验法则：<strong>CPU 密集型</strong>任务，线程数 ≈ 核心数 + 1；<strong>IO 密集型</strong>任务因为线程常在等待，可以适当多开。在 Linux 上用 <code>vmstat</code> 看 <code>cs</code>（context switch）列，若它高得离谱，就是信号。这也串起了后面《线程池》为什么要精心设定 <code>corePoolSize</code>。
+  </div>
+
+  <h2>五、内存同步：屏障的开销，和它没那么可怕的真相</h2>
+  <p><code>synchronized</code> 和 <code>volatile</code> 的性能开销，来自它们插入的<strong>内存屏障（memory barrier）</strong>。屏障有两个作用（回忆《volatile 与 happens-before》那一篇）：一是<em>刷新缓存 / 使缓存失效</em>，保证可见性；二是<em>禁止特定的指令重排序</em>，保证有序性。这两件事都会限制 CPU 和编译器的优化空间，所以确实有成本。</p>
+
+  <div class="callout tip">
+    <strong>但请记住一个反直觉的事实：无竞争的同步，几乎是免费的。</strong>初学者常谈"锁"色变，其实现代 JVM 对<em>没有竞争</em>的同步做了极其激进的优化。真正贵的是"竞争"（第六节），不是"同步"这个动作本身。JVM 会用下面这些手段把无谓的同步成本抹掉：
+  </div>
+
+  <table>
+    <tr><th>JVM 优化</th><th>做了什么</th><th>例子</th></tr>
+    <tr><td><strong>锁消除<br>lock elision</strong></td><td>逃逸分析发现锁对象是线程私有的，根本不可能被别的线程访问，直接把锁去掉</td><td>方法内 <code>new StringBuffer()</code> 的 <code>append</code>（自带 synchronized）会被消除</td></tr>
+    <tr><td><strong>锁粗化<br>lock coarsening</strong></td><td>把相邻的、对同一把锁的多次加解锁合并成一次，减少反复进出屏障</td><td>循环里连续 <code>append</code>，合并成锁一次</td></tr>
+    <tr><td><strong>偏向/轻量级锁</strong></td><td>无竞争时用 CAS 标记而非重量级 OS 互斥量，几乎零成本；竞争出现才升级</td><td>见《synchronized 与内置锁》的锁升级</td></tr>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>逃逸分析 → 锁消除</span><span>这段的 synchronized 会被 JIT 抹掉</span></div>
+    <pre><span class="kw">public</span> <span class="typ">String</span> <span class="fn">concat</span>(<span class="typ">String</span> a, <span class="typ">String</span> b) {
+    <span class="com">// StringBuffer.append 是 synchronized 方法</span>
+    <span class="typ">StringBuffer</span> sb = <span class="kw">new</span> <span class="typ">StringBuffer</span>();  <span class="com">// sb 是局部变量，不会逃逸出本方法</span>
+    sb.<span class="fn">append</span>(a);   <span class="com">// JIT：既然没人能拿到 sb，加锁毫无意义</span>
+    sb.<span class="fn">append</span>(b);   <span class="com">// → 锁被"消除"，这几次同步的开销归零</span>
+    <span class="kw">return</span> sb.<span class="fn">toString</span>();
+}
+<span class="com">// 结论：不要因为"怕慢"就手动把 StringBuffer 换成 StringBuilder 来</span>
+<span class="com">// 规避同步——在这种局部场景，JVM 已经帮你消除了。真正该换的理由是语义清晰。</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：volatile 不是"轻量级 synchronized"，它也有内存屏障成本，只是更小。</strong>volatile 读的开销接近普通读，但 volatile <em>写</em> 要插入 StoreLoad 屏障刷新，比普通写贵。更关键的是——<strong>volatile 只保证可见性和有序性，不保证原子性</strong>。<code>volatile int i; i++;</code> 依然是"读-改-写"三步，并发下照样丢更新（这是《竞态条件》的老问题）。别为了"省一点同步开销"把该用 <code>synchronized</code>/<code>AtomicInteger</code> 的地方换成 volatile，那不是优化，是引入 bug。
+  </div>
+
+  <h2>六、阻塞与锁竞争：性能的真正黑洞</h2>
+  <p>前面说无竞争同步很便宜；那贵在哪？贵在<strong>竞争（contention）</strong>。当线程 B 想要的锁正被 A 持有，B 就得等。JVM 有两种等法：</p>
+
+  <ul>
+    <li><strong>自旋等待（spin-waiting）</strong>：B 在一个循环里反复试探锁——不放弃 CPU。适合锁<em>马上就会释放</em>的场景（等待时间 &lt; 一次上下文切换成本）。</li>
+    <li><strong>挂起（suspension）</strong>：B 被 OS 挂起、让出 CPU，等锁释放时再被唤醒。适合<em>要等很久</em>的场景，但唤醒/挂起<strong>各带一次上下文切换</strong>，还要经过内核调度。</li>
+  </ul>
+
+  <div class="diagram">锁竞争把"并行"退化成了"串行 + 排队开销"：
+
+  无竞争：  A ─临界区─►        B ─临界区─►     (各干各的，快)
+
+  有竞争：  A ─────临界区─────►│
+                                └─ B 被挂起（切换出去）… 等 A 解锁
+                                   └─ B 被唤醒（再切换回来）─临界区─►
+                                        ▲                    ▲
+                              上下文切换×2           串行执行，N 核也没用
+
+  竞争越激烈 → 挂起/唤醒越频繁 → 上下文切换越多 → Amdahl 里的 F 越大</div>
+
+  <div class="callout info">
+    <strong>看穿本质：锁竞争同时点燃了前面全部三笔开销。</strong>一次激烈的锁争用，会让线程<em>阻塞挂起</em>（触发上下文切换）、让临界区<em>串行化</em>（撑大 Amdahl 的 F）、还伴随缓存在多核间来回<em>失效同步</em>。所以"降低锁竞争"是并发性能优化里<strong>回报率最高</strong>的一件事——它一箭三雕。这也正是下一篇《锁分段与 ConcurrentHashMap 的设计》要深入的主题。
+  </div>
+
+  <h2>七、降低锁竞争的三板斧</h2>
+  <p>锁上的竞争程度，由两个因素决定：<strong>锁被请求的频率</strong> × <strong>每次持有锁的时间</strong>。想减少竞争，就从这两处下手，共三种手段：</p>
+
+  <h3>① 缩短持有锁的时间（把锁的范围收窄）</h3>
+  <p>只把<em>真正访问共享状态</em>的那几行放进同步块，与共享状态无关的计算、IO、日志统统挪到锁外面。锁持有时间越短，别人排队越少。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 整个方法加锁，无关操作也占着锁</div>
+      <pre>public synchronized
+        boolean userMatches(String id) {
+    // 下面这些都不碰共享状态，
+    // 却全程霸占着锁！
+    String prefix = expensiveParse(id);
+    log.info("checking " + prefix);
+    return map.get(prefix)      // ← 只有这行真的读共享状态
+              .contains(id);
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 只锁真正访问共享数据的那一行</div>
+      <pre>public boolean userMatches(String id) {
+    // 无关的重活放在锁外，谁都不用等
+    String prefix = expensiveParse(id);
+    log.info("checking " + prefix);
+    Set&lt;String&gt; s;
+    synchronized (this) {        // 临界区极小
+        s = map.get(prefix);
+    }
+    return s.contains(id);      // 读的是局部引用，安全
+}</pre>
+    </div>
+  </div>
+
+  <h3>② 降低请求锁的频率（锁分解 / 锁分段）</h3>
+  <p>如果一把锁保护了<em>多个互相独立</em>的变量，那它就成了瓶颈——访问 A 的线程和访问 B 的线程被同一把锁互相拖住。把它拆成多把锁，各管各的，冲突概率立降。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 一把锁保护两份不相关的状态</div>
+      <pre>public class ServerStatus {
+    private final Set&lt;String&gt; users;
+    private final Set&lt;String&gt; queries;
+
+    // 加/删 user 和加/删 query 抢同一把锁 this
+    public synchronized void addUser(String u)  { users.add(u); }
+    public synchronized void addQuery(String q) { queries.add(q); }
+    // 明明互不相干，却被迫排队
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 锁分解：一份状态一把锁</div>
+      <pre>public class ServerStatus {
+    private final Set&lt;String&gt; users;
+    private final Set&lt;String&gt; queries;
+
+    public void addUser(String u) {
+        synchronized (users)  { users.add(u); }
+    }
+    public void addQuery(String q) {
+        synchronized (queries){ queries.add(q); }
+    }
+    // 操作 users 与操作 queries 现在可以并行
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <strong>锁分解 → 锁分段（lock striping）。</strong>锁分解是把一把锁拆成"两三把、每把管一块固定字段"。当一把锁保护的是一个<em>可无限增长的容器</em>（如一整张哈希表）时，可以更进一步：把数据切成 N 份，用 N 把锁，用元素的 hash 决定落到哪把锁——这就是<strong>锁分段</strong>。这正是 JDK 7 <code>ConcurrentHashMap</code> 的 <code>Segment</code> 设计（默认 16 段 = 16 把锁，理论上 16 个写线程并行）。代价是：需要"锁全表"的操作（如精确 <code>size()</code>、扩容）反而变复杂、变慢——又是一次典型取舍。下一篇细讲。
+  </div>
+
+  <h3>③ 用"能并发的协调机制"替代独占锁</h3>
+  <p>最彻底的一招：<em>干脆别用独占锁</em>。根据场景换成允许更高并发度的工具——很多时候能把竞争降到零。</p>
+
+  <table>
+    <tr><th>用它替代 synchronized</th><th>适用场景</th><th>为什么更好</th></tr>
+    <tr><td><code>ReadWriteLock</code></td><td>读多写少</td><td>读读不互斥，多个读线程可同时进</td></tr>
+    <tr><td><code>Atomic 类</code>（CAS）</td><td>单个计数器 / 引用</td><td>无锁，靠 CAS 自旋，无挂起开销</td></tr>
+    <tr><td><code>LongAdder</code></td><td>高并发计数（热点）</td><td>分片累加，把单点竞争摊到多个 cell</td></tr>
+    <tr><td>不可变对象 / <code>ThreadLocal</code></td><td>状态可拆分或只读</td><td>压根没有共享，也就没有竞争</td></tr>
+    <tr><td>并发容器</td><td>共享集合</td><td>内部已用分段锁 / CAS，比外部加锁强</td></tr>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>把独占锁计数器换成无锁 Atomic</span><span>高竞争下差距悬殊</span></div>
+    <pre><span class="com">// 反例：每次自增都要抢锁、可能挂起</span>
+<span class="kw">private</span> <span class="kw">long</span> count = <span class="num">0</span>;
+<span class="kw">public</span> <span class="kw">synchronized</span> <span class="kw">void</span> <span class="fn">inc</span>() { count++; }
+
+<span class="com">// 正例：CAS 自旋，无锁，无上下文切换</span>
+<span class="kw">private</span> <span class="kw">final</span> <span class="typ">AtomicLong</span> count = <span class="kw">new</span> <span class="typ">AtomicLong</span>();
+<span class="kw">public</span> <span class="kw">void</span> <span class="fn">inc</span>() { count.<span class="fn">incrementAndGet</span>(); }
+
+<span class="com">// 更强：竞争极高时 AtomicLong 的 CAS 也会频繁自旋失败</span>
+<span class="com">// LongAdder 把计数分散到多个 cell，各线程更新不同 cell，几乎不冲突</span>
+<span class="kw">private</span> <span class="kw">final</span> <span class="typ">LongAdder</span> count = <span class="kw">new</span> <span class="typ">LongAdder</span>();
+<span class="kw">public</span> <span class="kw">void</span> <span class="fn">inc</span>() { count.<span class="fn">increment</span>(); }   <span class="com">// sum() 时才把各 cell 相加</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：小心"伪竞争"和"过度优化"两个反方向的坑。</strong>其一，别看到"竞争"就无脑上无锁 CAS——<em>竞争极其激烈</em>时，CAS 会不停自旋失败重试，白烧 CPU，此时反而可能不如让线程挂起（这正是 <code>LongAdder</code> 存在的理由）。其二，别为了减少上下文切换而搞"忙等待"自旋占满 CPU。任何优化都要拿 <strong>benchmark</strong> 验证，因为并发性能高度依赖具体的竞争程度、核数、JVM 版本——脱离测量的优化，往往把简单代码改复杂了，性能还没变好。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>多线程不是免费加速，它先收三笔税——<strong>上下文切换</strong>（切换直接成本 + 缓存冷启动，别开太多线程）、<strong>内存同步</strong>（屏障成本，但<em>无竞争</em>的同步已被 JVM 用锁消除/锁粗化/偏向锁抹得几乎为零）、<strong>阻塞与锁竞争</strong>（真正的性能黑洞，一次激烈争用同时点燃前两笔开销并撑大 Amdahl 的串行比例 F）。<code>Amdahl 定律 Speedup ≤ 1/(F + (1−F)/N)</code> 告诉我们：<em>串行部分才是并行的天花板</em>，一切优化的终极目标就是压低 F。压 F 的三板斧是——<strong>缩短锁持有时间、锁分解/锁分段降低请求频率、用读写锁/原子变量/不可变对象/并发容器替代独占锁</strong>。而所有这些的前提只有一条铁律：<em>先测量，用数据说话，再优化。</em>
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="17-死锁的检测与避免.html" class="nav-btn">← 死锁的检测与避免</a>
+    <a href="19-锁分段与ConcurrentHashMap的设计.html" class="nav-btn next">锁分段与 ConcurrentHashMap 的设计 →</a>
+  </div>
+</div>
+</body>
+</html>

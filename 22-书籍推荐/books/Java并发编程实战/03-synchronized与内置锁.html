@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>synchronized 与内置锁</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / synchronized 与内置锁</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第1-2章·线程安全基础</div>
+    <h1>synchronized 与内置锁</h1>
+    <p>上一节我们看到复合操作会撕裂成竞态；这一节，Java 给每个对象都内置了一把锁，用互斥把这条裂缝重新缝合。</p>
+  </div>
+
+  <h2>一、承上：为什么"加锁"是复合操作的解药</h2>
+  <p>上一节留下一个悬案：<code>check-then-act</code>（检查后执行）、<code>read-modify-write</code>（读改写）这类<strong>复合操作</strong>之所以不安全，是因为它由多条指令组成，两条指令之间<em>能被其他线程插进来</em>。要修复它，只需要一件事：让这一串指令<strong>不可分割地整体执行</strong>——这就是原子性。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>经典竞态：put-if-absent</span><span>两步之间是可以被打断的缝隙</span></div>
+<pre><span class="com">// 想实现"不存在才放入"，但 get 和 put 是两步</span>
+<span class="kw">if</span> (map.<span class="fn">get</span>(key) == <span class="kw">null</span>) <span class="punct">{</span>   <span class="com">// ← ①检查（此刻可能被切走）</span>
+    map.<span class="fn">put</span>(key, value)<span class="punct">;</span>        <span class="com">// ← ②执行（回来时前提已失效）</span>
+<span class="punct">}</span>
+<span class="com">// 两个线程都在①看到 null，于是都执行②，后者覆盖前者 💥</span></pre>
+  </div>
+
+  <p>Java 提供的最基本的加锁工具，就是关键字 <code>synchronized</code>。它保护的那把锁，不需要你手动 <code>new</code> 出来——<strong>每个 Java 对象天生自带一把锁</strong>，这就是"内置锁"的由来。</p>
+
+  <h2>二、内置锁（Intrinsic Lock）到底是什么</h2>
+  <p>《Java 并发编程实战》给它起了个正式名字：<strong>内置锁（Intrinsic Lock）</strong>，也叫<strong>监视器锁（Monitor Lock）</strong>。理解它，抓住三个关键事实：</p>
+  <ul>
+    <li><strong>它挂在对象上：</strong>每个 Java 对象都可以充当一把锁。<code>synchronized</code> 块必须指定"以哪个对象为锁"。</li>
+    <li><strong>它是互斥的：</strong>同一时刻最多只有一个线程能持有某个对象的内置锁，其余线程<em>阻塞等待</em>。</li>
+    <li><strong>它是自动的：</strong>进入 <code>synchronized</code> 块自动加锁，退出（包括正常返回和抛异常）自动释放——你不会忘记解锁。</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>为什么叫"监视器"（Monitor）？</strong>这是并发理论里的经典概念（Hoare 于 1974 年提出）。监视器 = 一段被"互斥门禁"保护的临界区 + 一套等待/通知机制。Java 把这个学术模型直接编进了语言：<code>synchronized</code> 提供互斥门禁，<code>Object</code> 的 <code>wait()</code> / <code>notify()</code> 提供等待通知。所以你在 <code>Object</code> 类里看到 <code>wait/notify</code> 是"天经地义"的——因为<em>每个对象都是一个潜在的监视器</em>。
+  </div>
+
+  <p>编译后，<code>synchronized</code> 代码块对应字节码里成对的 <code>monitorenter</code> / <code>monitorexit</code> 指令；同步方法则在方法的访问标志上打一个 <code>ACC_SYNCHRONIZED</code> 标记，由 JVM 在调用前后隐式加解锁。锁的状态（谁持有、重入了几次）记录在对象头的 <strong>Mark Word</strong> 里。</p>
+
+  <h2>三、三种写法，锁的到底是哪个对象</h2>
+  <p>这是面试高频送分题，也是最容易写错的地方。核心只有一句话：<strong>看清 monitor 挂在哪个对象上</strong>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Counter.java</span><span>三种用法 = 三个不同的锁对象</span></div>
+<pre><span class="kw">class</span> <span class="typ">Counter</span> <span class="punct">{</span>
+    <span class="com">// ① 同步实例方法 → 锁 this（当前实例，每个对象一把）</span>
+    <span class="kw">public synchronized void</span> <span class="fn">incr</span>() <span class="punct">{</span> ... <span class="punct">}</span>
+
+    <span class="com">// ② 同步静态方法 → 锁 Counter.class（类对象，全 JVM 唯一）</span>
+    <span class="kw">public static synchronized void</span> <span class="fn">reset</span>() <span class="punct">{</span> ... <span class="punct">}</span>
+
+    <span class="com">// ③ 同步代码块 → 锁你指定的任意对象（推荐：粒度可控）</span>
+    <span class="kw">private final</span> <span class="typ">Object</span> <span class="var">lock</span> = <span class="kw">new</span> <span class="typ">Object</span>()<span class="punct">;</span>
+    <span class="kw">public void</span> <span class="fn">add</span>() <span class="punct">{</span>
+        <span class="kw">synchronized</span> (<span class="var">lock</span>) <span class="punct">{</span> ... <span class="punct">}</span>   <span class="com">// synchronized(this) 等价于①</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>写法</th><th>锁的对象</th><th>作用范围</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>实例方法 <code>synchronized</code></td><td><code>this</code>（当前实例）</td><td>同一实例的所有同步实例方法互斥</td></tr>
+      <tr><td>静态方法 <code>synchronized</code></td><td><code>类名.class</code>（类对象）</td><td>全 JVM 内该类的所有同步静态方法互斥</td></tr>
+      <tr><td>同步代码块</td><td>括号里指定的对象</td><td>只锁需要保护的那几行，粒度最小</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>两个必踩的坑：</strong>
+    <br>· <strong>实例锁和类锁互不干扰。</strong>①锁 <code>this</code>、②锁 <code>Counter.class</code>，是两个<em>不同的对象</em>。所以线程 A 在执行 <code>incr()</code> 时，<em>不会</em>阻塞线程 B 执行静态的 <code>reset()</code>——如果它们改的是同一份数据，就仍然是竞态。
+    <br>· <strong>锁一个会变的引用，等于没锁。</strong>用 <code>synchronized(new Object())</code>（每次新对象，永远抢得到）、或锁一个可变字段、或锁 <code>String</code> 常量与被缓存的 <code>Integer</code>（<code>-128~127</code> 会与别处意外共享同一实例），都会锁错或锁空。所以约定俗成：用 <code>private final Object lock</code> 作专用锁对象——<em>引用稳定、外部拿不到、不会被误用来做别的锁</em>。
+  </div>
+
+  <h2>四、互斥：竞态是怎么被"缝合"的</h2>
+  <p>把上一节的坏例子用同一把锁包起来，两步就变成了"不可分割的一步"：别的线程要么完整地看到"检查+执行"之前，要么看到之后，永远看不到中间态。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 复合操作裸奔</div>
+<pre><span class="kw">class</span> Seq <span class="punct">{</span>
+  <span class="kw">private int</span> value<span class="punct">;</span>
+  <span class="kw">public int</span> next() <span class="punct">{</span>
+    <span class="kw">return</span> value++<span class="punct">;</span>  <span class="com">// 读-改-写</span>
+  <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// 两线程同拿到 5，都返回 5，</span>
+<span class="com">// 序号重复 + 丢更新 💥</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 内置锁保证原子</div>
+<pre><span class="kw">class</span> Seq <span class="punct">{</span>
+  <span class="kw">private int</span> value<span class="punct">;</span>
+  <span class="kw">public synchronized int</span> next() <span class="punct">{</span>
+    <span class="kw">return</span> value++<span class="punct">;</span>  <span class="com">// 整体不可分割</span>
+  <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// 一次只有一个线程进临界区，</span>
+<span class="com">// 序号严格递增 ✅</span></pre>
+    </div>
+  </div>
+
+  <div class="diagram">时间 ──►
+  线程 A:  monitorenter ─[ 读5 · 改6 · 写回 ]─ monitorexit
+  线程 B:      阻塞……等 A 释放……   monitorenter ─[ 读6 · 改7 · 写回 ]─ exit
+                            ▲
+                 互斥：B 绝不会在 A 的临界区中间挤进来</div>
+
+  <h2>五、可重入（Reentrancy）：锁认的是"线程"不是"次数"</h2>
+  <p>内置锁有一个极其重要、却常被忽略的性质：<strong>可重入</strong>。意思是——<em>持有锁的线程可以再次进入被同一把锁保护的代码，而不会把自己锁死</em>。它的实现原理很朴素：每把锁关联一个<strong>持有线程</strong>和一个<strong>重入计数器</strong>。</p>
+
+  <div class="diagram">线程 T 调用 LoggingWidget.doSomething()  ── synchronized 锁的是 this
+ ┌ 外层 synchronized(this)
+ │    owner == null ?  是 → owner = T, count: 0 → 1   （抢到锁）
+ │    └─ super.doSomething()  也是 synchronized(this)
+ │         owner == T ?  是 → 不阻塞自己！ count: 1 → 2  （重入，无需再竞争）
+ │            ...执行父类逻辑...
+ │         退出 super → count: 2 → 1
+ └ 退出外层 → count: 1 → 0 → owner 置空，真正释放锁</div>
+
+  <p>如果内置锁<strong>不可重入</strong>，下面这段极普通的继承代码会直接<em>死锁</em>——子类方法已经持有 <code>this</code> 锁，调用 <code>super.doSomething()</code> 时又要获取 <code>this</code> 锁，结果自己等自己永远等不到。这正是《Java 并发编程实战》举的经典例子。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>为什么锁必须可重入</span><span>否则子类调父类的同步方法就死锁</span></div>
+<pre><span class="kw">class</span> <span class="typ">Widget</span> <span class="punct">{</span>
+    <span class="kw">public synchronized void</span> <span class="fn">doSomething</span>() <span class="punct">{</span> ... <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="kw">class</span> <span class="typ">LoggingWidget</span> <span class="kw">extends</span> <span class="typ">Widget</span> <span class="punct">{</span>
+    <span class="kw">public synchronized void</span> <span class="fn">doSomething</span>() <span class="punct">{</span>
+        System.out.<span class="fn">println</span>(<span class="fn">toString</span>() + <span class="str">": calling doSomething"</span>)<span class="punct">;</span>
+        <span class="kw">super</span>.<span class="fn">doSomething</span>()<span class="punct">;</span>   <span class="com">// 再次请求 this 锁——可重入才不会死锁</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>建立联系：</strong>可重入不是内置锁独有的。后面章节要讲的显式锁 <code>ReentrantLock</code>，名字里的 "Reentrant" 就是"可重入"——它同样靠"持有线程 + 计数器"实现（内部由 AQS 的 <code>state</code> 字段承担计数）。区别只在于 <code>ReentrantLock</code> 需要你手动 <code>lock()</code>/<code>unlock()</code> 且成对配平，而 <code>synchronized</code> 的加解锁由 JVM 托管，更不容易出错。
+  </div>
+
+  <h2>六、JCiP 的核心律条：用锁保护"状态"，而不是"方法"</h2>
+  <p>新手常把 <code>synchronized</code> 理解成"给方法上锁"，这是本末倒置。《Java 并发编程实战》反复强调的原则是——<strong>锁保护的是数据（共享可变状态），不是代码</strong>。由此推出一条铁律：</p>
+
+  <div class="formula">
+    每个共享可变变量，都只能由 <span class="hl">同一把锁</span> 守护全部访问
+  </div>
+
+  <p>关键词有三个：<strong>共享</strong>（会被多个线程访问）、<strong>可变</strong>（值会改变）、<strong>同一把锁</strong>（读和写、以及所有相关变量，用的必须是同一个锁对象）。缺任何一个，锁都白加。下面是最典型的两种"同步不足"翻车现场。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 只锁写、不锁读</div>
+<pre><span class="kw">class</span> Point <span class="punct">{</span>
+  <span class="kw">private int</span> x, y<span class="punct">;</span>
+  <span class="kw">synchronized void</span> set(<span class="kw">int</span> a,<span class="kw">int</span> b)<span class="punct">{</span>
+    x = a<span class="punct">;</span> y = b<span class="punct">;</span>
+  <span class="punct">}</span>
+  <span class="kw">int</span> getX() <span class="punct">{</span> <span class="kw">return</span> x<span class="punct">;</span> <span class="punct">}</span>  <span class="com">// 没锁！</span>
+  <span class="kw">int</span> getY() <span class="punct">{</span> <span class="kw">return</span> y<span class="punct">;</span> <span class="punct">}</span>  <span class="com">// 没锁！</span>
+<span class="punct">}</span>
+<span class="com">// 读方读到旧值 / 半更新，</span>
+<span class="com">// 且无可见性保证 💥</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 读写用同一把锁</div>
+<pre><span class="kw">class</span> Point <span class="punct">{</span>
+  <span class="kw">private int</span> x, y<span class="punct">;</span>
+  <span class="kw">synchronized void</span> set(<span class="kw">int</span> a,<span class="kw">int</span> b)<span class="punct">{</span>
+    x = a<span class="punct">;</span> y = b<span class="punct">;</span>
+  <span class="punct">}</span>
+  <span class="kw">synchronized int</span> getX()<span class="punct">{</span> <span class="kw">return</span> x<span class="punct">;</span> <span class="punct">}</span>
+  <span class="kw">synchronized int</span> getY()<span class="punct">{</span> <span class="kw">return</span> y<span class="punct">;</span> <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// 读写互斥 + 可见性齐活，</span>
+<span class="com">// x/y 始终成对一致 ✅</span></pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>面试高频陷阱：多个同步方法拼起来，不等于线程安全。</strong>即使 <code>contains()</code> 和 <code>add()</code> 各自都是 <code>synchronized</code> 的，下面这段"如果不存在就添加"仍是竞态——因为两次调用<em>之间</em>锁已经被释放了，别的线程能趁虚而入。这说明：<strong>原子性的边界，是你划定的临界区，而不是单个方法。</strong>正确做法是把复合动作整体放进一个同步块。
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 原子方法 + 非原子组合</div>
+<pre><span class="kw">if</span> (!list.<span class="fn">contains</span>(x))   <span class="com">// 同步，但…</span>
+    list.<span class="fn">add</span>(x)<span class="punct">;</span>          <span class="com">// …两步之间有缝</span>
+<span class="com">// 两线程都判"不含"，重复添加 💥</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 把复合动作圈进临界区</div>
+<pre><span class="kw">synchronized</span> (list) <span class="punct">{</span>
+    <span class="kw">if</span> (!list.<span class="fn">contains</span>(x))
+        list.<span class="fn">add</span>(x)<span class="punct">;</span>
+<span class="punct">}</span>
+<span class="com">// 检查+添加 一气呵成，原子 ✅</span></pre>
+    </div>
+  </div>
+
+  <h2>七、锁的粒度：性能与安全的拉锯</h2>
+  <p>既然一把大锁能保证安全，为什么不把整个方法都锁上？因为<strong>锁会串行化执行</strong>——临界区越大，能并行的部分越少，还容易把耗时的 I/O、网络调用也一并锁进去，拖垮吞吐量。但缩得太小又会切断复合操作的原子性。这中间有个权衡：</p>
+
+  <div class="callout tip">
+    <strong>JCiP 的实践建议：</strong>把<em>不影响共享状态</em>的耗时操作（如日志、网络请求、复杂计算）<strong>移出</strong>同步块；同步块里只保留"读写共享状态"这几行。原则是——同步块要<em>够大以保证不变性</em>，又<em>够小以不必要地阻塞别人</em>。
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 锁里干耗时活</div>
+<pre><span class="kw">synchronized void</span> handle(Req r)<span class="punct">{</span>
+  count++<span class="punct">;</span>                <span class="com">// 需要锁</span>
+  <span class="typ">byte</span>[] resp = io(r)<span class="punct">;</span>   <span class="com">// 慢！却也被锁住</span>
+  cache.<span class="fn">put</span>(r, resp)<span class="punct">;</span>
+<span class="punct">}</span>
+<span class="com">// 所有线程排队等 io()，形同单线程</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 只锁必须同步的部分</div>
+<pre><span class="kw">void</span> handle(Req r)<span class="punct">{</span>
+  <span class="kw">synchronized</span>(lock)<span class="punct">{</span> count++<span class="punct">;</span> <span class="punct">}</span>
+  <span class="typ">byte</span>[] resp = io(r)<span class="punct">;</span>   <span class="com">// 锁外并行</span>
+  <span class="kw">synchronized</span>(lock)<span class="punct">{</span> cache.<span class="fn">put</span>(r,resp)<span class="punct">;</span> <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// io() 可并发，吞吐大幅提升</span></pre>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <strong>synchronized 并不总是"重量级"。</strong>JDK 6 起引入了<em>锁升级</em>：无锁 → 轻量级锁（CAS 自旋）→ 重量级锁。只有在真正激烈竞争时才膨胀为依赖操作系统 mutex 的重量级锁（涉及用户态/内核态切换才慢）。竞争不激烈时开销很小。所以"synchronized 一定慢"是老黄历。（注：偏向锁在 JDK 15 起默认关闭并被弃用，见 JEP 374。）
+  </div>
+
+  <h2>八、别忘了：内置锁还顺带解决了"可见性"</h2>
+  <p>很多人只记得 <code>synchronized</code> 提供互斥（原子性），却忽略了它<strong>同时保证内存可见性</strong>：线程释放锁时会把工作内存刷回主内存，获取同一把锁时会清空工作内存、重新从主内存读取。所以被<em>同一把锁</em>保护的普通变量，天然可见，<strong>不需要再额外加 <code>volatile</code></strong>。</p>
+
+  <div class="formula">
+    synchronized = <span class="hl">互斥</span>（原子性）&nbsp;+&nbsp; <span class="hl">进出锁的内存同步</span>（可见性）
+  </div>
+
+  <div class="callout tip">
+    <strong>埋个伏笔：</strong>这个"释放锁 → 获取锁"之间的可见性保证，背后是 Java 内存模型的 <em>happens-before</em> 规则中的"锁规则"：<em>对一个锁的解锁，happens-before 于后续对同一把锁的加锁</em>。这也是为什么<strong>互斥和可见性总是被一把锁一起兑现</strong>。这条线索，正是下一节 <a class="leaf" href="04-volatile与happens-before.html" style="color:var(--c);text-decoration:none;border-bottom:1px dashed var(--c-dim);">volatile 与 happens-before</a> 的主角。
+  </div>
+
+  <h2>九、对比：synchronized vs 显式锁 ReentrantLock</h2>
+  <p>内置锁足够好用，但它有天花板：不能中断等待、不能设超时、不能实现公平锁、只能有一个等待队列。这些正是显式锁 <code>ReentrantLock</code>（第 10-11 章）诞生的理由。先建立一个对比框架：</p>
+
+  <table>
+    <thead>
+      <tr><th>维度</th><th><code>synchronized</code>（内置锁）</th><th><code>ReentrantLock</code>（显式锁）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>加解锁</td><td>JVM 自动，出块/异常自动释放</td><td>手动 <code>lock()</code>/<code>unlock()</code>，须放 <code>finally</code></td></tr>
+      <tr><td>可重入</td><td>✓</td><td>✓</td></tr>
+      <tr><td>可中断等待</td><td>✗ 只能死等</td><td>✓ <code>lockInterruptibly()</code></td></tr>
+      <tr><td>可超时/尝试</td><td>✗</td><td>✓ <code>tryLock(timeout)</code></td></tr>
+      <tr><td>公平锁</td><td>✗ 非公平</td><td>✓ 可选公平/非公平</td></tr>
+      <tr><td>等待通知</td><td><code>wait/notify</code>，单一队列</td><td>多个 <code>Condition</code>，可分组唤醒</td></tr>
+      <tr><td>忘记释放风险</td><td>无（自动）</td><td>有（漏写 <code>unlock</code> 会泄漏）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>那到底用哪个？</strong>《Java 并发编程实战》的建议很务实：<strong>默认优先用 <code>synchronized</code></strong>——它更简单、不会忘记释放、且是内建语义，工具和 JVM 对它优化最好。<em>只有当你确实需要</em>可中断、可定时、公平锁、或多个条件队列这些高级能力时，才换成 <code>ReentrantLock</code>。不要为了"听说 Lock 更快"而无脑替换——现代 JVM 里两者性能已非常接近。
+  </div>
+
+  <h2>十、面试速记清单</h2>
+  <div class="callout warn">
+    <strong>背诵要点：</strong>
+    <br>· <strong>内置锁</strong>=每个对象自带的监视器锁；字节码 <code>monitorenter/monitorexit</code>，状态记在对象头 Mark Word。
+    <br>· 三种用法锁的对象：实例方法锁 <code>this</code>、静态方法锁 <code>Class</code>、代码块锁指定对象；<em>实例锁与类锁互不阻塞</em>。
+    <br>· <strong>可重入</strong>：靠"持有线程 + 计数器"，同一线程可重复进入；否则子类调 <code>super</code> 同步方法会死锁。
+    <br>· 核心律条：<strong>每个共享可变变量由同一把锁保护全部访问</strong>；只锁写不锁读 = 半个安全。
+    <br>· 原子性边界是<em>临界区</em>不是方法：多个同步方法拼接≠线程安全（如 <code>if(!contains)add</code>）。
+    <br>· synchronized 同时提供<strong>互斥 + 可见性</strong>；被同一把锁保护的变量无需再加 volatile。
+    <br>· 锁粒度权衡：耗时操作移出同步块；synchronized 有锁升级，早已不是"一定慢"。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong><code>synchronized</code> 借助每个对象内置的<em>监视器锁</em>，用<strong>互斥</strong>把复合操作重新变回原子的一步，同时靠"进出锁的内存同步"顺带保证<strong>可见性</strong>；它<em>可重入</em>，所以继承与自调用不会自锁。用好它只需记住一条心法——<strong>锁保护的是数据不是代码，每个共享可变状态都必须由同一把锁守护它的每一次读写</strong>。当你需要可中断、可超时、公平或多条件队列时，再升级到显式的 <code>ReentrantLock</code>。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="02-竞态条件与复合操作.html" class="nav-btn">← 竞态条件与复合操作</a>
+    <a href="04-volatile与happens-before.html" class="nav-btn next">volatile 与 happens-before →</a>
+  </div>
+</div>
+</body>
+</html>

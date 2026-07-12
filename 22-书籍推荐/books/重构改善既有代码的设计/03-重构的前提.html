@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重构的前提：好的测试</title>
+  <style>
+    :root { --c: #f472b6; --c-dim: #831843; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">重构：改善既有代码的设计</a> / 重构的前提：好的测试</div>
+  <div class="hero">
+    <div class="tag">重构 · 第1-2章·理念与原则</div>
+    <h1>重构的前提：好的测试</h1>
+    <p>没有测试的重构，本质上只是"在悬崖边上闭着眼睛跳舞"——你改的到底是结构还是行为，全凭运气。</p>
+  </div>
+
+  <h2>一、为什么"没测试就别重构"是一条铁律</h2>
+  <p>重构的定义（见上一节）是：<strong>在不改变外部可观测行为的前提下，改善内部结构</strong>。这句定义里藏着一个致命的隐含要求——你必须有办法<em>证明</em>"外部行为没变"。否则你嘴上说着"我只是重构"，手上却可能悄悄引入了 bug 而毫不知情。</p>
+  <p>Martin Fowler 在书里说得极其直白：<em>"如果你想重构，前提是你得有一套可靠的测试。"</em> 这不是一句励志口号，而是一条工程上的因果链：</p>
+  <div class="formula">重构 = <span class="hl">改结构</span> ∧ <span class="hl">行为不变</span>　⟹　需要一台"行为不变<span class="hl">探测器</span>"</div>
+  <p>这台"探测器"就是<strong>自动化测试</strong>。它的作用不是帮你写出好代码，而是在你每一次小改动之后，几秒钟内回答一个问题：<strong>"我刚才有没有把东西改坏？"</strong> 有了它，重构才从"提心吊胆的手术"变成"有安全网的杂技"。</p>
+  <div class="callout info"><strong>换个视角：测试是重构的"回归基线"。</strong> 重构前，测试全绿——这是你的"存档点"。重构中，你频繁运行测试；一旦某个测试变红，你立刻知道"就是刚才那几行改错了"，问题范围被死死锁定在最近这一小步里。这和 Git 的作用异曲同工：Git 让你敢删代码（因为能回滚），测试让你敢改代码（因为能验证）。</div>
+
+  <h2>二、"自测试代码"（Self-Testing Code）</h2>
+  <p>Fowler 把这套实践提炼成一个概念——<strong>自测试代码</strong>：代码库里内建一套能自动运行、自动判定对错的测试，一条命令跑完就告诉你"全绿 / 有红"，<em>无需人肉点点点</em>去验证。这是 Kent Beck 在极限编程（XP）里最重要的贡献之一，也是 JUnit 之所以诞生的原因。</p>
+  <div class="callout tip"><strong>历史彩蛋：</strong> JUnit 正是 Kent Beck 与 Erich Gamma（《设计模式》GoF 四人组之一）在一次飞机航程上写出来的。它把"写测试"这件苦差事的成本压到极低——一个 <code>@Test</code> 注解、一个 <code>assertEquals</code>，让"自测试代码"从理念变成了整个 Java 生态的肌肉记忆。你今天在 Spring Boot 里随手写的 <code>@SpringBootTest</code>，血脉源头就在这里。</div>
+  <p>一段最小的"自测试代码"长这样——注意它是如何把"预期行为"钉死成可执行的断言的：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>被测代码 + 它的"行为快照"</span><span>Java · JUnit 5</span></div>
+    <pre><span class="com">// 被测：一个计算购物车折扣的方法（重构目标）</span>
+<span class="kw">public class</span> <span class="typ">PriceCalculator</span> <span class="punct">{</span>
+    <span class="kw">public double</span> <span class="fn">finalPrice</span><span class="punct">(</span><span class="kw">double</span> price<span class="punct">,</span> <span class="kw">int</span> qty<span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">double</span> total <span class="punct">=</span> price <span class="punct">*</span> qty<span class="punct">;</span>
+        <span class="kw">if</span> <span class="punct">(</span>total <span class="punct">&gt;</span> <span class="num">1000</span><span class="punct">)</span> total <span class="punct">*=</span> <span class="num">0.9</span><span class="punct">;</span>   <span class="com">// 满 1000 打 9 折</span>
+        <span class="kw">return</span> total<span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// 测试：把"外部可观测行为"固化成可执行的断言</span>
+<span class="kw">class</span> <span class="typ">PriceCalculatorTest</span> <span class="punct">{</span>
+    <span class="typ">PriceCalculator</span> calc <span class="punct">=</span> <span class="kw">new</span> <span class="typ">PriceCalculator</span><span class="punct">();</span>
+
+    <span class="lit">@Test</span> <span class="kw">void</span> <span class="fn">noDiscountBelowThreshold</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="fn">assertEquals</span><span class="punct">(</span><span class="num">200.0</span><span class="punct">,</span> calc.<span class="fn">finalPrice</span><span class="punct">(</span><span class="num">100</span><span class="punct">,</span> <span class="num">2</span><span class="punct">),</span> <span class="num">1e-9</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="lit">@Test</span> <span class="kw">void</span> <span class="fn">applyDiscountOverThreshold</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="com">// 1200 &gt; 1000，应打 9 折 = 1080</span>
+        <span class="fn">assertEquals</span><span class="punct">(</span><span class="num">1080.0</span><span class="punct">,</span> calc.<span class="fn">finalPrice</span><span class="punct">(</span><span class="num">600</span><span class="punct">,</span> <span class="num">2</span><span class="punct">),</span> <span class="num">1e-9</span><span class="punct">);</span>
+    <span class="punct">}</span>
+    <span class="lit">@Test</span> <span class="kw">void</span> <span class="fn">boundaryExactly1000_noDiscount</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="com">// 边界：等于 1000 时【不】打折（&gt; 而非 &gt;=）</span>
+        <span class="fn">assertEquals</span><span class="punct">(</span><span class="num">1000.0</span><span class="punct">,</span> calc.<span class="fn">finalPrice</span><span class="punct">(</span><span class="num">500</span><span class="punct">,</span> <span class="num">2</span><span class="punct">),</span> <span class="num">1e-9</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>现在这三条测试就是 <code>finalPrice</code> 的"行为契约"。无论你之后怎么重构它的内部——提炼函数、以多态取代 if、引入策略对象——只要这三条依然全绿，你就有底气说"行为没变"。</p>
+
+  <h2>三、重构与测试的节奏：红绿交替的心跳</h2>
+  <p>重构不是"改一大堆然后跑一次测试"，而是<strong>改一小步 → 跑测试 → 再改一小步</strong>的高频循环。测试就是这个循环的"心跳监护仪"：</p>
+  <div class="diagram">┌─────────────────────────────────────────────────────┐
+│  ① 跑测试 → 全绿 ✔   （确认起点是干净的"存档点"）      │
+│              │                                        │
+│              ▼                                        │
+│  ② 做一次【极小】的重构（提炼一个变量 / 改个名）        │
+│              │                                        │
+│              ▼                                        │
+│  ③ 跑测试 ──┬── 全绿 ✔ ─→ 回到 ②，继续下一小步         │
+│            │                                          │
+│            └── 变红 ✘ ─→ 立刻 undo / 修（问题只在这一步）│
+└─────────────────────────────────────────────────────┘
+       测试跑得越快，这个心跳循环就能转得越快</div>
+  <div class="callout warn"><strong>陷阱：把"测试慢"当成不跑测试的借口。</strong> 如果测试要跑 10 分钟，你就不会频繁跑，重构循环被拉长成"改半天跑一次"——一旦变红，问题范围是"这半天的所有改动"，锁不定。这就是为什么<em>单元测试必须快</em>（毫秒级）：速度直接决定你敢不敢小步走。反过来，一堆连数据库、连网络的"慢测试"，对重构的支撑作用会大打折扣。</div>
+
+  <h2>四、什么才算"好的测试"？</h2>
+  <p>"有测试"和"有好测试"是两回事。一套拖后腿的测试甚至比没有更糟——它会让你误以为有安全网，或者每次重构都要陪着改一大堆测试。好的重构安全网，追求以下特质：</p>
+  <table>
+    <tr><th>特质</th><th>含义</th><th>为什么对重构关键</th></tr>
+    <tr><td><strong>快（Fast）</strong></td><td>整套单元测试秒级跑完</td><td>快才敢频繁跑，才敢小步走</td></tr>
+    <tr><td><strong>测行为，不测实现</strong></td><td>断言"给什么输入得什么输出"，而非"内部调了哪个私有方法"</td><td>重构<em>就是</em>改实现，测试若绑死实现，一重构就集体变红</td></tr>
+    <tr><td><strong>独立可重复</strong></td><td>不依赖执行顺序、不依赖上次残留的数据</td><td>否则红/绿是随机的，安全网变成"薛定谔的网"</td></tr>
+    <tr><td><strong>自验证</strong></td><td>结果只有"通过/失败"，不需要人眼比对日志</td><td>人肉判断慢且易错，无法支撑高频循环</td></tr>
+    <tr><td><strong>覆盖到位</strong></td><td>正常路径 + 边界 + 异常分支都有</td><td>没覆盖到的分支，重构改错了测试也不会报警</td></tr>
+  </table>
+  <div class="callout info"><strong>覆盖率的正确用法：</strong> 行覆盖率（line coverage）是个<em>反向指标</em>——低覆盖率一定有问题（大片代码没测），但高覆盖率<u>不</u>保证测试好（可能只调用了代码却没断言任何东西）。别把 100% 覆盖率当 KPI 去刷。Fowler 的建议朴素而实用：<strong>"当你不再害怕会有 bug 溜过测试时，覆盖率就够了。"</strong></div>
+
+  <h2>五、反例 → 正例：脆弱的测试 vs 抗重构的测试</h2>
+  <p>同一个需求，测试写法不同，对重构的支撑天差地别。核心分水岭：<strong>你在测"它做了什么"（行为），还是测"它怎么做的"（实现细节）？</strong></p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 绑死实现细节</div>
+      <pre>// 用 mock 断言"内部调用了哪些方法"
+@Test void save() {
+  service.register(user);
+
+  // 一重构（比如合并两次DB调用），
+  // 这些验证就全红——哪怕行为没变
+  verify(dao).insert(user);
+  verify(dao).updateIndex(user);
+  verify(cache).evict("users");
+}
+// 痛点：
+// · 测的是"过程"不是"结果"
+// · 重构=改过程，测试必然连坐
+// · 沦为"改代码就得改测试"的负担</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 只断言可观测行为</div>
+      <pre>// 只关心"注册后能不能查到这个用户"
+@Test void register_thenQueryable() {
+  service.register(user);
+
+  User found =
+      service.findByEmail(user.email());
+  assertEquals(user.name(),
+               found.name());
+}
+// 收益：
+// · 内部怎么存、存几次、清不清缓存
+//   都是实现细节，随便重构
+// · 只要"注册完能查到"这一行为不变
+//   测试就一直绿——真正的安全网</pre>
+    </div>
+  </div>
+  <div class="callout warn"><strong>过度 mock 是重构的头号敌人。</strong> 用 <code>verify()</code> 去校验"内部调用序列"，等于把测试焊死在当前实现上。Fowler 和 Kent Beck 都强调：<em>测试应该像客户端一样使用你的代码</em>——客户端不关心你内部调了几次 DAO，只关心结果对不对。Mock 应留给"真的难以在测试里构造的外部依赖"（如第三方支付网关），而不是拿来监视自家代码的一举一动。</div>
+
+  <h2>六、没有测试的遗留代码怎么办？——先补网，再动手</h2>
+  <p>现实里最扎心的场景：你面对的偏偏是一坨<strong>又乱又没测试</strong>的祖传代码——正因为没测试，它才烂成这样；正因为烂，你才想重构。这是个"先有鸡还是先有蛋"的死结。</p>
+  <div class="callout tip"><strong>解法（出自 Michael Feathers《修改代码的艺术》，与本书互补）：</strong> 先写<strong>特征测试（Characterization Test）</strong>。它不问"代码<em>应该</em>输出什么"，而是先跑一遍，把它<em>当前实际</em>输出的结果原样固化成断言——哪怕这个结果本身是错的。目的不是判对错，而是给"当前行为"拍一张快照，作为重构前后的对比基线。织好这张网，才敢下刀。</div>
+  <div class="code-block">
+    <div class="cb-header"><span>特征测试：给遗留代码"当前行为"拍快照</span><span>Java</span></div>
+    <pre><span class="lit">@Test</span> <span class="kw">void</span> <span class="fn">characterize_legacyBehavior</span><span class="punct">()</span> <span class="punct">{</span>
+    <span class="com">// 不知道它"该"返回啥，先跑一次看实际返回什么</span>
+    <span class="typ">String</span> actual <span class="punct">=</span> legacy.<span class="fn">process</span><span class="punct">(</span><span class="str">"2026-07-12"</span><span class="punct">,</span> <span class="num">3</span><span class="punct">);</span>
+    <span class="com">// 把跑出来的结果原样钉死——这就是"当前行为"的快照</span>
+    <span class="fn">assertEquals</span><span class="punct">(</span><span class="str">"OK#7#DELTA"</span><span class="punct">,</span> actual<span class="punct">);</span>
+    <span class="com">// 之后任何重构都不许改变这个输出；等真正理解了逻辑</span>
+    <span class="com">// 再决定这行为是否是 bug、要不要单独修</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>七、串联：从 JUnit 到 Spring 到 CI</h2>
+  <p>"好的测试是重构前提"这条原则，早已被整个 Java 生态制度化，你每天都在用它：</p>
+  <ul>
+    <li><strong>JUnit / AssertJ</strong>：提供 <code>@Test</code>、<code>assertThat(...)</code>，让"自测试代码"的编写成本趋近于零。</li>
+    <li><strong>Spring Test</strong>：<code>@SpringBootTest</code>、<code>@DataJpaTest</code>、<code>MockMvc</code> 让你能在贴近真实运行环境下测行为——重构 Service 层时，一整套集成测试就是你的安全网。</li>
+    <li><strong>Testcontainers</strong>：用真实的 MySQL/Redis 容器跑测试，避免"mock 出来的假 DB 掩盖了真 bug"，让"测行为不测实现"落到实处。</li>
+    <li><strong>CI（如 GitHub Actions）</strong>：每次 push 自动全量跑测试。这是"自测试代码"的团队级放大——把个人重构的安全网，扩展成整个团队协作重构的护栏。你项目里 <code>main</code> 分支推送即部署，同理，测试全绿才敢部署。</li>
+  </ul>
+  <div class="callout info"><strong>面试高频串联：</strong> 被问"你怎么保证重构不引入 bug？"——标准答案就是这条链：<em>先有覆盖行为的测试（红绿基线）→ 小步重构 → 每步跑测试 → CI 兜底</em>。若再追问"TDD 和重构什么关系？"：TDD 的"红-绿-<strong>重构</strong>"三步循环里，第三步就是本书讲的重构；TDD 天然产出了"好的测试"，因此和重构是绝配——测试先行，安全网就已经在那儿了。</div>
+
+  <h2>八、常见误区一次说清</h2>
+  <div class="callout warn"><strong>误区一："我改得很小，不用跑测试。"</strong> 恰恰相反，正因为改得小，跑测试的成本才低、定位才准。人的直觉判断在"这么点改动不可能出错"上失手过无数次——空指针、边界、精度、副作用，全藏在"看起来没问题"里。</div>
+  <div class="callout warn"><strong>误区二："先重构，回头再补测试。"</strong> 顺序反了。没有基线测试，你根本无法证明重构过程中行为没变——等你重构完，早已分不清"这个诡异表现是我改出来的，还是它本来就这样"。<strong>测试必须先于重构存在。</strong></div>
+  <div class="callout warn"><strong>误区三："测试和被测代码一起改，还叫安全网吗？"</strong> 这是最隐蔽的陷阱。重构时若发现测试变红就顺手改测试让它变绿，安全网就形同虚设。铁律：<strong>重构阶段只允许改产品代码，绝不同时改测试的断言</strong>；测试要变，得在独立的、非重构的步骤里、并且有充分理由地改。</div>
+
+  <div class="callout key"><strong>一句话收束：</strong> 重构的胆量不是来自"我很仔细"，而是来自"我有一张随时能兜住我的网"。<strong>好的测试 = 一套快、测行为不测实现、可自动重复运行的安全网</strong>；它把"改代码"从赌博变成了可验证的工程动作。所以本书真正的第一步从来不是背重构手法，而是：<em>先确认（或补齐）你的测试。没有绿灯，就不要开始重构。</em></div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="02-重构vs重写.html" class="nav-btn">← 重构 vs 重写</a>
+    <a href="04-重构的节奏.html" class="nav-btn next">重构的节奏 →</a>
+  </div>
+</div>
+</body>
+</html>

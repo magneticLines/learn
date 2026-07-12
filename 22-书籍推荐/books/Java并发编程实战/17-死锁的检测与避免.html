@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>死锁的检测与避免</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 死锁的检测与避免</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第8-9章·活跃度与性能</div>
+    <h1>死锁的检测与避免</h1>
+    <p>四个必要条件、锁顺序、定时锁与线程转储——把偶发的“程序卡死”变成可预防、可诊断的工程问题。</p>
+  </div>
+
+  <h2>一、死锁到底是怎么形成的</h2>
+  <p>死锁不是玄学。它有精确的定义：<strong>一组线程互相持有对方需要的资源，形成环路等待，谁都不肯先松手</strong>，于是集体永久阻塞。操作系统课上给出了著名的四个<em>必要条件</em>，四者<strong>同时成立</strong>才可能死锁——这也意味着，只要打破其中任意一个，死锁就不可能发生。这是后面所有“避免”手段的理论根基。</p>
+
+  <table>
+    <tr><th>必要条件</th><th>含义</th><th>Java 里的体现</th></tr>
+    <tr><td><strong>互斥</strong></td><td>资源同一时刻只能被一个线程占有</td><td><code>synchronized</code> / <code>Lock</code> 本质就是互斥，很难打破</td></tr>
+    <tr><td><strong>持有并等待</strong></td><td>持有一把锁的同时去申请另一把</td><td>嵌套加锁：<code>synchronized(A){ synchronized(B){} }</code></td></tr>
+    <tr><td><strong>不可剥夺</strong></td><td>锁不能被强行抢走，只能主动释放</td><td><code>synchronized</code> 天生不可中断，只能等它自己退出</td></tr>
+    <tr><td><strong>循环等待</strong></td><td>存在线程等待环 T1→T2→…→T1</td><td>两个线程以相反顺序获取同两把锁</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>类比：</strong>两个人过独木桥，A 从左端上、B 从右端上，走到中间面对面。桥太窄（互斥），谁都站在桥上不退（持有并等待 + 不可剥夺），A 等 B 退、B 等 A 退（循环等待）——于是永远僵在那里。工程上的解法往往不是“加宽桥”，而是<strong>规定“永远先让编号小的人上桥”</strong>，从根上消灭循环等待。
+  </div>
+
+  <h2>二、最经典的死锁：锁顺序不一致</h2>
+  <p>《Java 并发编程实战》第 10 章反复强调：<strong>绝大多数死锁都源于“两个线程以不同的顺序获取相同的锁”</strong>。经典案例是转账——从账户 A 转钱到账户 B，需要同时锁住两个账户。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>DeadlockTransfer.java</span><span>反例</span></div>
+<pre><span class="kw">public</span> <span class="kw">void</span> <span class="fn">transfer</span>(<span class="typ">Account</span> from, <span class="typ">Account</span> to, <span class="kw">int</span> amount) {
+    <span class="kw">synchronized</span> (from) {              <span class="com">// 先锁转出方</span>
+        <span class="kw">synchronized</span> (to) {            <span class="com">// 再锁转入方</span>
+            from.<span class="fn">debit</span>(amount);
+            to.<span class="fn">credit</span>(amount);
+        }
+    }
+}</pre>
+  </div>
+
+  <p>看起来无懈可击，但只要有两个线程<em>反向</em>操作，灾难就发生：</p>
+
+  <div class="diagram">线程 T1: transfer(账户X, 账户Y)      线程 T2: transfer(账户Y, 账户X)
+  ──────────────────────────      ──────────────────────────
+  1. lock(X)  ✔ 拿到               1. lock(Y)  ✔ 拿到
+  2. lock(Y)  ✘ 等 T2 释放         2. lock(X)  ✘ 等 T1 释放
+
+        T1 持有 X → 等 Y          T2 持有 Y → 等 X
+        └───────── 环路形成 = 死锁 ─────────┘</div>
+
+  <div class="callout warn">
+    <strong>陷阱：这类死锁靠测试极难复现。</strong> 它依赖两个线程恰好在“各拿一把、去抢另一把”的窗口相遇，概率可能是万分之一。开发机上跑一万次不出问题，上了生产、流量一大就偶发卡死。<strong>不要用“测过没事”来判断没有死锁——要靠代码审查确认加锁顺序全局一致。</strong>
+  </div>
+
+  <h2>三、避免手段一：全局锁顺序</h2>
+  <p>既然死锁来自“顺序不一致”，那就<strong>强制所有线程按同一顺序申请锁</strong>，循环等待条件被打破。问题在于：<code>from</code>、<code>to</code> 是运行时才确定的，怎么定义“谁先谁后”？答案是给每把锁一个<em>全序</em>——用对象的 <code>System.identityHashCode()</code> 或业务主键排序，永远先锁 hash 小的那个。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 顺序取决于参数</div>
+<pre>synchronized (from) {
+  synchronized (to) {
+    ...
+  }
+}
+// T1: from=X,to=Y → 锁 X,Y
+// T2: from=Y,to=X → 锁 Y,X
+// 顺序相反 → 死锁</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 按 hash 定序</div>
+<pre>int h1 = identityHashCode(from);
+int h2 = identityHashCode(to);
+Object first  = h1 &lt; h2 ? from : to;
+Object second = h1 &lt; h2 ? to : from;
+synchronized (first) {
+  synchronized (second) {
+    ...   // 全局同序，无环</pre>
+    </div>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OrderedTransfer.java</span><span>正例 · 完整版</span></div>
+<pre><span class="kw">private static final</span> <span class="typ">Object</span> tieLock = <span class="kw">new</span> <span class="typ">Object</span>();  <span class="com">// 处理 hash 冲突的兜底锁</span>
+
+<span class="kw">public</span> <span class="kw">void</span> <span class="fn">transfer</span>(<span class="typ">Account</span> from, <span class="typ">Account</span> to, <span class="kw">int</span> amount) {
+    <span class="kw">int</span> hFrom = <span class="typ">System</span>.<span class="fn">identityHashCode</span>(from);
+    <span class="kw">int</span> hTo   = <span class="typ">System</span>.<span class="fn">identityHashCode</span>(to);
+
+    <span class="kw">if</span> (hFrom &lt; hTo) {
+        <span class="kw">synchronized</span> (from) { <span class="kw">synchronized</span> (to)   { <span class="fn">doTransfer</span>(from, to, amount); } }
+    } <span class="kw">else if</span> (hFrom &gt; hTo) {
+        <span class="kw">synchronized</span> (to)   { <span class="kw">synchronized</span> (from) { <span class="fn">doTransfer</span>(from, to, amount); } }
+    } <span class="kw">else</span> {                                   <span class="com">// 极少数：两对象 hash 相同</span>
+        <span class="kw">synchronized</span> (tieLock) {                  <span class="com">// 先抢全局兜底锁，再定序</span>
+            <span class="kw">synchronized</span> (from) { <span class="kw">synchronized</span> (to) { <span class="fn">doTransfer</span>(from, to, amount); } }
+        }
+    }
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>联系 JDK / 数据库：</strong> 这个“按固定顺序加锁”的思想在数据库里同样是金科玉律——多条事务若都<strong>按主键升序更新行</strong>，就不会出现 MySQL 那种 <code>Deadlock found; try restarting transaction</code>。此外 Java 里 <code>identityHashCode</code> 一旦生成便缓存在对象头（Mark Word）中，同一对象多次调用返回值稳定，所以能作为可靠的全序依据。
+  </div>
+
+  <h2>四、避免手段二：定时锁与可中断锁</h2>
+  <p>全局锁顺序在“锁数量有限、能事先排序”时最优。但现实中锁可能来自不同模块、无法统一定序。这时换个思路——<strong>打破“不可剥夺”条件</strong>：不再无限期死等，而是用 <code>ReentrantLock.tryLock(timeout)</code> 定时申请，超时就<em>主动放弃已持有的锁</em>、退避后重试。这正是 <code>synchronized</code> 永远做不到、而显式 <code>Lock</code> 存在的核心理由之一。</p>
+
+  <table>
+    <tr><th>能力</th><th><code>synchronized</code></th><th><code>ReentrantLock</code></th></tr>
+    <tr><td>限时获取（避免死等）</td><td>✘ 不支持</td><td>✔ <code>tryLock(t, unit)</code></td></tr>
+    <tr><td>可中断等待</td><td>✘ 阻塞不可中断</td><td>✔ <code>lockInterruptibly()</code></td></tr>
+    <tr><td>非阻塞尝试</td><td>✘</td><td>✔ <code>tryLock()</code> 立即返回</td></tr>
+    <tr><td>释放责任</td><td>自动（出块即释放）</td><td>手动，<strong>必须</strong> <code>finally { unlock() }</code></td></tr>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>TimedTransfer.java</span><span>定时锁 · 退避重试</span></div>
+<pre><span class="kw">public boolean</span> <span class="fn">transfer</span>(<span class="typ">Account</span> from, <span class="typ">Account</span> to, <span class="kw">int</span> amount) <span class="kw">throws</span> <span class="typ">InterruptedException</span> {
+    <span class="kw">long</span> stop = <span class="typ">System</span>.<span class="fn">nanoTime</span>() + <span class="typ">TimeUnit</span>.SECONDS.<span class="fn">toNanos</span>(<span class="num">3</span>);
+    <span class="kw">while</span> (<span class="typ">System</span>.<span class="fn">nanoTime</span>() &lt; stop) {
+        <span class="kw">if</span> (from.lock.<span class="fn">tryLock</span>(<span class="num">50</span>, <span class="typ">TimeUnit</span>.MILLISECONDS)) {
+            <span class="kw">try</span> {
+                <span class="kw">if</span> (to.lock.<span class="fn">tryLock</span>(<span class="num">50</span>, <span class="typ">TimeUnit</span>.MILLISECONDS)) {
+                    <span class="kw">try</span> { from.<span class="fn">debit</span>(amount); to.<span class="fn">credit</span>(amount); <span class="kw">return true</span>; }
+                    <span class="kw">finally</span> { to.lock.<span class="fn">unlock</span>(); }
+                }
+            } <span class="kw">finally</span> { from.lock.<span class="fn">unlock</span>(); }   <span class="com">// 拿不到第二把 → 释放第一把，破环</span>
+        }
+        <span class="typ">Thread</span>.<span class="fn">sleep</span>(<span class="fn">random</span>(<span class="num">10</span>, <span class="num">50</span>));          <span class="com">// 随机退避，避免活锁式对拍</span>
+    }
+    <span class="kw">return false</span>;                                <span class="com">// 超时放弃，交给上层重试/告警</span>
+}</pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：定时锁不是免费午餐。</strong> ① 拿不到锁时必须<em>释放已持有的全部锁</em>，否则退避重试只是把死锁变成慢速死锁；② 退避一定要<strong>随机化</strong>，否则两个线程同步重试、同步失败，会退化成<em>活锁</em>；③ <code>ReentrantLock</code> 忘写 <code>finally{unlock()}</code> 会导致锁永不释放，比死锁更隐蔽。
+  </div>
+
+  <div class="formula">可发生死锁 <span class="hl">⇔</span> 互斥 ∧ 持有并等待 ∧ 不可剥夺 ∧ 循环等待</div>
+  <p style="text-align:center; font-size:0.82rem; color:#64748b;">锁顺序打破「循环等待」；定时锁打破「不可剥夺」——破一个即可。</p>
+
+  <h2>五、检测：线程转储读环路</h2>
+  <p>预防再周全，线上仍可能出现死锁。此时 JVM 是你的救命工具：<code>jstack &lt;pid&gt;</code> 或 <code>jcmd &lt;pid&gt; Thread.print</code> 打印线程转储，JVM 会<strong>主动分析锁的 owner/waiter 关系，直接标出 “Found one Java-level deadlock”</strong> 并把环路列给你。这背后就是操作系统里“资源分配图找环”的算法。</p>
+
+  <div class="diagram">Found one Java-level deadlock:
+=============================
+"T1":
+  waiting to lock monitor 0x... (object 0x...Account Y),
+  which is held by "T2"
+"T2":
+  waiting to lock monitor 0x... (object 0x...Account X),
+  which is held by "T1"        ← owner/waiter 成环，铁证
+
+Java stack information for the threads listed above:
+"T1":  at Bank.transfer(Bank.java:14)  - waiting to lock &lt;Y&gt;
+                                        - locked &lt;X&gt;</div>
+
+  <div class="callout info">
+    <strong>工具全景：</strong> <code>jstack</code>（命令行抓转储）→ <code>jconsole</code> / VisualVM 有 “检测死锁” 按钮 → 生产环境常配合 APM（Arthas 的 <code>thread -b</code> 一键找出阻塞其他线程的“罪魁”）。注意：<strong>JVM 的自动检测只覆盖内置锁 <code>synchronized</code> 与 <code>java.util.concurrent</code> 的 <code>Lock</code></strong>；纯靠 <code>Semaphore</code>、<code>CountDownLatch</code> 等资源造成的等待环，jstack 可能不会标注为 deadlock，需要你自己读栈判断。
+  </div>
+
+  <h3>预防 vs 检测：定位不同</h3>
+  <table>
+    <tr><th>维度</th><th>预防（锁顺序 / 定时锁）</th><th>检测（jstack / 图找环）</th></tr>
+    <tr><td>时机</td><td>编码期，从设计上杜绝</td><td>故障后，事后诊断</td></tr>
+    <tr><td>成本</td><td>需要全局约定、代码纪律</td><td>零日常成本，出事再用</td></tr>
+    <tr><td>能否自动恢复</td><td>定时锁可自愈</td><td>只能看，不能自动解开</td></tr>
+    <tr><td>适用</td><td>业务代码首选</td><td>兜底 + 排查第三方库</td></tr>
+  </table>
+
+  <h2>六、其他实战守则</h2>
+  <ul>
+    <li><strong>缩小锁范围，用开放调用（open call）：</strong> 持有锁时<em>不要调用外部/未知方法</em>（回调、监听器、Spring Bean 的其它方法），因为你不知道它内部又会去抢什么锁。把外部调用移到 <code>synchronized</code> 块之外。</li>
+    <li><strong>能不共享就不共享：</strong> 用不可变对象、<code>ThreadLocal</code>、无锁的 <code>ConcurrentHashMap</code>，从源头减少需要同时持有的锁数量。</li>
+    <li><strong>警惕隐式锁顺序：</strong> Spring 的单例 Bean 若在方法里 <code>synchronized(this)</code> 又互相调用，容易埋下你看不见的锁环——审查时把“谁在锁里调了谁”画成有向图。</li>
+  </ul>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong> 死锁 = 四条件同时成立，<strong>破一即解</strong>。工程首选<em>全局锁顺序</em>（破循环等待）；无法定序时用 <code>tryLock</code> <em>定时锁 + 随机退避</em>（破不可剥夺，还能自愈）；上线后靠 <code>jstack</code> <em>线程转储</em>读 owner/waiter 环路兜底诊断。预防在设计，检测在事后——两手都要有。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="16-死锁活锁饥饿.html" class="nav-btn">← 死锁、活锁、饥饿</a>
+    <a href="18-性能权衡.html" class="nav-btn next">性能权衡 →</a>
+  </div>
+</div>
+</body>
+</html>

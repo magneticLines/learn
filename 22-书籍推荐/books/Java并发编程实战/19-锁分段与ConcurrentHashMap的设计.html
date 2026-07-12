@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>锁分段与 ConcurrentHashMap 的设计</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 锁分段与 ConcurrentHashMap 的设计</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第8-9章·活跃度与性能</div>
+    <h1>锁分段与 ConcurrentHashMap 的设计</h1>
+    <p>降低锁竞争的三板斧里，最锋利的一招是"把一把热锁拆成 N 把凉锁"——这就是锁分段，也是 ConcurrentHashMap 高吞吐的灵魂。</p>
+  </div>
+
+  <h2>一、承上：锁竞争是可伸缩性的头号敌人</h2>
+  <p>上一篇《性能权衡》讲了并发的三大隐性开销：上下文切换、内存同步、锁竞争。其中<strong>锁竞争</strong>最致命——因为它直接把程序里"本可以并行"的部分强行拉回"串行"。回忆 Amdahl 定律：加速比受限于串行占比 <code>F</code>。<em>一把被所有线程争抢的独占锁，就是一段谁也绕不过的串行区间</em>，你加再多核也白搭。</p>
+
+  <div class="formula">Speedup ≤ 1 / ( <span class="hl">F</span> + (1 − F) / N )　　F = 串行占比</div>
+
+  <p>那么"锁竞争"到底由什么决定？《Java 并发编程实战》给出一个朴素但极其有用的判据：</p>
+
+  <div class="formula">锁竞争程度 ∝ <span class="hl">请求该锁的频率</span> × <span class="hl">持有该锁的时长</span></div>
+
+  <div class="callout info">
+    <strong>这个乘积告诉我们降低竞争只有三条路。</strong>要么<em>减少持锁时长</em>（缩小锁的范围，锁外的活儿别占着锁干）；要么<em>降低请求频率</em>——而"降低频率"又分两种玩法：把一把大锁按<strong>无关状态</strong>拆成几把锁（<em>锁分解 lock splitting</em>），或把一把锁按<strong>同类状态的分片</strong>拆成一组锁（<em>锁分段 lock striping</em>）。本篇聚焦最后一招，它正是 <code>ConcurrentHashMap</code> 可伸缩性的来源。
+  </div>
+
+  <h2>二、第一招：缩小锁的范围（先把能省的省掉）</h2>
+  <p>在动用花哨的拆锁技巧前，最廉价的优化是<strong>让锁只保护真正需要保护的那几行</strong>。持锁时间越短，其他线程等待的窗口就越小，竞争概率随之下降。下面是本书里的经典反例：把一堆与共享状态无关的运算（正则匹配、日志、耗时计算）也圈进了 <code>synchronized</code> 块。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 锁保护范围过大</div>
+      <pre>public synchronized void
+        addUser(String u) {
+    // ↓ 与共享状态无关，却占着锁
+    String key = normalize(u); // 耗时
+    boolean ok = PATTERN
+        .matcher(key).matches();
+    users.add(key);            // 只有这行需锁
+    log.info("added " + key);  // 又占着锁做 IO
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 锁只圈住共享状态</div>
+      <pre>public void addUser(String u) {
+    String key = normalize(u); // 锁外做
+    boolean ok = PATTERN
+        .matcher(key).matches();
+    synchronized (this) {
+        users.add(key);        // ★ 只锁这里
+    }
+    log.info("added " + key);  // 锁外做 IO
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：别把"缩小范围"做成"频繁进出锁"。</strong>反复地"获取—释放—再获取"同一把锁，会引入额外的加解锁开销（尤其锁升级抖动）。如果一段逻辑必须整体原子，硬拆成好几个小 <code>synchronized</code> 块反而更糟——既破坏原子性，又增加请求频率。缩范围的正确姿势是：<em>把与锁无关的代码移出去，而不是把需要原子的代码切碎。</em>
+  </div>
+
+  <h2>三、第二招 vs 第三招：锁分解 与 锁分段</h2>
+  <p>缩范围之后如果还热，就该拆锁了。这里有两个极易混淆的术语，面试常考它们的区别：</p>
+
+  <table>
+    <tr><th>维度</th><th>锁分解 Lock Splitting</th><th>锁分段 Lock Striping</th></tr>
+    <tr><td>拆什么</td><td>一把锁保护<strong>多个互相独立</strong>的状态变量，按变量拆</td><td>一把锁保护<strong>一组同类</strong>数据（如数组/表），按分片拆</td></tr>
+    <tr><td>锁的数量</td><td>固定、少量（几把）</td><td>可以很多（一组，如 16 把、N 把）</td></tr>
+    <tr><td>典型例子</td><td>一个统计类里，用户锁保护 users、查询锁保护 queries</td><td><code>ConcurrentHashMap</code>、本书的 <code>StripedMap</code></td></tr>
+    <tr><td>关系</td><td>—</td><td>锁分段可看作<em>锁分解的推广</em>：分解到"一组数量可变的锁"</td></tr>
+  </table>
+
+  <h3>锁分解：把互不相干的状态解绑</h3>
+  <p>如果一把锁同时守着 <code>users</code> 和 <code>queries</code> 两个毫无关系的集合，那么"改 users 的线程"和"改 queries 的线程"会无谓地互相阻塞。分解很直白——给它们各配一把锁：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ServerStatus.java</span><span>把一把锁分解成两把独立锁</span></div>
+    <pre><span class="kw">public</span> <span class="kw">class</span> <span class="typ">ServerStatus</span> {
+    <span class="kw">private final</span> <span class="typ">Set</span>&lt;<span class="typ">String</span>&gt; users;      <span class="com">// 状态 A</span>
+    <span class="kw">private final</span> <span class="typ">Set</span>&lt;<span class="typ">String</span>&gt; queries;    <span class="com">// 状态 B，与 A 无关</span>
+
+    <span class="com">// ✗ 老写法：addUser 和 addQuery 抢同一把 this 锁，互相拖累</span>
+    <span class="com">// ✓ 分解后：各自锁各自的集合，两类操作可并行</span>
+    <span class="kw">public void</span> <span class="fn">addUser</span>(<span class="typ">String</span> u) {
+        <span class="kw">synchronized</span> (users) { users.<span class="fn">add</span>(u); }
+    }
+    <span class="kw">public void</span> <span class="fn">addQuery</span>(<span class="typ">String</span> q) {
+        <span class="kw">synchronized</span> (queries) { queries.<span class="fn">add</span>(q); }   <span class="com">// 不再等 users 的锁</span>
+    }
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>建立联系。</strong>这其实就是我们在《组合设计线程安全的类》里讲的<em>把同步策略下放</em>：与其用一把外层大锁笼罩整个对象，不如让每个独立状态各自持有守护它的锁。锁分解的前提是——<strong>被拆开的状态之间确实没有一致性约束</strong>。若 users 和 queries 之间有"必须同增同减"的不变式，就绝不能拆，否则会破坏原子性。
+  </div>
+
+  <h2>四、锁分段：把一把热锁拆成 N 把凉锁</h2>
+  <p>锁分解拆的是"不同种类"的状态；但像 <code>HashMap</code> 的桶数组，成千上万个桶是<strong>同一种</strong>状态，没法按语义分解。锁分段的思路是按<em>哈希分片</em>切：准备 N 把锁（N 远小于桶数），第 <code>i</code> 个桶由第 <code>i % N</code> 把锁守护。这样访问不同分片的线程各持不同的锁，天然并行。</p>
+
+  <div class="diagram">锁分段结构：16 把锁守护整张桶数组（N_LOCKS = 16）
+
+  buckets[]:  [0][1][2][3] ... [16][17] ...      共 numBuckets 个桶
+                │  │  │  │       │   │
+  locks[16]:   L0 L1 L2 L3 ...  L0  L1  ...       桶 i 由 locks[i % 16] 守护
+               ▲              ▲
+               └── 桶0、桶16、桶32…共用 L0（同分段互斥）
+                          不同分段（L0 vs L1）→ 完全并行写
+
+  竞争概率  ≈ 原来的 1/16     （请求频率被摊到 16 把锁上）</div>
+
+  <p>下面是《Java 并发编程实战》第 11 章的原始 <code>StripedMap</code> 示例（略作精简）。它不是 <code>ConcurrentHashMap</code>，而是把锁分段这招<em>剥离出来</em>的最小教学实现——看懂它，就看懂了 CHM 的底层直觉。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StripedMap.java（JCiP 清单 11.8 精简）</span><span>锁分段的最小实现</span></div>
+    <pre><span class="com">// 同步策略：buckets[n] 由 locks[n % N_LOCKS] 守护</span>
+<span class="kw">public class</span> <span class="typ">StripedMap</span> {
+    <span class="kw">private static final</span> <span class="kw">int</span> N_LOCKS = <span class="num">16</span>;
+    <span class="kw">private final</span> <span class="typ">Node</span>[] buckets;
+    <span class="kw">private final</span> <span class="typ">Object</span>[] locks;      <span class="com">// ★ 一组锁，而不是一把</span>
+
+    <span class="kw">public</span> <span class="fn">StripedMap</span>(<span class="kw">int</span> numBuckets) {
+        buckets = <span class="kw">new</span> <span class="typ">Node</span>[numBuckets];
+        locks = <span class="kw">new</span> <span class="typ">Object</span>[N_LOCKS];
+        <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; N_LOCKS; i++)
+            locks[i] = <span class="kw">new</span> <span class="typ">Object</span>();   <span class="com">// 16 个互不相干的锁对象</span>
+    }
+
+    <span class="kw">private</span> <span class="kw">int</span> <span class="fn">hash</span>(<span class="typ">Object</span> key) {
+        <span class="kw">return</span> <span class="typ">Math</span>.<span class="fn">abs</span>(key.<span class="fn">hashCode</span>() % buckets.length);
+    }
+
+    <span class="kw">public</span> <span class="typ">Object</span> <span class="fn">get</span>(<span class="typ">Object</span> key) {
+        <span class="kw">int</span> hash = <span class="fn">hash</span>(key);
+        <span class="kw">synchronized</span> (locks[hash % N_LOCKS]) {   <span class="com">// ★ 只锁 key 所在的那个分段</span>
+            <span class="kw">for</span> (<span class="typ">Node</span> m = buckets[hash]; m != <span class="kw">null</span>; m = m.next)
+                <span class="kw">if</span> (m.key.<span class="fn">equals</span>(key)) <span class="kw">return</span> m.value;
+        }
+        <span class="kw">return</span> <span class="kw">null</span>;
+    }
+}</pre>
+  </div>
+
+  <div class="callout info">
+    <strong>为什么 N 把锁而不是"一桶一锁"？</strong>理论上桶越多、锁越多，并发度越高。但每把锁都是一个对象、要占内存、还要被 JVM 逐一管理；桶动辄上万，一桶一锁会让锁本身的开销压过收益。<em>16 把锁</em>是工程上"够用又不浪费"的经验值——它把竞争降到约原来的 1/16，同时只多花 16 个轻量对象。这也是 JDK 7 <code>ConcurrentHashMap</code> 默认 <code>concurrencyLevel = 16</code> 的由来。
+  </div>
+
+  <h2>五、锁分段的代价：独占整张表变贵了</h2>
+  <p>天下没有免费的午餐。锁分段让"单点访问"飞快，却让"需要独占整个集合"的操作变得昂贵——因为你得<strong>依次拿到所有分段的锁</strong>才能安全地重排整张表。<code>StripedMap.clear()</code> 就得逐段加锁；<code>ConcurrentHashMap</code> 的 <code>size()</code>、扩容 <code>resize</code> 也同理。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StripedMap.java</span><span>clear：独占操作要"集齐"所有分段锁</span></div>
+    <pre><span class="kw">public void</span> <span class="fn">clear</span>() {
+    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; buckets.length; i++) {
+        <span class="kw">synchronized</span> (locks[i % N_LOCKS]) {   <span class="com">// 每个分段都要锁一遍</span>
+            buckets[i] = <span class="kw">null</span>;
+        }
+    }
+    <span class="com">// 扩容(rehash)更麻烦：必须同时握住全部 N 把锁，</span>
+    <span class="com">// 期间整张表对写入是"冻结"的 —— 这是分段方案最贵的时刻</span>
+}</pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：<code>size()</code> 在分段容器里天生就是"估计值"。</strong>要得到精确大小，就得同时锁住所有分段，那等于把整张表退化成"一把大锁"，前面拆锁的努力全白费。所以 <code>ConcurrentHashMap</code> 索性<em>放弃精确</em>——JDK 8 用类似 <code>LongAdder</code> 的分片计数（多个 counterCell 分散热点），<code>size()</code> 只在求和瞬间近似。<strong>永远不要写 <code>for (int i = 0; i &lt; map.size(); i++)</code></strong>，也别拿 <code>size()==0</code> 当严格空判断。这正是"用一致性换吞吐"的取舍。<span>（关于弱一致性与原子复合方法的用法细节，见 <a href="12-并发容器.html" style="color:var(--c)">并发容器</a> 一篇。）</span>
+  </div>
+
+  <h2>六、ConcurrentHashMap：锁分段思想的两代实现</h2>
+  <p><code>ConcurrentHashMap</code> 是锁分段最著名的落地，但它的实现随 JDK 演进：</p>
+
+  <table>
+    <tr><th></th><th>JDK 7：Segment 分段锁</th><th>JDK 8：桶级 CAS + synchronized</th></tr>
+    <tr><td>锁粒度</td><td>固定 16 段（<code>concurrencyLevel</code>），一段一把 <code>ReentrantLock</code></td><td>单个桶（数组的一个槽），粒度随容量增长</td></tr>
+    <tr><td>并发度</td><td>创建后写死 = 段数，最多 16 线程并行写</td><td>≈ 桶数，容量越大能并行的写越多</td></tr>
+    <tr><td>结构</td><td>两层哈希：先定位 Segment，再定位桶</td><td>一层数组 + 链表/红黑树（同 HashMap）</td></tr>
+    <tr><td>空桶写入</td><td>加段锁后写</td><td><code>CAS</code> 无锁写入，抢失败重试</td></tr>
+    <tr><td>扩容</td><td>段内独立扩容</td><td>多线程协同搬迁（<code>helpTransfer</code>）</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>JDK 8 是"锁分段思想"的胜利，而非"Segment 实现"的延续。</strong>它把 Segment 这层中间商彻底删掉，锁粒度从"16 段"细化到"每个桶"——本质上是把分段数从固定 16 推向了"和桶数一样多"的极限，再叠加 CAS 让空桶写入连锁都省了。<em>Segment 的类还在源码里，但只为反序列化旧数据保留，早已不参与主逻辑。</em>所以面试若问"CHM 还用分段锁吗"，答案是：<strong>分段的思想在，Segment 的实现没了</strong>。
+  </div>
+
+  <p>把三种 Map 放在一起看可伸缩性（线程数增加时的相对吞吐，示意）：</p>
+
+  <div class="bar">
+    <span style="width:12%;background:#ef4444">Hashtable</span>
+    <span style="width:33%;background:#fbbf24">synchronizedMap</span>
+    <span style="width:55%;background:#f89820;color:#0f1117">CHM (JDK7 分段)</span>
+  </div>
+  <div class="bar">
+    <span style="width:100%;background:#4ade80">ConcurrentHashMap (JDK8 桶级 CAS)</span>
+  </div>
+  <p style="font-size:0.78rem;color:#475569;margin-top:-4px">↑ 越长表示线程增多时吞吐扩展得越好。整表大锁的 Hashtable 几乎不随核数提升；桶级方案则接近线性扩展。</p>
+
+  <h2>七、什么时候值得动手拆锁？</h2>
+  <div class="callout info">
+    <strong>别为了拆锁而拆锁——先测量，后优化。</strong>锁分解/分段会让代码更复杂、更容易写错（尤其是那些需要独占全表的操作）。只有当性能剖析（profiler / <code>jstack</code> 抓到大量 <code>BLOCKED</code> 线程）证明<em>某把锁确实是热点</em>时，拆它才有意义。对一把竞争本就轻微的锁做分段，只会白白增加内存与复杂度，还可能因为多把锁的缓存行争用（false sharing）而变慢。这与上一篇《性能权衡》的主旨一致：<strong>过早优化是万恶之源。</strong>
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>降低锁竞争 = <em>减少持锁时长</em>（缩小锁范围） + <em>降低请求频率</em>（拆锁）。拆锁有两式——<strong>锁分解</strong>按"互不相干的状态"拆成几把固定的锁；<strong>锁分段</strong>按"同类数据的哈希分片"拆成一组锁，把一把热锁的竞争摊到 N 把凉锁上，竞争概率降到约 1/N。<code>ConcurrentHashMap</code> 正是锁分段的巅峰：JDK 7 用 16 个 <code>Segment</code>，JDK 8 把粒度推到<em>每个桶</em>并叠加 CAS。但分段有代价——<strong>任何需要独占整张表的操作（size、clear、resize）都得集齐所有分段锁，因此 <code>size()</code> 只能是估计值</strong>。最后记住：拆锁前先测量，别为一把凉锁徒增复杂度。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="18-性能权衡.html" class="nav-btn">← 性能权衡</a>
+    <a href="20-ReentrantLock.html" class="nav-btn next">ReentrantLock →</a>
+  </div>
+</div>
+</body>
+</html>

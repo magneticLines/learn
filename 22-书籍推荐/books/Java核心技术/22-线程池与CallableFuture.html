@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>线程池与 Callable、Future</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java核心技术·卷I</a> / 线程池与 Callable、Future</div>
+  <div class="hero">
+    <div class="tag">Java 核心 · 第12章·并发</div>
+    <h1>线程池与 Callable、Future</h1>
+    <p>别再为每个任务 new 一个线程——把线程当成昂贵的"班组"复用起来，再用 Future 把异步的结果"寄存单"拿回来。</p>
+  </div>
+
+  <h2>一、为什么需要线程池：线程是昂贵的操作系统资源</h2>
+  <p>初学并发时最自然的写法是"来一个任务，<code>new Thread</code> 一个线程去跑"。这在演示代码里没问题，但放到真实服务里是灾难。原因要回到<strong>线程的本质</strong>：一个 Java 平台线程（platform thread）在底层<em>一对一</em>映射到一个操作系统内核线程，创建它需要向 OS 申请内核数据结构、分配默认约 1MB 的栈空间，并伴随一次系统调用。</p>
+
+  <div class="callout info">
+    <strong>为什么这么设计？——池化(pooling)是对"昂贵资源反复创建/销毁"的通用解法。</strong>数据库连接昂贵，于是有连接池；线程昂贵，于是有线程池。它们的核心思想一模一样：<em>预先创建一批资源、任务来了借一个用、用完还回去而不是销毁</em>。这样把"创建成本"从每个任务身上摊掉，只在池初始化时付一次。同时池还给了你一个<strong>限流的闸门</strong>——线程数有上限，不会因为瞬时涌入十万请求就 new 出十万线程把机器拖垮。
+  </div>
+
+  <p>用一个生活类比：<code>new Thread</code> 每次都<em>现招一个临时工、干完就辞退</em>——招聘和解雇的成本比干活本身还高；线程池则是养了一个<em>固定班组</em>，任务贴到工单板上，谁空了谁来揭榜，干完回去待命。三个直接收益：</p>
+  <ul>
+    <li><strong>降低资源消耗</strong>：复用已创建的线程，省掉反复创建/销毁的开销。</li>
+    <li><strong>提高响应速度</strong>：任务到达时线程已经就绪，无需等待线程创建。</li>
+    <li><strong>可管、可控</strong>：统一分配、调优、监控，并通过队列 + 最大线程数做限流，避免资源耗尽。</li>
+  </ul>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 每个任务一个线程</div>
+<pre><span class="kw">while</span> (<span class="var">req</span> = accept()) {
+  <span class="com">// 每来一个请求就现造线程</span>
+  <span class="kw">new</span> <span class="typ">Thread</span>(() -&gt; handle(req))
+      .start();
+}
+<span class="com">// 洪峰下线程数无上限</span>
+<span class="com">// -&gt; 内存被栈吃光、CPU 疯狂切换</span>
+<span class="com">// -&gt; OutOfMemoryError / 系统假死</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 提交给线程池复用</div>
+<pre><span class="typ">ExecutorService</span> pool = <span class="com">/*见下*/</span>;
+<span class="kw">while</span> (<span class="var">req</span> = accept()) {
+  <span class="com">// 提交到固定班组，超载自动排队</span>
+  pool.execute(() -&gt; handle(req));
+}
+<span class="com">// 线程数封顶、任务排队缓冲</span>
+<span class="com">// -&gt; 平稳、可预测、不 OOM</span></pre>
+    </div>
+  </div>
+
+  <h2>二、ThreadPoolExecutor 的七个参数与调度流程</h2>
+  <p>Java 的线程池核心实现是 <code>java.util.concurrent.ThreadPoolExecutor</code>（JUC 由 Doug Lea 设计）。理解它的关键，是把它的<strong>七个构造参数</strong>和<strong>一个任务进来后的调度顺序</strong>吃透——面试几乎必问。</p>
+
+  <table>
+    <thead>
+      <tr><th>参数</th><th>含义</th><th>类比 / 要点</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>corePoolSize</code></td><td>核心线程数</td><td>常驻的"正式工"，默认不因空闲被回收</td></tr>
+      <tr><td><code>maximumPoolSize</code></td><td>最大线程数</td><td>核心 + 应急"临时工"的上限</td></tr>
+      <tr><td><code>keepAliveTime</code></td><td>空闲存活时间</td><td>临时工空闲超时后被裁掉，退回到核心数</td></tr>
+      <tr><td><code>workQueue</code></td><td>任务阻塞队列</td><td>忙不过来时的"工单缓冲区"，务必<strong>有界</strong></td></tr>
+      <tr><td><code>threadFactory</code></td><td>线程工厂</td><td>给线程<em>起名字</em>，出问题时日志/dump 能定位</td></tr>
+      <tr><td><code>handler</code></td><td>拒绝策略</td><td>队列满 + 线程满时的兜底动作</td></tr>
+      <tr><td><code>unit</code></td><td>时间单位</td><td>配合 keepAliveTime，如 <code>TimeUnit.SECONDS</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>当你调用 <code>execute(task)</code>，线程池<strong>不是</strong>"有空闲就跑、没空闲就排队"这么简单。它遵循一个固定的、优先"攒够核心线程再排队、排满队再扩容、扩到顶才拒绝"的顺序：</p>
+
+  <div class="diagram">  execute(task)
+        │
+        ▼
+  运行线程数 &lt; corePoolSize ? ── 是 ──▶ 新建核心线程立即执行
+        │ 否
+        ▼
+  工作队列 workQueue 没满 ? ──── 是 ──▶ 任务入队，等空闲线程来取
+        │ 否(队列满)
+        ▼
+  运行线程数 &lt; maximumPoolSize ? ─ 是 ─▶ 新建"临时工"线程救急
+        │ 否(线程也满)
+        ▼
+   触发拒绝策略 RejectedExecutionHandler</div>
+
+  <div class="callout warn">
+    <strong>最反直觉的一点：队列没满前，线程池不会扩到 maximumPoolSize。</strong>很多人以为"任务多了就会一路开到最大线程数"，其实<em>只有队列被塞满之后</em>才会去创建非核心线程。这也解释了一个经典坑：如果你用<strong>无界队列</strong>（如默认的 <code>LinkedBlockingQueue</code>），队列<em>永远填不满</em>，于是 <code>maximumPoolSize</code> 形同虚设、拒绝策略永远不触发——任务只会在队列里无限堆积，最终 OOM。所以队列必须<strong>有界</strong>。
+  </div>
+
+  <h2>三、别用 Executors 快捷工厂：藏着 OOM 地雷</h2>
+  <p><code>Executors</code> 工具类提供了 <code>newFixedThreadPool</code> / <code>newCachedThreadPool</code> 等一行搞定的工厂方法，看着方便，但《阿里巴巴 Java 开发手册》<strong>明令禁止</strong>用它们创建线程池。原因就在上一节的坑里——它们的默认参数暗藏无界资源：</p>
+
+  <table>
+    <thead>
+      <tr><th>工厂方法</th><th>参数真相</th><th>地雷</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>newFixedThreadPool(n)</code></td><td>core = max = n，队列 <code>LinkedBlockingQueue</code></td><td>队列<strong>无界</strong>(容量 Integer.MAX_VALUE)，任务堆积 → OOM</td></tr>
+      <tr><td><code>newSingleThreadExecutor()</code></td><td>单线程，无界队列</td><td>同上，队列堆积 → OOM</td></tr>
+      <tr><td><code>newCachedThreadPool()</code></td><td>core=0，max=<strong>Integer.MAX_VALUE</strong>，<code>SynchronousQueue</code></td><td>线程数<strong>无上限</strong>，任务多 → 线程爆炸 → OOM</td></tr>
+      <tr><td><code>newScheduledThreadPool(n)</code></td><td>定时/周期任务，延迟队列</td><td>队列无界，同样有堆积风险</td></tr>
+    </tbody>
+  </table>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 图省事用快捷工厂</div>
+<pre><span class="com">// 队列无界，10 万任务全堆进去</span>
+<span class="typ">ExecutorService</span> p =
+  <span class="typ">Executors</span>.newFixedThreadPool(<span class="num">10</span>);
+
+<span class="com">// 或：线程数无上限</span>
+<span class="typ">ExecutorService</span> q =
+  <span class="typ">Executors</span>.newCachedThreadPool();
+<span class="com">// 参数被藏起来，出事才发现</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 手动 new，参数透明可控</div>
+<pre><span class="typ">ThreadPoolExecutor</span> p =
+  <span class="kw">new</span> <span class="typ">ThreadPoolExecutor</span>(
+    <span class="num">10</span>, <span class="num">20</span>,
+    <span class="num">60L</span>, <span class="typ">TimeUnit</span>.SECONDS,
+    <span class="kw">new</span> <span class="typ">ArrayBlockingQueue</span>&lt;&gt;(<span class="num">200</span>),
+    <span class="var">namedFactory</span>,
+    <span class="kw">new</span> <span class="typ">ThreadPoolExecutor</span>.CallerRunsPolicy());
+<span class="com">// 队列有界 + 拒绝策略兜底</span></pre>
+    </div>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>PoolConfig.java</span><span>手动构建，掌控每个参数</span></div>
+<pre><span class="kw">import</span> java.util.concurrent.*<span class="punct">;</span>
+<span class="kw">import</span> java.util.concurrent.atomic.AtomicInteger<span class="punct">;</span>
+
+<span class="com">// 给线程起有意义的名字，是生产排障的救命细节</span>
+<span class="typ">ThreadFactory</span> <span class="var">factory</span> = <span class="kw">new</span> <span class="typ">ThreadFactory</span>() <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="typ">AtomicInteger</span> <span class="var">n</span> = <span class="kw">new</span> <span class="typ">AtomicInteger</span>(<span class="num">1</span>)<span class="punct">;</span>
+    <span class="kw">public</span> <span class="typ">Thread</span> <span class="fn">newThread</span>(<span class="typ">Runnable</span> <span class="var">r</span>) <span class="punct">{</span>
+        <span class="kw">return</span> <span class="kw">new</span> <span class="typ">Thread</span>(<span class="var">r</span>, <span class="str">"order-worker-"</span> + <span class="var">n</span>.<span class="fn">getAndIncrement</span>())<span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">};</span>
+
+<span class="typ">ThreadPoolExecutor</span> <span class="var">pool</span> = <span class="kw">new</span> <span class="typ">ThreadPoolExecutor</span>(
+    <span class="num">4</span>,                             <span class="com">// corePoolSize：常驻核心线程</span>
+    <span class="num">8</span>,                             <span class="com">// maximumPoolSize：救急上限</span>
+    <span class="num">60L</span>, <span class="typ">TimeUnit</span>.SECONDS,         <span class="com">// keepAliveTime：临时工空闲存活时间</span>
+    <span class="kw">new</span> <span class="typ">ArrayBlockingQueue</span>&lt;&gt;(<span class="num">100</span>), <span class="com">// 有界队列！防止无限堆积</span>
+    <span class="var">factory</span>,
+    <span class="kw">new</span> <span class="typ">ThreadPoolExecutor</span>.CallerRunsPolicy())<span class="punct">;</span> <span class="com">// 满了让提交者自己跑 = 背压</span></pre>
+  </div>
+
+  <h2>四、四种拒绝策略：满载时的兜底动作</h2>
+  <p>当队列满了、线程也到 <code>maximumPoolSize</code> 了，新任务无处安放，就由 <code>RejectedExecutionHandler</code> 决定怎么办。JDK 内置四种，取舍在"丢数据"和"降速度"之间：</p>
+
+  <table>
+    <thead>
+      <tr><th>策略</th><th>行为</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>AbortPolicy</code>（默认）</td><td>抛 <code>RejectedExecutionException</code></td><td>要求任务不能悄悄丢，调用方需感知失败</td></tr>
+      <tr><td><code>CallerRunsPolicy</code></td><td>让<em>提交任务的线程</em>自己执行它</td><td>天然<strong>背压(backpressure)</strong>：提交方被拖慢，从源头降速</td></tr>
+      <tr><td><code>DiscardPolicy</code></td><td>静默丢弃新任务，不报错</td><td>可容忍丢失的场景（如打点、监控采样）</td></tr>
+      <tr><td><code>DiscardOldestPolicy</code></td><td>丢掉队列最老的任务，再重试提交</td><td>只关心最新数据（如实时行情覆盖旧值）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip">
+    <strong>为什么 <code>CallerRunsPolicy</code> 常是好默认？</strong>它把"过载"这个信号<em>反向传导</em>给了任务来源：主线程被迫亲自处理一个任务，就没法马上提交下一个，提交速率自然下降，给线程池腾出喘息时间——这正是<em>背压</em>的精髓。相比直接丢数据或直接抛异常，它更平滑。当然前提是任务能容忍被同步执行、且不会造成主线程长时间阻塞。
+  </div>
+
+  <h2>五、Runnable 交不出结果，于是有了 Callable + Future</h2>
+  <p>线程池能跑任务，但 <code>Runnable</code> 有两个先天缺陷：<code>run()</code> 方法<strong>没有返回值</strong>，而且<strong>不能抛受检异常</strong>（签名里没有 <code>throws</code>）。可现实中我们常需要"异步算一个结果拿回来"——比如并行查三个下游服务再汇总。Java 5 为此引入了 <code>Callable</code> 和 <code>Future</code>。</p>
+
+  <table>
+    <thead>
+      <tr><th>对比</th><th><code>Runnable</code></th><th><code>Callable&lt;V&gt;</code></th></tr>
+    </thead>
+    <tbody>
+      <tr><td>核心方法</td><td><code>void run()</code></td><td><code>V call() throws Exception</code></td></tr>
+      <tr><td>返回值</td><td>无</td><td>有，泛型 <code>V</code></td></tr>
+      <tr><td>受检异常</td><td>不能抛</td><td>可以抛</td></tr>
+      <tr><td>提交方式</td><td><code>execute()</code> 或 <code>submit()</code></td><td>只能 <code>submit()</code></td></tr>
+    </tbody>
+  </table>
+
+  <p><code>Future</code> 是对"一个还没算完的结果"的抽象——像去干洗店拿到的一张<strong>取衣寄存单</strong>：衣服还没洗好，但单子先给你；等你想要时凭单子去取（<code>get()</code>），没好就在柜台等（阻塞），也可以中途问洗好没（<code>isDone()</code>），甚至反悔取消（<code>cancel()</code>）。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>FutureDemo.java</span><span>提交 Callable，凭 Future 取结果</span></div>
+<pre><span class="com">// Callable 有返回值，还能抛受检异常</span>
+<span class="typ">Callable</span>&lt;<span class="typ">Integer</span>&gt; <span class="var">task</span> = () -&gt; <span class="punct">{</span>
+    <span class="typ">Thread</span>.<span class="fn">sleep</span>(<span class="num">1000</span>)<span class="punct">;</span>       <span class="com">// 假装在做耗时计算/远程调用</span>
+    <span class="kw">return</span> <span class="num">6</span> * <span class="num">7</span><span class="punct">;</span>
+<span class="punct">};</span>
+
+<span class="typ">Future</span>&lt;<span class="typ">Integer</span>&gt; <span class="var">future</span> = <span class="var">pool</span>.<span class="fn">submit</span>(<span class="var">task</span>)<span class="punct">;</span>  <span class="com">// 立即返回"寄存单"，不阻塞</span>
+
+<span class="com">// ...这中间主线程可以先干别的、或再提交别的任务并行...</span>
+
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="typ">Integer</span> <span class="var">r</span> = <span class="var">future</span>.<span class="fn">get</span>(<span class="num">2</span>, <span class="typ">TimeUnit</span>.SECONDS)<span class="punct">;</span> <span class="com">// 凭单取货：阻塞等结果，带超时</span>
+    <span class="typ">System</span>.<span class="var">out</span>.<span class="fn">println</span>(<span class="var">r</span>)<span class="punct">;</span>                    <span class="com">// 42</span>
+<span class="punct">}</span> <span class="kw">catch</span> (<span class="typ">TimeoutException</span> <span class="var">e</span>) <span class="punct">{</span>
+    <span class="var">future</span>.<span class="fn">cancel</span>(<span class="kw">true</span>)<span class="punct">;</span>       <span class="com">// 超时了：尝试中断正在跑的任务</span>
+<span class="punct">}</span> <span class="kw">catch</span> (<span class="typ">ExecutionException</span> <span class="var">e</span>) <span class="punct">{</span>
+    <span class="typ">Throwable</span> <span class="var">cause</span> = <span class="var">e</span>.<span class="fn">getCause</span>()<span class="punct">;</span> <span class="com">// 任务内部抛的异常被包在这里</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>联系 JDK 源码：<code>submit</code> 到底做了什么？</strong>无论你提交的是 <code>Runnable</code> 还是 <code>Callable</code>，<code>submit</code> 内部都会把它包装成一个 <code>FutureTask</code>——它同时实现了 <code>Runnable</code>（能被线程池跑）和 <code>Future</code>（能取结果），是"任务 + 结果容器"的合体。<code>call()</code> 跑完后，结果或异常被存进 <code>FutureTask</code> 的一个字段；你的 <code>get()</code> 就是去读这个字段，读不到（还没算完）就把当前线程挂起等待，算完后由执行线程唤醒。<code>ThreadPoolExecutor</code> 内部的工作线程封装为 <code>Worker</code>，它<em>继承 AQS</em> 实现了一把不可重入锁，用来精细控制"正在执行任务的线程"能否被中断。
+  </div>
+
+  <h2>六、两个致命陷阱：吞掉的异常与阻塞的 get()</h2>
+  <p>Callable/Future 用起来爽，但两处坑让无数人栽跟头。</p>
+
+  <h3>陷阱一：submit 的任务抛异常，你可能永远发现不了</h3>
+  <p>用 <code>execute()</code> 提交时，任务里抛出的未捕获异常会一路冒泡到线程的 <code>UncaughtExceptionHandler</code>，通常打印到控制台，你能看见。但用 <code>submit()</code> 提交时，异常被<strong>捕获并封存进了 Future</strong>——如果你<em>从不调用</em> <code>get()</code>，这个异常就被<strong>彻底吞掉</strong>，任务像是"静默失败"了，排查时一头雾水。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · submit 后不管 Future</div>
+<pre>pool.submit(() -&gt; <span class="punct">{</span>
+  <span class="kw">int</span> x = <span class="num">1</span> / <span class="num">0</span>;   <span class="com">// 抛 ArithmeticException</span>
+<span class="punct">}</span>);
+<span class="com">// 没人调 get()，异常被封进 Future</span>
+<span class="com">// -&gt; 控制台一片安静，任务静默死掉</span>
+<span class="com">// -&gt; 线上问题极难定位</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 取结果或换 execute</div>
+<pre><span class="typ">Future</span>&lt;?&gt; f = pool.submit(() -&gt; <span class="punct">{</span>
+  <span class="kw">int</span> x = <span class="num">1</span> / <span class="num">0</span>;
+<span class="punct">}</span>);
+f.get();  <span class="com">// 异常在此以 ExecutionException 抛出</span>
+
+<span class="com">// 或：纯副作用任务用 execute，</span>
+<span class="com">// 异常会走 UncaughtExceptionHandler</span>
+pool.execute(() -&gt; riskyWork());</pre>
+    </div>
+  </div>
+
+  <h3>陷阱二：get() 是阻塞的，用不好等于把异步写成了同步</h3>
+  <div class="callout warn">
+    <strong><code>future.get()</code> 会阻塞当前线程直到结果就绪。</strong>如果你提交完一个任务，紧接着就 <code>get()</code>，那这段代码和直接同步调用没有任何区别——异步的意义被你亲手抹掉了。正确姿势是：<em>先把所有并行任务都 <code>submit</code> 出去拿到一批 Future，最后再统一 <code>get</code></em>，这样任务才是真正并行的。另外，<strong>永远优先用带超时的 <code>get(timeout, unit)</code></strong>：无参 <code>get()</code> 会无限期等待，一旦某个下游卡死，你的线程就被永久占用，可能引发线程池耗尽的连锁雪崩。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ParallelFanout.java</span><span>正确的并行姿势：先全提交，再统一取</span></div>
+<pre><span class="typ">List</span>&lt;<span class="typ">Callable</span>&lt;<span class="typ">Integer</span>&gt;&gt; <span class="var">tasks</span> = <span class="typ">List</span>.<span class="fn">of</span>(this::queryA, this::queryB, this::queryC)<span class="punct">;</span>
+
+<span class="com">// 一次性全部提交出去 —— 三个任务此刻已在并行跑</span>
+<span class="typ">List</span>&lt;<span class="typ">Future</span>&lt;<span class="typ">Integer</span>&gt;&gt; <span class="var">futures</span> = <span class="kw">new</span> <span class="typ">ArrayList</span>&lt;&gt;()<span class="punct">;</span>
+<span class="kw">for</span> (<span class="typ">Callable</span>&lt;<span class="typ">Integer</span>&gt; <span class="var">t</span> : <span class="var">tasks</span>) <span class="var">futures</span>.<span class="fn">add</span>(<span class="var">pool</span>.<span class="fn">submit</span>(<span class="var">t</span>))<span class="punct">;</span>
+
+<span class="com">// 全提交完之后，才逐个取结果并汇总</span>
+<span class="kw">int</span> <span class="var">sum</span> = <span class="num">0</span><span class="punct">;</span>
+<span class="kw">for</span> (<span class="typ">Future</span>&lt;<span class="typ">Integer</span>&gt; <span class="var">f</span> : <span class="var">futures</span>) <span class="var">sum</span> += <span class="var">f</span>.<span class="fn">get</span>(<span class="num">3</span>, <span class="typ">TimeUnit</span>.SECONDS)<span class="punct">;</span>
+<span class="com">// 总耗时 ≈ max(A,B,C)，而不是 A+B+C</span></pre>
+  </div>
+
+  <h2>七、如何优雅关闭线程池</h2>
+  <p>线程池里的核心线程默认<em>永不退出</em>，如果不主动关闭，JVM 会因为还有非守护线程存活而<strong>无法退出</strong>。关闭有两个档位：</p>
+  <ul>
+    <li><code>shutdown()</code>：<em>温和</em>关闭。不再接收新任务，但会把<strong>已提交的任务（包括队列里排队的）全部执行完</strong>，然后各线程自然退出。</li>
+    <li><code>shutdownNow()</code>：<em>强硬</em>关闭。尝试<code>interrupt</code>正在执行的线程，清空并<strong>返回队列中尚未执行的任务列表</strong>。注意它只是"尝试中断"，任务若不响应中断则停不下来。</li>
+    <li><code>awaitTermination(timeout, unit)</code>：在 <code>shutdown()</code> 之后阻塞等待，给正在跑的任务一段收尾时间，返回是否在超时内全部结束。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="cb-header"><span>GracefulShutdown.java</span><span>推荐的两段式优雅关闭</span></div>
+<pre><span class="var">pool</span>.<span class="fn">shutdown</span>()<span class="punct">;</span>                       <span class="com">// 1. 停止接单，让存量任务跑完</span>
+<span class="kw">try</span> <span class="punct">{</span>
+    <span class="kw">if</span> (!<span class="var">pool</span>.<span class="fn">awaitTermination</span>(<span class="num">30</span>, <span class="typ">TimeUnit</span>.SECONDS)) <span class="punct">{</span>
+        <span class="var">pool</span>.<span class="fn">shutdownNow</span>()<span class="punct">;</span>              <span class="com">// 2. 超时还没跑完，强制中断</span>
+    <span class="punct">}</span>
+<span class="punct">}</span> <span class="kw">catch</span> (<span class="typ">InterruptedException</span> <span class="var">e</span>) <span class="punct">{</span>
+    <span class="var">pool</span>.<span class="fn">shutdownNow</span>()<span class="punct">;</span>
+    <span class="typ">Thread</span>.<span class="fn">currentThread</span>().<span class="fn">interrupt</span>()<span class="punct">;</span> <span class="com">// 恢复中断标志，别把中断吞掉</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <h2>八、线程池该开多大：一条经验公式</h2>
+  <p>核心线程数不是拍脑袋定的。它取决于任务是"算得多"还是"等得多"——即 <strong>CPU 密集型</strong> vs <strong>IO 密集型</strong>。经典参考公式（出自《Java 并发编程实战》）：</p>
+
+  <div class="formula">
+    N<sub>threads</sub> = N<sub>cpu</sub> <span class="hl">×</span> U<sub>cpu</sub> <span class="hl">×</span> (1 <span class="hl">+</span> W / C)
+  </div>
+
+  <p>其中 <code>N_cpu</code> 是核数，<code>U_cpu</code> 是目标 CPU 利用率（0~1），<code>W/C</code> 是<em>等待时间 / 计算时间</em>之比。直觉很简单：</p>
+  <ul>
+    <li><strong>CPU 密集型</strong>（加解密、压缩、纯计算）：W≈0，线程数 ≈ 核数，多开也只是徒增上下文切换。经验值 <code>N_cpu + 1</code>（+1 是为了在偶发缺页/中断时补位）。</li>
+    <li><strong>IO 密集型</strong>（远程调用、读数据库、读文件）：线程大部分时间在<em>等</em>，W 远大于 C，可以远超核数，让 CPU 在某个线程等 IO 时去跑别的线程，把 CPU"喂饱"。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>公式是起点不是终点。</strong>真实业务里 W/C 很难精确测量，任务也常是混合型。正确做法是：以公式估个初值，然后<strong>压测 + 监控</strong>（关注 CPU 利用率、队列长度、任务排队时长、GC），再迭代调优。切忌只背公式不做实测。另外，<em>不同性质的任务不要共用一个线程池</em>——把 CPU 密集和 IO 密集混在一个池里，参数怎么调都别扭，应按业务隔离成多个池，也能防止一类任务拖垮另一类（舱壁隔离）。
+  </div>
+
+  <h2>九、串起来：Spring、虚拟线程与 Future 的局限</h2>
+  <p>你在业务里几乎不会裸用 <code>ThreadPoolExecutor</code>——Spring 已经封装好了。<code>@Async</code> 注解 + <code>ThreadPoolTaskExecutor</code>（本质就是对 <code>ThreadPoolExecutor</code> 的封装，参数一一对应）让你一个注解就把方法异步化；<code>@Scheduled</code> 背后则是 <code>ScheduledThreadPoolExecutor</code>。理解了本节的七参数与调度流程，你就能看懂 Spring 那些 <code>corePoolSize</code>/<code>queueCapacity</code> 配置到底在配什么。</p>
+
+  <div class="callout tip">
+    <strong>Java 21 的新变量：虚拟线程(Virtual Thread)。</strong>Project Loom 带来的虚拟线程极其轻量（不再 1:1 绑定 OS 线程，栈按需增长），<code>Executors.newVirtualThreadPerTaskExecutor()</code> 可以"每个任务一个虚拟线程"而不用担心创建成本——这在过去是禁忌，现在对 IO 密集型任务反而是推荐写法。但注意：虚拟线程<em>不需要池化</em>（它便宜到无需复用），而 CPU 密集型任务仍应交给传统的平台线程池。池化的思想没变，只是"什么资源昂贵到值得池化"的答案变了。
+  </div>
+
+  <p>最后留一个悬念：<code>Future</code> 虽好，却有硬伤——<code>get()</code> 只能<strong>阻塞</strong>等待，无法注册"算完了自动回调";多个 Future 也<strong>无法方便地编排</strong>（比如"A 和 B 都完成后再跑 C"只能靠手动 get 拼凑，又退回阻塞)。这正是下一节 <code>CompletableFuture</code> 要解决的问题——它让异步结果可以<em>链式组合、非阻塞回调</em>。</p>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>线程是昂贵的 OS 资源，所以要用<strong>线程池</strong>复用与限流——核心是 <code>ThreadPoolExecutor</code> 的<em>七参数</em>与"<em>核心满→入队→队满扩容到 max→再满则拒绝</em>"的调度顺序；<strong>队列务必有界、拒绝策略要选对</strong>，别用藏着无界地雷的 <code>Executors</code> 快捷工厂。要拿异步结果就用 <code>Callable</code>(有返回值、可抛受检异常) + <code>Future</code>(取货寄存单)，但要警惕<em>submit 吞异常</em>和<em>get() 阻塞</em>两大坑，且优先 <code>get(timeout)</code>、先全提交再统一取。用完记得<strong>优雅 shutdown</strong>。而 Future 无法回调与编排的短板，正是下一站 CompletableFuture 的舞台。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="21-阻塞队列与并发集合.html" class="nav-btn">← 阻塞队列与并发集合</a>
+    <a href="23-CompletableFuture入门.html" class="nav-btn next">CompletableFuture 入门 →</a>
+  </div>
+</div>
+</body>
+</html>

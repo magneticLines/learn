@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>组合设计线程安全的类</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 组合设计线程安全的类</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第3-4章·共享对象与组合</div>
+    <h1>组合设计线程安全的类</h1>
+    <p>线程安全不必每次从锁写起——把已经安全的零件封起来、拼起来，才是工程师真正该做的事；但零件本身安全，拼出来的整体未必安全。</p>
+  </div>
+
+  <h2>一、设计线程安全类，先回答三个问题</h2>
+  <p>前几节我们从"底层机制"（<code>synchronized</code>、<code>volatile</code>、happens-before）一路讲到"别把对象发布错"。现在把镜头拉高：面对一个要在多线程下用的类，<strong>该从哪里下手？</strong>《Java 并发编程实战》给了一套朴素但极其可靠的流程，本质是三个问题：</p>
+
+  <div class="callout info">
+    <strong>设计线程安全类的三步（JCIP 第 4.1 节）：</strong><br>
+    ① <strong>找出构成对象状态的所有变量</strong> —— 对象状态就是它所有<em>实例字段与静态字段</em>组成的集合（还包括它所引用对象的字段）。<br>
+    ② <strong>找出约束状态变量的不变式（invariant）</strong> —— 比如"<code>lower ≤ upper</code>"、"计数器非负"、"缓存值必须与被缓存的输入匹配"。不变式限定了哪些状态是合法的、哪些状态转换是允许的。<br>
+    ③ <strong>建立管理并发访问的同步策略（synchronization policy）</strong> —— 用什么锁、保护哪些变量、哪些操作必须原子。
+  </div>
+
+  <div class="formula">线程安全类 <span class="hl">=</span> 状态变量 <span class="hl">+</span> 不变式约束 <span class="hl">+</span> 同步策略</div>
+
+  <p>为什么这三步的<strong>顺序</strong>不能乱？因为<em>不变式决定了原子性的粒度</em>：只有先搞清楚"哪些变量之间存在约束关系"，你才知道"哪几个操作必须捆成一个原子块"。跳过第②步直接给每个字段加锁，正是本节后面要拆的那类经典 bug。</p>
+
+  <h2>二、实例封闭：把状态关进笼子，再配一把锁</h2>
+  <p>最基础的线程安全构建手段叫<strong>实例封闭（instance confinement）</strong>：把一个<em>非线程安全</em>的对象封装进另一个对象里，并保证所有访问它的路径都持有同一把锁。这样即使内部零件不安全，外壳也能安全。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>实例封闭：把非线程安全的 HashSet 关起来</span><span>PersonSet</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">PersonSet</span> {
+    <span class="com">// HashSet 本身不是线程安全的，但它被封闭在 PersonSet 内部，</span>
+    <span class="com">// 且只能通过下面两个 synchronized 方法访问 —— 由 this 这把锁守护</span>
+    <span class="kw">private final</span> <span class="typ">Set</span>&lt;<span class="typ">Person</span>&gt; mySet = <span class="kw">new</span> <span class="typ">HashSet</span>&lt;&gt;();
+
+    <span class="kw">public synchronized void</span> <span class="fn">addPerson</span>(<span class="typ">Person</span> p) {
+        mySet.<span class="fn">add</span>(p);
+    }
+    <span class="kw">public synchronized boolean</span> <span class="fn">containsPerson</span>(<span class="typ">Person</span> p) {
+        <span class="kw">return</span> mySet.<span class="fn">contains</span>(p);
+    }
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>你其实天天在用它：</strong><code>Collections.synchronizedList(...)</code> / <code>synchronizedMap(...)</code> 就是实例封闭的现成实现——装饰器（Decorator）把原始集合包起来，每个方法都 <code>synchronized</code> 后再转发。它把"非线程安全的 ArrayList"和"一把守护它的锁"绑成一个整体。理解了这一点，你就明白为什么<em>拿到包装后的引用还得小心</em>（后面第六节会看到坑）。
+  </div>
+
+  <h2>三、Java 监视器模式，与"私有锁"的关键取舍</h2>
+  <p>把状态全部封闭在对象内部、并用<em>对象自己的内置锁</em>（即 <code>this</code>）守护全部状态——这个最常见的模式叫 <strong>Java 监视器模式（Java monitor pattern）</strong>。前面的 <code>Counter</code>、<code>PersonSet</code> 都是它的实例。它的好处是简单；但用 <code>this</code> 当锁有个隐患：<strong>这把锁是"公开"的</strong>，任何拿到你对象引用的客户端代码都能 <code>synchronized(yourObject)</code> 把它锁住。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 用 this 当锁：锁是公开的</div>
+      <pre>public class Counter {
+  private long value = 0;
+  public synchronized long inc() {
+    return ++value;   // 锁的是 this
+  }
+}
+
+// 恶意/无意的客户端:
+Counter c = ...;
+synchronized (c) {
+  // 长时间持有 c 的锁不放
+  Thread.sleep(60_000);
+}
+// 期间所有人的 inc() 全被阻塞
+// → 拒绝服务 / 意外死锁</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 私有锁对象：锁被封起来</div>
+      <pre>public class Counter {
+  private final Object lock
+      = new Object();          // 外部拿不到
+  private long value = 0;
+  public long inc() {
+    synchronized (lock) {
+      return ++value;
+    }
+  }
+}
+
+// 客户端只能拿到 Counter 引用，
+// 拿不到 lock，无法干扰你的同步策略
+// → 封装更彻底，可独立演进</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱一：把 <code>this</code> 当锁，等于把"锁协议"也暴露给了外界。</strong>客户端一旦参与进你的锁（哪怕是好意地做客户端加锁），你就再也无法安全地更换同步策略——比如某天想从"一把大锁"改成"分段锁"，会悄悄破坏所有依赖 <code>this</code> 锁的外部代码。<em>私有锁对象（<code>private final Object lock</code>）把同步策略变成了纯粹的实现细节</em>，这也是很多 JDK 类（如早期的部分内部实现）和高质量库偏爱私有锁的原因。代价是：客户端无法做客户端加锁来扩展原子操作（见第六节，那时反而要用 <code>this</code> 或组合）。
+  </div>
+
+  <h2>四、委托：把线程安全"外包"给现成的安全组件</h2>
+  <p>监视器模式什么都自己扛，但现代 JDK 已经给了我们大量<em>本身就线程安全</em>的构建块（<code>ConcurrentHashMap</code>、<code>AtomicInteger</code>、<code>CopyOnWriteArrayList</code>…）。如果一个类的状态<strong>完全由这些安全组件承载</strong>，那它可以把线程安全<strong>委托（delegation）</strong>给它们，自己一行 <code>synchronized</code> 都不用写：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>委托给 ConcurrentHashMap（Point 为不可变类）</span><span>DelegatingVehicleTracker</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">DelegatingVehicleTracker</span> {
+    <span class="kw">private final</span> <span class="typ">ConcurrentMap</span>&lt;<span class="typ">String</span>, <span class="typ">Point</span>&gt; locations;
+    <span class="kw">private final</span> <span class="typ">Map</span>&lt;<span class="typ">String</span>, <span class="typ">Point</span>&gt; unmodifiableMap;
+
+    <span class="kw">public</span> <span class="fn">DelegatingVehicleTracker</span>(<span class="typ">Map</span>&lt;<span class="typ">String</span>, <span class="typ">Point</span>&gt; points) {
+        locations = <span class="kw">new</span> <span class="typ">ConcurrentHashMap</span>&lt;&gt;(points);
+        unmodifiableMap = <span class="typ">Collections</span>.<span class="fn">unmodifiableMap</span>(locations);
+    }
+
+    <span class="com">// 没有一个 synchronized：所有线程安全都由 ConcurrentMap 承担</span>
+    <span class="kw">public</span> <span class="typ">Point</span> <span class="fn">getLocation</span>(<span class="typ">String</span> id) { <span class="kw">return</span> locations.<span class="fn">get</span>(id); }
+
+    <span class="kw">public void</span> <span class="fn">setLocation</span>(<span class="typ">String</span> id, <span class="kw">int</span> x, <span class="kw">int</span> y) {
+        <span class="kw">if</span> (locations.<span class="fn">replace</span>(id, <span class="kw">new</span> <span class="typ">Point</span>(x, y)) == <span class="kw">null</span>)
+            <span class="kw">throw new</span> <span class="typ">IllegalArgumentException</span>(<span class="str">"invalid vehicle: "</span> + id);
+    }
+}</pre>
+  </div>
+
+  <p>这里有两个值得点出的设计细节：<code>Point</code> 必须是<strong>不可变</strong>的——否则把它 <code>get</code> 出去就等于发布了可变状态（回顾上一节的"逸出"）；而 <code>setLocation</code> 里用 <code>replace</code> 而非 <code>put</code>，是借 <code>ConcurrentMap</code> 的原子方法维持"只能更新已存在车辆"这条约束。</p>
+
+  <h2>五、委托的边界：零件都安全，拼起来却翻车</h2>
+  <p>委托很香，但它有一条<strong>致命前提</strong>，也是本节最高频的面试点与线上事故源：<em>当类的不变式跨越了多个状态变量时，委托就会失效。</em>看这个"数值范围"类——它用两个 <code>AtomicInteger</code> 分别存下界和上界，每个都线程安全，但整体<strong>不</strong>线程安全：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>反例：不变式 lower ≤ upper 跨越两个变量</span><span>NumberRange —— 有 bug！</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">NumberRange</span> {
+    <span class="com">// 不变式：lower &lt;= upper</span>
+    <span class="kw">private final</span> <span class="typ">AtomicInteger</span> lower = <span class="kw">new</span> <span class="typ">AtomicInteger</span>(<span class="num">0</span>);
+    <span class="kw">private final</span> <span class="typ">AtomicInteger</span> upper = <span class="kw">new</span> <span class="typ">AtomicInteger</span>(<span class="num">0</span>);
+
+    <span class="kw">public void</span> <span class="fn">setLower</span>(<span class="kw">int</span> i) {
+        <span class="com">// 警告：不安全的 check-then-act（先检查后执行）</span>
+        <span class="kw">if</span> (i &gt; upper.<span class="fn">get</span>())
+            <span class="kw">throw new</span> <span class="typ">IllegalArgumentException</span>(<span class="str">"lower &gt; upper"</span>);
+        lower.<span class="fn">set</span>(i);
+    }
+    <span class="kw">public void</span> <span class="fn">setUpper</span>(<span class="kw">int</span> i) {
+        <span class="kw">if</span> (i &lt; lower.<span class="fn">get</span>())
+            <span class="kw">throw new</span> <span class="typ">IllegalArgumentException</span>(<span class="str">"upper &lt; lower"</span>);
+        upper.<span class="fn">set</span>(i);
+    }
+}</pre>
+  </div>
+
+  <p>每个 <code>AtomicInteger</code> 的 <code>get</code>/<code>set</code> 都是原子的，可 <code>setLower</code> 内部"<em>先读 upper，再写 lower</em>"这两步中间没有任何东西拦得住另一个线程插进来。两个线程同时改，就能把范围搅成非法状态：</p>
+
+  <div class="diagram">初始范围 (lower=0, upper=10)      不变式要求 lower &lt;= upper
+
+  线程 A: setLower(5)               线程 B: setUpper(4)
+     │ 检查 5 &gt; upper(10) ? 否 ✓        │ 检查 4 &lt; lower(0) ? 否 ✓
+     │ (各自的检查此刻都合法)           │
+     ▼                                 ▼
+     lower.set(5)                      upper.set(4)
+
+  最终范围 (lower=5, upper=4)   →   lower &gt; upper，不变式被击穿！
+
+  两个 AtomicInteger 各自线程安全，组合起来却不安全。</div>
+
+  <div class="callout warn">
+    <strong>陷阱二：能不能委托，取决于"不变式关不关联多个变量"。</strong>如果状态变量彼此<em>独立</em>（一个变量的合法取值不依赖另一个），可以放心把线程安全委托给多个独立的安全变量。可一旦存在 <code>NumberRange</code> 这种<strong>跨变量的复合不变式</strong>，委托就必须让位给"用同一把锁把相关操作捆成原子块"——把 <code>setLower</code>/<code>setUpper</code> 加上 <code>synchronized</code>，或把 <code>lower</code>/<code>upper</code> 换成一个<em>不可变的</em> <code>Range</code> 对象整体替换（写时复制）。<em>把这道题记牢：面试官问"两个 AtomicInteger 组合还线程安全吗"，答案是否定的。</em>
+  </div>
+
+  <div class="callout info">
+    <strong>什么时候可以安全地把状态变量直接发布出去（getter 返回内部变量）？</strong>JCIP 给了三个必须<em>同时</em>满足的条件：① 该变量本身是<strong>线程安全</strong>的；② 它<strong>不参与任何约束其取值的不变式</strong>；③ 它没有任何<strong>被禁止的状态转换</strong>。上面 <code>NumberRange</code> 的 <code>lower</code> 就违反了②，所以既不能委托、也不能公开发布。这条判据把"委托"和"发布"串成了同一套逻辑。
+  </div>
+
+  <h2>六、给已有线程安全类"加操作"：三条路，两个坑</h2>
+  <p>常见需求：<code>List</code> 已经是线程安全的（<code>Collections.synchronizedList</code>），但我想要一个原子的 <strong>put-if-absent</strong>（不存在才添加）。它是 <code>contains</code> + <code>add</code> 的 check-then-act 复合操作，现成 API 没有。怎么原子地加上去？有三条路：</p>
+
+  <h3>路 A：继承（扩展）—— 最脆弱</h3>
+  <p>直接 <code>extends</code> 那个类，加一个 <code>synchronized putIfAbsent</code>。问题：你的锁能不能守住基类的操作，<em>取决于基类用哪把锁做同步</em>。基类哪天改了同步策略（换成私有锁），你的扩展就会静默失效。继承把你和基类的实现细节死死绑在一起。</p>
+
+  <h3>路 B：客户端加锁 —— 必须锁"同一把锁"</h3>
+  <p>不改类，在<em>调用方</em>用外部代码把复合操作锁起来。关键陷阱在于：你必须锁<strong>与被扩展对象内部使用的同一把锁</strong>，否则只是"看起来加了锁"：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 锁错了对象（锁的是 this）</div>
+      <pre>public class ListHelper&lt;E&gt; {
+  public List&lt;E&gt; list =
+    Collections.synchronizedList(
+        new ArrayList&lt;&gt;());
+
+  // synchronized 锁的是 ListHelper 实例
+  public synchronized boolean
+      putIfAbsent(E x) {
+    boolean absent = !list.contains(x);
+    if (absent) list.add(x);
+    return absent;
+  }
+}
+// 但 list 用的是"它自己"这把锁！
+// 别的线程直接 list.add(x) 不受你阻拦
+// → check-then-act 依然会竞态</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 锁 list 本身（同一把锁）</div>
+      <pre>public class ListHelper&lt;E&gt; {
+  public List&lt;E&gt; list =
+    Collections.synchronizedList(
+        new ArrayList&lt;&gt;());
+
+  public boolean putIfAbsent(E x) {
+    synchronized (list) {   // 关键
+      boolean absent =
+          !list.contains(x);
+      if (absent) list.add(x);
+      return absent;
+    }
+  }
+}
+// synchronizedList 内部正是用
+// "包装对象自身"做互斥锁，对上了</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱三：客户端加锁最容易锁错锁。</strong><code>Collections.synchronizedXxx</code> 返回的包装器，其内部同步用的锁就是<em>包装器对象本身</em>（即你拿到的那个 <code>list</code> 引用）。所以要让你的 <code>putIfAbsent</code> 和内部的 <code>add</code>/<code>contains</code> 互斥，就必须 <code>synchronized (list)</code>。用 <code>synchronized this</code> 是最常见的错误——它锁的是 <code>ListHelper</code>，和 <code>list</code> 内部那把锁是<em>两把无关的锁</em>，等于没锁。这也解释了第三节的取舍：<em>要支持客户端加锁，锁就得是"可被外界锁到"的——这与"私有锁封装更好"是一对天然矛盾。</em>
+  </div>
+
+  <h3>路 C：组合（Composition）—— 最健壮</h3>
+  <p>不去猜别人的锁，而是<strong>自己再套一层</strong>：把 <code>List</code> 作为私有成员持有，用<em>自己的</em>内置锁守护所有转发方法。这样无论底层 <code>list</code> 是否线程安全、用哪把锁，都不影响正确性——因为外界只能透过你的 <code>synchronized</code> 方法碰它。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>组合：多加一层锁，但彻底不依赖底层的同步策略</span><span>ImprovedList</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">ImprovedList</span>&lt;T&gt; <span class="kw">implements</span> <span class="typ">List</span>&lt;T&gt; {
+    <span class="kw">private final</span> <span class="typ">List</span>&lt;T&gt; list;   <span class="com">// 被封闭，外界拿不到</span>
+
+    <span class="kw">public</span> <span class="fn">ImprovedList</span>(<span class="typ">List</span>&lt;T&gt; list) { <span class="kw">this</span>.list = list; }
+
+    <span class="com">// 用 ImprovedList 自己的锁守护复合操作，与底层用什么锁无关</span>
+    <span class="kw">public synchronized boolean</span> <span class="fn">putIfAbsent</span>(T x) {
+        <span class="kw">boolean</span> contains = list.<span class="fn">contains</span>(x);
+        <span class="kw">if</span> (!contains) list.<span class="fn">add</span>(x);
+        <span class="kw">return</span> !contains;
+    }
+    <span class="com">// 其余 List 方法全部同样 synchronized 后转发</span>
+    <span class="kw">public synchronized boolean</span> <span class="fn">add</span>(T e)      { <span class="kw">return</span> list.<span class="fn">add</span>(e); }
+    <span class="kw">public synchronized boolean</span> <span class="fn">contains</span>(<span class="typ">Object</span> o) { <span class="kw">return</span> list.<span class="fn">contains</span>(o); }
+    <span class="com">// ... clear() / remove() / size() ... 略</span>
+}</pre>
+  </div>
+
+  <p>三条路横向对比，选型一目了然：</p>
+
+  <table>
+    <tr><th>方式</th><th>健壮性</th><th>依赖什么</th><th>代价 / 适用</th></tr>
+    <tr><td>A 继承扩展</td><td>低（脆弱）</td><td>依赖基类的<em>具体锁</em>与同步策略</td><td>基类改同步策略即失效，仅在你掌控基类时用</td></tr>
+    <tr><td>B 客户端加锁</td><td>中</td><td>依赖被扩展对象<em>公开、稳定</em>的锁协议</td><td>不改原类；极易锁错锁，破坏封装</td></tr>
+    <tr><td>C 组合</td><td>高（最健壮）</td><td>只依赖自己的锁，<em>不假设底层安全</em></td><td>多一层锁开销；首选方案</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>联系 Spring / JDK：</strong>Spring 大量用"组合"而非"继承"来叠加行为（如各种 <code>Decorator</code>、<code>Wrapper</code>、AOP 代理），背后正是同一哲学——<em>组合优于继承</em>（这条也是《Effective Java》的核心条目，作者 Joshua Bloch 同是本书作者之一）。JDK 的 <code>Collections.synchronizedXxx</code> 是"客户端加锁需要公开锁"的活标本；而 <code>ConcurrentHashMap</code> 则代表另一条路：把复合操作（<code>putIfAbsent</code>、<code>computeIfAbsent</code>）<em>直接做进类里</em>，从根上免去客户端拼装原子操作的麻烦。能用后者就别自己拼。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>设计线程安全类，永远先走"<strong>状态变量 → 不变式 → 同步策略</strong>"三步，其中<em>不变式决定原子性的粒度</em>。构建手段由易到难有四层——<strong>实例封闭</strong>（把非安全对象关进笼子加锁，如 <code>synchronizedList</code>）、<strong>Java 监视器模式</strong>（全部状态用一把锁守护，优先选<em>私有锁对象</em>把同步策略藏成实现细节）、<strong>委托</strong>（把安全外包给 <code>ConcurrentHashMap</code>/<code>Atomic</code> 这类现成组件）。委托的红线是：<em>一旦不变式跨越多个变量（如 <code>NumberRange</code> 的 <code>lower ≤ upper</code>），两个各自线程安全的变量组合起来就不再安全</em>，必须回到"同一把锁捆成原子块"。给已有安全类加原子操作有继承/客户端加锁/组合三条路，<strong>组合最健壮</strong>——它只依赖自己的锁，不去赌别人的同步策略；而客户端加锁一定要锁"同一把锁"，否则形同虚设。记住这套地图，后面第 5-7 章的并发容器与同步工具，你就是在"挑现成的安全零件来委托"。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="08-安全发布的四种方式.html" class="nav-btn">← 安全发布的四种方式</a>
+    <a href="10-阻塞队列与生产者消费者.html" class="nav-btn next">阻塞队列与生产者消费者 →</a>
+  </div>
+</div>
+</body>
+</html>

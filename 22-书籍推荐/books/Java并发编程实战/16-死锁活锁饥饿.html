@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>死锁、活锁、饥饿</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 死锁、活锁、饥饿</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第8-9章·活跃度与性能</div>
+    <h1>死锁、活锁、饥饿</h1>
+    <p>加锁能保证“坏事不发生”，却可能让“好事永远不发生”——这三种活跃度故障，就是锁的账单。</p>
+  </div>
+
+  <h2>一、先分清：安全性 vs 活跃度</h2>
+  <p>并发程序的正确性有两条相互拉扯的主线。<strong>安全性（Safety）</strong>关心“<em>坏事永远不会发生</em>”——数据不被写坏、不变式不被破坏；<strong>活跃度（Liveness）</strong>关心“<em>好事最终一定会发生</em>”——线程能推进、请求能被响应、程序不会永远卡住。</p>
+  <p>为什么把它们放在一起讲？因为二者是<strong>此消彼长</strong>的：为了安全我们加锁串行化，而锁一旦用得过火，就会引出这一章的三个活跃度故障——<em>死锁（deadlock）</em>、<em>活锁（livelock）</em>、<em>饥饿（starvation）</em>。它们的共同点是“程序没崩、没抛异常，但就是不干活了”，因此格外难排查，也是面试里区分“会用锁”和“懂并发”的分水岭。</p>
+
+  <div class="callout info">
+    <strong>一句话对照：</strong> <strong>死锁</strong>——大家都在等对方手里的锁，谁也不动（线程 <code>BLOCKED</code>，CPU 空转为 0）；<strong>活锁</strong>——大家都在动，却都在做无用功、始终不前进（线程 <code>RUNNABLE</code>，CPU 反而很高）；<strong>饥饿</strong>——某个线程总是抢不到 CPU 或锁，被“饿着”（其他线程正常，唯独它进展不了）。
+  </div>
+
+  <h2>二、死锁：互相攥着对方要的钥匙</h2>
+  <p><strong>死锁</strong>是一组线程互相持有对方所需的资源并循环等待，导致全体永久阻塞。最经典的类比是<em>哲学家就餐问题</em>：5 个哲学家围坐一桌，每人左右各一根筷子，都遵循“先拿左筷、再拿右筷”的规则。若同一瞬间所有人都拿起了左筷，就人人都在等右筷——而右筷正是邻座的左筷，谁都不肯放，于是永远吃不上饭。</p>
+  <p>映射到代码里，最简单的形式是<strong>顺序不一致的锁获取</strong>：线程 A 按 <code>left → right</code> 加锁，线程 B 按 <code>right → left</code> 加锁，只要两者交错运行就可能死锁。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>LeftRightDeadlock.java</span><span>静态锁顺序死锁</span></div>
+    <pre><span class="kw">public</span> <span class="kw">class</span> <span class="typ">LeftRightDeadlock</span> <span class="punct">{</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="typ">Object</span> <span class="var">left</span>  <span class="punct">=</span> <span class="kw">new</span> <span class="typ">Object</span><span class="punct">();</span>
+    <span class="kw">private</span> <span class="kw">final</span> <span class="typ">Object</span> <span class="var">right</span> <span class="punct">=</span> <span class="kw">new</span> <span class="typ">Object</span><span class="punct">();</span>
+
+    <span class="kw">public</span> <span class="typ">void</span> <span class="fn">leftRight</span><span class="punct">()</span> <span class="punct">{</span>          <span class="com">// 线程 A 调用</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">left</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">right</span><span class="punct">)</span> <span class="punct">{</span>   <span class="com">// 先 left 再 right</span>
+                <span class="fn">doSomething</span><span class="punct">();</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+    <span class="kw">public</span> <span class="typ">void</span> <span class="fn">rightLeft</span><span class="punct">()</span> <span class="punct">{</span>          <span class="com">// 线程 B 调用</span>
+        <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">right</span><span class="punct">)</span> <span class="punct">{</span>
+            <span class="kw">synchronized</span> <span class="punct">(</span><span class="var">left</span><span class="punct">)</span> <span class="punct">{</span>    <span class="com">// 先 right 再 left —— 顺序相反！</span>
+                <span class="fn">doSomethingElse</span><span class="punct">();</span>
+            <span class="punct">}</span>
+        <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>用<strong>资源分配图</strong>看，死锁的本质就是图里出现了一个<em>环</em>：</p>
+
+  <div class="diagram">线程 A 持有 left，等待 right          线程 B 持有 right，等待 left
+
+   ┌──────────┐   持有    ┌───────┐
+   │ 线程 A   │ ───────▶ │ left  │
+   └──────────┘          └───────┘
+        ▲                    │
+   等待 │                    │ 想要（被 A 持有）
+        │                    ▼
+   ┌───────┐          ┌──────────┐
+   │ right │ ◀─────── │ 线程 B   │
+   └───────┘   持有    └──────────┘
+
+   A → right → B → left → A   ← 形成闭环 = 死锁</div>
+
+  <div class="callout tip">
+    <strong>如何确诊：</strong> 生产环境里对进程执行 <code>jstack &lt;pid&gt;</code>（或在 IDE 里 dump 线程），JVM 会自动做死锁检测并打印 <code>Found one Java-level deadlock:</code>，直接列出互相等待的线程与锁对象。这是排查“系统假死”最快的一招——比盲猜代码高效得多。检测与预防的完整手段（锁顺序、定时锁、<code>tryLock</code>）留到下一篇专门展开。
+  </div>
+
+  <h2>三、动态锁顺序死锁：更隐蔽的转账 bug</h2>
+  <p>上面的例子锁顺序是写死在代码里的，肉眼可查。真正阴险的是<strong>锁顺序由参数决定</strong>的情况——代码里明明只有<em>一处</em>加锁顺序，却依然会死锁。银行转账是《Java 并发编程实战》里的经典案例：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 锁顺序随参数漂移</div>
+      <pre>void transfer(Account from,
+              Account to, int amt) {
+    synchronized (from) {
+        synchronized (to) {
+            from.debit(amt);
+            to.credit(amt);
+        }
+    }
+}
+// 线程1: transfer(A, B, 10)
+// 线程2: transfer(B, A, 20)
+// → 一个先锁A等B，一个先锁B等A
+// → 同样的方法，照样死锁！</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 用哈希诱导全局顺序</div>
+      <pre>int fh = System.identityHashCode(from);
+int th = System.identityHashCode(to);
+if (fh &lt; th)
+    lock(from, to, amt);   // 恒定顺序
+else if (fh &gt; th)
+    lock(to, from, amt);
+else synchronized (tieLock) { // 哈希撞车
+    lock(from, to, amt);   // 加时锁兜底
+}
+// 所有线程都按 hash 大小加锁
+// → 不可能形成循环等待</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>高频面试陷阱：</strong> 很多人以为“我全程只按对象出现的先后顺序加锁，不会死锁”。错！只要<em>加锁顺序依赖于外部传入的对象</em>，两次调用传参顺序相反就会构成相反的锁序。解法是给对象定义一个<strong>与调用无关的全局序</strong>——用 <code>System.identityHashCode()</code> 或一个唯一 ID 排序后再加锁；哈希极小概率相同时，用一把额外的“加时锁（tie-breaking lock）”保证唯一顺序。这正是把“<em>循环等待</em>”这个必要条件从根上打破。
+  </div>
+
+  <h2>四、死锁的四个必要条件（Coffman 条件）</h2>
+  <p>操作系统课本告诉我们：死锁的发生必须<strong>同时</strong>满足以下四个条件，缺一不可。这也意味着——<em>只要破坏其中任意一个，死锁就无法形成</em>。这是所有防死锁策略的理论地基。</p>
+
+  <div class="formula">死锁 = <span class="hl">互斥</span> ∧ <span class="hl">持有并等待</span> ∧ <span class="hl">不可抢占</span> ∧ <span class="hl">循环等待</span></div>
+
+  <table>
+    <tr><th>条件</th><th>含义</th><th>如何打破（Java 手段）</th></tr>
+    <tr><td>互斥<br>Mutual Exclusion</td><td>资源同一时刻只能被一个线程占用</td><td>难破坏（锁的本质就是互斥）；可改用无锁 CAS / 不可变对象绕开</td></tr>
+    <tr><td>持有并等待<br>Hold &amp; Wait</td><td>已持有资源的线程又去请求新资源，且不释放已有的</td><td>一次性申请所有锁；或拿不到就<code>tryLock</code>失败后释放全部重试</td></tr>
+    <tr><td>不可抢占<br>No Preemption</td><td>资源只能由持有者主动释放，不能被强夺</td><td>用<code>lock.tryLock(timeout)</code>定时锁，超时主动放弃（相当于自我抢占）</td></tr>
+    <tr><td>循环等待<br>Circular Wait</td><td>存在“线程等资源”的闭环链条</td><td>最常用：给所有锁定义<strong>全局顺序</strong>，一律按序申请</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>为什么工程上首选“破坏循环等待”？</strong> 因为“互斥”是锁的立身之本，动不得；“持有并等待”和“不可抢占”的破坏方案（一次抢全部 / 定时放弃）要么降低并发度、要么带来重试开销。而<em>统一锁顺序</em>只是一个编码约定，几乎零运行时代价，却能彻底根除锁顺序死锁——这就是上一节转账例子的思路来源。
+  </div>
+
+  <h2>五、活锁：一直在动，就是没进展</h2>
+  <p><strong>活锁</strong>和死锁的“症状”相反：线程没有阻塞，全都在 <code>RUNNABLE</code> 状态忙个不停、CPU 甚至打满，但因为不断重复同一个<em>会失败的动作</em>，谁都没能真正前进。生活里的类比是：两个人在走廊迎面相遇，你往左他也往左，你往右他也往右，反复“礼让”却始终撞在一起。</p>
+  <p>工程中最典型的是<strong>消息处理的“毒丸”回滚</strong>：一条无法处理的消息在事务失败后被<em>放回队列头部重试</em>，下次取出还是它、还是失败……处理线程永远在“取出→失败→回滚→再取出”里空转。另一类是<em>无退避的冲突重试</em>：两个线程检测到冲突就同时回退再同时重试，步调完全一致，于是永远撞车。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 固定步调重试 → 活锁</div>
+      <pre>while (!tryCommit()) {
+    rollback();
+    // 两个线程都立刻重试
+    // 冲突 → 回退 → 再冲突……
+    // CPU 100%，事务永不成功
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 随机化退避打破同步</div>
+      <pre>int attempt = 0;
+while (!tryCommit()) {
+    rollback();
+    // 随机等待，错开彼此步调
+    long back = random.nextInt(
+        1 &lt;&lt; Math.min(attempt++, 6));
+    Thread.sleep(back);
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <strong>解法直觉：</strong> 活锁的根子在于“<em>所有参与者做了完全相同的决定</em>”。只要引入一点<strong>随机性</strong>（随机退避时间、随机重试间隔），就能打破对称、错开步调——以太网的 CSMA/CD 二进制指数退避、分布式系统里的 jittered backoff 用的都是同一招。对“毒丸消息”，则应设置<strong>最大重试次数</strong>，超限就投递到死信队列（DLQ）而非无限回滚。
+  </div>
+
+  <h2>六、饥饿：轮不到我</h2>
+  <p><strong>饥饿</strong>是指某个线程<em>始终得不到</em>它需要的资源（CPU 时间片或锁），因而无法推进，尽管系统整体在正常运转。它不像死锁那样全盘停摆，而是“个别倒霉蛋被长期忽视”。常见成因有三类：</p>
+  <ul>
+    <li><strong>线程优先级误用：</strong>把某些线程设成高优先级，低优先级线程可能长期抢不到 CPU。</li>
+    <li><strong>非公平锁的“插队”：</strong>非公平锁允许活跃线程连续抢占，排队线程可能一直轮不上。</li>
+    <li><strong>持锁时间过长 / 死循环占用：</strong>某线程拿着锁做耗时操作（甚至在锁内 <code>sleep</code>、做 I/O），其余线程集体挨饿。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>别依赖 <code>Thread.setPriority()</code>！</strong> Java 的线程优先级（1~10）只是给操作系统调度器的一个<em>建议</em>，最终如何映射由 OS 决定：Linux 上默认几乎被无视，Windows 上只有寥寥几档生效。所以用优先级来“保证”某线程多跑或防饥饿是不可靠的，反而容易在某些平台上<strong>亲手制造饥饿</strong>。想控制执行秩序，应当用显式的并发工具（公平锁、有界队列、<code>Semaphore</code>），而不是拨弄优先级。
+  </div>
+
+  <div class="callout info">
+    <strong>联系上一章：</strong> 上一节我们讲 <code>ReentrantLock</code> / <code>Semaphore</code> 的<em>公平模式</em>时说过：非公平锁吞吐更高但有饥饿风险，公平锁按 FIFO 发放、杜绝饥饿但吞吐略低。这正是“防饥饿”与“性能”的经典取舍——绝大多数场景选非公平（饥饿概率极低且短暂），只有对响应时间可预测性有硬性要求时才付出公平锁的代价。
+  </div>
+
+  <h2>七、三者对比：一张表看穿区别</h2>
+  <table>
+    <tr><th>维度</th><th>死锁 Deadlock</th><th>活锁 Livelock</th><th>饥饿 Starvation</th></tr>
+    <tr><td>线程状态</td><td><code>BLOCKED</code>/<code>WAITING</code>，全体停摆</td><td><code>RUNNABLE</code>，一直在跑</td><td><code>RUNNABLE</code>/可运行，却总排不上</td></tr>
+    <tr><td>CPU 占用</td><td>接近 0（都在等）</td><td>很高甚至打满</td><td>受害线程 0，其他线程正常</td></tr>
+    <tr><td>影响范围</td><td>相关线程全部卡死</td><td>相关线程全部空转</td><td>个别线程受害，系统仍运转</td></tr>
+    <tr><td>能否自愈</td><td>不能，必须外部干预</td><td>理论上可能（若随机性帮忙）</td><td>可能，负载下降后自愈</td></tr>
+    <tr><td>典型成因</td><td>循环等待、锁顺序不一致</td><td>无退避的冲突重试、毒丸消息</td><td>优先级误用、非公平锁、长时持锁</td></tr>
+    <tr><td>核心对策</td><td>统一锁顺序 / 定时锁</td><td>引入随机退避 / 限重试次数</td><td>公平锁 / 限时持锁 / 别玩优先级</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>一句话记忆：</strong> 死锁是“<em>都不动</em>”，活锁是“<em>白忙活</em>”，饥饿是“<em>没我份</em>”。面试被追问“活锁和死锁的区别”时，答题要点就是<strong>线程状态与 CPU 占用</strong>——死锁线程阻塞、CPU 空闲；活锁线程运行、CPU 繁忙却零进展。这一句往往就能把回答者和背概念的人区分开。
+  </div>
+
+  <div class="callout key">
+    <strong>核心收束：</strong> 三者都是<em>活跃度故障</em>——程序没崩，但“好事不再发生”。<strong>死锁</strong>由四个必要条件（互斥 · 持有并等待 · 不可抢占 · 循环等待）共同促成，破坏任意一个即可预防，工程上首选<em>统一全局锁顺序</em>打破循环等待；<strong>活锁</strong>源于所有参与者步调一致地重复失败动作，靠<em>随机退避 + 重试上限</em>破除对称；<strong>饥饿</strong>是资源分配长期不公，用<em>公平锁、限时持锁</em>解决，切忌依赖不可靠的线程优先级。记住：加锁是为安全付的费，而这三种故障就是没算清楚的<strong>活跃度账单</strong>。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="15-CompletableFuture与异步编排.html" class="nav-btn">← CompletableFuture 与异步编排</a>
+    <a href="17-死锁的检测与避免.html" class="nav-btn next">死锁的检测与避免 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>什么是线程安全性</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 什么是线程安全性</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第1-2章·线程安全基础</div>
+    <h1>什么是线程安全性</h1>
+    <p>并发编程的全部难题，最后都能归到一句话：多个线程访问同一份可变状态时，程序还能不能给出正确的结果。</p>
+  </div>
+
+  <h2>一、先给一个能落地的定义</h2>
+  <p>很多人对"线程安全"的第一反应是"加了锁就安全"，这其实把因果搞反了。<em>Brian Goetz</em> 在书里给出的定义不谈任何实现手段，只谈行为：</p>
+
+  <div class="callout info">
+    <strong>线程安全的定义（JCIP 第 2 章）：</strong>当多个线程访问某个类时，<em>不管运行时环境采用何种调度方式、也不管这些线程将如何交替执行</em>，并且<em>在主调代码中不需要任何额外的同步或协同</em>，这个类都能表现出<strong>正确</strong>的行为，那么这个类就是线程安全的。
+  </div>
+
+  <p>这个定义有三个关键词值得咀嚼：<strong>"正确"</strong>指行为与其规约（specification）一致——你说好返回计数值，就得返回真实的计数值；<strong>"任何调度"</strong>意味着你不能假设线程会以某种"友好"的顺序执行，JVM 和 OS 有权在任意两条字节码之间切走线程；<strong>"不需要额外同步"</strong>是说责任在类内部——把线程安全的重担甩给每一个调用方，等于没有线程安全。</p>
+
+  <div class="callout tip">
+    <strong>为什么"无状态"对象天生线程安全？</strong>线程安全问题的根源永远是<strong>共享的可变状态（shared mutable state）</strong>。一个没有任何字段、只依赖方法入参和局部变量的对象（如很多无状态的 Spring <code>@Service</code>），每个线程都有自己的一份栈帧和局部变量，彼此隔离，根本不存在"共享"，自然不用同步。这正是 Spring 默认把 Bean 设成单例还敢多线程共享的底气——只要你别在里面加可变字段。
+  </div>
+
+  <h2>二、三条主线：原子性 / 可见性 / 有序性</h2>
+  <p>"正确"二字听着抽象，落到 JVM 层面，一段并发代码要正确，必须同时守住三道关。它们是本书后续所有工具（<code>synchronized</code>、<code>volatile</code>、锁、原子类）真正在解决的底层问题：</p>
+
+  <table>
+    <tr><th>特性</th><th>它保证什么</th><th>被破坏时的现象</th><th>典型武器</th></tr>
+    <tr><td><strong>原子性</strong><br>Atomicity</td><td>一组操作要么全做完、要么全不做，中间不被别的线程插入</td><td>更新丢失（如计数器少算）</td><td><code>synchronized</code>、<code>Lock</code>、<code>Atomic</code> 类（CAS）</td></tr>
+    <tr><td><strong>可见性</strong><br>Visibility</td><td>一个线程改了共享变量，别的线程能立刻看到新值</td><td>读到旧值、循环停不下来</td><td><code>volatile</code>、<code>synchronized</code></td></tr>
+    <tr><td><strong>有序性</strong><br>Ordering</td><td>程序执行的顺序符合预期，不被重排序坑到</td><td>对象"半初始化"、DCL 单例出 bug</td><td><code>volatile</code>、<code>synchronized</code>、happens-before</td></tr>
+  </table>
+
+  <div class="formula">线程安全 <span class="hl">=</span> 原子性 <span class="hl">+</span> 可见性 <span class="hl">+</span> 有序性</div>
+
+  <div class="callout info">
+    <strong>建立联系：</strong>这三条不是 Java 发明的概念，而是<em>所有</em>共享内存并发模型都要面对的。原子性来自"操作可被中断"的硬件事实；可见性来自 CPU 有多级缓存、写入不会瞬间对所有核可见；有序性来自编译器与 CPU 为了性能会<em>重排指令</em>。Java 用<strong>内存模型（JMM）</strong>把这三件事统一抽象成一套规则，让你不用关心 x86 还是 ARM 也能写出可移植的并发代码。
+  </div>
+
+  <h2>三、原子性：i++ 的三副面孔</h2>
+  <p>最经典的反例就是一个共享计数器被多线程 <code>++</code>。你眼里 <code>count++</code> 是一行代码，CPU 眼里它是<strong>读—改—写</strong>三步，任意两步之间都可能被切走：</p>
+
+  <div class="diagram">count++ 实际被拆成三步（对应字节码 getfield / iadd / putfield）：
+   ① read   : 从主内存读出 count 当前值到工作内存
+   ② modify : 在工作内存里 +1
+   ③ write  : 把结果写回主内存
+
+两个线程交错时会"更新丢失"：
+   count = 5
+   线程A ① 读到 5 ────────────┐
+   线程B ① 读到 5 ──┐         │
+   线程B ②③ 写回 6  ┘         │
+   线程A ②③ 写回 6 ←──────────┘   ← A 覆盖了 B，本该是 7，结果是 6</div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 非原子：会少算</div>
+      <pre>class Counter {
+  private long count = 0;
+  // count++ = 读+改+写，三步非原子
+  public void inc() { count++; }
+  public long get() { return count; }
+}
+// 两个线程各 +10000 次，
+// 结果常常 &lt; 20000</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 用 CAS 原子类</div>
+      <pre>class Counter {
+  private final AtomicLong count
+      = new AtomicLong(0);
+  // incrementAndGet 底层是
+  // CAS 自旋，硬件级原子
+  public void inc() {
+    count.incrementAndGet();
+  }
+  public long get() {
+    return count.get();
+  }
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱一：<code>volatile</code> 不能救原子性。</strong>初学者常以为给 <code>count</code> 加个 <code>volatile</code> 就万事大吉——错。<code>volatile</code> 只保证<em>可见性和有序性</em>，管不了"读—改—写"这个复合操作的原子性。两个线程照样能同时读到同一个旧值再各自 +1。计数场景请用 <code>AtomicLong</code>（CAS）或 <code>synchronized</code>，别指望 <code>volatile</code>。
+  </div>
+
+  <div class="callout tip">
+    <strong>联系 JDK 源码：</strong><code>AtomicLong.incrementAndGet()</code> 底层走的是 <code>Unsafe.getAndAddLong</code>，本质是一个 <code>compareAndSwap</code>（CAS）自旋循环——"我读到的还是旧值吗？是就把它换成新值，不是就重来"。它把"读改写"压缩成一条硬件原子指令（x86 上是带 <code>lock</code> 前缀的 <code>cmpxchg</code>），既拿到原子性又避免了锁的阻塞开销。这就是后面「Atomic 类与 CAS 原理」一节的引子。
+  </div>
+
+  <h2>四、可见性：那个永远停不下来的循环</h2>
+  <p>可见性问题比原子性更隐蔽，因为它平时"看起来"没事。下面这段代码里，主线程把 <code>stop</code> 改成 <code>true</code>，工作线程却可能<strong>永远看不到</strong>，一直空转：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>NoVisibility.java</span><span>缺乏可见性 → 死循环</span></div>
+    <pre><span class="kw">class</span> <span class="typ">NoVisibility</span> {
+    <span class="kw">private</span> <span class="kw">boolean</span> stop = <span class="kw">false</span>;   <span class="com">// 没有 volatile</span>
+
+    <span class="kw">void</span> <span class="fn">runWorker</span>() {
+        <span class="kw">new</span> <span class="typ">Thread</span>(() -&gt; {
+            <span class="kw">while</span> (!stop) {           <span class="com">// 可能一直读到缓存里的旧值 false</span>
+                <span class="com">// 空转……主线程改了也看不见</span>
+            }
+        }).<span class="fn">start</span>();
+    }
+
+    <span class="kw">void</span> <span class="fn">shutdown</span>() { stop = <span class="kw">true</span>; }  <span class="com">// 写入可能只停在自己的工作内存</span>
+}</pre>
+  </div>
+
+  <p>为什么会这样？现代 CPU 每个核心都有自己的高速缓存，JMM 把它抽象成"每个线程有一份<strong>工作内存</strong>，共享变量存在<strong>主内存</strong>"。线程读变量时可能读的是工作内存里的副本，写变量时也可能先攒在工作内存里不立刻刷回。没有可见性保证，一个线程的修改对另一个线程就是"透明"的。</p>
+
+  <div class="diagram">          ┌──────────── 主内存 (Main Memory) ────────────┐
+          │                  stop = true                  │
+          └───────▲───────────────────────────▲──────────┘
+                  │ 写回(可能延迟)              │ 读取(可能读旧副本)
+        ┌─────────┴────────┐         ┌─────────┴────────┐
+        │  线程1 工作内存    │         │  线程2 工作内存    │
+        │  stop = true ✔    │         │  stop = false ✘   │  ← 看不到别人的修改
+        └──────────────────┘         └──────────────────┘
+
+  volatile 的作用：写立即刷回主内存 + 读强制从主内存拉最新值
+                   （底层是插入内存屏障，并使其他核缓存失效）</div>
+
+  <div class="callout tip">
+    <strong>正解：</strong>把字段声明为 <code>private volatile boolean stop;</code> 即可。<code>volatile</code> 写会强制刷回主内存并让其他 CPU 缓存行失效，<code>volatile</code> 读会强制从主内存拉取最新值，从而保证可见性。<code>synchronized</code> 也能达到同样效果——退出同步块时把工作内存刷回主内存，进入时清空工作内存重新读。所以"用锁保护的变量"天然具备可见性。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱二：这个 bug 在你本机可能"复现不出来"。</strong>可见性问题依赖硬件、JIT 优化和运行时机——debug 模式、加了打印语句、CPU 核数不同，都可能让它"碰巧正常"。<em>并发 bug 最大的恶意就是不稳定复现</em>。所以正确性不能靠"跑了几次没事"来判断，必须靠对 JMM 规则的推理来保证。别把"测不出"当成"没问题"。
+  </div>
+
+  <h2>五、有序性：编译器和 CPU 会偷偷重排</h2>
+  <p>为了榨干性能，编译器、JIT 和 CPU 都可能在<em>不改变单线程执行结果</em>的前提下调整指令顺序（这叫 <strong>as-if-serial</strong>：单线程内怎么重排你都察觉不到）。但一旦多线程共享变量，重排就可能暴露出来：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Reordering.java</span><span>重排序导致的诡异结果</span></div>
+    <pre><span class="kw">int</span> a = <span class="num">0</span>, b = <span class="num">0</span>;
+<span class="kw">int</span> x = <span class="num">0</span>, y = <span class="num">0</span>;
+
+<span class="com">// 线程1                 // 线程2</span>
+a = <span class="num">1</span>;                  b = <span class="num">1</span>;
+x = b;                  y = a;
+
+<span class="com">// 直觉上 x==0 &amp;&amp; y==0 不可能出现，</span>
+<span class="com">// 但由于两行之间没有依赖，CPU 可能把 x=b 排到 a=1 之前，</span>
+<span class="com">// 于是 (x=0, y=0) 真的会偶发出现</span></pre>
+  </div>
+
+  <p>有序性被破坏最著名的翻车现场是<strong>双重检查锁（DCL）单例</strong>。<code>instance = new Singleton()</code> 看似一步，实则三步：① 分配内存 → ② 调用构造器初始化 → ③ 把引用赋给 <code>instance</code>。如果 ②③ 被重排成 ①③②，另一个线程就可能拿到一个<em>已非 null 但还没初始化完</em>的"半成品"对象：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 无 volatile 的 DCL</div>
+      <pre>class Singleton {
+  private static Singleton
+      instance;   // 无 volatile
+  static Singleton get() {
+    if (instance == null) {
+      synchronized(Singleton.class){
+        if (instance == null)
+          // 可能被重排，别的线程
+          // 拿到半初始化对象
+          instance = new Singleton();
+      }
+    }
+    return instance;
+  }
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 加 volatile 禁止重排</div>
+      <pre>class Singleton {
+  private static volatile
+      Singleton instance;
+  static Singleton get() {
+    if (instance == null) {
+      synchronized(Singleton.class){
+        if (instance == null)
+          // volatile 插入内存屏障，
+          // 保证 ①②③ 不被重排
+          instance = new Singleton();
+      }
+    }
+    return instance;
+  }
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <strong>happens-before：把有序性讲清楚的那把尺子。</strong>JMM 不会禁止所有重排（那样太慢），而是给出一组 <strong>happens-before</strong> 规则：只要 A happens-before B，A 的结果就一定对 B 可见、且不会被重排到 B 之后。常用的几条——程序顺序规则、<code>volatile</code> 写先于后续读、<code>unlock</code> 先于后续 <code>lock</code>、线程 <code>start()</code> 先于线程内所有操作。它同时管住了可见性和有序性，是后面「JMM: happens-before 规则」的核心，先记住这个名字。
+  </div>
+
+  <h2>六、别把"线程安全"想窄了</h2>
+  <p>不同手段覆盖的特性并不一样，选型时要对号入座，而不是无脑加 <code>synchronized</code>：</p>
+
+  <table>
+    <tr><th>手段</th><th>原子性</th><th>可见性</th><th>有序性</th><th>会阻塞吗</th></tr>
+    <tr><td><code>volatile</code></td><td>✗ 单读/单写才算</td><td>✓</td><td>✓</td><td>否</td></tr>
+    <tr><td><code>Atomic</code> 类 (CAS)</td><td>✓</td><td>✓</td><td>✓</td><td>否（自旋）</td></tr>
+    <tr><td><code>synchronized</code> / <code>Lock</code></td><td>✓</td><td>✓</td><td>✓</td><td>是</td></tr>
+    <tr><td><code>final</code> 字段</td><td>—</td><td>✓（安全发布）</td><td>✓（构造完成前禁重排）</td><td>否</td></tr>
+    <tr><td>不可变对象 / 无状态</td><td>✓（无需修改）</td><td>✓</td><td>✓</td><td>否</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱三：线程安全的类拼在一起，整体不一定线程安全。</strong><code>ConcurrentHashMap</code> 的每个方法都线程安全，但 <code>if (!map.containsKey(k)) map.put(k, v);</code> 这两步之间仍会被别的线程插入——这是一个<em>复合操作</em>，需要用 <code>putIfAbsent</code> 这样的原子方法，或额外加锁。<strong>线程安全不能"叠加"，它是针对具体操作序列而言的。</strong>这正是下一篇「竞态条件与复合操作」要展开的主题。
+  </div>
+
+  <h2>七、什么时候才需要关心它</h2>
+  <p>把判断流程记成一条决策链，能帮你避免"过度加锁"这种常见的性能自残：</p>
+
+  <div class="diagram">这个变量/对象会被多个线程访问吗？
+        │
+        ├─ 否 → 不用管（局部变量、线程封闭）      ← 最省心，优先设计成这样
+        │
+        └─ 是 → 它是可变的吗？
+                  │
+                  ├─ 否（不可变/final）→ 天然安全，无需同步
+                  │
+                  └─ 是 → 必须同步：
+                          · 只读写单个变量  → volatile / Atomic
+                          · 读改写 or 多变量一致 → 锁 / synchronized</div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>线程安全的本质，是让一段代码在<strong>任意线程调度下、无需调用方额外协同</strong>都能给出正确结果；而"正确"在 JVM 层面就落在三根支柱上——<strong>原子性</strong>（操作不被打断）、<strong>可见性</strong>（改动能被看见）、<strong>有序性</strong>（顺序不被坑）。它们的共同病根是<em>共享的可变状态</em>，所以第一优先级永远是<strong>消灭共享或消灭可变</strong>（无状态、线程封闭、不可变对象），实在要共享可变，再用 <code>volatile</code> / <code>Atomic</code> / 锁按需补齐这三条。记住：并发 bug 不稳定复现，正确性靠对 JMM 的推理，而不是靠"多跑几遍没崩"。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="roadmap.html" class="nav-btn">← 框架图</a>
+    <a href="02-竞态条件与复合操作.html" class="nav-btn next">竞态条件与复合操作 →</a>
+  </div>
+</div>
+</body>
+</html>

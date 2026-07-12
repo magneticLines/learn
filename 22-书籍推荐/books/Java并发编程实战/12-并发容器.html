@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>并发容器：ConcurrentHashMap、CopyOnWriteArrayList</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 并发容器：ConcurrentHashMap、CopyOnWriteArrayList</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第5-7章·并发构建模块</div>
+    <h1>并发容器：ConcurrentHashMap、CopyOnWriteArrayList</h1>
+    <p>把整张表锁死，还是只锁需要动的那一格？并发容器的全部智慧，都藏在"缩小锁的粒度"和"读写分离"这两句话里。</p>
+  </div>
+
+  <h2>一、为什么需要它：同步容器把并发退化成了串行</h2>
+  <p>在并发容器出现之前，想要一个线程安全的 Map，标准做法是 <code>Hashtable</code> 或 <code>Collections.synchronizedMap(new HashMap&lt;&gt;())</code>。它们的实现思路简单粗暴：<strong>给每个方法都加上 <code>synchronized</code>，用同一把锁（对象自己）保护整个容器</strong>。</p>
+
+  <p>这确实安全，但代价是——<em>无论多少线程、无论操作的是不是同一个 key，都得排队抢这一把大锁</em>。10 个线程读 10 个互不相干的桶，本可以完全并行，却被强行串行化。这在高并发下就是灾难。</p>
+
+  <div class="callout info">
+    <strong>一个生活类比：</strong>同步容器像一间只有<em>一把总钥匙</em>的图书馆——哪怕你只想看 A 区的书、我只想看 Z 区的书，也得轮流拿那把总钥匙进门。<code>ConcurrentHashMap</code> 则像给每个书架单独配了锁：你动 A 架、我动 Z 架，互不打扰，只有抢同一个架子时才需要等。锁的<strong>粒度</strong>从"整栋楼"缩小到了"一个架子"，并发度自然上来了。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：同步容器"每个方法安全" ≠ "复合操作安全"。</strong>这是最高频的误区。<code>synchronizedMap</code> 保证单次 <code>get</code>/<code>put</code> 原子，但"先查再放"这种<em>复合操作</em>横跨两次调用，两次之间锁已经释放，别的线程能插进来。下面这段"如果不存在就放入"的代码在并发下会重复放入或覆盖——这正是上一章讲的<strong>竞态条件（check-then-act）</strong>。
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 复合操作，两次调用之间有缝隙</div>
+      <pre>Map&lt;String,User&gt; m =
+    Collections.synchronizedMap(new HashMap&lt;&gt;());
+
+// check-then-act：非原子!
+if (!m.containsKey(id)) { // 线程A、B 可能同时判为 false
+    m.put(id, load(id));  // 于是 load 两次、put 两次
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 用容器提供的原子复合方法</div>
+      <pre>ConcurrentHashMap&lt;String,User&gt; m =
+    new ConcurrentHashMap&lt;&gt;();
+
+// 整个"不存在才计算并放入"是一个原子操作
+User u = m.computeIfAbsent(id,
+        k -&gt; load(k)); // load 只会被调用一次</pre>
+    </div>
+  </div>
+
+  <h2>二、ConcurrentHashMap 的进化：从分段锁到 CAS + synchronized</h2>
+  <p>要理解它今天的样子，得先看它当年怎么想的。JDK 7 和 JDK 8 是两套完全不同的设计，面试几乎必问它们的区别。</p>
+
+  <h3>JDK 7：Segment 分段锁（把大锁拆成 16 把小锁）</h3>
+  <p>JDK 7 的核心思想是<em>把一整个 Map 切成若干段（Segment），每段一把锁</em>。默认 16 段，意味着理论上可以有 16 个线程同时写而互不阻塞。<code>Segment</code> 继承自 <code>ReentrantLock</code>，本质是"16 个各自带锁的小 HashMap"拼在一起。</p>
+
+  <div class="diagram">JDK 7 结构：两层哈希（先定位 Segment，再定位桶）
+
+  ConcurrentHashMap
+    ├─ Segment[0]  (extends ReentrantLock) ─► HashEntry[] ─► 链表
+    ├─ Segment[1]  (一把独立的锁)          ─► HashEntry[] ─► 链表
+    ├─ ...
+    └─ Segment[15]                         ─► HashEntry[] ─► 链表
+
+  写 key 时： hash(key) 高位 → 选中某个 Segment → 只锁这一段
+             不同 Segment 的写操作 → 完全并行
+  并发度(concurrencyLevel) = Segment 个数 = 16 (默认，创建后不可变)</div>
+
+  <div class="callout tip">
+    <strong>分段锁的精妙与局限。</strong>精妙在于：把"一把锁"变成"16 把锁"，锁竞争的概率直接降到 1/16。局限在于：并发度被 <code>Segment</code> 数量<em>写死</em>了——16 段就最多 16 线程并行，再多也没用；而且两层哈希多绕了一次，定位一个元素要先算 Segment 再算桶，还多占一层对象的内存。JDK 8 决心把这层"中间商"干掉。
+  </div>
+
+  <h3>JDK 8：直接锁桶（数组 + 链表/红黑树 + CAS + synchronized）</h3>
+  <p>JDK 8 彻底重写：<strong>抛弃 Segment，回到和 HashMap 一样的"一个大数组"结构</strong>，锁的粒度进一步缩小到<em>单个桶（数组的一个槽 / 一条链表的头节点）</em>。这样并发度不再是固定的 16，而是等于<strong>桶的数量</strong>——数组越大，能并行的写线程越多，粒度天然随容量伸缩。</p>
+
+  <div class="formula">锁粒度：整表 <span class="hl">&gt;</span> Segment(16) <span class="hl">&gt;</span> 单个桶(随容量增长)</div>
+
+  <p>它把两种利器用在了不同场景，堪称"能不加锁就不加锁"的教科书：</p>
+  <ul>
+    <li><strong>CAS（无锁）</strong>：当某个桶是<em>空的</em>，用 <code>compareAndSet</code> 直接把新节点塞进去。这一步连锁都不用——乐观地假设没人跟我抢，抢输了就重试。</li>
+    <li><strong>synchronized（有锁）</strong>：当桶<em>非空</em>（发生哈希冲突，要挂到链表/红黑树上）时，才对<em>这个桶的头节点</em> <code>synchronized</code>。只锁一个桶，其他桶照常并行。</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>为什么 JDK 8 敢把 ReentrantLock 换回 synchronized？</strong>很多人以为 <code>synchronized</code> 一定比 <code>ReentrantLock</code> 慢——那是 JDK 6 之前的老黄历。JDK 6 起 <code>synchronized</code> 引入了<em>偏向锁 → 轻量级锁（CAS 自旋）→ 重量级锁</em>的锁升级机制，在竞争不激烈时几乎零成本；而这里锁的是<em>单个桶头节点</em>，竞争本就轻微，绝大多数情况停在轻量级锁阶段。加上 <code>synchronized</code> 由 JVM 原生支持、无需像 <code>ReentrantLock</code> 那样额外维护 AQS 队列对象，<strong>更省内存、更贴近底层</strong>。这是"选对场景"胜过"选贵的工具"的经典案例。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ConcurrentHashMap.java (JDK 8 简化)</span><span>putVal 的核心分支</span></div>
+    <pre><span class="kw">final</span> <span class="typ">V</span> <span class="fn">putVal</span>(<span class="typ">K</span> key, <span class="typ">V</span> value, <span class="kw">boolean</span> onlyIfAbsent) {
+    <span class="com">// 计算哈希，注意 key/value 不能为 null（见下文陷阱）</span>
+    <span class="kw">int</span> hash = <span class="fn">spread</span>(key.<span class="fn">hashCode</span>());
+    <span class="kw">for</span> (<span class="typ">Node</span>&lt;<span class="typ">K</span>,<span class="typ">V</span>&gt;[] tab = table;;) {
+        <span class="typ">Node</span>&lt;<span class="typ">K</span>,<span class="typ">V</span>&gt; f; <span class="kw">int</span> n, i;
+        <span class="kw">if</span> (tab == <span class="kw">null</span> || (n = tab.length) == <span class="num">0</span>)
+            tab = <span class="fn">initTable</span>();                       <span class="com">// 懒初始化，也靠 CAS 保证只初始化一次</span>
+        <span class="kw">else if</span> ((f = <span class="fn">tabAt</span>(tab, i = (n - <span class="num">1</span>) &amp; hash)) == <span class="kw">null</span>) {
+            <span class="com">// ① 桶为空：直接 CAS 放入，无锁！抢失败就 for 循环重试</span>
+            <span class="kw">if</span> (<span class="fn">casTabAt</span>(tab, i, <span class="kw">null</span>, <span class="kw">new</span> <span class="typ">Node</span>&lt;&gt;(hash, key, value)))
+                <span class="kw">break</span>;
+        }
+        <span class="kw">else if</span> ((fh = f.hash) == MOVED)
+            tab = <span class="fn">helpTransfer</span>(tab, f);             <span class="com">// 正在扩容？当前线程"帮忙"搬迁</span>
+        <span class="kw">else</span> {
+            <span class="com">// ② 桶非空（哈希冲突）：只锁这个桶的头节点 f</span>
+            <span class="kw">synchronized</span> (f) {
+                <span class="com">// 遍历链表或红黑树，插入/覆盖……</span>
+            }
+        }
+    }
+    <span class="fn">addCount</span>(1L, binCount);                     <span class="com">// 用类似 LongAdder 的分片计数（见 size 陷阱）</span>
+    <span class="kw">return</span> <span class="kw">null</span>;
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>两个 JDK 8 彩蛋。</strong>其一，链表长度超过 <code>8</code> 且数组容量 ≥ <code>64</code> 时，链表会<em>树化</em>成红黑树，把最坏查找从 O(n) 降到 O(log n)——这和 <code>HashMap</code> JDK 8 的优化同源。其二，扩容时支持<strong>多线程协同搬迁（helpTransfer）</strong>：一个线程发现 map 正在扩容，不会干等，而是"搭把手"一起搬运桶，搬完的桶用一个特殊的 <code>ForwardingNode</code>（hash = MOVED）标记，读操作遇到它会自动转到新表去查。并发扩容，这是 JDK 7 做不到的。
+  </div>
+
+  <h2>三、弱一致性：迭代器不抛 ConcurrentModificationException</h2>
+  <p>用过普通 <code>HashMap</code> 的人都被 <code>ConcurrentModificationException</code>（并发修改异常）坑过：一边遍历一边改，立刻抛异常。这叫 <strong>fail-fast（快速失败）</strong>——靠一个 <code>modCount</code> 计数器发现结构变了就报错，宁可崩也不给你脏数据。</p>
+
+  <p><code>ConcurrentHashMap</code> 走的是相反的 <strong>fail-safe / 弱一致性（weakly consistent）</strong>路线：迭代器基于创建那一刻的结构遍历，遍历期间别的线程增删，它<em>不抛异常</em>，但你可能看到、也可能看不到那些改动。</p>
+
+  <div class="callout warn">
+    <strong>陷阱：弱一致性下，聚合方法的返回值只是"估计值"。</strong><code>size()</code> 和 <code>isEmpty()</code> <em>不加全局锁</em>，返回的是某一瞬间的近似值——你拿到 100 的下一刻它可能已是 101。所以<strong>绝不能</strong>写 <code>for (int i = 0; i &lt; map.size(); i++)</code> 这种依赖精确 size 的循环，也不能用 <code>size()==0</code> 当作严格的空判断。JDK 8 还新增了 <code>mappingCount()</code> 返回 <code>long</code>，因为元素数可能超过 <code>Integer.MAX_VALUE</code>——但它同样是估计值。<em>需要精确计数？说明你可能选错了数据结构。</em>
+  </div>
+
+  <div class="callout info">
+    <strong>为什么甘愿牺牲一致性？</strong>这是一次<em>刻意的取舍</em>：要让 <code>size()</code> 精确，就得在统计时锁住整个 map，那又回到了"整表大锁"的老路，前面所有缩小粒度的努力就白费了。并发容器的设计哲学是——<strong>用"稍微不那么精确"换取"高吞吐、不阻塞读写"</strong>。这也解释了它内部为什么用类似 <code>LongAdder</code> 的<em>分片计数</em>（多个 counterCell 分散热点，求和时才相加）来统计元素数，而不是一个全局的 <code>volatile int</code>——后者会成为所有写线程争抢的热点。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：ConcurrentHashMap 不允许 null 键或 null 值（HashMap 却允许）。</strong>put 一个 null value 会直接 <code>NullPointerException</code>。原因是并发下的<em>二义性</em>：<code>map.get(k)</code> 返回 <code>null</code> 时，你无法区分"这个 key 不存在"还是"这个 key 存了 null 值"——单线程里可以再用 <code>containsKey</code> 补一刀判断，但并发环境下这两步之间值可能被改，判断本身就不可靠。索性从源头禁止 null，让 <code>get()==null</code> 唯一地表示"不存在"。
+  </div>
+
+  <h2>四、用原子复合方法代替"查—改—写"</h2>
+  <p>并发容器最大的价值不只是"线程安全的 get/put"，更是它把常见的复合操作<em>打包成了单个原子方法</em>，帮你消灭 check-then-act 竞态。这些方法你必须烂熟：</p>
+
+  <table>
+    <tr><th>方法</th><th>语义</th><th>典型用途</th></tr>
+    <tr><td><code>putIfAbsent(k,v)</code></td><td>key 不存在才放入 v，返回旧值（或 null）</td><td>去重注册、只初始化一次</td></tr>
+    <tr><td><code>computeIfAbsent(k, fn)</code></td><td>key 不存在才用 fn 计算并放入，<em>fn 只跑一次</em></td><td>懒加载缓存（最常用）</td></tr>
+    <tr><td><code>compute(k, fn)</code></td><td>基于旧值算新值并放入</td><td>原子更新对象</td></tr>
+    <tr><td><code>merge(k, v, fn)</code></td><td>无则放 v，有则用 fn 合并新旧值</td><td>原子累加计数</td></tr>
+    <tr><td><code>remove(k, v)</code></td><td>key 的当前值等于 v 才删（CAS 语义）</td><td>安全删除</td></tr>
+  </table>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 并发计数丢更新</div>
+      <pre>ConcurrentHashMap&lt;String,Long&gt; cnt
+    = new ConcurrentHashMap&lt;&gt;();
+
+// get / put 两步，中间会被打断
+Long old = cnt.get(word);   // 读到 5
+cnt.put(word, (old==null?0:old)+1);
+// 两个线程都读到 5，都写 6 → 少加一次</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ merge 一步到位，原子累加</div>
+      <pre>ConcurrentHashMap&lt;String,Long&gt; cnt
+    = new ConcurrentHashMap&lt;&gt;();
+
+// 无则置 1，有则旧值 + 1，整体原子
+cnt.merge(word, 1L, Long::sum);
+
+// 计数场景更推荐 LongAdder 作为 value：
+// map.computeIfAbsent(k,
+//     x-&gt;new LongAdder()).increment();</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：<code>computeIfAbsent</code> 的映射函数里，别再动<em>同一个</em> map。</strong>它执行 fn 时持有当前桶的锁，如果你在 fn 内部对同一个 key（甚至映射到同一桶的另一个 key）再做 put/computeIfAbsent，JDK 8 可能死循环或抛异常（这是官方修复过的知名 bug）。守则：<em>映射函数应当短小、无副作用，只负责"算出这个 key 的值"，别在里面折腾容器本身。</em>
+  </div>
+
+  <h2>五、CopyOnWriteArrayList：读多写极少的另一条路</h2>
+  <p><code>ConcurrentHashMap</code> 走的是"缩小锁粒度"；<code>CopyOnWriteArrayList</code>（写时复制）则走另一个极端——<strong>读操作完全不加锁，代价全压给写操作</strong>。它的名字就是全部秘密：<em>每次写（add/set/remove），都把整个底层数组复制一份，在副本上改，改完再把内部引用"原子地"指向新数组。</em></p>
+
+  <div class="diagram">写时复制（Copy-On-Write）的一次 add：
+
+  写前:  array ──► [A, B, C]        ← 读线程正遍历这个旧数组，安全
+                                       （它读到的始终是一个不变的快照）
+  写时:  1) 加 ReentrantLock（写与写互斥）
+         2) 复制:  newArray = [A, B, C]  →  [A, B, C, D]
+         3) 在副本上改，旧数组一个字节都没动
+         4) array = newArray   ← volatile 引用赋值，一步切换（原子）
+  写后:  array ──► [A, B, C, D]     ← 新读线程看到新数组
+
+  关键: 读路径上没有任何锁、没有 CAS，就是一次 volatile 读，快到极致</div>
+
+  <div class="callout info">
+    <strong>为什么读可以完全无锁？</strong>因为写操作<em>从不修改</em>正在被读的那个数组——它另起炉灶复制一份改。旧数组是<strong>事实不可变（effectively immutable）</strong>的，而不可变对象天生线程安全（回忆「不变性」那一篇）。读线程要么看到旧数组、要么看到新数组，绝不会看到"改了一半"的中间态。内部数组引用用 <code>volatile</code> 修饰，保证写线程 <code>array = newArray</code> 后，读线程立刻可见——这正是<em>happens-before</em> 里 volatile 写/读建立的可见性保证。
+  </div>
+
+  <div class="callout tip">
+    <strong>迭代器是"快照"，永不抛 ConcurrentModificationException。</strong>调用 <code>iterator()</code> 那一刻，它把当时的数组引用抓在手里，之后无论别人怎么写（写的是新数组），这个迭代器始终遍历它抓到的旧快照。好处是遍历绝对安全、无需加锁；代价是<em>遍历期间的新增改动你看不到</em>（弱一致性），而且<strong>迭代器不支持 <code>remove()/set()/add()</code></strong>——因为它面对的是一份只读快照，改了也没意义，会直接抛 <code>UnsupportedOperationException</code>。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>CopyOnWriteArrayList.java (JDK 简化)</span><span>add 加锁复制，get 直接读</span></div>
+    <pre><span class="kw">public</span> <span class="kw">boolean</span> <span class="fn">add</span>(<span class="typ">E</span> e) {
+    <span class="kw">final</span> <span class="typ">ReentrantLock</span> lock = <span class="kw">this</span>.lock;
+    lock.<span class="fn">lock</span>();                              <span class="com">// 写与写互斥（同一时刻只允许一个写）</span>
+    <span class="kw">try</span> {
+        <span class="typ">Object</span>[] es = <span class="fn">getArray</span>();
+        <span class="kw">int</span> len = es.length;
+        es = <span class="typ">Arrays</span>.<span class="fn">copyOf</span>(es, len + <span class="num">1</span>);  <span class="com">// ★ 复制整个数组，O(n)</span>
+        es[len] = e;
+        <span class="fn">setArray</span>(es);                        <span class="com">// volatile 写，原子切换引用</span>
+        <span class="kw">return</span> <span class="kw">true</span>;
+    } <span class="kw">finally</span> {
+        lock.<span class="fn">unlock</span>();
+    }
+}
+
+<span class="kw">public</span> <span class="typ">E</span> <span class="fn">get</span>(<span class="kw">int</span> index) {
+    <span class="kw">return</span> (<span class="typ">E</span>) <span class="fn">getArray</span>()[index];        <span class="com">// 读：无锁！就是一次 volatile 读 + 取下标</span>
+}</pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：写操作是 O(n) 且极耗内存，绝不能用于写频繁的场景。</strong>每次 add 都复制整个数组：往一个 10000 元素的列表里循环 <code>add</code> 一万次，就是复制一万次、总共搬运约 5000 万次引用，还在瞬间产生大量待回收的旧数组，直接把 GC 压垮。<strong>它只适合"读远多于写、且集合不大"的场景</strong>——最经典的就是<em>事件监听器列表</em>（注册一次、之后疯狂遍历触发）、配置/白名单快照。需要频繁写？请回到 <code>ConcurrentHashMap</code>（用 key 集合模拟 Set）或加锁的普通结构。
+  </div>
+
+  <h2>六、横向对比：什么场景选什么容器</h2>
+
+  <table>
+    <tr><th>需求</th><th>该选</th><th>别用</th><th>原因</th></tr>
+    <tr><td>高并发读写的 Map</td><td><code>ConcurrentHashMap</code></td><td><code>Hashtable</code> / <code>synchronizedMap</code></td><td>桶级锁 vs 整表大锁，吞吐差一个数量级</td></tr>
+    <tr><td>读多写极少的 List<br>（如监听器）</td><td><code>CopyOnWriteArrayList</code></td><td><code>Vector</code> / <code>synchronizedList</code></td><td>读无锁；写虽贵但极罕见</td></tr>
+    <tr><td>读多写极少的 Set</td><td><code>CopyOnWriteArraySet</code></td><td>—</td><td>底层就是 COWArrayList</td></tr>
+    <tr><td>并发读写的 Set</td><td><code>ConcurrentHashMap.newKeySet()</code></td><td><code>synchronizedSet</code></td><td>复用 CHM 的桶级锁</td></tr>
+    <tr><td>需要排序的并发 Map</td><td><code>ConcurrentSkipListMap</code></td><td><code>synchronizedSortedMap</code></td><td>跳表，无锁读、有序</td></tr>
+    <tr><td>生产者-消费者队列</td><td><code>ConcurrentLinkedQueue</code> / <code>BlockingQueue</code></td><td><code>synchronizedList</code></td><td>专为队列语义优化（下一篇）</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>建立联系：三条完全不同的技术路线。</strong>并发安全其实就三大流派——<strong>①分段/分桶加锁</strong>（<code>ConcurrentHashMap</code>：缩小锁粒度，读写都快）；<strong>②写时复制</strong>（<code>CopyOnWriteArrayList</code>：读无锁，写复制，赌"读远多于写"）；<strong>③无锁 CAS</strong>（<code>ConcurrentLinkedQueue</code>：靠 CAS 自旋，一把锁都不用）。它们没有优劣，只有<em>是否匹配你的读写比例</em>。选容器的第一问永远是：<em>我的读写比例、数据规模、是否需要有序，到底是什么样？</em>
+  </div>
+
+  <h2>七、终极陷阱：容器安全 ≠ 你的业务逻辑安全</h2>
+  <p>用了 <code>ConcurrentHashMap</code> 就高枕无忧了？不。它只保证<em>单个方法调用</em>原子，你的业务往往是<em>多次调用的组合</em>——组合起来照样有竞态。这是初学者最容易踩空的地方。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 两次原子调用 ≠ 组合原子</div>
+      <pre>ConcurrentHashMap&lt;String,Integer&gt; m
+    = new ConcurrentHashMap&lt;&gt;();
+
+// get 原子、put 原子，但合起来不是!
+Integer v = m.get("k");        // 读到 3
+m.put("k", v + 1);             // 别人也读到 3
+// 结果 4，本该是 5 → 丢更新</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 让容器帮你把组合变原子</div>
+      <pre>ConcurrentHashMap&lt;String,Integer&gt; m
+    = new ConcurrentHashMap&lt;&gt;();
+
+// compute 内部持桶锁，读改写一体原子
+m.compute("k",
+    (k, v) -&gt; (v == null ? 0 : v) + 1);
+// 或 m.merge("k", 1, Integer::sum);</pre>
+    </div>
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>并发容器的全部智慧就两条主线——<strong>缩小锁的粒度</strong>与<strong>读写分离</strong>。<code>ConcurrentHashMap</code> 从 JDK 7 的<em>分段锁</em>进化到 JDK 8 的<em>桶级 CAS + synchronized + 红黑树</em>，把锁粒度压到单个桶，读几乎无锁；<code>CopyOnWriteArrayList</code> 则用<em>写时复制</em>把读变成一次纯 volatile 读，代价是写 O(n)、只配读多写少。它们都以<strong>弱一致性</strong>（<code>size()</code>/迭代器是估计值/快照、不抛并发修改异常、不许 null）换取高吞吐。但请牢牢记住最后一颗地雷：<em>容器保证单次调用原子，不保证你把多次调用拼起来的复合操作原子</em>——需要"读—改—写"时，务必用 <code>computeIfAbsent</code> / <code>merge</code> / <code>compute</code> 这类原子方法，而不是自己 get 完再 put。选容器前先问清楚：读写比例、数据规模、是否需要有序。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="11-同步工具.html" class="nav-btn">← 同步工具</a>
+    <a href="13-任务执行框架.html" class="nav-btn next">任务执行框架 →</a>
+  </div>
+</div>
+</body>
+</html>

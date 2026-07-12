@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>可靠数据传输原理：rdt 协议家族</title>
+  <style>
+    :root { --c: #38bdf8; --c-dim: #164e63; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">计算机网络：自顶向下方法</a> / 可靠数据传输原理：rdt 协议家族</div>
+  <div class="hero">
+    <div class="tag">计算机网络 · 第3章·传输层</div>
+    <h1>可靠数据传输原理：rdt 协议家族</h1>
+    <p>底层信道会出错、会丢包、会乱序——可靠数据传输要做的，就是在这样一条"不靠谱的管道"上，一个字节不差、不重、不乱地把数据送到对面。本节用五步 FSM 从零造出一个可靠协议，这正是 TCP 的思想内核。</p>
+  </div>
+
+  <h2>一、问题定义：可靠传输到底要保证什么</h2>
+  <p><strong>可靠数据传输（rdt, reliable data transfer）</strong>是传输层要向上层应用兑现的一份"服务契约"：应用把数据交给传输层，传输层负责在一条<strong>不可靠</strong>的底层信道上，把数据完好无损地交到对端应用手里。所谓"完好无损"，具体是三条承诺：</p>
+  <ul>
+    <li><strong>不出错</strong>：交上去的每一位都和发出去的一致（对抗<strong>比特差错</strong>）。</li>
+    <li><strong>不丢失</strong>：发了 N 个分组，对端应用最终收到 N 个（对抗<strong>丢包</strong>）。</li>
+    <li><strong>不乱序、不重复</strong>：按发送顺序、且每个分组只交付一次（对抗<strong>乱序与重复交付</strong>）。</li>
+  </ul>
+  <div class="diagram">        ┌──────────────┐                      ┌──────────────┐
+        │  发送方应用  │                      │  接收方应用  │
+        └──────┬───────┘                      └──────▲───────┘
+   rdt_send() │ 可靠数据传输(rdt)提供的"契约"    │ deliver_data()
+        ┌──────▼───────┐   ~~~ 可靠信道(抽象) ~~~  ┌──────┴───────┐
+        │  rdt 发送方  │ ───────────────────────► │  rdt 接收方  │
+        └──────┬───────┘                          └──────▲───────┘
+   udt_send()  │      不可靠信道(unreliable)         │ rdt_rcv()
+        ┌──────▼─────────────────────────────────────┴───────┐
+        │   会出比特差错 / 会丢包 / 时延不定的真实网络         │
+        └────────────────────────────────────────────────────┘</div>
+  <div class="callout info"><strong>关键抽象：把"可靠"这层做成一个协议，扣在不可靠信道之上。</strong>上层完全感知不到底层的丢包和差错——就像你写 <code>list.get(0)</code> 时不用关心数组扩容一样。Kurose 用<strong>有限状态机（FSM, Finite State Machine）</strong>来描述这个协议：发送方 / 接收方各是一台状态机，"收到什么事件 → 做什么动作 → 跳到哪个状态"。下面我们就用"逐步加码信道难度"的方式，从最简单的 rdt1.0 一路进化到 rdt3.0。</div>
+
+  <h2>二、rdt1.0 → rdt2.0：先解决"会出错"</h2>
+  <h3>rdt1.0：完全可靠的信道（基线）</h3>
+  <p>假设底层信道百分百可靠——不出错也不丢包。那协议什么都不用做：发送方来数据就发，接收方来分组就收。这是我们的<strong>基线</strong>，也说明"复杂度是被信道的缺陷逼出来的"。</p>
+  <h3>rdt2.0：信道会翻转比特（引入 ARQ）</h3>
+  <p>现在信道会把 <code>1</code> 变 <code>0</code>、<code>0</code> 变 <code>1</code>（<strong>比特差错</strong>），但还不会丢包。要在这条信道上可靠传输，得引入三样东西，它们合起来就是<strong>ARQ（Automatic Repeat reQuest，自动重传请求）</strong>协议的雏形：</p>
+  <table>
+    <tr><th>机制</th><th>作用</th><th>现实对照</th></tr>
+    <tr><td><strong>校验和 checksum</strong></td><td>接收方靠它<strong>检测</strong>分组是否出错</td><td>UDP / TCP 首部的校验和字段</td></tr>
+    <tr><td><strong>确认 ACK / 否认 NAK</strong></td><td>接收方<strong>反馈</strong>："收对了(ACK)"或"收坏了(NAK)"</td><td>打电话时的"嗯""啥？再说一遍"</td></tr>
+    <tr><td><strong>重传 retransmission</strong></td><td>发送方收到 NAK 就<strong>重发</strong>刚才那个分组</td><td>没听清就再说一遍</td></tr>
+  </table>
+  <div class="callout tip"><strong>生活类比：电话里念一串验证码。</strong>你念一段（发分组），对方复述"对，继续"（ACK）或"没听清"（NAK）。听到"没听清"你就重念一遍。这种"<strong>发一个、停下来等确认、确认了再发下一个</strong>"的工作方式，叫<strong>停等协议（stop-and-wait）</strong>——rdt2.0 / 2.1 / 2.2 / 3.0 全是停等协议，它们的区别只在于"如何应对确认本身也可能出问题"。</div>
+
+  <h2>三、rdt2.0 的致命缺陷 → rdt2.1 引入序号</h2>
+  <p>rdt2.0 有个要命的漏洞：它默认 <strong>ACK/NAK 一定不会损坏</strong>。可 ACK/NAK 也是走同一条会出错的信道！如果发送方收到一个<strong>被弄坏、看不清是 ACK 还是 NAK</strong> 的反馈，它该怎么办？</p>
+  <p>选项一：当作 NAK 直接重发。问题来了——如果对方其实早就正确收到了（发的是 ACK 只是路上坏了），这次重发就制造了一个<strong>重复分组（duplicate）</strong>。而 rdt2.0 的接收方<strong>无法分辨</strong>手里这个是新分组还是上一个的重传，就会把同一份数据交付两次。这违反了"不重复"的承诺。</p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">反例 · rdt2.0：无序号，重复无法识别</div>
+<pre>发送方: 发分组 D0
+接收方: 收到 D0，交付，回 ACK
+   ~~~ ACK 在路上被弄坏 ~~~
+发送方: 看不懂反馈，只好重发 D0
+接收方: 又收到一个 D0……
+        这是新数据？还是重传？
+        无从判断 → 重复交付 D0 !
+        （数据被应用处理了两次）</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">正例 · rdt2.1：加 1 比特序号</div>
+<pre>发送方: 发 [seq=0] D0
+接收方: 收 seq=0，交付，回 ACK
+   ~~~ ACK 被弄坏 ~~~
+发送方: 看不懂，重发 [seq=0] D0
+接收方: 咦，还是 seq=0 ?
+        我上次已收过 seq=0 →
+        判定为重传，丢弃不交付，
+        只重回一个 ACK。不重复 !</pre>
+    </div>
+  </div>
+  <p>这就是 <strong>rdt2.1</strong> 的核心改进：给每个分组打上<strong>序号（sequence number）</strong>。因为停等协议里"空中"最多只有一个未确认的分组，所以<strong>一个比特（0 和 1 交替）就够用</strong>——所以它又叫<strong>交替比特协议（alternating-bit protocol）</strong>。接收方靠序号判断"这是我期待的新分组，还是上一个的重传"。</p>
+  <div class="callout warn"><strong>面试高频陷阱：序号解决的是"重复"，不是"丢失"。</strong>很多人把序号的作用记成"防丢包"，错。在 rdt2.1 里，序号纯粹是让接收方能<strong>识别重复</strong>（以及让发送方能识别收到的是不是当前分组的 ACK）。真正对抗丢包的机制（定时器）要到 rdt3.0 才登场。把"序号→去重、定时器→抗丢"这两件事分开记，你就不会在协议设计题里张冠李戴。</div>
+
+  <h3>rdt2.2：一个不用 NAK 的等价设计</h3>
+  <p>rdt2.2 是 rdt2.1 的等价变体，只做一件事：<strong>废掉 NAK</strong>。做法是让接收方在回 ACK 时<strong>带上它最后一次正确收到的分组的序号</strong>。发送方如果收到的是"对上一个分组的 ACK"（即序号不对），就等价于收到了一个 NAK，于是重发当前分组。</p>
+  <div class="callout info"><strong>为什么要费劲取消 NAK？为 TCP 铺路。</strong>"用带序号的重复 ACK 代替 NAK"这个设计被 <strong>TCP 完整继承</strong>了——TCP 里根本没有 NAK 字段，接收方永远只回 ACK；发送方连续收到<strong>3 个重复 ACK（duplicate ACK）</strong>，就当作"你要的那个包丢了"的信号，触发<strong>快速重传</strong>。你现在理解的 rdt2.2，就是后面"TCP 快速重传"那一节的地基。</div>
+
+  <h2>四、rdt3.0：直面丢包——定时器登场</h2>
+  <p>现在给信道加上最后一种麻烦：<strong>分组会整个丢失</strong>（数据分组丢、或 ACK 丢都算）。前面所有机制在丢包面前都失灵了——因为分组一旦丢了，接收方压根不会反馈任何东西，发送方就<strong>永远死等</strong>下去，协议卡死。</p>
+  <p>怎么办？发送方无法区分"分组丢了""ACK 丢了""网络只是慢"这三种情况，于是采用一个朴素而有效的办法：<strong>发出分组后启动一个倒计数定时器，等待一个"合理的"时间；到点还没收到 ACK，就直接重发。</strong>这就是<strong>超时重传（timeout &amp; retransmit）</strong>，rdt3.0 由此诞生。</p>
+  <div class="diagram">rdt3.0 停等 + 超时重传：一次"数据分组丢失"的时序
+  发送方                                          接收方
+    │  发 [seq=0] ──────────✗ (分组丢失，接收方啥也没收到)
+    │  ⏱ 启动定时器…
+    │        (死等 → 定时器超时!)
+    │  ⏱ TIMEOUT → 重发 [seq=0] ───────────────►  收到 seq=0
+    │  ◄──────────────────────────────── 回 ACK0  交付数据
+    │  收到 ACK0，翻转序号 → 准备发 seq=1
+    │  发 [seq=1] ─────────────────────────────►  收到 seq=1
+    │  ◄──────────────────────────────── 回 ACK1  交付数据</div>
+  <div class="callout warn"><strong>陷阱：超时会带来"没必要的重复"，所以序号绝不能省。</strong>如果只是网络慢、ACK 还在路上，定时器就提前超时（premature timeout）了，发送方会重发，从而在网络里制造出重复分组。正因为丢包机制天然会产生重复，rdt3.0 才<strong>必须保留 rdt2.1 的序号去重</strong>。这也解释了为什么 TCP 的超时时间要基于 RTT 动态估算（用 EWMA 指数加权移动平均去平滑抖动）——超时设太短会疯狂误重传拖垮网络，设太长则丢包后恢复太慢。定时器长度的选择本身就是一门权衡。</div>
+
+  <h3>用代码把 rdt3.0 发送方逻辑写清楚</h3>
+  <p>下面这段是 rdt3.0 发送方的核心循环。注意它把前面所有机制都拧在了一起：校验、序号、ACK 判断、超时重发。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Rdt3Sender.java（停等 · 交替比特 · 超时重传）</span><span>伪代码化的核心逻辑</span></div>
+<pre><span class="kw">int</span> seq = <span class="num">0</span>;                              <span class="com">// 交替比特：只在 0 / 1 之间翻转</span>
+<span class="kw">while</span> (hasData()) {
+    <span class="typ">Packet</span> pkt = make(seq, data, checksum(data));  <span class="com">// 打上序号 + 校验和</span>
+    send(pkt);                                <span class="com">// udt_send：交给不可靠信道</span>
+    startTimer(TIMEOUT);                       <span class="com">// rdt3.0 的灵魂：发完就上闹钟</span>
+
+    <span class="typ">Ack</span> ack;
+    <span class="kw">while</span> ((ack = waitAck()) == <span class="kw">null</span>       <span class="com">// null 表示定时器超时了</span>
+           || corrupt(ack)                    <span class="com">// ACK 本身损坏，看不清</span>
+           || ack.seq != seq) {               <span class="com">// 收到的是"上一个"的 ACK(rdt2.2 思想)</span>
+        send(pkt);                            <span class="com">// 以上任一情况：一律重发当前分组</span>
+        restartTimer(TIMEOUT);                <span class="com">// 重发后重置闹钟</span>
+    }
+    stopTimer();                              <span class="com">// 收到了正确的 ACK</span>
+    seq ^= <span class="num">1</span>;                               <span class="com">// 翻转序号，准备发下一个</span>
+}</pre>
+  </div>
+  <div class="callout tip"><strong>把概念对回代码：</strong><code>checksum</code> 是 rdt2.0 的检错、<code>seq</code> 是 rdt2.1 的去重、<code>ack.seq != seq</code> 判断是 rdt2.2 的"用 ACK 代替 NAK"、<code>startTimer / waitAck()==null</code> 是 rdt3.0 的抗丢包。四层信道难度、四个机制，一段循环全兜住了。</div>
+
+  <h2>五、停等的性能之殇：信道被白白闲置</h2>
+  <p>rdt3.0 功能上正确了，但<strong>性能糟糕</strong>——因为它"发一个就停下来等一个 RTT"。用一个 Kurose 书里的经典算例感受一下：一条 <strong>1 Gbps</strong> 的链路、单向传播时延 15ms（<strong>RTT = 30ms</strong>）、分组大小 8000 bit（1KB）。</p>
+  <p>先算把一个分组"推上链路"的<strong>发送时延</strong> <code>L/R = 8000 bit / 10⁹ bps = 0.008 ms</code>。发送方真正"忙"的时间只有 0.008ms，然后要干等一整个 RTT 才能发下一个。它的<strong>信道利用率</strong>（发送方有效工作时间占比）是：</p>
+  <div class="formula">U = <span class="hl">(L/R)</span> / (RTT + L/R) = 0.008 / (30 + 0.008) ≈ <span class="hl">0.00027</span></div>
+  <p>也就是 <strong>0.027%</strong>！一条 1 Gbps 的链路，实际有效吞吐只有约 <strong>267 kbps</strong>——99.97% 的时间信道在空转。画成时间轴一目了然：</p>
+  <div class="bar">
+    <span style="background:#38bdf8;width:4%">发 0.008ms</span>
+    <span style="background:#334155;width:96%;color:#94a3b8">空等 RTT ≈ 30ms（信道彻底闲置）</span>
+  </div>
+  <div class="callout info"><strong>根因：停等协议没让"传播时延"这段时间干活。</strong>数据在光纤里飞的那 15ms、ACK 飞回来的 15ms，发送方本可以继续塞新分组进管道，却在傻等。解决思路很直接——<strong>别停下来等，一口气发多个再一起等确认</strong>。这就是<strong>流水线（pipelining）</strong>，也是所有现代可靠传输协议的性能基石。</div>
+
+  <h2>六、流水线：Go-Back-N vs 选择重传</h2>
+  <p>流水线允许发送方在收到确认前<strong>连续发出多个分组</strong>，用一个"<strong>窗口</strong>"限制未确认分组的数量。窗口开 N 个，利用率就大致乘以 N（直到把管道填满）：</p>
+  <div class="formula">U<sub>流水线</sub> ≈ <span class="hl">N</span> × (L/R) / (RTT + L/R)</div>
+  <p>但流水线带来一个新问题：<strong>管道里某个分组出错或丢了，怎么办？</strong>只重那一个，还是把它之后的全重来？这里分出了两条经典路线——<strong>回退 N（Go-Back-N, GBN）</strong>和<strong>选择重传（Selective Repeat, SR）</strong>。</p>
+  <div class="diagram">Go-Back-N（累积确认 + 出错就"回退 N 步"全部重发）
+  已确认 │◄── 发送窗口 N=4 ──►│ 还不能发
+  ┌──┬──┬──┬──┬──┬──┬──┬──┐
+  │0 │1 │2 │3 │4 │5 │6 │7 │   假设 pkt2 丢失…
+  └──┴──┴──┴──┴──┴──┴──┴──┘
+   接收方对 3、4、5 一律回 "ACK1"(我只连续收到了1)，并丢弃 3/4/5
+   发送方超时 → 从 2 开始，把 2、3、4、5 全部重发（回退 N）</div>
+  <p>GBN 的接收方<strong>不缓存</strong>失序分组，只认"下一个按序到达的"，用<strong>累积确认（cumulative ACK）</strong>——<code>ACKn</code> 表示"n 及之前全收到了"。代价是一个包丢了，它后面已经正确到达的包会被全部丢弃、全部重发，浪费带宽。SR 则相反：接收方<strong>缓存</strong>失序但正确的分组，发送方<strong>只重传真正出问题的那一个</strong>，每个分组<strong>单独确认</strong>。</p>
+  <table>
+    <tr><th>对比维度</th><th>Go-Back-N (GBN)</th><th>选择重传 (SR)</th></tr>
+    <tr><td>确认方式</td><td>累积确认（ACKn = n 及以前全收到）</td><td>逐个单独确认</td></tr>
+    <tr><td>接收方缓存失序包</td><td><strong>不缓存</strong>，直接丢弃</td><td><strong>缓存</strong>，等缺口补齐再上交</td></tr>
+    <tr><td>丢一个包的代价</td><td>重发它及其后<strong>全部</strong>分组</td><td><strong>只重发</strong>丢的那一个</td></tr>
+    <tr><td>接收方复杂度</td><td>低（无需缓冲区、无需乱序管理）</td><td>高（要缓冲区 + 逐包定时器）</td></tr>
+    <tr><td>带宽利用</td><td>高丢包率下浪费大</td><td>高效，但实现复杂</td></tr>
+    <tr><td>序号空间约束</td><td>窗口 ≤ 2ᵏ − 1</td><td>窗口 ≤ 2ᵏ / 2（序号空间的一半）</td></tr>
+  </table>
+  <div class="callout warn"><strong>最经典的考试陷阱：SR 的窗口大小必须 ≤ 序号空间的一半。</strong>假设序号只有 2 比特（0,1,2,3 共 4 个），若把 SR 窗口开到 3：发送方发 0,1,2 全部成功，但三个 ACK 全丢，于是超时重发 0；而此时接收方的窗口已经滑动到期待 3,0,1，它<strong>无法分辨</strong>刚收到的 <code>0</code> 是"重传的旧 0"还是"全新一轮的 0"——二义性导致数据被错误接收。所以 SR 必须 <code>窗口 ≤ 序号空间 / 2</code>；GBN 因为累积确认，约束宽松些是 <code>窗口 ≤ 序号空间 − 1</code>。这两个数记反是失分重灾区。</div>
+
+  <h2>七、串联到 TCP 与工程实践</h2>
+  <p>rdt 家族不是屠龙之技——它是 <strong>TCP 的设计蓝本</strong>。TCP 把上面所有零件融合成了一个"混血协议"：</p>
+  <table>
+    <tr><th>rdt 中的原理</th><th>在 TCP 里的落地</th></tr>
+    <tr><td>校验和检错</td><td>TCP 首部 16 位校验和（与 UDP 同源）</td></tr>
+    <tr><td>序号去重、按序交付</td><td>基于<strong>字节</strong>的序号（不是分组号）</td></tr>
+    <tr><td>rdt2.2：无 NAK、用重复 ACK</td><td>3 个 duplicate ACK → <strong>快速重传</strong></td></tr>
+    <tr><td>rdt3.0：超时重传</td><td>基于 RTT 估算（EWMA）的自适应超时</td></tr>
+    <tr><td>流水线 + 窗口</td><td>滑动窗口（叠加流量控制 / 拥塞控制）</td></tr>
+    <tr><td>GBN 的累积确认</td><td>TCP 基础用累积确认，靠 SACK 选项补上 SR 式的选择性重传</td></tr>
+  </table>
+  <div class="callout tip"><strong>建立联系：rdt2.1 的"序号去重" = 分布式系统的"幂等性"。</strong>重传机制天然带来"至少一次（at-least-once）"投递，也就必然产生重复。接收方靠<strong>序号</strong>去重，这和你在后端设计里给消息队列（Kafka / RabbitMQ）消费者做<strong>幂等键（idempotency key）</strong>去重、给支付接口加<strong>去重号</strong>是<em>同一个问题的同一种解法</em>——"网络会重发 → 消费端必须能识别并丢弃重复"。你在传输层学的这套东西，会在应用层的每一个可靠投递场景里再遇见一次。</div>
+
+  <div class="callout key"><strong>一句话收束：</strong>可靠传输是<strong>被信道的缺陷一步步逼出来</strong>的——<strong>校验和</strong>对付出错、<strong>ACK+序号</strong>对付重复、<strong>定时器超时重传</strong>对付丢包，四步走完就是功能正确的停等协议 rdt3.0；但停等让信道空转 99%，于是用<strong>流水线 + 窗口</strong>提性能，并在"出错怎么重"上分化出<strong>GBN（累积确认、回退全重）</strong>与<strong>SR（逐个确认、只重丢的）</strong>两条路。把这三组机制和两种流水线记牢，你就拿到了读懂 TCP 序号、确认、超时、快速重传、SACK 的全部钥匙。</div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="11-UDP.html" class="nav-btn">← UDP</a>
+    <a href="13-TCP.html" class="nav-btn next">TCP →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>线程封闭与 ThreadLocal</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 线程封闭与 ThreadLocal</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第3-4章·共享对象与组合</div>
+    <h1>线程封闭与 ThreadLocal</h1>
+    <p>对付并发最省力的一招，不是把锁加得更严，而是干脆让数据"不共享"——没有共享，就没有竞争。</p>
+  </div>
+
+  <h2>一、换个思路：与其保护共享，不如取消共享</h2>
+  <p>前面几篇一直在讲"共享的可变状态"如何用同步来保护。但还有一条更彻底的路：<strong>让数据根本不被多个线程访问</strong>。数据只被单个线程独占，即使它可变，也不需要任何同步——这就是<em>线程封闭（Thread Confinement）</em>。</p>
+
+  <div class="callout info">
+    <strong>一个生活类比：</strong>公司会议室（共享资源）要排队预定、加锁使用；但你自己工位上的水杯（线程封闭）从来不用跟别人协调——因为它只属于你。线程封闭就是把"公用水杯"换成"人手一个私人水杯"：代价是每人多一个杯子（内存），换来的是彻底不用排队（无锁）。
+  </div>
+
+  <p>回忆上一篇「发布与逸出」：线程安全问题的前提是对象<strong>被发布</strong>给了其他线程。线程封闭的做法恰恰相反——<em>刻意不发布</em>，把对象牢牢圈在一个线程内部。这也是 GUI 框架（Swing/JavaFX 的事件分发线程 EDT）、以及绝大多数数据库连接池管理连接的核心手段。</p>
+
+  <div class="formula">线程安全 <span class="hl">=</span> 消灭共享 <span class="hl">|</span> 消灭可变 <span class="hl">|</span> 正确同步</div>
+  <p>三条路里，<strong>"消灭共享"</strong>（线程封闭）和<strong>"消灭可变"</strong>（不可变对象，下一篇）都能绕开锁；只有实在做不到时，才退回到"正确同步"。优先级从左到右递减。</p>
+
+  <h2>二、线程封闭的三种境界</h2>
+  <p>Brian Goetz 把线程封闭分成三档，从"靠自觉"到"有语言机制兜底"，可靠性递增：</p>
+
+  <table>
+    <tr><th>类型</th><th>怎么做到封闭</th><th>可靠性</th><th>典型场景</th></tr>
+    <tr><td><strong>Ad-hoc<br>（临时/约定式）</strong></td><td>纯靠程序员自觉，没有任何机制强制，全凭"我保证不把它传出去"</td><td>最脆弱，一次疏忽就破功</td><td>用 <code>volatile</code> 保证只有单线程写、其他线程只读</td></tr>
+    <tr><td><strong>栈封闭<br>（Stack Confinement）</strong></td><td>对象只存在于<em>局部变量</em>里，天然被限制在当前线程的调用栈中</td><td>较可靠，只要引用不逸出</td><td>方法内 new 出来、用完就丢的临时对象</td></tr>
+    <tr><td><strong>ThreadLocal</strong></td><td>由 JDK 类库提供机制，为每个线程维护一份<em>独立副本</em></td><td>最可靠，有语言级支撑</td><td>连接、事务上下文、SimpleDateFormat</td></tr>
+  </table>
+
+  <h3>栈封闭：其实你天天在用</h3>
+  <p>局部变量为什么天生线程安全？因为<strong>每个线程有自己独立的 JVM 栈</strong>，方法的每次调用都会压入一个新的栈帧，局部变量表就在栈帧里。不同线程调用同一个方法，各自的局部变量互不相干——这正是操作系统"每线程一个栈"在 JVM 里的映射。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 引用逸出，栈封闭被破坏</div>
+      <pre>class Stats {
+  private List&lt;Integer&gt; cache; // 成员字段
+
+  void collect() {
+    // 本想局部使用，却存进了字段
+    cache = new ArrayList&lt;&gt;();
+    for (int i = 0; i &lt; 100; i++)
+      cache.add(i);
+    // cache 现在被多线程共享 → 危险
+  }
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 只用局部变量，封闭在栈上</div>
+      <pre>class Stats {
+  int collect() {
+    // list 是局部变量，never 逸出
+    List&lt;Integer&gt; list =
+        new ArrayList&lt;&gt;();
+    for (int i = 0; i &lt; 100; i++)
+      list.add(i);
+    // ArrayList 非线程安全也没关系，
+    // 它只活在当前线程的栈帧里
+    return list.size();
+  }
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱一：基本类型天然栈封闭，对象引用不一定。</strong><code>int</code>、<code>long</code> 这类基本类型局部变量的值直接躺在栈里，别人绝无办法拿到。但对象<em>引用</em>是局部的、对象<em>本身</em>却在堆上——只要你一不小心把这个引用赋给字段、塞进静态集合、或作为返回值/回调传出去，栈封闭立刻失效。"逸出"（escape）就是这么发生的（见上一篇）。守则：<em>非线程安全对象要留在方法内部，绝不让它的引用跑出去。</em>
+  </div>
+
+  <h2>三、ThreadLocal：给每个线程发一份私有副本</h2>
+  <p>栈封闭的局限是"活不过一次方法调用"。如果我想要一个变量<em>在整个线程生命周期内都存在、但又不和别的线程共享</em>呢？比如"当前登录用户""当前数据库连接"——这就是 <code>ThreadLocal</code> 的舞台。</p>
+
+  <div class="callout key">
+    <strong>心智模型（务必建立正确直觉）：</strong>很多人误以为 <code>ThreadLocal</code> 是"一个容器，里面装了 N 份数据，按线程分发"。<em>恰恰相反。</em>真正装数据的是<strong>每个 Thread 对象自己身上的一张 Map</strong>；<code>ThreadLocal</code> 只是这张 Map 的<strong>key</strong>。你调 <code>get()</code>，它拿"当前线程"这个 Map，再用"自己"当 key 去取值。所以同一个 <code>ThreadLocal</code> 实例在不同线程里取到不同的值——因为 Map 根本不是同一张。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ThreadLocalDemo.java</span><span>三个 API：set / get / remove</span></div>
+    <pre><span class="kw">public</span> <span class="kw">class</span> <span class="typ">UserContext</span> {
+    <span class="com">// 通常声明为 static final：一个 ThreadLocal 实例服务所有线程</span>
+    <span class="kw">private</span> <span class="kw">static</span> <span class="kw">final</span> <span class="typ">ThreadLocal</span>&lt;<span class="typ">String</span>&gt; CURRENT_USER =
+            <span class="kw">new</span> <span class="typ">ThreadLocal</span>&lt;&gt;();
+
+    <span class="com">// 也可用 withInitial 提供默认值（惰性初始化，每线程首次 get 时调用）</span>
+    <span class="kw">private</span> <span class="kw">static</span> <span class="kw">final</span> <span class="typ">ThreadLocal</span>&lt;<span class="typ">SimpleDateFormat</span>&gt; SDF =
+            <span class="typ">ThreadLocal</span>.<span class="fn">withInitial</span>(() -&gt; <span class="kw">new</span> <span class="typ">SimpleDateFormat</span>(<span class="str">"yyyy-MM-dd"</span>));
+
+    <span class="kw">public</span> <span class="kw">static</span> <span class="kw">void</span> <span class="fn">login</span>(<span class="typ">String</span> user) { CURRENT_USER.<span class="fn">set</span>(user); }  <span class="com">// 存入当前线程</span>
+    <span class="kw">public</span> <span class="kw">static</span> <span class="typ">String</span> <span class="fn">get</span>()  { <span class="kw">return</span> CURRENT_USER.<span class="fn">get</span>(); }        <span class="com">// 取当前线程的那份</span>
+    <span class="kw">public</span> <span class="kw">static</span> <span class="kw">void</span> <span class="fn">clear</span>() { CURRENT_USER.<span class="fn">remove</span>(); }              <span class="com">// 用完必须清（见陷阱）</span>
+}</pre>
+  </div>
+
+  <div class="callout info">
+    <strong>为什么它能"跨方法传参"却不用改签名？</strong>ThreadLocal 的杀手锏是<em>隐式传参</em>。想象一个 Web 请求：Controller → Service → DAO 层层调用，如果每层方法都要多带一个 <code>currentUser</code> 参数，签名会被污染得一塌糊涂。把它放进 ThreadLocal，任何一层需要时直接 <code>get()</code>——因为 Servlet 容器是"一个请求一个线程"处理的，整条调用链跑在同一个线程上，自然读到同一份数据。这就是 Spring 事务、Spring Security 上下文的底层套路。
+  </div>
+
+  <h2>四、揭开源码：数据其实存在 Thread 身上</h2>
+  <p>光说不练不踏实。翻开 JDK 源码你会发现，<code>Thread</code> 类里有个包私有字段：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>JDK 源码（简化）</span><span>Thread.java / ThreadLocal.java</span></div>
+    <pre><span class="com">// —— Thread.java ——</span>
+<span class="kw">class</span> <span class="typ">Thread</span> {
+    <span class="com">// 每个线程自带一张 map，key 是 ThreadLocal，value 是你存的值</span>
+    <span class="typ">ThreadLocal.ThreadLocalMap</span> threadLocals = <span class="kw">null</span>;
+}
+
+<span class="com">// —— ThreadLocal.java ——</span>
+<span class="kw">public</span> <span class="typ">T</span> <span class="fn">get</span>() {
+    <span class="typ">Thread</span> t = <span class="typ">Thread</span>.<span class="fn">currentThread</span>();     <span class="com">// ① 拿当前线程</span>
+    <span class="typ">ThreadLocalMap</span> map = <span class="fn">getMap</span>(t);          <span class="com">// ② 取它身上的 map（就是 t.threadLocals）</span>
+    <span class="kw">if</span> (map != <span class="kw">null</span>) {
+        <span class="typ">ThreadLocalMap.Entry</span> e = map.<span class="fn">getEntry</span>(<span class="kw">this</span>);  <span class="com">// ③ 用 this(当前 ThreadLocal) 当 key 取值</span>
+        <span class="kw">if</span> (e != <span class="kw">null</span>) <span class="kw">return</span> (<span class="typ">T</span>) e.value;
+    }
+    <span class="kw">return</span> <span class="fn">setInitialValue</span>();               <span class="com">// 没有则走 initialValue()</span>
+}
+
+<span class="typ">ThreadLocalMap</span> <span class="fn">getMap</span>(<span class="typ">Thread</span> t) { <span class="kw">return</span> t.threadLocals; }</pre>
+  </div>
+
+  <div class="diagram">      每个 Thread 对象内部 ↓                ThreadLocal 实例（只是 key，不存数据）
+┌──────────────────────────────┐
+│  Thread-1                     │        ┌─────────────────┐
+│    threadLocals ──► Map {     │        │ tlUser  (key A) │───┐
+│        keyA(弱) → "Alice"     │◄───────┤ tlConn  (key B) │   │ 同一个 ThreadLocal
+│        keyB(弱) → conn#1      │        └─────────────────┘   │ 实例被所有线程共用
+│    }                          │                              │ 做 key
+└──────────────────────────────┘                              │
+┌──────────────────────────────┐                              │
+│  Thread-2                     │                              │
+│    threadLocals ──► Map {     │◄─────────────────────────────┘
+│        keyA(弱) → "Bob"       │   ← 同一个 keyA，在 T2 的 map 里对应 "Bob"
+│    }                          │      两张 map 相互独立，所以数据不共享
+└──────────────────────────────┘
+
+    Entry extends WeakReference&lt;ThreadLocal&gt; ：key 是弱引用，value 是强引用（关键！见陷阱二）</div>
+
+  <div class="callout tip">
+    <strong>两个源码彩蛋。</strong>其一，<code>ThreadLocalMap</code> 不是 <code>HashMap</code>，而是自己实现的一张 <em>开放寻址（线性探测）</em> 哈希表，冲突时往后找下一个空槽，而非拉链。其二，它的哈希用了一个魔数 <code>0x61C88647</code>（黄金分割数对应的 32 位整数），每加一个 ThreadLocal 就把哈希值累加这个常量——这能让多个 ThreadLocal 的 key 在表里<em>近乎均匀</em>地散开，几乎不碰撞。这是"斐波那契散列"的经典应用，比通用哈希更贴合"key 数量少而固定"的场景。
+  </div>
+
+  <h2>五、经典实战：驯服 SimpleDateFormat</h2>
+  <p><code>SimpleDateFormat</code> 是面试和线上事故的常客：它<strong>非线程安全</strong>（内部用了一个可变的 <code>Calendar</code> 字段做中间状态），多线程共享同一个实例会解析出错乱的日期、甚至抛 <code>NumberFormatException</code>。三种解法对比：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 静态共享一个实例</div>
+      <pre>// 多线程共用，内部 Calendar
+// 状态被并发践踏 → 结果错乱
+static final SimpleDateFormat SDF =
+    new SimpleDateFormat("yyyy-MM-dd");
+
+String fmt(Date d) {
+    return SDF.format(d); // 线程不安全!
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ ThreadLocal 每线程一份</div>
+      <pre>static final ThreadLocal&lt;SimpleDateFormat&gt;
+  SDF = ThreadLocal.withInitial(
+      () -&gt; new SimpleDateFormat(
+                "yyyy-MM-dd"));
+
+String fmt(Date d) {
+    // 复用本线程实例，无锁无竞争
+    return SDF.get().format(d);
+}</pre>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>方案</th><th>线程安全</th><th>性能</th><th>点评</th></tr>
+    <tr><td>共享一个 <code>SimpleDateFormat</code></td><td>✗ 错误</td><td>—</td><td>典型 bug，禁用</td></tr>
+    <tr><td>每次 <code>new</code> 一个</td><td>✓</td><td>差（频繁创建/GC）</td><td>简单但浪费</td></tr>
+    <tr><td>加锁共享一个</td><td>✓</td><td>差（串行化）</td><td>把并发变成了串行</td></tr>
+    <tr><td><code>ThreadLocal</code> 缓存</td><td>✓</td><td>好（复用+无锁）</td><td>空间换安全的经典范式</td></tr>
+    <tr><td><code>DateTimeFormatter</code>（JDK8+）</td><td>✓ 本身不可变</td><td>最好</td><td>新代码首选，直接免疫</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>建立联系：</strong>ThreadLocal 的本质是<em>用空间换取"不共享"</em>——每线程一份副本，牺牲内存，换来彻底的无锁。而 JDK8 的 <code>DateTimeFormatter</code> 走的是另一条路：<em>把对象做成不可变的</em>（下一篇「不变性」的主题），不可变对象天生可共享。<strong>同一个问题，"线程封闭"和"不可变"是两把方向相反却都有效的钥匙。</strong>能用不可变就别用 ThreadLocal，因为后者有内存泄漏的坑——这就引出下一节。
+  </div>
+
+  <h2>六、陷阱二：内存泄漏——弱引用的 key 与强引用的 value</h2>
+  <p>回看上面那张图的最后一行：<code>Entry</code> 的 <strong>key 是弱引用，value 是强引用</strong>。这个设计既是"防泄漏的努力"，又是"泄漏的根源"，必须讲透。</p>
+
+  <div class="diagram">泄漏是怎么发生的（尤其在线程池里）：
+
+  栈上强引用   ThreadLocal实例        Thread(存活很久) ──► ThreadLocalMap
+      X ───────►  tlObj  ◄╌╌╌弱引用╌╌╌ Entry.key            │
+      (方法结束，X 消失)                  Entry.value ────────► 大对象(强引用)
+                                                                  ▲
+   ① tlObj 只被 Entry.key 弱引用 → 下次 GC 时 key 被回收 → key = null │
+   ② 但 value 仍被 Entry 强引用，且 Thread 一直活着(池化线程不销毁)   │
+   ③ 于是出现一条"够不着 key、却回收不掉 value"的僵尸链 ──────────────┘
+       → value 永远留在内存里 = 内存泄漏</div>
+
+  <p>为什么 JDK 要把 key 设成弱引用？这其实是一种<em>补救</em>：如果 key 是强引用，那么只要 Thread 活着，ThreadLocal 实例和它的 value 就都别想被回收，泄漏更严重。设成弱引用后，至少 ThreadLocal 实例本身能被 GC。而且 ThreadLocal 在 <code>get/set/remove</code> 时会<em>顺手</em>清理一些 key 已为 null 的"脏 Entry"（源码里的 <code>expungeStaleEntry</code>）。但这只是"顺手"——如果之后你再也不碰这个 ThreadLocal，脏 Entry 的 value 就永远清不掉。</p>
+
+  <div class="callout warn">
+    <strong>陷阱（高频面试题）：线程池 + ThreadLocal 不 remove = 定时炸弹。</strong>普通线程用完就死，map 随之被回收，泄漏有限。但线程池里的线程<em>会被复用、几乎永不销毁</em>，它身上的 <code>threadLocals</code> map 会一直累积。两个后果：<strong>（1）内存泄漏</strong>——旧 value 堆积；<strong>（2）脏数据</strong>——上一个任务 set 的值，下一个复用同一线程的任务 <code>get()</code> 会读到（比如串了别人的登录态！这是安全事故）。<em>铁律：ThreadLocal 一定在 <code>finally</code> 里 <code>remove()</code>。</em>
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 忘记 remove（线程池中）</div>
+      <pre>void handle(Request req) {
+  CURRENT_USER.set(req.user());
+  service.process();
+  // 方法结束但线程回池，
+  // value 还挂在 map 上：
+  //  · 内存泄漏
+  //  · 下个任务可能读到 req.user()
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ try / finally 兜底清理</div>
+      <pre>void handle(Request req) {
+  CURRENT_USER.set(req.user());
+  try {
+    service.process();
+  } finally {
+    CURRENT_USER.remove(); // 必须!
+    // 无论是否异常都清掉当前线程副本
+  }
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <strong>Spring 是怎么做的？</strong>它把 remove 藏在了框架里，你平时感觉不到。<code>DispatcherServlet</code> 处理完请求会在 <code>finally</code> 里调 <code>RequestContextHolder.resetRequestAttributes()</code> 清掉 <code>RequestAttributes</code> 的 ThreadLocal；Spring 事务在提交/回滚后由 <code>TransactionSynchronizationManager</code> 解绑线程上的连接；Spring Security 的过滤器链末尾会 <code>SecurityContextHolder.clearContext()</code>。<em>它们都遵守同一条纪律：谁 set，谁负责在请求边界 remove。</em>你自己写 ThreadLocal 时，也要模仿这种"边界清理"的模式。
+  </div>
+
+  <h2>七、陷阱三：ThreadLocal 传不到子线程 / 线程池</h2>
+  <p>ThreadLocal 是<em>线程私有</em>的，所以父线程 set 的值，子线程 <code>get()</code> 不到。想传给子线程，得用 <code>InheritableThreadLocal</code>——它在<strong>创建子线程时</strong>（<code>new Thread()</code>）把父线程的值拷贝过去。</p>
+
+  <div class="callout warn">
+    <strong>但它对线程池无效！</strong><code>InheritableThreadLocal</code> 只在<em>线程被创建的那一刻</em>继承。线程池的线程是<em>预先创建、反复复用</em>的：它诞生时的"父线程"是初始化池子的那个线程，跟你后来提交任务的线程八竿子打不着。于是你在业务线程 set 的值，池里的工作线程根本继承不到。要在线程池里做上下文传递（如全链路 traceId），得用阿里开源的 <strong>TransmittableThreadLocal（TTL）</strong>——它在<em>任务提交时</em>而非线程创建时抓取快照，靠包装 <code>Runnable</code>/线程池来把上下文"带过去"。
+  </div>
+
+  <table>
+    <tr><th>方案</th><th>数据隔离</th><th>能传子线程</th><th>兼容线程池</th></tr>
+    <tr><td><code>ThreadLocal</code></td><td>每线程独立</td><td>✗ 不能</td><td>✓（但须手动 remove）</td></tr>
+    <tr><td><code>InheritableThreadLocal</code></td><td>创建时拷贝父值</td><td>✓ 新建线程时</td><td>✗ 复用线程会失效</td></tr>
+    <tr><td><code>TransmittableThreadLocal</code>（TTL，阿里）</td><td>提交任务时快照</td><td>✓</td><td>✓ 专为线程池设计</td></tr>
+  </table>
+
+  <h2>八、什么时候该用 ThreadLocal</h2>
+  <p>ThreadLocal 不是银弹，用错地方会变成"隐式全局变量"，让代码难以追踪。一条决策链帮你判断：</p>
+
+  <div class="diagram">这份数据需要跨方法/跨层传递吗？
+      │
+      ├─ 否 → 用局部变量（栈封闭）就够了，别上 ThreadLocal
+      │
+      └─ 是 → 它必须"每线程一份、互不干扰"吗？
+                │
+                ├─ 否，数据不可变 → 直接共享(不可变对象)，更简单
+                │
+                └─ 是 → 用 ThreadLocal，且牢记：
+                        · static final 声明
+                        · 请求/任务边界 finally remove()
+                        · 跨线程池传递 → 换 TransmittableThreadLocal</div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>线程封闭是对付并发的"上策"——<em>没有共享，就没有竞争，也就不需要锁</em>。它有三层：靠自觉的 Ad-hoc、天然可靠的<strong>栈封闭</strong>（局部变量，源于每线程独立的栈）、以及机制兜底的 <strong>ThreadLocal</strong>（用空间换隔离，本质是"数据存在每个 Thread 自己的 ThreadLocalMap 里，ThreadLocal 只是 key"）。但 ThreadLocal 有两颗地雷：<strong>value 强引用 + 线程池复用</strong>会导致内存泄漏和脏数据，务必在 <code>finally</code> 里 <code>remove()</code>；<strong>它传不到线程池的工作线程</strong>，跨线程池场景要用 TransmittableThreadLocal。能用不可变对象解决的，就别用 ThreadLocal——这正是下一篇「不变性」要展开的另一把钥匙。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="05-发布与逸出.html" class="nav-btn">← 发布与逸出</a>
+    <a href="07-不变性.html" class="nav-btn next">不变性 →</a>
+  </div>
+</div>
+</body>
+</html>

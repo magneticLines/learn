@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>异常体系与 try-with-resources</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java核心技术·卷I</a> / 异常体系与 try-with-resources</div>
+  <div class="hero">
+    <div class="tag">Java 核心 · 第6-7章·进阶语言特性</div>
+    <h1>异常体系与 try-with-resources</h1>
+    <p>异常是把"正常业务"与"出错处理"分成两条轨道的语言机制；而 try-with-resources 则是 Java 对"忘记关资源"这一经典 bug 的一次语言级根治。</p>
+  </div>
+
+  <h2>一、为什么需要异常？返回码的困境</h2>
+  <p>在没有异常的年代（比如 C），函数出错只能靠<strong>返回一个特殊值</strong>（<code>-1</code>、<code>NULL</code>、<code>errno</code>）告诉调用方。问题是：错误处理代码和正常逻辑<em>缠在一起</em>，而且返回码可以被悄悄忽略——你不检查，程序照样往下跑，错误被吞掉，直到很久之后在别处爆炸。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 返回码风格：正常逻辑被淹没</div>
+      <pre>int fd = open(path);
+if (fd &lt; 0) return ERR_OPEN;
+int n = read(fd, buf);
+if (n &lt; 0) { close(fd); return ERR_READ; }
+if (parse(buf) != 0) { close(fd); return ERR_PARSE; }
+close(fd);
+// 每一步都要手动判、手动清理
+// 漏一个 if，错误就被吞</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 异常风格：两条轨道分离</div>
+      <pre>try {
+    var buf = read(path);   // 正常逻辑
+    parse(buf);             // 一气呵成
+} catch (IOException e) {
+    // 出错处理集中在一处
+    log.error("读取失败", e);
+}
+// 忽略错误？编译器不让你(受检异常)</pre>
+    </div>
+  </div>
+
+  <p>异常的核心设计思想就藏在这里：<strong>把"正常控制流"和"异常控制流"拆成两条独立的轨道</strong>。正常路径读起来一目了然，出错路径被集中收拢，而且异常一旦抛出<em>无法被无声无息地忽略</em>——不处理，它就沿调用栈一路上抛，直到线程终止并打印栈轨迹。这是一种"不许你装看不见"的强约束。</p>
+
+  <h2>二、Throwable 家族树</h2>
+  <p>Java 里所有能被 <code>throw</code> 和 <code>catch</code> 的东西，都必须继承自 <code>java.lang.Throwable</code>。它分成两条大支：<code>Error</code> 和 <code>Exception</code>，而 <code>Exception</code> 下面又切出一支特殊的 <code>RuntimeException</code>。这棵树的形状，直接决定了编译器怎么管你。</p>
+
+  <div class="diagram">                    Throwable   &lt;-- 唯一能被 throw/catch 的根
+                        |
+        +---------------+----------------+
+        |                                |
+      Error                          Exception
+   「JVM 层面的灾难」            「程序可预期的问题」
+   OutOfMemoryError                    |
+   StackOverflowError      +-----------+-------------+
+   NoClassDefFoundError    |                         |
+   → 别 catch，救不了    RuntimeException      其它 Exception
+                        「编程 bug」          「受检异常 checked」
+                     NullPointerException     IOException
+                     ArrayIndexOutOfBounds    SQLException
+                     IllegalArgumentException FileNotFoundException
+                     ClassCastException       → 编译器强制处理
+                     「unchecked 免检」</div>
+
+  <div class="callout info">
+    <strong>为什么 <code>Error</code> 不该 catch？</strong><code>Error</code> 代表 JVM 自身或环境层面的严重故障——堆内存耗尽（<code>OutOfMemoryError</code>）、栈溢出（<code>StackOverflowError</code>）、类加载失败（<code>NoClassDefFoundError</code>）。这些问题<em>不是你的业务代码能恢复的</em>：内存都满了，你 catch 住又能做什么？强行 catch 往往只会掩盖真相、让程序在半死不活的状态下继续糟蹋数据。正确姿势是<strong>让它把线程/进程干掉，然后靠监控告警和重启来处理</strong>。
+  </div>
+
+  <h2>三、受检 vs 非受检：这是全篇最关键的分野</h2>
+  <p>编译器把异常分成两类，用完全不同的态度对待。判断标准很简单：<strong>凡是 <code>RuntimeException</code> 及其子类、以及 <code>Error</code> 及其子类，都是"非受检（unchecked）"；其余 <code>Exception</code> 的子类都是"受检（checked）"</strong>。</p>
+
+  <table>
+    <tr><th>维度</th><th>受检异常 checked</th><th>非受检异常 unchecked</th></tr>
+    <tr><td>顶层父类</td><td><code>Exception</code>（非 RuntimeException 支）</td><td><code>RuntimeException</code> / <code>Error</code></td></tr>
+    <tr><td>编译器态度</td><td><strong>强制</strong>：要么 <code>catch</code>，要么方法签名 <code>throws</code></td><td>不管，爱处理不处理</td></tr>
+    <tr><td>语义</td><td>可预料、可恢复的外部问题</td><td>编程 bug / JVM 灾难</td></tr>
+    <tr><td>典型代表</td><td><code>IOException</code>、<code>SQLException</code></td><td><code>NullPointerException</code>、<code>IllegalArgumentException</code></td></tr>
+    <tr><td>处理直觉</td><td>"网络可能断、文件可能没" → 该重试/降级</td><td>"你代码写错了" → 该改代码，不是 catch</td></tr>
+  </table>
+
+  <p>背后的设计哲学是：<strong>受检异常说的是"环境靠不住"</strong>——文件可能不存在、网络可能超时，这些是调用方<em>理应预见并制定对策</em>的，所以编译器逼你正视它。<strong>非受检异常说的是"你写错了"</strong>——传了 null、下标越界、类型转错，这些是 bug，正确的做法是修 bug，而不是到处 <code>try-catch</code> 遮丑。</p>
+
+  <div class="callout warn">
+    <strong>高频陷阱 —— 空 catch 块吞异常：</strong>下面这段代码是灾难之源。异常被"吃掉"后既不记录也不上抛，出了问题现场一片祥和，你却要熬夜排查一个<em>永远找不到栈轨迹</em>的诡异 bug。<br>
+    <code>try { risky(); } catch (Exception e) { }</code> ← 空 catch，绝对禁止<br>
+    最起码也要 <code>log.error("...", e)</code>。捕获了就必须处理或重新抛出，<em>沉默是最坏的选择</em>。
+  </div>
+
+  <div class="callout tip">
+    <strong>Spring 的选择很说明问题：</strong>Spring 把 JDBC 那套受检的 <code>SQLException</code> 全部包装成<em>非受检</em>的 <code>DataAccessException</code> 体系（<code>@Transactional</code> 也默认只对 <code>RuntimeException</code> 回滚）。因为绝大多数数据库错误业务代码根本无从恢复，强制 <code>throws SQLException</code> 只会污染每一层方法签名。这反映了业界共识：<strong>受检异常虽严谨，却容易造成"签名传染"和满屏样板 catch，现代框架普遍倾向非受检</strong>。
+  </div>
+
+  <h2>四、try-catch-finally 的执行顺序</h2>
+  <p><code>finally</code> 的承诺是：<strong>无论 try 块正常结束、抛异常、还是中途 <code>return</code>，finally 里的代码几乎总会执行</strong>。它天生是用来做"收尾清理"的——关文件、还连接、释放锁。执行流程如下：</p>
+
+  <div class="diagram">进入 try
+   |
+   +-- 无异常 --&gt; try 跑完 --&gt; finally --&gt; 方法返回
+   |
+   +-- 抛异常 --&gt; 匹配的 catch 执行 --&gt; finally --&gt; 继续上抛/返回
+   |
+   +-- try 里 return --&gt; 先算好返回值 --&gt; 执行 finally --&gt; 才真正返回
+
+  唯一逃过 finally 的情况：System.exit() 或 JVM/线程被强杀</div>
+
+  <div class="callout warn">
+    <strong>魔鬼陷阱 —— 在 finally 里 return / throw：</strong>它会<em>覆盖</em>掉 try 或 catch 中原本要返回的值或要抛出的异常，让异常凭空消失。这是面试常考的"坑题"，实战中更是一类极隐蔽的 bug。
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>FinallyTrap.java</span><span>finally 里 return 吞掉一切</span></div>
+    <pre><span class="kw">int</span> <span class="fn">bad</span>() {
+    <span class="kw">try</span> {
+        <span class="kw">return</span> <span class="num">1</span>;          <span class="com">// 返回值 1 已算好，暂存</span>
+    } <span class="kw">finally</span> {
+        <span class="kw">return</span> <span class="num">2</span>;          <span class="com">// finally 的 return 把 1 顶掉！</span>
+    }
+    <span class="com">// 实际返回 2 —— try 的 return 形同虚设</span>
+}
+
+<span class="kw">int</span> <span class="fn">worse</span>() {
+    <span class="kw">try</span> {
+        <span class="kw">throw new</span> <span class="fn">RuntimeException</span>(<span class="str">"重要错误"</span>);
+    } <span class="kw">finally</span> {
+        <span class="kw">return</span> <span class="num">0</span>;          <span class="com">// 异常被 finally 的 return 无声吞掉，调用方毫不知情</span>
+    }
+}</pre>
+  </div>
+
+  <p>结论很直接：<strong>finally 块里只放清理代码，永远不要在 finally 里写 <code>return</code> 或 <code>throw</code></strong>。它的职责是"善后"，不是"改变结局"。</p>
+
+  <h2>五、老式关资源写法有多丑</h2>
+  <p>在 Java 7 之前，正确地关闭资源需要一坨令人窒息的嵌套 <code>try-finally</code>。原因有二：<code>close()</code> 本身可能抛异常；而且多个资源要<em>各自</em>保证关闭。稍不留神就会资源泄漏。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>OldStyle.java</span><span>Java 6 时代：正确但丑陋</span></div>
+    <pre><span class="typ">InputStream</span> in = <span class="kw">null</span>;
+<span class="kw">try</span> {
+    in = <span class="kw">new</span> <span class="fn">FileInputStream</span>(path);
+    <span class="com">// ... 使用 in ...</span>
+} <span class="kw">finally</span> {
+    <span class="kw">if</span> (in != <span class="kw">null</span>) {     <span class="com">// 必须判空：构造可能就失败了</span>
+        <span class="kw">try</span> {
+            in.<span class="fn">close</span>();     <span class="com">// close 自己也可能抛异常，得再包一层</span>
+        } <span class="kw">catch</span> (<span class="typ">IOException</span> ignore) { }
+    }
+}
+<span class="com">// 两个资源？再套一层，缩进能顶到屏幕右边</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>更阴险的"异常屏蔽（exception masking）"：</strong>如果 try 块里先抛了一个业务异常 A，接着 finally 里 <code>close()</code> 又抛了异常 B，那么<em>B 会覆盖 A</em>——真正的病因 A 被丢弃，你看到的栈轨迹却是无关紧要的 B。这是老式写法最坑爹的地方，也是 try-with-resources 要解决的核心痛点之一。
+  </div>
+
+  <h2>六、try-with-resources：语言级的根治</h2>
+  <p>Java 7 引入 try-with-resources：把资源声明写进 <code>try(...)</code> 的括号里，<strong>只要资源实现了 <code>AutoCloseable</code> 接口，编译器就自动、保证、逆序地帮你调用 <code>close()</code></strong>。它不是运行时魔法，而是<em>语法糖</em>——编译器在字节码里帮你展开成正确的 try-finally。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 手动 finally</div>
+      <pre>BufferedReader br = null;
+try {
+  br = new BufferedReader(
+        new FileReader(path));
+  return br.readLine();
+} finally {
+  if (br != null) br.close();
+}
+// close 抛异常会屏蔽真正的异常</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ try-with-resources</div>
+      <pre>try (var br = new BufferedReader(
+        new FileReader(path))) {
+  return br.readLine();
+}
+// close 自动调用、逆序调用
+// close 的异常被"抑制"不会屏蔽主异常
+// 代码短了一半，且没有泄漏可能</pre>
+    </div>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>MultiResource.java</span><span>多资源：逆序关闭 + 抑制异常</span></div>
+    <pre><span class="com">// 多个资源用分号隔开，声明顺序打开，逆序关闭（后开的先关）</span>
+<span class="kw">try</span> (<span class="typ">Connection</span> conn = dataSource.<span class="fn">getConnection</span>();
+     <span class="typ">PreparedStatement</span> ps = conn.<span class="fn">prepareStatement</span>(sql);
+     <span class="typ">ResultSet</span> rs = ps.<span class="fn">executeQuery</span>()) {
+
+    <span class="kw">while</span> (rs.<span class="fn">next</span>()) {
+        process(rs.<span class="fn">getString</span>(<span class="str">"name"</span>));
+    }
+}
+<span class="com">// 关闭顺序：rs.close() → ps.close() → conn.close()</span>
+<span class="com">// 逆序是关键：Connection 最先建、最后关，符合依赖方向</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>逆序关闭为什么重要？</strong>资源之间常有依赖：<code>ResultSet</code> 建立在 <code>Statement</code> 之上，<code>Statement</code> 又依附于 <code>Connection</code>。就像穿衣服——先穿内衣再穿外套，脱的时候必须先脱外套。若先关了 <code>Connection</code>，再去关 <code>ResultSet</code> 就可能操作一个已失效的资源。try-with-resources 用"栈"式的逆序关闭天然保证了这个顺序。
+  </div>
+
+  <h2>七、AutoCloseable 与自定义资源</h2>
+  <p>任何类只要实现 <code>AutoCloseable</code>（只有一个 <code>close()</code> 方法），就能放进 try-with-resources。<code>Closeable</code> 是它的子接口（专用于 IO，<code>close()</code> 只抛 <code>IOException</code>）。你自己的类也能享受这套机制：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>MyResource.java</span><span>让自定义类支持自动关闭</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">DistributedLock</span> <span class="kw">implements</span> <span class="typ">AutoCloseable</span> {
+    <span class="kw">private final</span> <span class="typ">String</span> key;
+
+    <span class="kw">public</span> <span class="fn">DistributedLock</span>(<span class="typ">String</span> key) {
+        <span class="kw">this</span>.key = key;
+        redis.<span class="fn">acquire</span>(key);        <span class="com">// 构造即加锁</span>
+    }
+
+    <span class="kw">@Override</span>
+    <span class="kw">public void</span> <span class="fn">close</span>() {         <span class="com">// try 块结束自动调用 → 自动解锁</span>
+        redis.<span class="fn">release</span>(key);
+    }
+}
+
+<span class="com">// 用起来像 RAII：作用域一结束，锁必被释放，绝不会忘</span>
+<span class="kw">try</span> (<span class="typ">DistributedLock</span> lock = <span class="kw">new</span> <span class="fn">DistributedLock</span>(<span class="str">"order:1001"</span>)) {
+    processOrder();
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>与 C++ RAII / Python with 的联系：</strong>这套"作用域结束即释放"的思想，在 C++ 里叫 RAII（析构函数自动释放），在 Python 里是 <code>with</code> 语句配合 <code>__enter__</code>/<code>__exit__</code>。三者殊途同归，都是为了把"资源生命周期"绑定到"代码作用域"上，从根本上消灭"忘记释放"这类 bug。Java 因为有 GC，反而更需要它——GC 只管<em>内存</em>，不管文件句柄、socket、锁这些<strong>非内存资源</strong>，这些必须由你显式关闭。
+  </div>
+
+  <h2>八、被抑制的异常（Suppressed Exception）</h2>
+  <p>还记得第五节的"异常屏蔽"吗？try-with-resources 用一个精妙的设计根治了它：<strong>如果 try 块抛出主异常，同时 <code>close()</code> 也抛异常，那么主异常照常上抛，而 <code>close()</code> 的异常被"抑制"并挂在主异常的 <code>suppressed</code> 列表里</strong>——两个都保留，一个都不丢。</p>
+
+  <div class="formula">主异常上抛 &nbsp;<span class="hl">+</span>&nbsp; close 异常 → <span class="hl">getSuppressed()</span></div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Suppressed.java</span><span>取回被抑制的异常</span></div>
+    <pre><span class="kw">try</span> (<span class="typ">MyResource</span> r = <span class="kw">new</span> <span class="fn">MyResource</span>()) {
+    <span class="kw">throw new</span> <span class="fn">RuntimeException</span>(<span class="str">"主异常：业务失败"</span>);
+    <span class="com">// 假设 r.close() 又抛了 "关闭失败"</span>
+} <span class="kw">catch</span> (<span class="typ">Exception</span> e) {
+    <span class="typ">System</span>.out.<span class="fn">println</span>(e.<span class="fn">getMessage</span>());        <span class="com">// 主异常：业务失败</span>
+    <span class="kw">for</span> (<span class="typ">Throwable</span> s : e.<span class="fn">getSuppressed</span>()) {   <span class="com">// 遍历被抑制的异常</span>
+        <span class="typ">System</span>.out.<span class="fn">println</span>(<span class="str">"  被抑制: "</span> + s.<span class="fn">getMessage</span>()); <span class="com">// 关闭失败</span>
+    }
+}
+<span class="com">// 栈轨迹里会以 "Suppressed:" 前缀打印被抑制的异常，病因一个不丢</span></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>对比老式 finally：</strong>老式手写 finally 中 <code>close()</code> 抛的异常会<em>直接顶掉</em>主异常（后抛的异常胜出）；而 try-with-resources 是主异常胜出、<code>close()</code> 异常降级为 suppressed。前者丢信息，后者全保留——这正是语言级方案优于手写的价值所在。<code>Throwable.addSuppressed()</code> 就是编译器为此生成的字节码在背后调用的。
+  </div>
+
+  <h2>九、异常链：别丢了根因</h2>
+  <p>实际工程里，我们常需要把底层异常"翻译"成本层的语义异常再上抛（比如把 <code>SQLException</code> 包成 <code>UserNotFoundException</code>）。此时<strong>务必把原始异常作为 <code>cause</code> 传进去</strong>，否则原始栈轨迹丢失，排查时你只能看到表层症状。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 丢失根因</div>
+      <pre>catch (SQLException e) {
+  // 只抛新异常，e 被丢弃
+  throw new ServiceException(
+      "查询用户失败");
+  // 栈轨迹里再也看不到
+  // 到底是哪条 SQL 出的错
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 保留异常链</div>
+      <pre>catch (SQLException e) {
+  // 把 e 作为 cause 传入
+  throw new ServiceException(
+      "查询用户失败", e);
+  // 栈轨迹打印 "Caused by: ..."
+  // 根因清清楚楚
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>面试高频 —— 自定义异常的构造器：</strong>写自定义异常时，一定要提供带 <code>Throwable cause</code> 参数的构造器并 <code>super(message, cause)</code>，否则你的异常类根本无法承载异常链。另外别忘了：<code>e.printStackTrace()</code> 只该出现在最顶层或调试时，业务代码里应统一用日志框架 <code>log.error("msg", e)</code>，让它带着完整的 "Caused by" 链落到日志系统。
+  </div>
+
+  <h2>十、异常处理的最佳实践清单</h2>
+  <table>
+    <tr><th>原则</th><th>说明</th></tr>
+    <tr><td>早抛出，晚捕获</td><td>发现非法参数立即抛（<code>fail-fast</code>）；catch 放在<em>有能力处理</em>的那一层</td></tr>
+    <tr><td>捕获具体类型</td><td>别用 <code>catch (Exception e)</code> 一网打尽，会连编程 bug 一起吞</td></tr>
+    <tr><td>不要吞异常</td><td>catch 里至少记日志或重新抛出，空 catch 是重罪</td></tr>
+    <tr><td>关资源用 twr</td><td>凡是 <code>AutoCloseable</code>，一律 try-with-resources，别手写 finally</td></tr>
+    <tr><td>异常不做流程控制</td><td>用异常控制正常逻辑（如"抛异常表示循环结束"）极慢且反直觉</td></tr>
+    <tr><td>参数校验用非受检</td><td>非法入参抛 <code>IllegalArgumentException</code>，null 抛 <code>NullPointerException</code></td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>性能冷知识 —— 别把异常当返回值：</strong>抛异常时 JVM 需要<em>填充栈轨迹（fillInStackTrace）</em>，这一步要遍历整个调用栈，代价远高于普通 <code>return</code>。所以用异常做正常流程控制（比如遍历到末尾抛异常来跳出）会带来巨大性能损失。异常就该用在<em>异常</em>的场景。（题外话：如果确实需要高频轻量异常，可重写 <code>fillInStackTrace</code> 返回 this 来省掉栈填充，但这属于特殊优化，慎用。）
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>异常体系的精髓是<strong>用继承树把"你写错了（unchecked）"和"环境靠不住（checked）"分开</strong>，让编译器只在后者上强制你面对；<code>Error</code> 别碰、空 catch 别写、finally 别 return、异常链别丢。而 <strong>try-with-resources 是对"忘记关资源 + 异常屏蔽"这两个经典 bug 的语言级根治</strong>——只要实现 <code>AutoCloseable</code>，编译器就保证逆序关闭、并用 suppressed 机制让每一个异常都不丢失。能用 twr 就绝不手写 finally。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="11-内部类与匿名类.html" class="nav-btn">← 内部类与匿名类</a>
+    <a href="13-日志与断言.html" class="nav-btn next">日志与断言 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>volatile 与 happens-before</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / volatile 与 happens-before</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第1-2章·线程安全基础</div>
+    <h1>volatile 与 happens-before</h1>
+    <p>volatile 是"最轻量的同步"，而 happens-before 是 JMM 给你的一纸契约——看懂这纸契约，可见性与有序性才不再是玄学。</p>
+  </div>
+
+  <h2>一、volatile 到底承诺了什么</h2>
+  <p>上一节我们把线程安全拆成了原子性、可见性、有序性三根支柱。<code>volatile</code> 是一个只对其中两根负责的关键字：它<strong>保证可见性和有序性，唯独不保证原子性</strong>。把这句话钉死在脑子里，你就绕过了初学者一半的坑。</p>
+
+  <div class="callout info">
+    <strong>volatile 的两条承诺：</strong>①<strong>可见性</strong>——对一个 volatile 变量的写，会立刻刷回主内存，并让其他 CPU 核的缓存副本失效；后续对它的读，一定读到最新值。②<strong>有序性</strong>——JMM 通过<em>内存屏障</em>禁止把 volatile 读写与它前后的普通读写做特定方向的重排序。它没有承诺的是<strong>原子性</strong>：<code>volatile</code> 只保证"单次读"或"单次写"这一个动作是完整的，管不了"读—改—写"这种复合操作。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱一：<code>volatile int count; count++;</code> 依然会丢更新。</strong>这是最高频的误解。<code>count++</code> 是<em>读→改→写</em>三步，volatile 只保证每一步各自读到 / 写出的是新值，却挡不住两个线程同时读到同一个旧值再各自 +1。想让计数器正确，请用 <code>AtomicInteger</code>（CAS）或 <code>synchronized</code>——把 volatile 当原子变量用，是并发代码里最常见的翻车姿势。
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 误把 volatile 当原子</div>
+      <pre>volatile int count = 0;
+
+// 两个线程各 +10000
+void inc() {
+  count++;   // 读+改+写，非原子
+}
+// 结果常常 &lt; 20000
+// volatile 救不了它</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 复合操作用 CAS</div>
+      <pre>final AtomicInteger count
+    = new AtomicInteger();
+
+void inc() {
+  count.incrementAndGet();
+  // CAS 自旋，硬件级原子
+}
+// 结果稳定 == 20000</pre>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <strong>那 volatile 适合什么？</strong>一句话：<em>一个线程写、多个线程读，且写入不依赖当前值</em>的场景。最典型的就是<strong>状态标志位</strong>（<code>volatile boolean running</code>）、一次性发布的<strong>配置 / 单例引用</strong>、以及"写完就不改"的<strong>一写多读</strong>数据。只要写操作是"直接赋一个不依赖旧值的新值"，volatile 就够用且比锁便宜得多。
+  </div>
+
+  <h2>二、看得见的底层：内存屏障</h2>
+  <p><code>volatile</code> 不是魔法，它编译后会在字节码 / 机器码里插入<strong>内存屏障（Memory Barrier / Fence）</strong>——一种告诉 CPU 和编译器"这里不许重排、缓存必须同步"的特殊指令。JSR-133（Java 5 重写内存模型）规定的保守插入策略是：</p>
+
+  <div class="diagram">volatile 写：           │  volatile 读：
+                        │
+  [普通写 a = 1]         │    ┌─────────────────────┐
+  ┌──── StoreStore ───┐ │    │  volatile 读 v      │
+  │  volatile 写 v = 1 │ │    └─────────────────────┘
+  └──── StoreLoad ────┘ │    ┌──── LoadLoad ───────┐
+                        │    ├──── LoadStore ──────┤
+                        │    │  后续普通读/写       │
+                        │    └─────────────────────┘
+
+含义：
+  StoreStore  → 保证 volatile 写之前的普通写，都先刷回主内存
+  StoreLoad   → 保证 volatile 写"落地"后，后面的读才能进行（最贵的屏障）
+  LoadLoad    → 保证 volatile 读之后的读，不会被提前
+  LoadStore   → 保证 volatile 读之后的写，不会被提前</div>
+
+  <p>这套屏障恰好构成一道"单向栅栏"：<strong>volatile 写之前的所有操作不能挪到写之后，volatile 读之后的所有操作不能挪到读之前</strong>。这正是下一节"搭便车"能成立的物理基础。</p>
+
+  <div class="callout info">
+    <strong>联系操作系统 / 硬件：</strong>可见性问题的根源是 CPU 每个核有自己的缓存和<em>写缓冲区（store buffer）</em>。缓存之间靠 <strong>MESI 缓存一致性协议</strong>互相通知，但 store buffer 里的写还没广播出去时，别的核就看不到。<code>volatile</code> 写在 x86 上通常编译成一条带 <code>lock</code> 前缀的指令（如 <code>lock addl</code>），它会把 store buffer 刷干净并让其他核的对应缓存行失效——这就是 StoreLoad 屏障在真实硬件上的落地。x86 属于强内存模型（TSO），只允许"写后读"重排，所以四种屏障里<em>只有 StoreLoad 真正有开销</em>，其余在 x86 上几乎是空操作。
+  </div>
+
+  <h2>三、happens-before：JMM 给你的契约语言</h2>
+  <p>如果每次判断"这个修改另一个线程看不看得到"都要去推理内存屏障、缓存协议，那并发编程就没法写了。所以 JMM 抽象出一套<strong>更高层、与硬件无关的规则</strong>——<em>happens-before</em>。它是你和 JVM 之间的契约：只要你按规则建立起 happens-before 关系，JVM 就保证可见性和有序性，至于底层用屏障还是别的手段实现，你不用关心。</p>
+
+  <div class="callout warn">
+    <strong>陷阱二：happens-before ≠ "时间上先发生"。</strong>这个名字极具误导性。<code>A happens-before B</code> 的真正含义是：<em>A 的执行结果对 B 可见，并且 A 排在 B 之前（不会被重排到 B 之后）</em>。它是一种<strong>可见性 + 有序性的保证</strong>，不是墙上时钟的先后。反过来也成立：即使 A 在时间上确实早于 B 执行，只要它们之间没有 happens-before 关系，B 也可能看不到 A 的修改。面试问"happens-before 是不是先后顺序"，标准答案是"不是时间顺序，是可见性顺序"。
+  </div>
+
+  <p>更妙的是它的<strong>传递性</strong>：<code>A hb B</code> 且 <code>B hb C</code>，则 <code>A hb C</code>。这让你能把一串规则串成链条，把可见性从一个变量"传导"到一堆变量上。</p>
+
+  <div class="formula">A <span class="hl">hb</span> B &nbsp; ∧ &nbsp; B <span class="hl">hb</span> C &nbsp; ⟹ &nbsp; A <span class="hl">hb</span> C</div>
+
+  <h2>四、happens-before 的核心规则</h2>
+  <p>《JCIP》第 16 章列出了这几条你必须记住的规则。绝大多数并发正确性推理，都是这几条 + 传递性拼出来的：</p>
+
+  <table>
+    <tr><th>规则</th><th>内容</th><th>典型用途</th></tr>
+    <tr><td><strong>程序顺序</strong></td><td>同一个线程内，前面的操作 hb 后面的操作（单线程语义）</td><td>串起同线程内的其他规则</td></tr>
+    <tr><td><strong>volatile 规则</strong></td><td>对 volatile 变量的<em>写</em>，hb 后续对同一变量的<em>读</em></td><td>状态发布、标志位</td></tr>
+    <tr><td><strong>监视器锁规则</strong></td><td>对一把锁的 <em>unlock</em>，hb 后续对同一把锁的 <em>lock</em></td><td><code>synchronized</code> 的可见性来源</td></tr>
+    <tr><td><strong>线程启动规则</strong></td><td><code>Thread.start()</code> hb 新线程内的所有操作</td><td>主线程准备的数据子线程可见</td></tr>
+    <tr><td><strong>线程终止规则</strong></td><td>线程内所有操作 hb 其他线程从 <code>join()</code> 成功返回</td><td>收集子线程的计算结果</td></tr>
+    <tr><td><strong>中断规则</strong></td><td><code>interrupt()</code> hb 被中断线程检测到中断</td><td>取消 / 中断协作</td></tr>
+    <tr><td><strong>传递性</strong></td><td>A hb B、B hb C ⟹ A hb C</td><td>把上面的规则连成链</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>联系 JDK 源码：</strong>这些规则不是纸上谈兵。<code>AbstractQueuedSynchronizer</code>（AQS，<code>ReentrantLock</code> 的底层）用一个 <code>volatile int state</code> 承担同步状态的可见性；<code>ConcurrentHashMap</code> 的 <code>Node.val</code> / <code>Node.next</code> 是 volatile；线程池 <code>ThreadPoolExecutor</code> 靠 lock 的 unlock→lock 规则让 worker 之间看到彼此对任务队列的修改。你平时用的并发工具，正确性都建立在这几条 happens-before 之上。
+  </div>
+
+  <h2>五、volatile 的杀手锏：搭便车</h2>
+  <p>volatile 最被低估的能力，不是"让这一个变量可见"，而是<strong>用一次 volatile 写，把它之前的一大堆普通变量修改"一起"发布出去</strong>。这个技巧叫 <em>piggyback（搭便车）</em>，是安全发布对象的关键。看这段代码：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>SafePublish.java</span><span>用 volatile 写"发布"一整个对象</span></div>
+    <pre><span class="kw">class</span> <span class="typ">SafePublish</span> {
+    <span class="kw">private</span> <span class="typ">Config</span> config;              <span class="com">// 普通字段，非 volatile</span>
+    <span class="kw">private</span> <span class="kw">volatile</span> <span class="kw">boolean</span> ready = <span class="kw">false</span>;  <span class="com">// 唯一的 volatile</span>
+
+    <span class="com">// 线程 A：初始化并发布</span>
+    <span class="kw">void</span> <span class="fn">init</span>() {
+        config = <span class="kw">new</span> <span class="typ">Config</span>(<span class="num">8080</span>, <span class="str">"prod"</span>);  <span class="com">// ① 普通写</span>
+        ready = <span class="kw">true</span>;                       <span class="com">// ② volatile 写（栅栏）</span>
+    }
+
+    <span class="com">// 线程 B：读取</span>
+    <span class="kw">void</span> <span class="fn">use</span>() {
+        <span class="kw">if</span> (ready) {                        <span class="com">// ③ volatile 读</span>
+            config.<span class="fn">connect</span>();               <span class="com">// ④ 此刻 config 一定已完整初始化</span>
+        }
+    }
+}</pre>
+  </div>
+
+  <p>为什么线程 B 一定能看到<em>完整初始化好的</em> <code>config</code>，即使 <code>config</code> 自己不是 volatile？靠的正是 happens-before 的链式推理：</p>
+
+  <div class="diagram">①  config = new Config(...)     [线程A, 普通写]
+        │ 程序顺序规则  (① hb ②)
+        ▼
+②  ready = true                 [线程A, volatile 写]
+        │ volatile 规则   (② hb ③)   ← 关键的一跳，跨线程
+        ▼
+③  if (ready)                   [线程B, volatile 读]
+        │ 程序顺序规则  (③ hb ④)
+        ▼
+④  config.connect()            [线程B, 普通读]
+
+  传递性把四步连成：①  hb  ④
+  ⟹ 线程A 对 config 的初始化，对线程B 完全可见</div>
+
+  <div class="callout info">
+    <strong>为什么能"搭便车"？</strong>回到第二节的屏障：volatile 写前的 <em>StoreStore</em> 屏障，逼着 <code>config = ...</code> 这个普通写必须<strong>先于</strong> <code>ready = true</code> 刷回主内存；volatile 读后的 <em>LoadLoad/LoadStore</em> 屏障，又保证读到 <code>ready == true</code> 后，才去读 <code>config</code>。于是普通变量 <code>config</code> "免费"搭上了 volatile 的可见性顺风车。这就是 DCL 单例里给 <code>instance</code> 加 <code>volatile</code> 能修好"半初始化对象"问题的根本原因——它建立了构造完成到读取之间的 happens-before 边。
+  </div>
+
+  <h2>六、经典用武之地：可停止的线程</h2>
+  <p>volatile 最教科书的正例，是用一个标志位优雅地停止线程——它完美契合"一写多读、写不依赖旧值"的条件：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 普通 boolean</div>
+      <pre>class Worker implements Runnable {
+  private boolean stop = false;
+  public void run() {
+    while (!stop) {
+      doWork();
+    }  // JIT 可能把 stop 提到
+       // 寄存器里，改了也看不见
+  }
+  void shutdown() {
+    stop = true;  // 可能永不生效
+  }
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ volatile boolean</div>
+      <pre>class Worker implements Runnable {
+  private volatile boolean stop
+      = false;
+  public void run() {
+    while (!stop) {   // 每轮从主内存读
+      doWork();
+    }
+  }
+  void shutdown() {
+    stop = true;  // 立即对 run() 可见
+  }
+}</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱三：volatile 对"引用"生效，对"引用指向的内容"不生效。</strong><code>volatile int[] arr</code> 保证的是 <em>arr 这个引用</em>的可见性，而不是 <code>arr[0]</code> 这些元素的可见性——写 <code>arr[0] = 1</code> 不会触发 volatile 语义。同理，把一个 <em>可变对象</em>（如 <code>volatile HashMap map</code>）用 volatile 发布，只保证你拿到的是最新的 map 引用，之后往里 <code>put</code> 的内容依然没有可见性保证。要按下标做原子可见访问，得用 <code>AtomicIntegerArray</code> / <code>VarHandle</code>；要共享可变集合，请用 <code>ConcurrentHashMap</code>。
+  </div>
+
+  <h2>七、volatile vs synchronized：怎么选</h2>
+  <p>两者都能提供可见性与有序性，但代价和能力边界差别很大。选型口诀：<em>能用 volatile 解决的可见性问题，别动用锁</em>。</p>
+
+  <table>
+    <tr><th>维度</th><th><code>volatile</code></th><th><code>synchronized</code> / <code>Lock</code></th></tr>
+    <tr><td>原子性</td><td>✗ 仅单次读或写</td><td>✓ 整个临界区</td></tr>
+    <tr><td>可见性</td><td>✓</td><td>✓（unlock→lock 规则）</td></tr>
+    <tr><td>有序性</td><td>✓（内存屏障）</td><td>✓</td></tr>
+    <tr><td>是否阻塞</td><td>否，无锁无上下文切换</td><td>是，可能挂起线程</td></tr>
+    <tr><td>能否协调多变量</td><td>✗ 保证不了多个变量的一致性</td><td>✓ 可保护一组不变式</td></tr>
+    <tr><td>开销</td><td>极低（读几乎零成本）</td><td>较高（锁竞争 / 唤醒）</td></tr>
+    <tr><td>适用</td><td>状态标志、安全发布、一写多读</td><td>复合操作、多变量一致、读改写</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱四：volatile 无法保护"多个变量之间的不变式"。</strong>比如 <code>volatile int lower, upper;</code> 想维持 <code>lower &lt;= upper</code> 这个约束，两个字段各自 volatile 也没用——线程可能在你改完 <code>lower</code>、还没改 <code>upper</code> 时插进来读到不一致的中间态。只要正确性依赖<em>多个变量的联合状态</em>，或依赖<em>变量的当前值去算新值</em>，就必须上锁，volatile 一定不够。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong><code>volatile</code> 是"半个同步"——它用内存屏障买来<strong>可见性</strong>与<strong>有序性</strong>，却买不来<strong>原子性</strong>，所以只配用在"一写多读、写不依赖旧值、无需多变量一致"的场景（标志位、安全发布、单例引用）。而它之所以能成立，是因为 JMM 给了你一纸叫 <strong>happens-before</strong> 的契约：<em>A hb B 意味着 A 的结果对 B 可见且排在 B 之前，而非时间上先发生</em>。掌握"程序顺序 + volatile 规则 + 锁规则 + 传递性"这几条，你就能像推公式一样证明一段并发代码的可见性——这正是从"背 API"跨到"懂并发"的分水岭，也是下一篇《发布与逸出》讨论对象如何被安全交出去的理论地基。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="03-synchronized与内置锁.html" class="nav-btn">← synchronized 与内置锁</a>
+    <a href="05-发布与逸出.html" class="nav-btn next">发布与逸出 →</a>
+  </div>
+</div>
+</body>
+</html>

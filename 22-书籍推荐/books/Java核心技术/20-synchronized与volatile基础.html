@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>synchronized 与 volatile 基础</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java核心技术·卷I</a> / synchronized 与 volatile 基础</div>
+  <div class="hero">
+    <div class="tag">Java 核心 · 第12章·并发</div>
+    <h1>synchronized 与 volatile 基础</h1>
+    <p>并发的一切麻烦都源于三个词：可见性、原子性、有序性——这两个关键字就是 JDK 给你的第一副解药。</p>
+  </div>
+
+  <h2>一、先搞清楚：并发到底难在哪</h2>
+  <p>单线程程序里，代码"从上往下、说一是一"，你写什么就执行什么。可一旦多个线程同时跑，三个反直觉的问题就冒出来了。它们是理解 <code>synchronized</code> 与 <code>volatile</code> 的<strong>唯一前提</strong>——这两个关键字存在的意义，就是分别修补这三个漏洞。</p>
+
+  <table>
+    <thead>
+      <tr><th>问题</th><th>它是什么</th><th>生活类比</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>可见性</strong></td><td>A 线程改了变量，B 线程却看不到（读到旧值）</td><td>你在共享文档改了字，同事的缓存页面还是老版本</td></tr>
+      <tr><td><strong>原子性</strong></td><td>一个"看起来一步"的操作，其实由多步组成，中途会被打断</td><td>转账"扣款+入账"被打断，钱扣了却没到账</td></tr>
+      <tr><td><strong>有序性</strong></td><td>编译器/CPU 为了性能会<em>重排</em>指令，顺序和你写的不一样</td><td>快递员为了顺路，不按你下单的顺序送货</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>为什么会有"可见性"这种怪事？</strong>根源在硬件。现代 CPU 每个核心都有自己的<em>高速缓存（L1/L2）</em>，比主内存快上百倍。线程读写变量时，为了性能会先在缓存里操作，不会每次都同步回主内存。于是 A 核心改了值还留在自己缓存里，B 核心从主内存或自己的旧缓存读，自然看到旧值。Java 把这套硬件现实抽象成了 <strong>JMM（Java 内存模型）</strong>。
+  </div>
+
+  <h2>二、JMM：主内存与工作内存</h2>
+  <p>JMM 规定：所有共享变量都存在<strong>主内存</strong>；每个线程有自己的<strong>工作内存</strong>（对应 CPU 缓存+寄存器），线程<em>只能操作自己工作内存里的副本</em>，改完再择机写回主内存。可见性问题就发生在"择机"二字上——JVM 不保证你什么时候写回、别人什么时候重读。</p>
+
+  <div class="diagram">        ┌─────────────── 主内存 (Main Memory) ───────────────┐
+        │                  int flag = 0;                      │
+        └──────▲───────────────────────────────▲─────────────┘
+               │ read / write                   │ read / write
+        ┌──────┴───────┐                 ┌──────┴───────┐
+        │  线程 A       │                 │  线程 B       │
+        │  工作内存      │                 │  工作内存      │
+        │  flag = 1 ✍   │                 │  flag = 0 ？  │  &lt;- 看不到 A 的修改
+        └──────────────┘                 └──────────────┘
+
+   volatile:  强制每次读都从主内存拉、每次写都刷回主内存 (可见性)
+   synchronized: 进入锁时清工作内存、退出锁时刷回主内存 (可见性 + 互斥)</div>
+
+  <p>下面这段经典代码，几乎是可见性问题的"教科书现场"：主线程改了 <code>running</code>，工作线程却<strong>可能永远停不下来</strong>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>StopThread.java</span><span>没有 volatile → 可能死循环</span></div>
+<pre><span class="kw">class</span> <span class="typ">Worker</span> <span class="kw">extends</span> <span class="typ">Thread</span> <span class="punct">{</span>
+    <span class="kw">private boolean</span> <span class="var">running</span> = <span class="kw">true</span><span class="punct">;</span>   <span class="com">// ← 没加 volatile</span>
+
+    <span class="kw">public void</span> <span class="fn">run</span>() <span class="punct">{</span>
+        <span class="kw">while</span> (<span class="var">running</span>) <span class="punct">{</span> <span class="com">/* 干活 */</span> <span class="punct">}</span>
+        <span class="com">// JIT 可能把 running 缓存进寄存器，甚至优化成 while(true)</span>
+    <span class="punct">}</span>
+    <span class="kw">public void</span> <span class="fn">stop_</span>() <span class="punct">{</span> <span class="var">running</span> = <span class="kw">false</span><span class="punct">;</span> <span class="punct">}</span>  <span class="com">// 主线程调用，工作线程却看不到</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>初学者最常掉的坑：</strong>觉得"我明明把 <code>running</code> 设成 false 了，循环怎么不停？"——这不是玄学，是 JMM + JIT 的真实行为。JIT 编译器看到循环体内 <code>running</code> 没被修改，会把它<em>提升到寄存器</em>缓存起来（叫做循环不变量外提），于是工作线程读的永远是那个缓存的 <code>true</code>。给 <code>running</code> 加上 <code>volatile</code>，问题立刻消失。
+  </div>
+
+  <h2>三、volatile：轻量级的"可见性 + 有序性"</h2>
+  <p><code>volatile</code> 做两件事，而且<strong>只做这两件</strong>：</p>
+  <ol>
+    <li><strong>保证可见性</strong>：写 volatile 变量会立即刷回主内存；读 volatile 变量会强制从主内存重新加载。</li>
+    <li><strong>禁止指令重排序</strong>：通过插入<em>内存屏障（Memory Barrier）</em>，保证 volatile 写之前的操作、读之后的操作不会被重排到屏障另一侧。</li>
+  </ol>
+
+  <p>它<strong>不做</strong>的那件事，恰恰是最多人误解的：<em>volatile 不保证原子性</em>。看这个反例——</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 以为 volatile 能保护 count++</div>
+<pre><span class="kw">volatile int</span> count = <span class="num">0</span>;
+
+<span class="kw">void</span> incr() <span class="punct">{</span>
+    count++;   <span class="com">// 三步！读-改-写</span>
+<span class="punct">}</span>
+<span class="com">// 1000 线程各 +1000 次</span>
+<span class="com">// 结果 &lt; 100 万，丢更新 💥</span>
+<span class="com">// volatile 保证不了"读改写"不被打断</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 用原子类或加锁</div>
+<pre><span class="typ">AtomicInteger</span> count =
+        <span class="kw">new</span> <span class="typ">AtomicInteger</span>();
+
+<span class="kw">void</span> incr() <span class="punct">{</span>
+    count.<span class="fn">incrementAndGet</span>();  <span class="com">// CAS 原子</span>
+<span class="punct">}</span>
+<span class="com">// 或: synchronized void incr(){count++;}</span>
+<span class="com">// 结果稳定 = 100 万 ✅</span></pre>
+    </div>
+  </div>
+
+  <p><code>count++</code> 在字节码里是 <code>getfield → iadd → putfield</code> 三条指令。volatile 能保证每一步读到/写回的是最新值，但<strong>拦不住</strong>两个线程在"读"和"写"之间交错，导致其中一次自增被覆盖。</p>
+
+  <div class="callout tip">
+    <strong>什么时候用 volatile 才对？</strong>记住一个判据：<em>写入不依赖当前值</em>（不是"读-改-写"），或者<em>只有一个线程写、多个线程读</em>。最典型的两个正确场景：① 状态标志位（如上面的 <code>running</code>、开关量）；② 双重检查锁定（DCL）里的单例引用（下一节讲）。
+  </div>
+
+  <h2>四、synchronized：原子性 + 可见性 + 有序性一把梭</h2>
+  <p>如果说 volatile 是"精准修补"，<code>synchronized</code> 就是"重锤"——它通过<strong>互斥（一次只让一个线程进临界区）</strong>，一次性解决三大问题。它有三种用法，锁的<em>对象</em>各不相同，这是高频考点：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>三种写法，锁的是谁？</span><span>看清 monitor 挂在哪个对象上</span></div>
+<pre><span class="kw">class</span> <span class="typ">Counter</span> <span class="punct">{</span>
+    <span class="com">// ① 同步实例方法 → 锁 this（当前实例）</span>
+    <span class="kw">public synchronized void</span> <span class="fn">incr</span>() <span class="punct">{</span> ... <span class="punct">}</span>
+
+    <span class="com">// ② 同步静态方法 → 锁 Counter.class（类对象，全局唯一）</span>
+    <span class="kw">public static synchronized void</span> <span class="fn">reset</span>() <span class="punct">{</span> ... <span class="punct">}</span>
+
+    <span class="com">// ③ 同步代码块 → 锁你指定的任意对象（推荐，粒度可控）</span>
+    <span class="kw">private final</span> <span class="typ">Object</span> <span class="var">lock</span> = <span class="kw">new</span> <span class="typ">Object</span>()<span class="punct">;</span>
+    <span class="kw">public void</span> <span class="fn">add</span>() <span class="punct">{</span>
+        <span class="kw">synchronized</span> (<span class="var">lock</span>) <span class="punct">{</span> ... <span class="punct">}</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>面试高频陷阱：实例锁和类锁互不干扰。</strong>①和② 锁的是<em>不同对象</em>（一个是实例，一个是 <code>Counter.class</code>），因此一个线程持有实例锁执行 <code>incr()</code>，<strong>不会</strong>阻塞另一个线程执行静态的 <code>reset()</code>。另一个坑：用 <code>synchronized(new Object())</code> 或锁 <code>String</code> 常量、<code>Integer</code> 缓存对象，等于没锁或锁错——锁必须是<em>被多个线程共享、且引用稳定</em>的对象，所以用 <code>private final</code> 锁对象最稳。
+  </div>
+
+  <h3>底层：monitor 与对象头 Mark Word</h3>
+  <p><code>synchronized</code> 靠对象内置的 <strong>monitor（监视器锁）</strong>实现。编译后，同步代码块对应字节码里的 <code>monitorenter</code> / <code>monitorexit</code> 指令；同步方法则在方法表加一个 <code>ACC_SYNCHRONIZED</code> 标志。每个 Java 对象的<em>对象头</em>里有一块 <strong>Mark Word</strong>，记录当前的锁状态和持有者。</p>
+
+  <div class="diagram">  线程进入 synchronized 块:
+      monitorenter  ──►  争抢对象的 monitor
+                         ├─ 抢到:  Mark Word 记下"我持有"，进入临界区
+                         └─ 没抢到: 阻塞，进入 EntryList 等待队列
+  线程离开:
+      monitorexit   ──►  释放 monitor，唤醒等待队列里的线程
+                         (异常退出时也会自动 monitorexit，锁不会泄漏)</div>
+
+  <div class="callout info">
+    <strong>synchronized 并不总是"重量级"。</strong>JDK 6 起对它做了大量优化，引入了<em>锁升级</em>机制：<strong>无锁 → 偏向锁 → 轻量级锁（CAS 自旋）→ 重量级锁</strong>。只有真正发生激烈竞争时才会膨胀为重量级锁（依赖操作系统的 mutex，涉及用户态/内核态切换才慢）。竞争不激烈时，轻量级锁靠 CAS 自旋就搞定，开销很小。所以"synchronized 一定慢"是过时的老黄历。（注：偏向锁在 JDK 15 起已默认关闭并被弃用，见 JEP 374，现代 JVM 主要在轻量级与重量级之间升级。）
+  </div>
+
+  <h2>五、happens-before：可见性的"官方保证书"</h2>
+  <p>你可能会问：JMM 那么自由，我怎么知道"哪次写一定对哪次读可见"？答案是 <strong>happens-before 原则</strong>——它是 JMM 给程序员的<em>可见性契约</em>：若操作 A happens-before 操作 B，那么 A 的结果对 B 一定可见，且 A 排在 B 前面。你不用去理解底层内存屏障，记住这几条规则即可：</p>
+
+  <table>
+    <thead>
+      <tr><th>规则</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>程序顺序</strong></td><td>同一线程内，前面的操作 happens-before 后面的操作</td></tr>
+      <tr><td><strong>锁规则</strong></td><td>对一个锁的 <em>解锁</em> happens-before 后续对同一锁的<em>加锁</em></td></tr>
+      <tr><td><strong>volatile 规则</strong></td><td>对 volatile 变量的<em>写</em> happens-before 后续对它的<em>读</em></td></tr>
+      <tr><td><strong>线程启动</strong></td><td><code>Thread.start()</code> happens-before 该线程的所有动作</td></tr>
+      <tr><td><strong>线程终止</strong></td><td>线程的所有动作 happens-before 其他线程 <code>join()</code> 成功返回</td></tr>
+      <tr><td><strong>传递性</strong></td><td>A hb B 且 B hb C，则 A hb C</td></tr>
+    </tbody>
+  </table>
+
+  <div class="formula">
+    volatile 写 <span class="hl">happens-before</span> volatile 读　&nbsp;≈&nbsp;　解锁 <span class="hl">happens-before</span> 加锁
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么 synchronized 能保证可见性？</strong>正是靠"锁规则 + 传递性"。线程 A 在锁内修改的变量，退出锁时刷回主内存；线程 B 加同一把锁时清空工作内存、重读主内存。于是 A 锁内的写 happens-before B 锁内的读——可见性就这么"顺带"实现了。这解释了一个常被忽略的点：<em>synchronized 不只是互斥，它同时提供可见性</em>，所以被锁保护的普通变量不需要再加 volatile。
+  </div>
+
+  <h2>六、经典应用：双重检查锁定（DCL）单例</h2>
+  <p>DCL 是 volatile 和 synchronized <em>配合</em>的最经典案例，也几乎是必考题。目标：懒加载单例，且只有第一次创建时才加锁（避免每次 <code>getInstance()</code> 都同步的性能损耗）。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ Bad · 少了 volatile</div>
+<pre><span class="kw">class</span> Singleton <span class="punct">{</span>
+  <span class="kw">private static</span> Singleton I<span class="punct">;</span>
+  <span class="kw">static</span> Singleton get() <span class="punct">{</span>
+    <span class="kw">if</span> (I == <span class="kw">null</span>)          <span class="com">// ①</span>
+      <span class="kw">synchronized</span>(Singleton.<span class="kw">class</span>)<span class="punct">{</span>
+        <span class="kw">if</span> (I == <span class="kw">null</span>)      <span class="com">// ②</span>
+          I = <span class="kw">new</span> Singleton()<span class="punct">;</span>
+      <span class="punct">}</span>
+    <span class="kw">return</span> I<span class="punct">;</span>
+  <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// new 分三步且可能重排:</span>
+<span class="com">// 1.分配 2.初始化 3.赋值引用</span>
+<span class="com">// 若 3 先于 2，别的线程在①</span>
+<span class="com">// 拿到未初始化完的对象 💥</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ Good · 加 volatile 禁重排</div>
+<pre><span class="kw">class</span> Singleton <span class="punct">{</span>
+  <span class="kw">private static volatile</span>
+          Singleton I<span class="punct">;</span>       <span class="com">// ★</span>
+  <span class="kw">static</span> Singleton get() <span class="punct">{</span>
+    <span class="kw">if</span> (I == <span class="kw">null</span>)
+      <span class="kw">synchronized</span>(Singleton.<span class="kw">class</span>)<span class="punct">{</span>
+        <span class="kw">if</span> (I == <span class="kw">null</span>)
+          I = <span class="kw">new</span> Singleton()<span class="punct">;</span>
+      <span class="punct">}</span>
+    <span class="kw">return</span> I<span class="punct">;</span>
+  <span class="punct">}</span>
+<span class="punct">}</span>
+<span class="com">// volatile 禁止 2、3 重排，</span>
+<span class="com">// 引用可见即对象已初始化完 ✅</span></pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>DCL 里 volatile 不能省。</strong>很多人以为有了双重检查和 synchronized 就够了，其实 <code>I = new Singleton()</code> 的"分配-初始化-赋值"三步可能被重排成"分配-赋值-初始化"。一旦引用先被赋值，另一个线程在第①处判断 <code>I != null</code> 直接返回了一个<em>半成品对象</em>，访问其字段就是脏数据。volatile 的"禁止重排序"正是为堵这个漏洞而生。（当然，用 <em>静态内部类</em> 或 <code>enum</code> 实现单例可以完全绕开这套复杂度，更推荐。）
+  </div>
+
+  <h2>七、volatile vs synchronized 怎么选</h2>
+  <table>
+    <thead>
+      <tr><th>维度</th><th><code>volatile</code></th><th><code>synchronized</code></th></tr>
+    </thead>
+    <tbody>
+      <tr><td>可见性</td><td>✓</td><td>✓</td></tr>
+      <tr><td>有序性（禁重排）</td><td>✓</td><td>✓</td></tr>
+      <tr><td>原子性</td><td>✗ 仅单次读/写</td><td>✓ 整个临界区</td></tr>
+      <tr><td>是否阻塞</td><td>不阻塞（无锁）</td><td>会阻塞（互斥）</td></tr>
+      <tr><td>作用对象</td><td>只能修饰变量</td><td>方法 / 代码块</td></tr>
+      <tr><td>开销</td><td>很轻</td><td>较重（竞争激烈时）</td></tr>
+      <tr><td>典型场景</td><td>状态标志、DCL 引用、一写多读</td><td>复合操作、"读-改-写"、保护多个变量</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>还有一条选择：<code>java.util.concurrent</code> 原子类。</strong>对"读-改-写"型计数场景，<code>AtomicInteger</code> / <code>AtomicLong</code> 用 CAS（比较并交换）实现无锁原子操作，比 synchronized 更高效——它底层是 <code>Unsafe.compareAndSwap</code>，最终对应一条 CPU 的 <code>lock cmpxchg</code> 指令。它兼具 volatile 的可见性 <em>和</em> 单操作的原子性，可以视作"能做加减的 volatile"。这条线索会在后续<em>线程池</em>与并发工具章节继续展开。
+  </div>
+
+  <h2>八、面试速记清单</h2>
+  <div class="callout warn">
+    <strong>背诵要点：</strong>
+    <br>· 并发三问题：<strong>可见性 / 原子性 / 有序性</strong>，根源是 CPU 缓存 + 指令重排，JMM 是其抽象。
+    <br>· <strong>volatile</strong> = 可见性 + 禁重排，<em>不保证原子性</em>（<code>i++</code> 会丢更新）。
+    <br>· <strong>synchronized</strong> = 互斥（原子性）+ 可见性 + 有序性；靠 monitor 实现，字节码是 <code>monitorenter/exit</code>。
+    <br>· 锁的对象：实例方法锁 <code>this</code>、静态方法锁 <code>Class</code>、代码块锁指定对象；<em>实例锁与类锁互不阻塞</em>。
+    <br>· JDK 6+ 锁升级：无锁 → (偏向锁) → 轻量级锁(CAS) → 重量级锁；synchronized 已不再"一定慢"。
+    <br>· 可见性的理论基础是 <strong>happens-before</strong>：解锁 hb 加锁、volatile 写 hb 读。
+    <br>· <strong>DCL 单例</strong>必须给引用加 <code>volatile</code>，防"分配-赋值-初始化"重排暴露半成品对象。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>并发的三座大山是<em>可见性、原子性、有序性</em>。<code>volatile</code> 是一把"轻刀"——只保证可见性与有序性，代价小、不阻塞，适合状态标志和一写多读；<code>synchronized</code> 是一把"重锤"——用互斥同时锁住三者，代价是阻塞。选型只看一个问题：<strong>你要保护的是"单个变量的读或写"，还是"一连串必须不可分割的操作"？</strong>前者上 volatile（或原子类），后者上 synchronized（或 Lock）。理解了 JMM 与 happens-before，这两个关键字就不再是魔法，而是可推导的工程结论。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="19-线程基础.html" class="nav-btn">← 线程基础</a>
+    <a href="21-阻塞队列与并发集合.html" class="nav-btn next">阻塞队列与并发集合 →</a>
+  </div>
+</div>
+</body>
+</html>

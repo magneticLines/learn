@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CompletableFuture 与异步编排</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / CompletableFuture 与异步编排</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第5-7章·并发构建模块</div>
+    <h1>CompletableFuture 与异步编排</h1>
+    <p>把“等结果”变成“接着做什么”——用声明式的流水线取代阻塞的 get()。</p>
+  </div>
+
+  <h2>Future 到底差在哪</h2>
+  <p>上一节我们用 <code>Future</code> 拿到了异步任务的“提货单”。但真正用起来，你会发现 <code>Future</code> 有三个硬伤，它更像一个“<em>只读的结果占位符</em>”，而不是一个能编排的工具：</p>
+  <ul>
+    <li><strong>只能阻塞取结果。</strong><code>future.get()</code> 会把当前线程死死钉住，异步执行的意义大打折扣——你无非是把“同步等”换了个地方等。</li>
+    <li><strong>无法注册回调。</strong>你不能说“算完后自动接着做 X”，只能自己轮询 <code>isDone()</code> 或阻塞 <code>get()</code>。</li>
+    <li><strong>无法组合。</strong>两个 <code>Future</code> 都完成后合并结果、一个的输出喂给下一个……全得手写线程协调，代码迅速滑向回调地狱。</li>
+  </ul>
+  <p>Java 8 的 <code>CompletableFuture</code> 就是为解决这三点而生。名字里的 <em>Completable</em>（可完成）是关键：它的结果不仅能被后台任务填入，<strong>也能被外部手动 <code>complete(value)</code> 填入</strong>——这让它既能当异步任务的句柄，也能当跨线程传递结果的“信箱”。</p>
+
+  <div class="callout info">
+    <strong>类型血统：</strong> <code>CompletableFuture&lt;T&gt;</code> 同时实现了 <code>Future&lt;T&gt;</code>（保留 <code>get()</code> 兼容旧代码）和 <code>CompletionStage&lt;T&gt;</code>（提供 <code>thenApply</code>/<code>thenCompose</code>/<code>exceptionally</code> 等 50 多个编排方法）。可以说：<em>Future 负责“拿结果”，CompletionStage 负责“编排下一步”</em>。这与前面学的 <code>Optional</code>、Stream 是同一套“声明式链式”思想——把“对值做什么”写成一条流水线。
+  </div>
+
+  <div class="formula">CompletableFuture = <span class="hl">Future</span>(可取结果) + <span class="hl">CompletionStage</span>(可编排下一步)</div>
+
+  <h2>创建异步任务：谁在哪个线程跑</h2>
+  <p>两个工厂方法起步：<code>supplyAsync(Supplier)</code> 用于“有返回值”的任务，<code>runAsync(Runnable)</code> 用于“无返回值”的任务。不显式传线程池时，任务默认跑在 <code>ForkJoinPool.commonPool()</code> 上。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Create.java</span><span>两种起步方式与默认线程池</span></div>
+    <pre><span class="com">// 有返回值：Supplier 的返回值成为 future 的结果</span>
+<span class="typ">CompletableFuture</span><span class="punct">&lt;</span><span class="typ">String</span><span class="punct">&gt;</span> <span class="var">cf1</span> <span class="punct">=</span> <span class="typ">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(()</span> <span class="punct">-&gt;</span> <span class="fn">queryUser</span><span class="punct">(</span><span class="num">42</span><span class="punct">));</span>
+
+<span class="com">// 无返回值：CompletableFuture&lt;Void&gt;</span>
+<span class="typ">CompletableFuture</span><span class="punct">&lt;</span><span class="typ">Void</span><span class="punct">&gt;</span> <span class="var">cf2</span> <span class="punct">=</span> <span class="typ">CompletableFuture</span><span class="punct">.</span><span class="fn">runAsync</span><span class="punct">(()</span> <span class="punct">-&gt;</span> <span class="fn">warmCache</span><span class="punct">());</span>
+
+<span class="com">// 生产环境强烈建议：显式传自己的线程池，别用 commonPool</span>
+<span class="typ">ExecutorService</span> <span class="var">io</span> <span class="punct">=</span> <span class="typ">Executors</span><span class="punct">.</span><span class="fn">newFixedThreadPool</span><span class="punct">(</span><span class="num">16</span><span class="punct">);</span>
+<span class="typ">CompletableFuture</span><span class="punct">&lt;</span><span class="typ">String</span><span class="punct">&gt;</span> <span class="var">cf3</span> <span class="punct">=</span> <span class="typ">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(()</span> <span class="punct">-&gt;</span> <span class="fn">queryUser</span><span class="punct">(</span><span class="num">42</span><span class="punct">),</span> <span class="var">io</span><span class="punct">);</span>
+
+<span class="com">// “手动完成”：结果不来自后台任务，而是外部塞进去（当信箱用）</span>
+<span class="typ">CompletableFuture</span><span class="punct">&lt;</span><span class="typ">String</span><span class="punct">&gt;</span> <span class="var">box</span> <span class="punct">=</span> <span class="kw">new</span> <span class="typ">CompletableFuture</span><span class="punct">&lt;&gt;();</span>
+<span class="var">box</span><span class="punct">.</span><span class="fn">complete</span><span class="punct">(</span><span class="str">"done"</span><span class="punct">);</span>   <span class="com">// 任意线程可调用，等待者立即被唤醒</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>头号生产事故：别把阻塞任务丢进 commonPool。</strong> <code>ForkJoinPool.commonPool()</code> 是<em>全 JVM 共享</em>的，默认并行度只有 <code>CPU核数 - 1</code>。如果你在里面跑数据库查询、HTTP 调用这类<strong>阻塞 IO</strong>，几个慢请求就能占满它，导致<em>整个应用</em>（包括并行 Stream、其他 CompletableFuture）一起卡死。规则：<strong>CPU 密集</strong>可用默认池；<strong>IO 密集必须传专用线程池</strong>，并为它设置合理大小与有界队列。
+  </div>
+
+  <h2>链式编排：thenApply / thenAccept / thenRun</h2>
+  <p>拿到一个 <code>CompletableFuture</code> 后，用 <code>then*</code> 方法声明“完成后接着做什么”。三个基础变体的区别只在于——<em>是否消费上一步结果、是否产出新结果</em>：</p>
+
+  <table>
+    <tr><th>方法</th><th>入参</th><th>返回</th><th>类比 Stream</th></tr>
+    <tr><td><code>thenApply(fn)</code></td><td>接收上一步结果 <code>T</code></td><td>新结果 <code>U</code></td><td><code>map</code></td></tr>
+    <tr><td><code>thenAccept(c)</code></td><td>接收结果 <code>T</code></td><td><code>Void</code>（只消费）</td><td><code>forEach</code></td></tr>
+    <tr><td><code>thenRun(r)</code></td><td>不接收结果</td><td><code>Void</code></td><td>收尾动作</td></tr>
+  </table>
+
+  <p>每个方法都有 <code>xxxAsync</code> 变体，差别在“<strong>下一步在哪个线程跑</strong>”：</p>
+  <ul>
+    <li><code>thenApply</code>：可能由<em>完成上一步的那个线程</em>直接继续跑；若上一步在调用时已完成，甚至由<em>调用线程</em>同步跑。适合极轻量的转换。</li>
+    <li><code>thenApplyAsync</code>：把下一步重新提交到线程池（默认 commonPool，或你传的 executor）异步执行。适合较重、或不想占用上游线程的操作。</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>为什么要区分同步/异步续接？</strong> 因为“调度到另一个线程”本身有上下文切换成本。一次简单的 <code>x -&gt; x + 1</code> 转换，直接在原线程跑（<code>thenApply</code>）比再排一次队（<code>thenApplyAsync</code>）划算得多。反过来，如果续接动作会阻塞或耗时，就该用 <code>Async</code> 把它挪走，别拖住负责回调的那个线程。这正是 CLAUDE.md 强调的“方案取舍”——没有银弹，看动作的轻重。
+  </div>
+
+  <h2>thenApply vs thenCompose：别嵌套 Future</h2>
+  <p>当续接函数本身<em>又返回一个 <code>CompletableFuture</code></em>（比如第一步查到用户 id，第二步再异步查该用户的订单），用 <code>thenApply</code> 会得到套娃类型 <code>CompletableFuture&lt;CompletableFuture&lt;Order&gt;&gt;</code>。<code>thenCompose</code> 会把它“拍平”，正是 Stream/Optional 里 <code>flatMap</code> 之于 <code>map</code> 的关系。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · thenApply 套娃</div>
+      <pre>CompletableFuture&lt;
+    CompletableFuture&lt;Order&gt;&gt; nested =
+  findUserId(name)              // CF&lt;Long&gt;
+    .thenApply(id -&gt;
+        loadOrderAsync(id));    // 又返回 CF&lt;Order&gt;
+// 想拿 Order 还得再 get 一层，噩梦
+Order o = nested.join().join();</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · thenCompose 拍平</div>
+      <pre>CompletableFuture&lt;Order&gt; flat =
+  findUserId(name)              // CF&lt;Long&gt;
+    .thenCompose(id -&gt;
+        loadOrderAsync(id));    // 拍平为 CF&lt;Order&gt;
+// 一层，直接拿结果
+Order o = flat.join();</pre>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <strong>一句话记忆：</strong> 续接函数返回<em>普通值</em>用 <code>thenApply</code>（map）；返回<em>另一个 CompletableFuture</em> 用 <code>thenCompose</code>（flatMap）。判据永远是“函数的返回类型是不是又包了一层 Future”。
+  </div>
+
+  <h2>组合多个任务：combine / allOf / anyOf</h2>
+  <p>真实业务常常是“<em>并行发几个请求，等它们凑齐再汇总</em>”。CompletableFuture 把这类扇出/扇入（fan-out / fan-in）也变成了声明式：</p>
+
+  <div class="diagram">扇出并行 + 扇入汇总（allOf）
+
+  ┌─ supplyAsync(查库存) ─┐
+  │                       │
+  ├─ supplyAsync(查价格) ─┤──▶ allOf(...).thenRun(汇总)
+  │                       │
+  └─ supplyAsync(查评价) ─┘
+     三个请求并行发出            三者全部完成后才触发
+
+thenCombine（两两合并）      anyOf（谁先好用谁）
+  A ─┐                        A ─┐
+     ├─(a,b)-&gt;merge──▶ 结果      ├──▶ 取最先完成的那个
+  B ─┘                        B ─┘</div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Aggregate.java</span><span>并行调用 3 个服务并汇总</span></div>
+    <pre><span class="typ">CompletableFuture</span><span class="punct">&lt;</span><span class="typ">Integer</span><span class="punct">&gt;</span> <span class="var">stock</span> <span class="punct">=</span> <span class="typ">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(()</span> <span class="punct">-&gt;</span> <span class="fn">queryStock</span><span class="punct">(</span><span class="var">id</span><span class="punct">),</span> <span class="var">io</span><span class="punct">);</span>
+<span class="typ">CompletableFuture</span><span class="punct">&lt;</span><span class="typ">Double</span><span class="punct">&gt;</span>  <span class="var">price</span> <span class="punct">=</span> <span class="typ">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(()</span> <span class="punct">-&gt;</span> <span class="fn">queryPrice</span><span class="punct">(</span><span class="var">id</span><span class="punct">),</span> <span class="var">io</span><span class="punct">);</span>
+<span class="typ">CompletableFuture</span><span class="punct">&lt;</span><span class="typ">Double</span><span class="punct">&gt;</span>  <span class="var">score</span> <span class="punct">=</span> <span class="typ">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(()</span> <span class="punct">-&gt;</span> <span class="fn">queryScore</span><span class="punct">(</span><span class="var">id</span><span class="punct">),</span> <span class="var">io</span><span class="punct">);</span>
+
+<span class="com">// thenCombine：两个独立结果都好后合并</span>
+<span class="typ">CompletableFuture</span><span class="punct">&lt;</span><span class="typ">String</span><span class="punct">&gt;</span> <span class="var">card</span> <span class="punct">=</span> <span class="var">stock</span><span class="punct">.</span><span class="fn">thenCombine</span><span class="punct">(</span><span class="var">price</span><span class="punct">,</span>
+        <span class="punct">(</span><span class="var">s</span><span class="punct">,</span> <span class="var">p</span><span class="punct">)</span> <span class="punct">-&gt;</span> <span class="str">"库存"</span> <span class="punct">+</span> <span class="var">s</span> <span class="punct">+</span> <span class="str">" 单价"</span> <span class="punct">+</span> <span class="var">p</span><span class="punct">);</span>
+
+<span class="com">// allOf：等全部完成（返回 Void，结果得各自 join 取回）</span>
+<span class="typ">CompletableFuture</span><span class="punct">.</span><span class="fn">allOf</span><span class="punct">(</span><span class="var">stock</span><span class="punct">,</span> <span class="var">price</span><span class="punct">,</span> <span class="var">score</span><span class="punct">)</span>
+    <span class="punct">.</span><span class="fn">thenRun</span><span class="punct">(()</span> <span class="punct">-&gt;</span> <span class="punct">{</span>
+        <span class="com">// 到这里三个都已完成，join 不会再阻塞</span>
+        <span class="fn">render</span><span class="punct">(</span><span class="var">stock</span><span class="punct">.</span><span class="fn">join</span><span class="punct">(),</span> <span class="var">price</span><span class="punct">.</span><span class="fn">join</span><span class="punct">(),</span> <span class="var">score</span><span class="punct">.</span><span class="fn">join</span><span class="punct">());</span>
+    <span class="punct">});</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>allOf 的坑：</strong> <code>allOf(...)</code> 的返回类型是 <code>CompletableFuture&lt;Void&gt;</code>——它<em>不帮你收集结果</em>，只告诉你“都好了”。取值仍要对每个原始 future 调 <code>join()</code>（此时不会阻塞）。另外 <code>anyOf</code> 返回 <code>CompletableFuture&lt;Object&gt;</code>（因入参类型可能不同），拿到值往往得强转，注意别踩类型陷阱。
+  </div>
+
+  <h2>异常处理：让流水线不“断电”</h2>
+  <p>同步代码靠 <code>try/catch</code>，异步流水线里异常会<strong>沿链向下游传播</strong>：某一步抛异常，它后面的 <code>thenApply</code> 等正常续接会被<em>整体跳过</em>，直到遇到一个专门处理异常的节点。三个处理方法要分清：</p>
+
+  <table>
+    <tr><th>方法</th><th>正常时</th><th>异常时</th><th>能否改结果</th></tr>
+    <tr><td><code>exceptionally(fn)</code></td><td>透传原值，不触发</td><td>用 fallback 值兜底</td><td>只在异常时改</td></tr>
+    <tr><td><code>handle(bi)</code></td><td>(结果, null) 都进来</td><td>(null, 异常) 都进来</td><td>两种情况都可改</td></tr>
+    <tr><td><code>whenComplete(bi)</code></td><td>(结果, null)</td><td>(null, 异常)</td><td>否，只“旁观”不改结果</td></tr>
+  </table>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ErrorHandling.java</span><span>兜底、观测、超时</span></div>
+    <pre><span class="typ">CompletableFuture</span><span class="punct">.</span><span class="fn">supplyAsync</span><span class="punct">(()</span> <span class="punct">-&gt;</span> <span class="fn">callFlakyService</span><span class="punct">(),</span> <span class="var">io</span><span class="punct">)</span>
+    <span class="punct">.</span><span class="fn">thenApply</span><span class="punct">(</span><span class="typ">Response</span><span class="punct">::</span><span class="fn">body</span><span class="punct">)</span>                 <span class="com">// 抛异常则跳过这步</span>
+    <span class="punct">.</span><span class="fn">exceptionally</span><span class="punct">(</span><span class="var">ex</span> <span class="punct">-&gt;</span> <span class="punct">{</span>                   <span class="com">// 只在链上出异常时进入</span>
+        <span class="var">log</span><span class="punct">.</span><span class="fn">warn</span><span class="punct">(</span><span class="str">"降级返回缓存"</span><span class="punct">,</span> <span class="var">ex</span><span class="punct">);</span>
+        <span class="kw">return</span> <span class="fn">fromCache</span><span class="punct">();</span>                     <span class="com">// 提供兜底值，链恢复正常</span>
+    <span class="punct">})</span>
+    <span class="punct">.</span><span class="fn">whenComplete</span><span class="punct">((</span><span class="var">v</span><span class="punct">,</span> <span class="var">ex</span><span class="punct">)</span> <span class="punct">-&gt;</span> <span class="fn">recordMetric</span><span class="punct">(</span><span class="var">v</span><span class="punct">,</span> <span class="var">ex</span><span class="punct">))</span>  <span class="com">// 旁观：埋点，不改结果</span>
+    <span class="punct">.</span><span class="fn">orTimeout</span><span class="punct">(</span><span class="num">2</span><span class="punct">,</span> <span class="typ">TimeUnit</span><span class="punct">.</span><span class="var">SECONDS</span><span class="punct">);</span>       <span class="com">// Java 9+：超时则以 TimeoutException 完成</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>异常包装陷阱：</strong> 链上抛出的异常在下游会被包成 <code>CompletionException</code>，通过 <code>join()</code> 抛出的也是它；而 <code>get()</code> 抛的是 <code>ExecutionException</code>——两者都套了一层，真正的原因要 <code>getCause()</code> 才拿得到。别直接对着 wrapper 的类型做 <code>instanceof</code> 判断业务异常。<br><br><strong>更隐蔽的：</strong> 如果你<em>只创建了 future 却从不 join / 不注册 exceptionally</em>，任务里抛的异常会被<strong>悄悄吞掉</strong>，既不打印也不上报——这是异步代码最常见的“幽灵 bug”。
+  </div>
+
+  <h2>反例 → 正例：回调地狱 vs 声明式流水线</h2>
+  <p>“查用户 → 用用户 id 查订单 → 汇总发货”这条链，用裸线程 + Future 会写成层层嵌套；用 CompletableFuture 则是一条平坦的流水线：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 阻塞 + 嵌套</div>
+      <pre>Future&lt;User&gt; uf =
+    pool.submit(() -&gt; findUser(name));
+User u = uf.get();          // 阻塞①
+Future&lt;Order&gt; of =
+    pool.submit(() -&gt; loadOrder(u.id()));
+Order o = of.get();         // 阻塞②
+Future&lt;Ship&gt; sf =
+    pool.submit(() -&gt; ship(o));
+Ship s = sf.get();          // 阻塞③
+// 三次阻塞、线程全程被占、异常
+// 靠散落的 try/catch 兜</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 非阻塞 + 链式</div>
+      <pre>CompletableFuture
+  .supplyAsync(() -&gt; findUser(name), io)
+  .thenCompose(u -&gt;
+      supplyAsync(() -&gt; loadOrder(u.id()), io))
+  .thenCompose(o -&gt;
+      supplyAsync(() -&gt; ship(o), io))
+  .exceptionally(ex -&gt; fallbackShip(ex))
+  .thenAccept(this::notifyUser);
+// 全程不阻塞调用线程，异常
+// 一处统一兜底，可读性接近同步</pre>
+    </div>
+  </div>
+
+  <h2>Future vs CompletableFuture 全景对比</h2>
+  <table>
+    <tr><th>能力</th><th>Future (JDK 5)</th><th>CompletableFuture (JDK 8)</th></tr>
+    <tr><td>取结果</td><td>只能阻塞 <code>get()</code></td><td>阻塞 <code>get/join</code> 或注册回调</td></tr>
+    <tr><td>回调/续接</td><td>不支持</td><td><code>thenApply/thenAccept/...</code></td></tr>
+    <tr><td>任务组合</td><td>手写协调</td><td><code>thenCompose/combine/allOf/anyOf</code></td></tr>
+    <tr><td>异常处理</td><td><code>get</code> 抛 <code>ExecutionException</code></td><td><code>exceptionally/handle/whenComplete</code></td></tr>
+    <tr><td>手动完成</td><td>不支持</td><td><code>complete/completeExceptionally</code></td></tr>
+    <tr><td>超时</td><td>仅 <code>get(timeout)</code>（只是等超时）</td><td><code>orTimeout/completeOnTimeout</code>(9+)</td></tr>
+    <tr><td>取消</td><td><code>cancel(true)</code> 可中断任务</td><td><code>cancel</code> 不保证中断底层线程</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>联系生态：</strong> Spring 的 <code>@Async</code> 方法可直接返回 <code>CompletableFuture</code>，配合自定义 <code>ThreadPoolTaskExecutor</code> 就是生产级异步；WebFlux 的 <code>Mono</code>/<code>Flux</code> 是它的“流式加强版”（支持背压与多值）。而 Java 21 的<strong>虚拟线程</strong>又带来新思路：IO 阻塞变得极廉价，很多原本靠 CompletableFuture 编排来“躲避阻塞”的场景，如今可以用直白的同步代码 + 虚拟线程写出，可读性更好。选型时记住：<em>CompletableFuture 擅长“组合与编排多个异步阶段”，虚拟线程擅长“让海量阻塞调用不吃线程”</em>，两者互补而非互斥。
+  </div>
+
+  <div class="callout key">
+    <strong>核心收束：</strong> <code>CompletableFuture</code> = <strong>Future</strong>（可取结果）+ <strong>CompletionStage</strong>（可编排下一步），把“阻塞等结果”翻转成“声明接着做什么”。记牢四条：① 创建用 <code>supplyAsync</code>/<code>runAsync</code>，<strong>IO 任务务必传专用线程池</strong>，别污染 commonPool；② 续接返回普通值用 <code>thenApply</code>、返回 Future 用 <code>thenCompose</code>（map vs flatMap）；③ 扇入用 <code>allOf</code>（记得它返回 Void，结果各自 join）、两两合并用 <code>thenCombine</code>；④ 异常沿链传播，用 <code>exceptionally/handle</code> 统一兜底，<strong>否则未消费的异常会被静默吞没</strong>——注意 <code>join</code>/<code>get</code> 抛的是被包装过的异常。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="14-FutureCallable与异常处理.html" class="nav-btn">← Future、Callable 与异常处理</a>
+    <a href="16-死锁活锁饥饿.html" class="nav-btn next">死锁、活锁、饥饿 →</a>
+  </div>
+</div>
+</body>
+</html>

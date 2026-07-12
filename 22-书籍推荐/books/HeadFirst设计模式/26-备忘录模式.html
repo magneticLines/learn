@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>备忘录模式：对象状态保存与恢复</title>
+  <style>
+    :root { --c: #f59e0b; --c-dim: #78350f; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Head First 设计模式</a> / 备忘录模式：对象状态保存与恢复</div>
+  <div class="hero">
+    <div class="tag">设计模式 · 行为型模式</div>
+    <h1>备忘录模式：对象状态保存与恢复</h1>
+    <p>给对象拍一张"快照"存起来，需要时原样还原——在不破坏封装的前提下实现撤销、回滚与存档。</p>
+  </div>
+
+  <h2>一、从 Ctrl+Z 说起</h2>
+  <p>你在编辑器里敲错了一段，按下 <code>Ctrl+Z</code>，文字回到了上一步；游戏打到一半存档，读档后从存档点复活;数据库事务出错 <code>ROLLBACK</code>，数据退回事务开始前。这三件事背后是同一个诉求：<strong>把某一时刻的对象状态"冻结"下来，将来能原样恢复</strong>。备忘录模式（Memento，又译"快照模式")就是把这件事标准化的方案。</p>
+
+  <p>它要解决的真正难题不是"怎么存"——一个 <code>copy</code> 谁都会写——而是<strong>"怎么存得干净"</strong>：既要拿到对象的内部状态，又不能把对象的私有字段暴露给外部，否则封装（Encapsulation）就被撕开了口子。备忘录模式的全部精妙，都在于这一点平衡。</p>
+
+  <div class="callout info"><strong>GoF 定义：</strong>在不破坏封装性的前提下，捕获一个对象的内部状态，并在该对象之外保存这个状态，以便以后可以将对象恢复到原先保存的状态。关键词是<em>"在对象之外保存"</em>和<em>"不破坏封装"</em>——这正是它区别于"随便拷贝一份"的地方。</div>
+
+  <h2>二、三个角色：谁拍照、照片是啥、谁保管相册</h2>
+  <p>备忘录模式只有三个角色，用"拍照存档"这个类比一秒记住：</p>
+
+  <table>
+    <thead><tr><th>角色</th><th>职责</th><th>类比</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Originator</strong><br>（发起人）</td><td>业务对象本身。负责<code>createMemento()</code> 生成快照、<code>restore()</code> 从快照恢复。只有它能读写备忘录里的内容。</td><td>被拍照的人</td></tr>
+      <tr><td><strong>Memento</strong><br>（备忘录）</td><td>存储发起人某一时刻状态的<strong>不可变</strong>值对象。对外只是个"黑盒句柄"，对发起人才敞开内部。</td><td>一张照片</td></tr>
+      <tr><td><strong>Caretaker</strong><br>（管理者）</td><td>负责保管备忘录（通常用栈/列表存历史），但<strong>绝不查看也不修改</strong>其内容。它只管"存"和"取"。</td><td>相册 / 保险柜</td></tr>
+    </tbody>
+  </table>
+
+  <div class="diagram">┌───────────────┐  createMemento() ┌──────────────┐   push/pop   ┌──────────────┐
+│  Originator   │─────────────────▶│   Memento    │◀────────────│  Caretaker   │
+│ (Editor)      │                  │ (不可变快照) │  只存不看    │ (History 栈) │
+│ - state       │◀─────────────────│ - state      │             │ Stack&lt;Memento&gt;│
+│ + restore(m)  │   restore(m)     └──────────────┘             └──────────────┘
+└───────────────┘
+      ▲  只有 Originator 能读/写 Memento 的内容；Caretaker 只当"快递箱"传递</div>
+
+  <p>三者的分工暗含一条<strong>信息边界</strong>：Memento 对 Originator 是"宽接口"（能看到全部字段），对 Caretaker 是"窄接口"（只是个不透明句柄)。这就是备忘录能"保存状态却不泄露封装"的核心机关，后面第五节会专门拆解。</p>
+
+  <h2>三、反例 → 正例：为什么不能直接暴露字段</h2>
+  <p>最"省事"的做法是把发起人的字段全 <code>public</code>，或提供一堆 getter/setter，让外部自己读出来存、再写回去恢复。看起来能用，实则埋雷：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 暴露内部让外部代存</div>
+<pre>class Editor {
+  public String content;   // 全开放
+  public int cursor;
+}
+
+// 调用方自己"扒"状态存起来
+Editor e = new Editor();
+String bakC = e.content;   // 手动读
+int bakP = e.cursor;
+// ... 一堆修改 ...
+e.content = bakC;          // 手动写回
+e.cursor  = bakP;
+
+// 问题：
+// 1. 封装被彻底打破，谁都能改
+// 2. 新增字段 => 所有备份点都要改
+// 3. 恢复逻辑散落在每个调用处</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 备忘录封装状态</div>
+<pre>class Editor {
+  private String content;  // 依旧私有
+  private int cursor;
+
+  Memento save() {         // 自己拍照
+    return new Memento(content, cursor);
+  }
+  void restore(Memento m) {// 自己还原
+    this.content = m.content();
+    this.cursor  = m.cursor();
+  }
+}
+
+// 调用方只拿到不透明句柄
+Memento snap = e.save();
+// ... 一堆修改 ...
+e.restore(snap);
+// 字段永远私有，恢复逻辑内聚在 Editor</pre>
+    </div>
+  </div>
+
+  <div class="callout warn"><strong>陷阱：把备份职责交给外部 = 封装崩塌。</strong>一旦调用方能直接读写 <code>content</code>/<code>cursor</code>，你就再也无法保证这两个字段的一致性约束（比如 cursor 不能越界）。更糟的是，将来 <code>Editor</code> 加一个 <code>selectionRange</code> 字段，所有散落在业务代码里的手动备份点都会"漏存"，导致恢复后状态残缺——这是典型的散弹式修改坏味道。</div>
+
+  <h2>四、完整实现：一个可撤销的文本编辑器</h2>
+  <p>下面用最经典的"编辑器 + 撤销栈"把三个角色写全。先看发起人 <code>Editor</code> 和它的内部备忘录。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Editor.java · 发起人 Originator + 备忘录 Memento</span><span>Java</span></div>
+<pre><span class="kw">public class</span> <span class="typ">Editor</span> {
+    <span class="kw">private</span> <span class="typ">String</span> <span class="var">content</span> = <span class="str">""</span>;
+    <span class="kw">private int</span> <span class="var">cursor</span>  = <span class="num">0</span>;
+
+    <span class="kw">public void</span> <span class="fn">type</span>(<span class="typ">String</span> <span class="var">text</span>) {
+        content = content.<span class="fn">substring</span>(<span class="num">0</span>, cursor) + text
+                + content.<span class="fn">substring</span>(cursor);
+        cursor += text.<span class="fn">length</span>();
+    }
+
+    <span class="com">// —— 拍快照：把当前状态打包进一个不可变 Memento ——</span>
+    <span class="kw">public</span> <span class="typ">Memento</span> <span class="fn">save</span>() {
+        <span class="kw">return new</span> <span class="fn">Memento</span>(content, cursor);
+    }
+
+    <span class="com">// —— 从快照恢复：只有 Editor 自己能读 Memento 的内部 ——</span>
+    <span class="kw">public void</span> <span class="fn">restore</span>(<span class="typ">Memento</span> <span class="var">m</span>) {
+        <span class="kw">this</span>.content = m.content;
+        <span class="kw">this</span>.cursor  = m.cursor;
+    }
+
+    <span class="kw">public</span> <span class="typ">String</span> <span class="fn">getContent</span>() { <span class="kw">return</span> content; }
+
+    <span class="com">// 静态内部类：天生能访问外围类私有成员，且对外只是"黑盒"</span>
+    <span class="kw">public static class</span> <span class="typ">Memento</span> {
+        <span class="kw">private final</span> <span class="typ">String</span> <span class="var">content</span>;   <span class="com">// final → 快照不可变</span>
+        <span class="kw">private final int</span> <span class="var">cursor</span>;
+        <span class="kw">private</span> <span class="fn">Memento</span>(<span class="typ">String</span> <span class="var">content</span>, <span class="kw">int</span> <span class="var">cursor</span>) {
+            <span class="kw">this</span>.content = content;   <span class="com">// 构造器私有：外界无法伪造/篡改</span>
+            <span class="kw">this</span>.cursor  = cursor;
+        }
+    }
+}</pre>
+  </div>
+
+  <p>再看管理者 <code>History</code>——它用一个栈保管快照，<strong>只调 <code>push</code>/<code>pop</code>，从不碰 Memento 内部</strong>：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>History.java · 管理者 Caretaker + 客户端</span><span>Java</span></div>
+<pre><span class="kw">public class</span> <span class="typ">History</span> {
+    <span class="com">// Caretaker 只知道 Memento 的存在，看不到里面是什么</span>
+    <span class="kw">private final</span> <span class="typ">Deque</span>&lt;<span class="typ">Editor.Memento</span>&gt; <span class="var">stack</span> = <span class="kw">new</span> <span class="fn">ArrayDeque</span>&lt;&gt;();
+
+    <span class="kw">public void</span> <span class="fn">push</span>(<span class="typ">Editor.Memento</span> <span class="var">m</span>) { stack.<span class="fn">push</span>(m); }
+    <span class="kw">public</span> <span class="typ">Editor.Memento</span> <span class="fn">pop</span>()        { <span class="kw">return</span> stack.<span class="fn">pop</span>(); }
+    <span class="kw">public boolean</span> <span class="fn">isEmpty</span>()          { <span class="kw">return</span> stack.<span class="fn">isEmpty</span>(); }
+}
+
+<span class="com">// —— 客户端：编辑 + 撤销 ——</span>
+<span class="typ">Editor</span> <span class="var">editor</span> = <span class="kw">new</span> <span class="fn">Editor</span>();
+<span class="typ">History</span> <span class="var">history</span> = <span class="kw">new</span> <span class="fn">History</span>();
+
+editor.<span class="fn">type</span>(<span class="str">"Hello"</span>);
+history.<span class="fn">push</span>(editor.<span class="fn">save</span>());   <span class="com">// 存档点 1: "Hello"</span>
+
+editor.<span class="fn">type</span>(<span class="str">" World"</span>);
+history.<span class="fn">push</span>(editor.<span class="fn">save</span>());   <span class="com">// 存档点 2: "Hello World"</span>
+
+editor.<span class="fn">type</span>(<span class="str">"!!!"</span>);           <span class="com">// 现在是 "Hello World!!!"</span>
+
+editor.<span class="fn">restore</span>(history.<span class="fn">pop</span>()); <span class="com">// 撤销 → "Hello World"</span>
+<span class="fn">System</span>.out.<span class="fn">println</span>(editor.<span class="fn">getContent</span>()); <span class="com">// Hello World</span></pre>
+  </div>
+
+  <div class="callout tip"><strong>为什么用静态内部类？</strong>Java 里把 <code>Memento</code> 写成 <code>Editor</code> 的静态内部类是最地道的实现：内部类天生能访问外围类的私有成员（编译器会放行），因此 <code>Editor.restore()</code> 能直接读 <code>m.content</code>；而 <code>Memento</code> 的构造器是 <code>private</code> 的，外部（包括 Caretaker）根本 <code>new</code> 不出来，只能通过 <code>editor.save()</code> 拿到——封装就这样被守住了。</div>
+
+  <h2>五、点睛之笔：宽接口与窄接口</h2>
+  <p>备忘录最反直觉、也最常被面试追问的一点是：<strong>同一个 Memento 对象，要对两方呈现两副面孔</strong>。</p>
+
+  <div class="diagram">          宽接口 (Wide)                     窄接口 (Narrow)
+  ┌─────────────────────────┐        ┌─────────────────────────┐
+  │ Originator 看到的 Memento│        │ Caretaker 看到的 Memento │
+  │  · content / cursor 全可读│        │  · 什么都看不到，只是句柄 │
+  │  · 能读能写，用于恢复     │        │  · 只能存进栈、取出来     │
+  └─────────────────────────┘        └─────────────────────────┘
+              ▲                                    ▲
+              └──────── 同一个对象 ────────────────┘</div>
+
+  <p>如何用 Java 表达这两副面孔？除了上面的"静态内部类 + private 构造器"，还有一个更显式的手法：<strong>让 Memento 实现一个空的标记接口</strong>，Caretaker 只依赖这个空接口。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>标记接口实现窄接口</span><span>Java</span></div>
+<pre><span class="com">// 窄接口：空的，Caretaker 只认识它，什么都拿不到</span>
+<span class="kw">public interface</span> <span class="typ">Snapshot</span> { }
+
+<span class="kw">public class</span> <span class="typ">Editor</span> {
+    <span class="com">// 具体 Memento 实现窄接口；对 Editor 是宽接口，对外只是 Snapshot</span>
+    <span class="kw">private static class</span> <span class="typ">Memento</span> <span class="kw">implements</span> <span class="typ">Snapshot</span> {
+        <span class="kw">final</span> <span class="typ">String</span> <span class="var">content</span>;
+        <span class="fn">Memento</span>(<span class="typ">String</span> <span class="var">c</span>) { <span class="kw">this</span>.content = c; }
+    }
+    <span class="kw">public</span> <span class="typ">Snapshot</span> <span class="fn">save</span>() { <span class="kw">return new</span> <span class="fn">Memento</span>(content); }
+    <span class="kw">public void</span> <span class="fn">restore</span>(<span class="typ">Snapshot</span> <span class="var">s</span>) {
+        <span class="kw">this</span>.content = ((<span class="typ">Memento</span>) s).content;  <span class="com">// 只有 Editor 知道真身，向下转型取值</span>
+    }
+}</pre>
+  </div>
+
+  <div class="callout info"><strong>建立联系：</strong>"宽/窄两副接口"和你学过的<a href="15-代理模式.html">代理模式</a>、迭代器里"对外只暴露必要方法"是同一种<strong>接口隔离</strong>思想。JDK 里 <code>Collections.unmodifiableList()</code> 返回的也是"窄化"后的视图——同一份数据，给不同调用者不同的可见能力。这本质是最小知识/最小权限原则在 API 层的体现。</div>
+
+  <h2>六、与 JDK / Spring / 数据库 / OS 的联系</h2>
+  <p>备忘录不是一个"课本里才有"的模式，它在真实系统里无处不在，只是常常换了名字叫"快照""存档""检查点""版本"：</p>
+
+  <ul>
+    <li><strong>JDK · Swing 撤销框架：</strong><code>javax.swing.undo</code> 包里的 <code>UndoableEdit</code> / <code>UndoManager</code> 就是备忘录 + 命令的组合，<code>UndoManager</code> 正是一个专业的 Caretaker。</li>
+    <li><strong>JDK · 序列化：</strong><code>java.io.Serializable</code> 把对象状态"外化"成字节流，是备忘录思想的通用化——用序列化做深拷贝快照非常常见（但性能差、需处理 <code>transient</code>）。</li>
+    <li><strong>数据库 · 事务与保存点：</strong>事务日志（undo log）就是数据库版的备忘录，<code>SAVEPOINT</code> + <code>ROLLBACK TO</code> 让你回到某个中间快照——和撤销栈同构。</li>
+    <li><strong>Spring · <code>@Transactional</code> 回滚：</strong>方法抛异常时把数据恢复到方法进入前，语义上就是"恢复到进入事务时的备忘录"。</li>
+    <li><strong>OS / 中间件：</strong>Redis 的 RDB 快照、虚拟机快照、Git 的每次 commit（一棵完整目录树的不可变快照）、浏览器的历史后退——全是备忘录的放大版。</li>
+  </ul>
+
+  <div class="callout warn"><strong>高频面试点：备忘录 vs 原型（Prototype）。</strong>两者都"复制状态"，但意图不同：原型是为了<em>造一个新对象</em>（clone 出可独立使用的副本），备忘录是为了<em>存档以便日后恢复原对象</em>，副本只当"底片"、不参与业务。此外备忘录强调不破坏封装、有专门的 Caretaker 管历史，而 clone 出的对象通常直接交给业务用。</div>
+
+  <h2>七、横向对比：几种"恢复"方案的取舍</h2>
+  <table>
+    <thead><tr><th>方案</th><th>怎么存</th><th>封装</th><th>典型代价 / 适用</th></tr></thead>
+    <tbody>
+      <tr><td><strong>备忘录模式</strong></td><td>发起人自造快照对象</td><td>不破坏</td><td>状态复杂、需干净撤销/存档；要留意内存</td></tr>
+      <tr><td>直接序列化</td><td>整对象转字节/JSON</td><td>基本不破坏</td><td>通用但慢、体积大；跨进程/持久化时用</td></tr>
+      <tr><td><a href="12-原型模式.html">原型/clone</a></td><td>深拷贝一份新对象</td><td>取决于 clone 实现</td><td>易踩浅拷贝坑；意图是造副本而非存档</td></tr>
+      <tr><td><a href="23-命令模式.html">命令模式</a>反向操作</td><td>记录"怎么改"而非"改成啥"</td><td>不破坏</td><td>省内存（只存增量），但每步都要能写逆操作</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout tip"><strong>备忘录 vs 命令，实现撤销的两条路：</strong>备忘录是<em>状态快照法</em>——存"结果"，恢复=整体替换，简单但费内存;命令模式是<em>反向操作法</em>——存"动作"，撤销=执行逆操作（如 <code>delete</code> 的逆是 <code>insert</code>），省内存但要求每个操作可逆。工业级编辑器（如 IDEA）常两者混用：小改动记增量命令，大改动或难以求逆的操作存快照。</div>
+
+  <h2>八、陷阱与取舍</h2>
+  <div class="callout warn"><strong>三个必须警惕的坑：</strong><br>
+  1. <strong>内存开销：</strong>每存一个快照就多一份状态副本。无限撤销 = 内存无限增长。务必给历史栈设上限（如只保留最近 50 步），或改用命令模式存增量。<br>
+  2. <strong>浅拷贝陷阱：</strong>若状态里含可变引用（如 <code>List</code>、自定义对象），Memento 只存引用等于没存——原对象一改，快照跟着变。必须<strong>深拷贝</strong>或存不可变副本，这和 <a href="12-原型模式.html">原型模式</a>的浅/深拷贝是同一个坑。<br>
+  3. <strong>频繁快照的性能：</strong>大对象每次操作都全量快照会拖垮性能。可采用"节流"（每 N 步存一次）或写时复制（copy-on-write）优化。</div>
+
+  <p>用一条"公式"收束备忘录与它的两种典型用法：</p>
+  <div class="formula">撤销 = <span class="hl">恢复(</span>历史栈.pop()<span class="hl">)</span> &nbsp;·&nbsp; 存档 = 历史.push(<span class="hl">save()</span>)</div>
+
+  <div class="callout key"><strong>核心结论：</strong>备忘录模式 = <em>把"某一刻的状态"打包成一个不可变黑盒，交给第三方保管，日后原样还原</em>。它的灵魂不是"能存状态"（谁都能拷贝），而是<strong>"存状态却不泄露封装"</strong>——靠 Originator 独占读写、Caretaker 只当快递、Memento 双接口这三条纪律实现。凡是遇到撤销/回滚/存档/检查点，而你又不想把对象内部暴露给外界，就该想到它;但一定要为"内存"和"深拷贝"这两件事付出设计代价。</div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="25-中介者模式.html" class="nav-btn">← 中介者模式</a>
+    <a href="27-解释器模式.html" class="nav-btn next">解释器模式 →</a>
+  </div>
+</div>
+</body>
+</html>

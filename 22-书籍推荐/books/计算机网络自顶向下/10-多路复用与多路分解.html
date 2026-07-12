@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>多路复用与多路分解</title>
+  <style>
+    :root { --c: #38bdf8; --c-dim: #164e63; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">计算机网络：自顶向下方法</a> / 多路复用与多路分解</div>
+  <div class="hero">
+    <div class="tag">计算机网络 · 第3章·传输层</div>
+    <h1>多路复用与多路分解</h1>
+    <p>IP 只负责把数据送到"这台主机"，可主机上跑着几十个进程。传输层如何把一条到达主机的数据，精准塞进正确那个进程的信箱？答案就藏在报文段的两个端口字段里。</p>
+  </div>
+
+  <h2>一、问题的起点：网络层只送到"主机"，谁来送到"进程"？</h2>
+  <p>先厘清一条分界线：<strong>网络层（IP）提供的是主机到主机（host-to-host）的交付</strong>——它靠目的 IP 地址把分组送到正确的那台机器，仅此而已。但你的电脑此刻同时开着浏览器、微信、网易云、一个后台的 Java 服务……数据到了机器门口，<strong>该交给哪个进程？</strong>IP 不管这事。</p>
+  <p>补上这块拼图、把交付从"主机到主机"延伸到<strong>进程到进程（process-to-process）</strong>的，正是<strong>传输层</strong>。而它完成这件事的两个动作，就叫<strong>多路复用（multiplexing）</strong>和<strong>多路分解（demultiplexing）</strong>。</p>
+  <div class="callout info"><strong>《自顶向下》的经典类比：分信的老大。</strong>想象两户人家：Ann 家和 Bill 家。Ann 家有 4 个孩子在外地上学，天天写信；这些信统一投进邮局（网络层）。信送到 Bill 家门口时，是 Bill 家的老大负责<strong>把每封信按收信人名字分发到弟弟妹妹手里</strong>。这里——<strong>每个孩子 = 一个进程（socket）</strong>，<strong>信封上的名字 = 端口号</strong>，<strong>负责分信的老大 = 传输层的分解逻辑</strong>，<strong>邮局 = 只管送到门口的网络层</strong>。多路复用就是发信端老大把各孩子的信塞进统一信封投递；多路分解就是收信端老大按名字拆分。</div>
+
+  <h2>二、两个动作到底谁在做什么</h2>
+  <p>关键是分清<strong>发送端</strong>和<strong>接收端</strong>各干一半的活，别把两个词记混：</p>
+  <div class="diagram">发送主机（多路复用 multiplexing）          接收主机（多路分解 demultiplexing）
+ ┌───┐ ┌───┐ ┌───┐                              ┌───┐ ┌───┐ ┌───┐
+ │S1 │ │S2 │ │S3 │  ← 多个 socket               │S1 │ │S2 │ │S3 │
+ └─┬─┘ └─┬─┘ └─┬─┘                              └─▲─┘ └─▲─┘ └─▲─┘
+   │     │     │                                  │     │     │
+   └──┐  │  ┌──┘   各自的数据 + 端口首部          └──┐  │  ┌──┘  按首部端口分发
+      ▼  ▼  ▼                                        │  │  │
+   ┌────────────┐  汇成一股交给网络层            ┌────────────┐
+   │ 传输层复用  │ ───────► IP ─── 网络 ─── IP ──►│ 传输层分解  │
+   └────────────┘                                └────────────┘</div>
+  <ul>
+    <li><strong>多路复用（发送端）</strong>：从多个 socket 收集数据，给每块数据封上<strong>首部信息（含源/目的端口）</strong>，再汇聚成报文段交给网络层。"多路"进、"一路"出。</li>
+    <li><strong>多路分解（接收端）</strong>：把网络层递上来的报文段，依据首部里的端口信息，<strong>投递到正确的那个 socket</strong>。"一路"进、"多路"出。</li>
+  </ul>
+  <div class="callout tip"><strong>记忆锚点：</strong>复用 = <em>汇聚（many→one）</em>，发生在<strong>发送方</strong>；分解 = <em>分发（one→many）</em>，发生在<strong>接收方</strong>。二者是同一枚硬币的两面，一次通信里两端各做一件。"分解"这个中文译名有点拗口，理解成"拆信分发"就顺了。</div>
+
+  <h2>三、靠什么分解？报文段首部里的端口号</h2>
+  <p>多路分解要能工作，报文段里就必须带上"这封信给谁"的线索。UDP 和 TCP 的首部<strong>头 4 个字节</strong>完全一样：<strong>源端口号</strong>和<strong>目的端口号</strong>，各 16 比特。</p>
+  <div class="diagram">UDP / TCP 报文段首部的第一个 32-bit 字（两者相同）
+ 0                   15 16                  31
+ ┌──────────────────────┬──────────────────────┐
+ │   源端口号 (16 bit)   │  目的端口号 (16 bit)  │
+ └──────────────────────┴──────────────────────┘
+    ▲ 我是谁发的（回信地址）   ▲ 交给本机哪个 socket</div>
+  <p>16 比特意味着端口号范围是 <code>0 ~ 65535</code>。它被划分成几档，这是面试常问的常识：</p>
+  <table>
+    <tr><th>范围</th><th>名称</th><th>说明</th></tr>
+    <tr><td><code>0 – 1023</code></td><td>周知端口（well-known）</td><td>保留给标准服务：HTTP 80、HTTPS 443、SSH 22、DNS 53。Linux 下绑定需 root 权限。</td></tr>
+    <tr><td><code>1024 – 49151</code></td><td>注册端口</td><td>分配给特定应用：MySQL 3306、Redis 6379、Tomcat 8080。</td></tr>
+    <tr><td><code>49152 – 65535</code></td><td>动态/临时端口（ephemeral）</td><td>客户端发起连接时由 OS 临时分配的源端口。</td></tr>
+  </table>
+  <div class="callout warn"><strong>陷阱：端口不是 socket，端口号也不"属于"某个进程独占。</strong>初学者常说"这个端口被 Chrome 占了"。更准确的表述是：一个<strong>监听 socket</strong> 绑定了某端口。同一端口在 TCP 里可以同时服务成千上万个连接（见第五节四元组），所以"端口 = 一个连接"是错的。真正标识"一路数据"的是<strong>socket</strong>，而 socket 由一组地址元组唯一确定——UDP 和 TCP 的元组还不一样，这正是下面两节的分水岭。</div>
+
+  <h2>四、UDP 的分解：只看"二元组"</h2>
+  <p>UDP 的 socket 靠一个<strong>二元组</strong>来识别：<em>（目的 IP 地址，目的端口号）</em>。</p>
+  <div class="formula">UDP socket = <span class="hl">(目的IP, 目的端口)</span></div>
+  <p>这带来一个反直觉但重要的结论：<strong>只要目的 IP 和目的端口相同，两个源头完全不同的报文段，会被投递到同一个 UDP socket。</strong>源 IP、源端口在分解时<strong>不参与匹配</strong>——它们只是被当作"回信地址"存起来，供服务器回复时使用。</p>
+  <div class="diagram">两个客户端发给同一个 UDP 服务端口 6789：
+ 客户端A (IP=10.0.0.1:5500) ──┐
+                              ├──► 服务器 (IP=203.0.0.9 : 6789)  同一个 socket！
+ 客户端B (IP=10.0.0.2:7700) ──┘        分解只看 (203.0.0.9, 6789)
+ ▲ 源地址不同，但都进同一个信箱；服务器靠 recvfrom 拿到的源地址来区分是谁</div>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · 一个 DatagramSocket 服务所有客户端</span><span>UDP</span></div>
+    <pre><span class="typ">DatagramSocket</span> socket = <span class="kw">new</span> <span class="typ">DatagramSocket</span>(<span class="num">6789</span>); <span class="com">// 只此一个 socket</span>
+<span class="kw">byte</span>[] buf = <span class="kw">new</span> <span class="kw">byte</span>[<span class="num">1024</span>];
+<span class="typ">DatagramPacket</span> pkt = <span class="kw">new</span> <span class="typ">DatagramPacket</span>(buf, buf.length);
+
+<span class="kw">while</span> (<span class="kw">true</span>) {
+    socket.<span class="fn">receive</span>(pkt);                 <span class="com">// A、B 的包都从这里出来</span>
+    <span class="typ">InetAddress</span> from = pkt.<span class="fn">getAddress</span>();  <span class="com">// ← 源 IP，用来区分/回信</span>
+    <span class="kw">int</span> fromPort = pkt.<span class="fn">getPort</span>();       <span class="com">// ← 源端口</span>
+    <span class="com">// 想回信必须显式带上对方地址，因为 socket 本身"记不住"谁是谁</span>
+    <span class="typ">DatagramPacket</span> reply = <span class="kw">new</span> <span class="typ">DatagramPacket</span>(data, data.length, from, fromPort);
+    socket.<span class="fn">send</span>(reply);
+}</pre>
+  </div>
+  <div class="callout info"><strong>为什么这样设计？——因为 UDP 无连接。</strong>UDP 不维护任何连接状态，服务器脑子里没有"和 A 的会话""和 B 的会话"这种概念，自然没必要用源地址去区分 socket。所有人共用一个信箱、来信统一收，谁是谁靠每封信自带的回信地址临时判断。这份"轻"正是 UDP 的卖点：省去连接管理，换来低开销与低时延（DNS、视频会议、游戏都爱用它，下一篇会展开）。</div>
+
+  <h2>五、TCP 的分解：必须看"四元组"</h2>
+  <p>TCP 的 socket 靠一个<strong>四元组</strong>唯一识别：</p>
+  <div class="formula">TCP socket = <span class="hl">(源IP, 源端口, 目的IP, 目的端口)</span></div>
+  <p>和 UDP 的最大区别：<strong>源 IP 和源端口也参与匹配</strong>。这意味着，即便两个报文段的<em>目的</em> IP 和目的端口一模一样（都发给服务器的 80 端口），只要<em>源</em>不同，就会被分解到<strong>两个不同的 socket</strong>。</p>
+  <p>这正是"<strong>一台 Web 服务器只监听 80 端口，却能同时服务上万个客户端</strong>"的原理——也是面试高频题。</p>
+  <div class="diagram">Nginx 监听 203.0.0.9:80，三个连接同时在线：
+ 连接①  (10.0.0.1 : 5501, 203.0.0.9 : 80)  ─► socket #1
+ 连接②  (10.0.0.2 : 6602, 203.0.0.9 : 80)  ─► socket #2   目的端口都是 80，
+ 连接③  (10.0.0.1 : 5502, 203.0.0.9 : 80)  ─► socket #3   但四元组各不相同！
+        ▲ 注意①③同一台主机同一 IP，靠不同源端口区分</div>
+  <div class="callout tip"><strong>欢迎 socket vs 连接 socket。</strong>TCP 服务器其实有两类 socket：一个长期存在的<strong>欢迎/监听 socket（welcoming socket）</strong>专门"接客"；每当三次握手完成，服务器就<strong>为这条连接新建一个连接 socket</strong>。之后该客户端的所有报文段，凭四元组精确分解到它专属的连接 socket。在 Java 里，<code>ServerSocket</code> 就是欢迎 socket，<code>accept()</code> 返回的 <code>Socket</code> 就是连接 socket。</div>
+  <div class="code-block">
+    <div class="cb-header"><span>Java · accept() 每来一个连接就产出一个专属 socket</span><span>TCP</span></div>
+    <pre><span class="typ">ServerSocket</span> welcome = <span class="kw">new</span> <span class="typ">ServerSocket</span>(<span class="num">80</span>); <span class="com">// 欢迎 socket，只此一个</span>
+
+<span class="kw">while</span> (<span class="kw">true</span>) {
+    <span class="typ">Socket</span> conn = welcome.<span class="fn">accept</span>();      <span class="com">// 握手完成 → 诞生一个连接 socket</span>
+    <span class="com">// conn 内部就绑定了完整四元组：</span>
+    <span class="com">// (conn.getInetAddress()/getPort() 是对端, getLocalAddress()/getLocalPort() 是本端)</span>
+    <span class="kw">new</span> <span class="typ">Thread</span>(() -&gt; <span class="fn">handle</span>(conn)).<span class="fn">start</span>(); <span class="com">// 每连接一线程（或交给线程池/NIO）</span>
+}
+<span class="com">// 内核里维护着一张四元组 → socket 的哈希表，收到段就查表分解</span></pre>
+  </div>
+  <div class="callout info"><strong>串联操作系统：socket 本质是文件描述符。</strong>在 Linux 里，每个 socket 对应一个<strong>文件描述符（fd）</strong>，内核用一张<strong>哈希表</strong>把四元组映射到对应的 fd/socket 结构体。收到一个 TCP 段，内核提取四元组去查表，命中就把数据放进该 socket 的接收缓冲区——这就是分解的真实落地。也正因为每个连接吃一个 fd，才有了"单机最大连接数受 <code>ulimit -n</code> 限制""C10K 问题"这些工程话题。Java NIO 的 <code>Selector</code>/epoll 正是为了让<strong>一个线程管理海量 socket</strong> 而生（联系你学过的 IO 多路复用，注意此"多路复用"是 IO 层面的复用，与本页传输层的 multiplexing 名同实异）。</div>
+
+  <h2>六、UDP 二元组 vs TCP 四元组：一张表说清</h2>
+  <table>
+    <tr><th>维度</th><th>UDP</th><th>TCP</th></tr>
+    <tr><td>识别 socket 用</td><td>二元组<br>(目的IP, 目的端口)</td><td>四元组<br>(源IP, 源端口, 目的IP, 目的端口)</td></tr>
+    <tr><td>不同源、同目的端口</td><td>进<strong>同一个</strong> socket</td><td>进<strong>不同</strong> socket</td></tr>
+    <tr><td>是否有连接状态</td><td>无连接，socket 不区分对端</td><td>面向连接，每连接一 socket</td></tr>
+    <tr><td>服务器 socket 数量</td><td>通常一个端口一个</td><td>一个监听 + N 个连接 socket</td></tr>
+    <tr><td>区分不同客户端靠</td><td>应用层读取每个包的源地址</td><td>内核按四元组自动分解</td></tr>
+    <tr><td>Java 对应类</td><td><code>DatagramSocket</code></td><td><code>ServerSocket</code> + <code>Socket</code></td></tr>
+  </table>
+
+  <h2>七、反例 → 正例：别把 UDP 当 TCP 那样"一客户端一 socket"</h2>
+  <p>理解了二元组 vs 四元组，就能避开一个真实坑：<strong>用 UDP 时试图给每个客户端单开一个 socket 去"隔离"，或回信时忘了带对方地址。</strong>UDP 的 socket 不记得对端，所有客户端天然共享一个信箱。</p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">反例 — 误以为 UDP 也一客户端一 socket</div>
+      <pre><span class="com">// 想"每个客户端独占一个 socket"</span>
+<span class="typ">Map</span>&lt;<span class="typ">Client</span>,<span class="typ">DatagramSocket</span>&gt; pool;
+<span class="typ">DatagramSocket</span> s = <span class="kw">new</span> <span class="typ">DatagramSocket</span>(<span class="num">6789</span>);
+pool.<span class="fn">put</span>(clientA, s);
+pool.<span class="fn">put</span>(clientB, s); <span class="com">// 端口只能绑一次！</span>
+<span class="com">// 且回信直接 send，没带对方地址：</span>
+s.<span class="fn">send</span>(<span class="kw">new</span> <span class="typ">DatagramPacket</span>(data, len));
+<span class="com">// → 不知发给谁 / 端口冲突，逻辑全错</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">正例 — 一 socket 收全部，回信带上源地址</div>
+      <pre><span class="typ">DatagramSocket</span> s = <span class="kw">new</span> <span class="typ">DatagramSocket</span>(<span class="num">6789</span>);
+<span class="kw">while</span> (<span class="kw">true</span>) {
+  s.<span class="fn">receive</span>(pkt);              <span class="com">// 所有客户端都从这收</span>
+  <span class="typ">InetAddress</span> ip = pkt.<span class="fn">getAddress</span>();
+  <span class="kw">int</span> port = pkt.<span class="fn">getPort</span>();     <span class="com">// 从包里取回信地址</span>
+  <span class="typ">DatagramPacket</span> reply =
+    <span class="kw">new</span> <span class="typ">DatagramPacket</span>(data, len, ip, port);
+  s.<span class="fn">send</span>(reply);              <span class="com">// 精确回给来信者</span>
+}</pre>
+    </div>
+  </div>
+  <div class="callout warn"><strong>另一个高频误区：以为"端口耗尽"是服务端问题。</strong>常有人担心"Web 服务器只有一个 80 端口，连接多了会不会把端口用完？"——不会，服务端所有连接都复用 80，区分靠四元组。真正可能耗尽临时端口的是<strong>客户端</strong>：一台机器<em>主动</em>向<em>同一个</em>目标 (目的IP, 目的端口) 发起大量连接时，可用的<strong>源端口</strong>（约 2.8 万个临时端口）会被占满，报 <code>Cannot assign requested address</code>。压测工具、连接池打满时就会撞上，解法是扩源 IP、复用连接或调大端口范围。</div>
+
+  <h2>八、把整条链路串起来</h2>
+  <div class="diagram">一次 HTTP 请求，多路复用/分解各出场一次：
+ 浏览器进程 ─┐  复用: 数据 + (源端口 5501, 目的端口 80) 封成段
+            ▼
+        [传输层]──► [IP: 加目的IP]──► 网络 ──► [到达服务器主机]
+                                                    │
+                                          [传输层] 分解:
+                                          查四元组哈希表
+                                          (10.0.0.1:5501, 203.0.0.9:80)
+                                                    ▼
+                                             命中 Nginx 的连接 socket ✔</div>
+
+  <div class="callout key"><strong>一句话收束：</strong>多路复用/分解，是传输层把 IP 的"<strong>主机到主机</strong>"延伸为"<strong>进程到进程</strong>"的那层关键胶水——<strong>复用在发送端汇聚（many→one）、分解在接收端分发（one→many）</strong>，都靠首部里的源/目的端口。两条判别线务必刻进脑子：<strong>UDP 用二元组</strong>（目的IP+目的端口，不同源进同一 socket）、<strong>TCP 用四元组</strong>（含源地址，一连接一 socket，这正是单端口撑起海量并发的根本）；还要记住<strong>端口 ≠ socket</strong>，真正被内核哈希表索引、对应一个文件描述符的，是那组地址元组。理解了它，你才真正看懂 Web 服务器的并发模型、C10K、以及为什么 UDP 服务器回信非得自己带地址。</div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="09-Socket编程.html" class="nav-btn">← Socket 编程</a>
+    <a href="11-UDP.html" class="nav-btn next">UDP →</a>
+  </div>
+</div>
+</body>
+</html>

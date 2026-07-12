@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>拆分循环、合并条件表达式、以卫语句取代嵌套条件</title>
+  <style>
+    :root { --c: #f472b6; --c-dim: #831843; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">重构：改善既有代码的设计</a> / 拆分循环、合并条件表达式、以卫语句取代嵌套条件</div>
+  <div class="hero">
+    <div class="tag">重构 · 第10-12章·继承与简化</div>
+    <h1>拆分循环、合并条件表达式、以卫语句取代嵌套条件</h1>
+    <p>三个"整理逻辑"的小手法：让一个循环只干一件事、让一堆 if 说清楚"到底在判断什么"、让嵌套的箭头拉平成一条主线。</p>
+  </div>
+
+  <p>这一节把三个看似零碎、其实同源的重构放在一起讲。它们都不改变程序行为，只做一件事：<strong>把"混在一起的意图"拆开、把"其实是一回事的判断"合并、把"层层缩进的条件"拉平</strong>。三者共同指向一个理念——<em>代码首先是写给人读的，其次才是给机器跑的</em>。</p>
+
+  <h2>一、拆分循环（Split Loop）</h2>
+  <p>坏味道：一个循环里同时干了好几件不相干的事——一边求总薪水，一边找最年轻员工。为了"少遍历一次"，很多人把它们塞进同一个 <code>for</code>。问题是：<strong>当你想修改其中一件事时，必须先看懂另一件；想复用其中一段逻辑时，又拆不出来。</strong></p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 一个循环干两件事</div>
+      <pre><span class="kw">int</span> youngest = people.get(<span class="num">0</span>).age;
+<span class="kw">int</span> totalSalary = <span class="num">0</span>;
+<span class="kw">for</span> (<span class="typ">Person</span> p : people) {
+  <span class="kw">if</span> (p.age &lt; youngest)
+    youngest = p.age;   <span class="com">// 关注点 A</span>
+  totalSalary += p.salary; <span class="com">// 关注点 B</span>
+}
+<span class="kw">return</span> <span class="str">"最年轻 "</span> + youngest
+     + <span class="str">"，总薪 "</span> + totalSalary;</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 一个循环只干一件事</div>
+      <pre><span class="kw">int</span> totalSalary = <span class="num">0</span>;
+<span class="kw">for</span> (<span class="typ">Person</span> p : people)
+  totalSalary += p.salary;
+
+<span class="kw">int</span> youngest = people.get(<span class="num">0</span>).age;
+<span class="kw">for</span> (<span class="typ">Person</span> p : people)
+  <span class="kw">if</span> (p.age &lt; youngest)
+    youngest = p.age;
+
+<span class="kw">return</span> <span class="str">"最年轻 "</span> + youngest
+     + <span class="str">"，总薪 "</span> + totalSalary;</pre>
+    </div>
+  </div>
+
+  <p>拆开后，每个循环都是一个可以独立命名、独立提炼的"意图单元"。下一步几乎总是配合<strong>提炼函数</strong>——把每个循环抽成 <code>totalSalary(people)</code> 和 <code>youngestAge(people)</code>，调用处就变成两行自解释的表达式。</p>
+
+  <div class="callout warn">
+    <strong>初学者最大的心理障碍：性能。</strong>"拆成两个循环不就遍历两遍了吗？慢一倍！"—— 这是典型的<em>过早优化</em>。第一，绝大多数循环规模下，遍历两遍的开销小到测不出来；第二，<strong>先让代码清晰，再用 profiler 定位真正的热点</strong>。真到了性能瓶颈，把两个循环合回去只是几分钟的事，但一份清晰的代码能省下你几个月的维护成本。Martin Fowler 的原话：<em>"如果拆分让性能出了问题，合并回去很容易。"</em>
+  </div>
+
+  <div class="callout info">
+    <strong>联系 Java Stream：</strong>拆分循环的思想在函数式 API 里被推到了极致。<code>people.stream().mapToInt(p-&gt;p.salary).sum()</code> 与 <code>people.stream().mapToInt(p-&gt;p.age).min()</code> 本就是两条独立的流水线，各自表达一个意图。Stream 用<em>惰性求值 + 短路</em>把"多次声明"的可读性和"单次遍历"的性能在一定程度上兼顾了——但它的本质仍是"一条管道只做一种聚合"。
+  </div>
+
+  <h2>二、合并条件表达式（Consolidate Conditional Expression）</h2>
+  <p>坏味道：一连串<strong>判断条件不同、但返回/执行的动作完全相同</strong>的 if。它们其实在表达同一个概念，却被写成了散装的三四个判断。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 散装的相同动作</div>
+      <pre><span class="kw">double</span> <span class="fn">disabilityAmount</span>(<span class="typ">Emp</span> e) {
+  <span class="kw">if</span> (e.seniority &lt; <span class="num">2</span>)
+    <span class="kw">return</span> <span class="num">0</span>;
+  <span class="kw">if</span> (e.monthsDisabled &gt; <span class="num">12</span>)
+    <span class="kw">return</span> <span class="num">0</span>;
+  <span class="kw">if</span> (e.isPartTime)
+    <span class="kw">return</span> <span class="num">0</span>;
+  <span class="com">// 真正的计算...</span>
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 合并 + 提炼命名</div>
+      <pre><span class="kw">double</span> <span class="fn">disabilityAmount</span>(<span class="typ">Emp</span> e) {
+  <span class="kw">if</span> (<span class="fn">isNotEligible</span>(e))
+    <span class="kw">return</span> <span class="num">0</span>;
+  <span class="com">// 真正的计算...</span>
+}
+<span class="kw">boolean</span> <span class="fn">isNotEligible</span>(<span class="typ">Emp</span> e) {
+  <span class="kw">return</span> e.seniority &lt; <span class="num">2</span>
+      || e.monthsDisabled &gt; <span class="num">12</span>
+      || e.isPartTime;
+}</pre>
+    </div>
+  </div>
+
+  <p>合并的价值有两层：一是<strong>用一个 <code>||</code>（或 <code>&amp;&amp;</code>）把"其实是一回事"的判断显式地连起来</strong>，读者一眼看出"这几个条件是同一组资格校验"；二是合并后往往能<strong>提炼出一个有意义的布尔函数名</strong>（<code>isNotEligible</code>），把"怎么判断"藏进函数、把"判断什么"留在主流程。命名，才是这次重构真正的产出。</p>
+
+  <table>
+    <tr><th>条件之间的关系</th><th>合并用</th><th>短路语义（重要）</th></tr>
+    <tr><td>任一满足即同一结果（并列的"或"）</td><td><code>||</code></td><td>左边为 <code>true</code> 立即返回，右侧不再求值</td></tr>
+    <tr><td>层层嵌套、须全部满足才继续</td><td><code>&amp;&amp;</code></td><td>左边为 <code>false</code> 立即短路，右侧不再求值</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>合并前必须过的两道检查，否则改变行为：</strong>
+    <br>① <strong>副作用</strong>——如果某个条件里藏着 <code>x++</code>、方法调用改了状态，合并后短路可能让它不再执行。先把副作用挪出去再合并。
+    <br>② <strong>动作必须真的相同</strong>——只有"不同条件 → 完全一致的结果"才能合并。若各分支返回不同值，这是<em>另一件事</em>，别硬凑。
+    <br>③ 注意 <code>||</code>（短路）与 <code>|</code>（按位/非短路）的区别：后者两侧都会求值，用错会踩到本该被短路掉的空指针或异常。
+  </div>
+
+  <h2>三、以卫语句取代嵌套条件（Replace Nested Conditional with Guard Clauses）</h2>
+  <p>坏味道：<strong>"箭头形代码"（arrow code）</strong>——一层层 <code>if</code> 向右缩进，真正的核心逻辑被挤到最里面，读者得先在脑子里压一个"如果…那么…"的栈，读到最深处再一层层弹出来。</p>
+
+  <div class="diagram">嵌套条件（箭头形）              卫语句（拉平主线）
+──────────────────             ──────────────────
+if (a) {                       if (!a) return X;   ◄ 异常/边界先走
+  if (b) {                     if (!b) return Y;   ◄ 一条条挡在门口
+    core();      ◄ 主线被埋     core();             ◄ 主线在最外层
+  } else return Y;             return Z;
+} else return X;
+  ▲ 缩进越深，认知负担越重       ▲ 缩进恒定，从上往下读一遍就懂</div>
+
+  <p>核心思想的转变：嵌套 if 把"正常路径"和"异常路径"当成<strong>对等的两支</strong>（if…else…）；而卫语句认为它们<em>不对等</em>——异常/边界情况应当<strong>尽早判断、尽早返回</strong>，把它们"挡在门口"，让函数主体只关心那条唯一的、最重要的正常路径。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>PayCalculator.java</span><span>Bad → 嵌套条件</span></div>
+    <pre><span class="kw">double</span> <span class="fn">getPayAmount</span>(<span class="typ">Emp</span> e) {
+  <span class="kw">double</span> result;
+  <span class="kw">if</span> (e.isSeparated) {          <span class="com">// 离职</span>
+    result = separatedAmount();
+  } <span class="kw">else</span> {
+    <span class="kw">if</span> (e.isRetired) {          <span class="com">// 退休</span>
+      result = retiredAmount();
+    } <span class="kw">else</span> {
+      result = normalPayAmount(); <span class="com">// 真正的主线，被埋在两层里</span>
+    }
+  }
+  <span class="kw">return</span> result;
+}</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>PayCalculator.java</span><span>Good → 卫语句</span></div>
+    <pre><span class="kw">double</span> <span class="fn">getPayAmount</span>(<span class="typ">Emp</span> e) {
+  <span class="kw">if</span> (e.isSeparated) <span class="kw">return</span> separatedAmount(); <span class="com">// 卫语句 1</span>
+  <span class="kw">if</span> (e.isRetired)   <span class="kw">return</span> retiredAmount();   <span class="com">// 卫语句 2</span>
+  <span class="kw">return</span> normalPayAmount();                    <span class="com">// 主线，一目了然</span>
+}</pre>
+  </div>
+
+  <p>临时变量 <code>result</code> 也顺手消失了——这是卫语句常见的附带收益。整个函数从"需要在脑里维护一个 if 栈 + 一个可变变量"，变成"从上往下扫一遍，遇到特殊情况就地折返"。</p>
+
+  <div class="callout tip">
+    <strong>什么时候用卫语句、什么时候用 if-else？</strong>判断标准是<em>两个分支是否"地位对等"</em>：
+    <br>· 若两条路径同等重要、都是正常业务（比如"会员价 vs 非会员价"），用 <code>if-else</code> 让对称性显式化。
+    <br>· 若一条是"正常主线"、另一条是"边界 / 异常 / 提前退出"（空值、无权限、已停用），用<strong>卫语句</strong>把噪音挡在门口。
+    <br>卫语句本质是在向读者喊话："<em>这不是正常情况，先处理掉，别让它干扰主线。</em>"
+  </div>
+
+  <div class="callout info">
+    <strong>联系你天天在写的 Spring / JDK 源码：</strong>卫语句是工业级代码里最常见的结构。<code>Objects.requireNonNull(x)</code>、Spring 的 <code>Assert.notNull(arg, "...")</code>、参数校验 <code>if (bean == null) throw ...</code>、集合的 <code>if (isEmpty()) return Collections.emptyList();</code> —— 全是"先把不合法/边界情况挡掉，再执行主逻辑"。你读框架源码时之所以觉得"方法开头总有一串 if return"，正是卫语句风格的体现。
+  </div>
+
+  <h2>三者的共同底色：意图 vs 实现的分离</h2>
+  <p>把三个手法放到一起看，会发现它们是同一枚硬币的三面——都在把"代码在<strong>做什么</strong>（意图）"从"代码<strong>怎么做</strong>（实现细节）"里剥离出来。</p>
+
+  <table>
+    <tr><th>手法</th><th>针对的坏味道</th><th>做的动作</th><th>常搭配</th></tr>
+    <tr><td>拆分循环</td><td>一个循环多个关注点</td><td>按意图<strong>拆开</strong></td><td>提炼函数</td></tr>
+    <tr><td>合并条件表达式</td><td>散装的相同动作判断</td><td>按意图<strong>合并</strong></td><td>提炼函数（命名布尔）</td></tr>
+    <tr><td>以卫语句取代嵌套条件</td><td>箭头形代码</td><td>按重要性<strong>拉平</strong></td><td>内联/消除临时变量</td></tr>
+  </table>
+
+  <div class="formula">
+    可读性 = <span class="hl">一个单元只表达一个意图</span>
+  </div>
+
+  <div class="callout warn">
+    <strong>共同的高频面试/评审陷阱——反射式的"single return"教条。</strong>很多人被"一个函数只能有一个 return"束缚，于是宁可写三层嵌套也不肯早返回，把卫语句彻底废掉。这条老规矩来自 C 时代<em>手动管理资源</em>（怕多个 return 漏掉 <code>free</code>）；在有 <code>try-with-resources</code>、GC、<code>finally</code> 的 Java 里，多个早返回反而<strong>更清晰、更安全</strong>。别为了教条牺牲可读性——现代主流风格（含 Google Java Style）都拥抱卫语句式的早返回。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>这三个重构不追求"更聪明的代码"，而追求"更诚实的代码"——<strong>让循环只说一件事、让条件说清它在判断什么、让主线浮到最外层</strong>。它们几乎不涉及类结构调整，成本极低、收益立竿见影，是你在任何一次日常改动中都能顺手施展的"清理动作"。记住优先级：<em>先清晰，再谈性能；先意图，再谈技巧。</em>
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="20-以委托取代继承与以继承取代委托.html" class="nav-btn">← 以委托取代继承与以继承取代委托</a>
+    <a href="roadmap.html" class="nav-btn next">框架图 →</a>
+  </div>
+</div>
+</body>
+</html>

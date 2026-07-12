@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重构 vs 重写：什么时候该重构，什么时候该重写</title>
+  <style>
+    :root { --c: #f472b6; --c-dim: #831843; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">重构：改善既有代码的设计</a> / 重构 vs 重写：什么时候该重构，什么时候该重写</div>
+  <div class="hero">
+    <div class="tag">重构 · 第1-2章·理念与原则</div>
+    <h1>重构 vs 重写：什么时候该重构，什么时候该重写</h1>
+    <p>"这代码烂透了，不如重写！"——这句话背后，藏着软件工程史上最贵的几个坑。</p>
+  </div>
+
+  <h2>一、先把两个词的定义掰开</h2>
+  <p>几乎每个程序员接手一坨"祖传代码"时都动过一个念头：<strong>与其在这堆屎山上打补丁，不如推倒重来一把梭。</strong>但在做这个决定之前，你得先分清两条路的<em>本质区别</em>——它们不是"程度不同"，而是<strong>安全模型完全相反</strong>的两件事。</p>
+  <table>
+    <tr><th>维度</th><th>重构 Refactoring</th><th>重写 Rewrite</th></tr>
+    <tr><td>外部行为</td><td><strong>严格不变</strong>（这是定义的一部分）</td><td>目标"等价"，但<strong>无从保证</strong></td></tr>
+    <tr><td>步子大小</td><td>一连串<em>小步</em>，每步都可编译、可测试</td><td>一个<em>大跳跃</em>，中间态往往跑不起来</td></tr>
+    <tr><td>风险曲线</td><td>随时可停、可回退，风险被摊平</td><td>风险堆在最后"切换"那一刻，集中爆发</td></tr>
+    <tr><td>已有知识</td><td><strong>原地保留</strong>（代码里的历史修复都还在）</td><td>大量隐性知识随旧代码一起<strong>被丢弃</strong></td></tr>
+    <tr><td>可交付性</td><td>任何时刻停下都是"更好一点的版本"</td><td>不写完就是<strong>零</strong>，中途停 = 全亏</td></tr>
+  </table>
+  <div class="callout info"><strong>一句话辨析：</strong>重构是<em>改善内部结构、行为不变</em>（详见上一篇《什么是重构》）；重写是<em>丢掉旧实现、从头再造一个功能等价物</em>。前者像给行驶中的汽车换轮胎（还得保证一直在跑），后者像另造一辆新车再把乘客搬过去——听起来后者更彻底，但你有没有想过：<strong>旧车上那些叮叮当当的修补，恰恰是它十年里撞过的每一堵墙的记录。</strong></div>
+
+  <h2>二、为什么"重写"看着爽、实际是个大坑</h2>
+  <p>软件史上最著名的反面教材，是 <strong>Netscape</strong>。2000 年前后它决定把浏览器代码<em>推倒重写</em>，结果耗时近三年、几乎没有新版本可发，市场份额被 IE 一路碾平。Joel Spolsky 为此写下名篇《Things You Should Never Do》，结论只有一句：<strong>把工作代码扔掉从头写，是一家软件公司能犯的最严重的战略错误。</strong></p>
+  <p>为什么？因为你以为在扔"烂代码"，其实在扔<strong>知识</strong>。看这段谁都写过的丑陋逻辑：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>每一个"莫名其妙的 if"，都是一次线上事故的墓碑</span><span>Java</span></div>
+    <pre><span class="kw">public</span> <span class="typ">BigDecimal</span> <span class="fn">calcTax</span><span class="punct">(</span><span class="typ">Order</span> o<span class="punct">)</span> <span class="punct">{</span>
+    <span class="typ">BigDecimal</span> tax <span class="punct">=</span> o.<span class="fn">getAmount</span><span class="punct">().</span><span class="fn">multiply</span><span class="punct">(</span>RATE<span class="punct">);</span>
+
+    <span class="com">// FIX #1832：某些历史订单 region 为 null，NPE 炸过一次生产</span>
+    <span class="kw">if</span> <span class="punct">(</span>o.<span class="fn">getRegion</span><span class="punct">()</span> <span class="punct">==</span> <span class="kw">null</span><span class="punct">)</span> <span class="kw">return</span> <span class="typ">BigDecimal</span>.ZERO<span class="punct">;</span>
+
+    <span class="com">// FIX #2109：2019 前的合同免税，财务合规要求，不能删</span>
+    <span class="kw">if</span> <span class="punct">(</span>o.<span class="fn">getSignDate</span><span class="punct">().</span><span class="fn">isBefore</span><span class="punct">(</span>TAX_REFORM_DATE<span class="punct">))</span> <span class="kw">return</span> <span class="typ">BigDecimal</span>.ZERO<span class="punct">;</span>
+
+    <span class="com">// FIX #2530：分转元的精度坑，必须 HALF_EVEN，否则对账差 1 分</span>
+    <span class="kw">return</span> tax.<span class="fn">setScale</span><span class="punct">(</span><span class="num">2</span><span class="punct">,</span> RoundingMode.HALF_EVEN<span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+  <div class="callout warn"><strong>陷阱：把"读不懂"误当成"没必要"。</strong> 一段代码"丑"，大概率不是因为原作者蠢，而是因为它<em>吸收了三年里所有的边界情况</em>。你重写时看不懂那几个 if，于是理直气壮地删掉——然后你会用未来一整年，把这三个 bug <strong>一模一样地再踩一遍</strong>。这正是软件里的"契斯特顿栅栏（Chesterton's Fence）"：在你搞清楚一道篱笆为什么立在这儿之前，别急着拆它。</div>
+
+  <h3>重写的时间到底花在了哪</h3>
+  <p>人们对重写的期待是"腾出手来做新功能"，但真实的时间分布往往是这样——绝大部分预算被用来<strong>把旧系统已有的能力再实现一遍</strong>，真正的新价值少得可怜：</p>
+  <div class="bar">
+    <span style="width:60%;background:#ef4444">重新实现已有功能 60%</span>
+    <span style="width:28%;background:#f97316">补回历史踩坑/边界 28%</span>
+    <span style="width:12%;background:#4ade80">新价值 12%</span>
+  </div>
+  <p>更糟的是 Fred Brooks 在《人月神话》里点破的 <strong>"第二系统效应（Second-system effect）"</strong>：人在重写时会把上次没来得及做的花哨设计一股脑塞进去，导致第二个系统<em>过度设计、比第一个还臃肿</em>。旧系统的缺点你记得清清楚楚，旧系统的优点你却浑然不觉——直到重写版把它们弄丢。</p>
+
+  <h2>三、那到底什么时候<em>该</em>重写？</h2>
+  <p>重写不是永远错误，它是一张<strong>高风险、偶尔必要</strong>的牌。判断的关键不是"代码丑不丑"（丑可以重构），而是下面这几条<em>结构性绝症</em>是否成立：</p>
+  <table>
+    <tr><th>信号</th><th>倾向重构</th><th>倾向重写</th></tr>
+    <tr><td>技术栈存活度</td><td>语言/框架仍在维护，能招到人</td><td>建立在<strong>已死的技术</strong>上（停维护的框架、买不到的中间件、无人会的语言）</td></tr>
+    <tr><td>架构能否演进</td><td>能在现有骨架上小步改良</td><td>核心假设<strong>根本错了</strong>（如把多租户塞进单租户内核，怎么改都别扭）</td></tr>
+    <tr><td>测试安全网</td><td>有测试，或能补出<em>特征测试</em></td><td>行为已由外部契约/规范定义，且旧代码已无人能懂</td></tr>
+    <tr><td>变更成本趋势</td><td>加功能还算线性</td><td>每个小改动都引发<strong>霰弹式连锁 bug</strong>，成本指数上升</td></tr>
+    <tr><td>规模</td><td>大到重写风险不可控</td><td>小到几周能验证等价（小工具、边缘服务）</td></tr>
+  </table>
+  <div class="formula">该重写? = <span class="hl">技术栈已死</span> ∧ <span class="hl">架构假设错误</span> ∧ <span class="hl">规模可控</span> ∧ <span class="hl">行为可验证</span></div>
+  <div class="callout tip"><strong>决策口诀：先问"能不能重构到目标"。</strong> 90% 你想重写的场景，其实是"局部结构烂 + 没有测试保护"，那是<em>重构</em>要解决的问题，不是重写。真正该重写的，是那种"连方向盘都装在错误位置、且这辆车用的燃料已经停产"的系统——此时在旧骨架上重构，等于在流沙上盖楼。</div>
+
+  <h2>四、同一段坏代码：重构路线 vs 重写路线</h2>
+  <p>假设你接手一个 800 行的 <code>OrderService.process()</code>，逻辑缠成一团。两种做法的<strong>操作方式和风险</strong>天差地别：</p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · Big-Bang 重写</div>
+      <pre>// 停掉旧代码，另起一个新类
+class OrderServiceV2 {
+  void process(Order o) {
+    // 凭"我理解的业务"从零写
+    // ...三个月后...
+  }
+}
+// 痛点：
+// · 三个月不能上线，业务停摆
+// · 旧版那些 if 我没抄 → 老 bug
+//   全部复活
+// · "切换日"当天一次性替换，
+//   出事无法回退，只能连夜回滚
+// · 期间旧系统还在改 → 追不上</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 小步重构</div>
+      <pre>// 原地动手，每步都能编译+测试
+void process(Order o) {
+  validate(o);      // 提炼函数
+  var tax = calcTax(o);   // 保留旧 if
+  var bill = buildBill(o, tax);
+  persist(bill);    // 一次搬一小块
+}
+// 收益：
+// · 任何一步停下都是可上线版本
+// · 历史修复原样保留，不复活老 bug
+// · 出问题只回退最近一小步
+// · 边重构边正常发新需求</pre>
+    </div>
+  </div>
+  <div class="callout warn"><strong>高频面试陷阱：</strong>被问"如何治理这个上千行的祖传方法"时，答"重写"会被扣分。面试官想听的是——<em>先补特征测试（Characterization Test）锁住当前行为 → 再用"提炼函数/搬移"小步拆解 → 每步跑测试</em>。这套"有网 + 小步"的节奏，正是本书第 2 章反复强调的重构前提（下一篇细讲）。</div>
+
+  <h2>五、第三条路：绞杀者模式（Strangler Fig）</h2>
+  <p>"要么原地重构、要么推倒重写"其实是个<strong>假两难</strong>。Martin Fowler 提出的 <strong>绞杀者无花果（Strangler Fig）</strong> 给了第三条路：用重构的<em>节奏</em>（小步、可回退）去达成重写的<em>目标</em>（换掉整套实现）。名字来自热带的绞杀榕——它沿着老树生长，慢慢包裹，等长成后老树枯死、新树已然成形，全程森林没有一刻是空的。</p>
+  <p>工程上的做法是：立一个<strong>外观（Facade）</strong>挡在调用方前面，接口保持不变；内部把请求<em>一个方法、一个方法地</em>从旧实现切到新实现，用开关灰度、随时可切回：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>绞杀者外观：新旧共存，逐个迁移，灰度可回退</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">PaymentFacade</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="typ">LegacyPayment</span> legacy<span class="punct">;</span>   <span class="com">// 老实现，暂时还在跑</span>
+    <span class="kw">private final</span> <span class="typ">ModernPayment</span> modern<span class="punct">;</span>   <span class="com">// 新实现，一次迁一个方法</span>
+    <span class="kw">private final</span> <span class="typ">FeatureFlag</span> flag<span class="punct">;</span>
+
+    <span class="kw">public</span> <span class="typ">Receipt</span> <span class="fn">charge</span><span class="punct">(</span><span class="typ">Order</span> o<span class="punct">)</span> <span class="punct">{</span>
+        <span class="com">// charge 已迁移：按流量灰度切到新实现，出问题一键关开关切回</span>
+        <span class="kw">if</span> <span class="punct">(</span>flag.<span class="fn">isOn</span><span class="punct">(</span><span class="str">"payment.charge.v2"</span><span class="punct">))</span> <span class="punct">{</span>
+            <span class="kw">return</span> modern.<span class="fn">charge</span><span class="punct">(</span>o<span class="punct">);</span>
+        <span class="punct">}</span>
+        <span class="kw">return</span> legacy.<span class="fn">charge</span><span class="punct">(</span>o<span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// refund 尚未迁移：继续走旧实现。新旧共存，绝不 big-bang</span>
+    <span class="kw">public void</span> <span class="fn">refund</span><span class="punct">(</span><span class="typ">String</span> id<span class="punct">)</span> <span class="punct">{</span> legacy.<span class="fn">refund</span><span class="punct">(</span>id<span class="punct">);</span> <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>迁移过程用一张图看清——老树被逐步"绞杀"，但系统<strong>从头到尾都在正常服务</strong>：</p>
+  <div class="diagram">Big-Bang 重写（危险）              Strangler Fig（安全）
+─────────────────────           ─────────────────────────────
+调用方 ──► 旧系统  (跑着)          调用方 ──► Facade（接口不变）
+             ┊                                 ├─ charge  ──► 新实现 ✅ 已迁移
+      [ 三个月黑箱开发 ]                        ├─ refund  ──► 旧实现 ⏳ 待迁移
+             ┊                                 └─ query   ──► 旧实现 ⏳ 待迁移
+调用方 ──► 新系统  (切换日一把梭)     每迁完一个方法就上线一次，旧实现最终枯死
+   ▲ 出事无法回退，全盘皆输          ▲ 任何一步可回退，风险摊平到每一天</div>
+  <div class="callout info"><strong>与你已学知识串联：</strong>Strangler 的外观层就是<em>代理/外观模式</em>；灰度开关是<em>策略模式</em>的运行时切换；"接口不变、实现替换"正是<strong>面向接口编程 + 里氏替换</strong>的直接应用。放大到架构层，Spring 里你也见过同款思路——<code>@Primary</code> / <code>@ConditionalOnProperty</code> 让新老 Bean 共存、按配置切换；数据库迁移里的"双写 + 影子读"校验新旧一致，本质都是同一招：<strong>用可回退的小步，完成不可回退的大事。</strong></div>
+
+  <h2>六、别被"沉没成本"和"手痒"带偏</h2>
+  <div class="callout warn"><strong>陷阱一：沉没成本谬误（两个方向）。</strong>一个方向是"都写这么久了不能停"，硬着头皮把烂重写做完；另一个方向是"旧代码写了五年不能扔"，抱着真该淘汰的死技术栈不放。<em>过去投入多少与现在该怎么选无关</em>——只看"从今天起，哪条路的总成本更低"。</div>
+  <div class="callout warn"><strong>陷阱二：把"我不熟"当成"它该重写"。</strong>新人接手老代码最常见的冲动就是重写，因为读别人的代码比写自己的代码难得多（Joel 定律）。但难读 ≠ 该扔。先花两周读懂、补测试、小步重构，往往就够了。</div>
+  <div class="callout key"><strong>一句话收束：</strong>重构是默认选项，重写是最后手段。<strong>先问"能不能重构到目标"——90% 的答案是能</strong>；只有当技术栈已死、核心假设错误、且规模可控可验证时，重写才成立。而即便决定重写，也优先用<em>绞杀者模式</em>把它拆成一连串"可回退的小步"，让系统始终在线。记住那条铁律：<strong>能工作的代码里，藏着你看不见的知识；扔掉它之前，先确认你真的读懂了它为什么这样写。</strong></div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="01-什么是重构.html" class="nav-btn">← 什么是重构</a>
+    <a href="03-重构的前提.html" class="nav-btn next">重构的前提 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDN 与控制平面分离</title>
+  <style>
+    :root { --c: #38bdf8; --c-dim: #164e63; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">计算机网络：自顶向下方法</a> / SDN 与控制平面分离</div>
+  <div class="hero">
+    <div class="tag">计算机网络 · 第5章·网络层控制平面</div>
+    <h1>SDN 与控制平面分离</h1>
+    <p>把"大脑"从每台路由器里拆出来，装进一个能编程的软件——网络从此像应用一样被"写"出来。</p>
+  </div>
+
+  <h2>一、先分清：数据平面 vs 控制平面</h2>
+  <p>一台路由器干两件事，分属两个"平面"：</p>
+  <ul>
+    <li><strong>数据平面（data plane）</strong>：分组进来，查表，从哪个口出去——<strong>逐包、纳秒级、硬件干活</strong>。它只回答"这个包往哪转"。</li>
+    <li><strong>控制平面（control plane）</strong>：<strong>算出</strong>那张转发表本身——运行路由算法、和邻居交换链路状态、决定最短路。它回答"转发表里该填什么"。数据平面是"执行"，控制平面是"决策"。</li>
+  </ul>
+  <p>传统路由器把这两个平面<strong>焊死在同一个铁盒子里</strong>：每台设备既转发，又各自跑一份 OSPF/BGP，靠彼此喊话（分布式算法）拼出全网视图。这就是<strong>"每路由器控制（per-router control）"</strong>。SDN 要挑战的，正是这个"焊死"。</p>
+  <div class="diagram">传统路由器（控制与转发焊在一起）        SDN（把控制平面抽走）
+ ┌───────────────────────┐            ┌───────────────────────┐
+ │  控制平面 OSPF/BGP ...  │            │   数据平面：流表 + 转发  │ ← 只剩"手脚"
+ │ ───────────────────── │  ──拆开──▶ └──────────▲────────────┘
+ │  数据平面：转发表 + 转发 │                       │ 南向 API
+ └───────────────────────┘            ┌──────────┴────────────┐
+   每台设备一个"大脑"，各算各的         │  远程 SDN 控制器（大脑） │ ← 逻辑集中
+                                       └───────────────────────┘</div>
+
+  <h2>二、两条路线：分布式控制 vs 逻辑集中控制</h2>
+  <p>"控制平面到底放哪、怎么算路由"，历史上有两条根本不同的路线，理解 SDN 必须先看清这个分叉：</p>
+  <table>
+    <tr><th>维度</th><th>每路由器控制（传统）</th><th>逻辑集中控制（SDN）</th></tr>
+    <tr><td>大脑位置</td><td>每台设备内部各一个</td><td>抽到设备之外，集中在控制器</td></tr>
+    <tr><td>算法形态</td><td>分布式：OSPF/BGP 互相喊话收敛</td><td>控制器握有<strong>全网视图</strong>，直接算</td></tr>
+    <tr><td>全局视野</td><td>每台只有局部拼图，靠协议同步</td><td>天然上帝视角，拓扑/链路/流量一览</td></tr>
+    <tr><td>改策略</td><td>逐台登录改配置，易漂移、难回滚</td><td>改一处控制器程序，全网统一下发</td></tr>
+    <tr><td>转发依据</td><td>基本只看目的 IP（最长前缀匹配）</td><td>可看<strong>任意首部字段组合</strong>（见第五节）</td></tr>
+  </table>
+  <div class="callout info"><strong>为什么要"逻辑集中"？</strong>传统网络里，要实现"让 A 部门的流量绕开某条拥塞链路"这种策略，你得在沿途每台路由器上手工调权重、配 ACL，靠分布式协议慢慢收敛——牵一发动全身，出错还难定位。SDN 的洞见是：<strong>路由/策略本质是一个软件问题</strong>。既然如此，就把它从各自为政的硬件里解放出来，交给一个有全局视图、能编程的控制器统一决策。这和把业务逻辑从一堆存储过程里搬到统一的应用服务层，是同一种"集中决策、统一治理"的直觉。</div>
+
+  <h2>三、SDN 的四个本质特征</h2>
+  <p>Kurose 把 SDN 归纳为四个相互支撑的特征，缺一不可：</p>
+  <ol>
+    <li><strong>基于流的转发（flow-based forwarding）</strong>：交换机不再只按目的 IP 转，而是按<strong>一组首部字段（流的定义）</strong>做"匹配 + 动作"。</li>
+    <li><strong>数据平面与控制平面分离</strong>：交换机只留下"匹配+动作"的转发硬件，成了"哑设备"。</li>
+    <li><strong>控制功能外置</strong>：路由等控制逻辑搬到设备之外的 <strong>SDN 控制器（也叫网络操作系统 NOS）</strong>。</li>
+    <li><strong>可编程网络</strong>：控制器之上跑一堆<strong>网络控制应用</strong>（路由、负载均衡、防火墙、访问控制……），它们才是真正"定义网络行为"的人。</li>
+  </ol>
+  <div class="callout warn"><strong>别把"分离"误读成"消灭协议"。</strong>SDN 分离的是<strong>控制逻辑的位置</strong>，不是让分布式算法消失。控制器内部为了容错和扩展，自己往往就是个分布式系统；控制器与交换机之间也仍然靠协议（南向 API）通信。<strong>它替换的是"每台设备各跑一份路由协议"，而不是"网络里不再有任何协议"</strong>——这是初学者最常犯的概念错位。</div>
+
+  <h2>四、三层架构与南北向 API</h2>
+  <p>SDN 是一个清晰的三层夹心结构，两道 API 是关键接缝：</p>
+  <div class="diagram"> ┌──────────────────────────────────────────────────┐
+ │  网络控制应用：路由 / 负载均衡 / 防火墙 / 访问控制    │ ← 用"意图"编程
+ └───────────────────────▲──────────────────────────┘
+                         │  北向 API（REST/gRPC）：应用说"想要什么"
+ ┌───────────────────────┴──────────────────────────┐
+ │        SDN 控制器（网络操作系统 NOS）               │
+ │   全网状态视图：拓扑 · 主机 · 链路 · 统计计数        │ ← 逻辑集中的"内核"
+ └───────────────────────▲──────────────────────────┘
+                         │  南向 API（OpenFlow）：控制器下发流表 / 交换机上报事件
+ ┌────────┬──────────────┴───────┬───────────────────┐
+ │ 交换机  │      交换机           │      交换机         │ ← 数据平面：只认流表
+ │ [流表]  │      [流表]           │      [流表]         │   只管闷头转发
+ └────────┴──────────────────────┴───────────────────┘</div>
+  <table>
+    <tr><th>接缝</th><th>连接谁</th><th>典型协议</th><th>传什么</th></tr>
+    <tr><td><strong>南向 API</strong><br>(southbound)</td><td>控制器 ↔ 交换机</td><td><strong>OpenFlow</strong>、P4Runtime、OVSDB</td><td>下发流表项；上报 packet-in、端口状态、统计</td></tr>
+    <tr><td><strong>北向 API</strong><br>(northbound)</td><td>控制器 ↔ 上层应用</td><td>REST、gRPC（各控制器自定义）</td><td>应用表达策略/意图，读取网络状态</td></tr>
+  </table>
+  <div class="callout tip"><strong>类比操作系统，一切都通了。</strong>SDN 控制器就是一台"网络计算机"的操作系统：交换机是它管理的<strong>硬件（CPU/网卡）</strong>，南向 API（OpenFlow）像<strong>驱动接口</strong>——OS 通过它驱动硬件；北向 API 像<strong>系统调用</strong>——上层应用通过它请求服务；网络控制应用则像跑在 OS 上的<strong>用户程序</strong>。你写一个"负载均衡应用"，就像在 Linux 上写一个进程，完全不必关心底层是哪家的交换芯片。"网络操作系统"这个名字，是字面意义上的贴切。</div>
+
+  <h2>五、数据平面的心脏：流表与"匹配 + 动作"</h2>
+  <p>控制平面被抽走后，交换机里只剩下一张（或多张）<strong>流表（flow table）</strong>。每一条流表项是一条 <strong>match-plus-action（匹配 + 动作）</strong>规则：</p>
+  <div class="formula">match(<span class="hl">首部字段集合</span>) ⟹ action(转发 | 丢弃 | 改写 | 上送控制器)</div>
+  <p>关键突破在于 <strong>match 的字段不再局限于目的 IP</strong>。OpenFlow 允许跨越链路层、网络层、传输层同时匹配——入端口、源/目的 MAC、以太类型、VLAN、源/目的 IP、IP 协议号、TCP/UDP 端口……这让一张表同时能当路由器、交换机、防火墙、负载均衡器用。每条流表项还带一组<strong>计数器（counters）</strong>，天然就是流量统计的数据源。</p>
+  <table>
+    <tr><th>优先级</th><th>Match（匹配字段）</th><th>Counters</th><th>Action（动作）</th><th>它在扮演谁</th></tr>
+    <tr><td>200</td><td>目的 IP = <code>10.0.2.0/24</code></td><td>1.2M 包</td><td>转发到端口 3</td><td>路由器</td></tr>
+    <tr><td>150</td><td>TCP 目的端口 = <code>22</code></td><td>430 包</td><td>drop（丢弃）</td><td>防火墙</td></tr>
+    <tr><td>150</td><td>目的 MAC = <code>aa:bb:..:01</code></td><td>88K 包</td><td>转发到端口 1</td><td>二层交换机</td></tr>
+    <tr><td>0</td><td>* （通配，全不命中）</td><td>17 包</td><td>上送控制器 (packet-in)</td><td>"遇到不认识的，问大脑"</td></tr>
+  </table>
+  <p>转发时按<strong>优先级从高到低</strong>找第一条命中的流表项执行其动作；若全不命中，走 <strong>table-miss</strong> 表项——通常是"打包上送控制器"或"直接丢弃"。这套"命中即执行、否则回退默认规则"的结构，和你写业务里<strong>责任链 / 规则引擎</strong>里"从高优先级规则往下匹配，落空则走兜底"的模式如出一辙。</p>
+  <div class="callout warn"><strong>面试高频误区：SDN ≠ "只是集中式路由"。</strong>它真正的威力在于<strong>把转发决策从"只认目的地址"扩展到"任意字段的可编程匹配"</strong>。传统路由器基于目的 IP 做最长前缀匹配，无法轻易表达"来自研发网段、走 443 端口的流量额外镜像一份到审计口"；而在 SDN 里这只是一条匹配多字段的流表项。理解这一点，才算摸到 SDN 的门。</div>
+
+  <h2>六、可编程网络：一段真实的控制器应用</h2>
+  <p>"可编程"不是口号。下面是用 <strong>Ryu</strong>（一个教学界最常用的 Python SDN 控制器框架）写的一个极简"自学习二层交换机"——它展示了 SDN 的完整闭环：<strong>交换机遇到不认识的流 → 上送控制器 → 控制器决策并下发流表项 → 之后同类包交换机自己转发（不再打扰控制器）</strong>。</p>
+  <div class="code-block">
+    <div class="cb-header"><span>SDN 控制器应用 · 自学习二层交换</span><span>Python / Ryu</span></div>
+    <pre><span class="kw">class</span> <span class="typ">L2Switch</span>(app_manager.<span class="typ">RyuApp</span>):
+    <span class="var">OFP_VERSIONS</span> = [ofproto_v1_3.<span class="var">OFP_VERSION</span>]
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="var">self</span>, *args, **kwargs):
+        <span class="fn">super</span>().<span class="fn">__init__</span>(*args, **kwargs)
+        <span class="var">self</span>.mac_to_port = {}          <span class="com"># 全网视图的一角：MAC ↦ 出端口</span>
+
+    <span class="com"># @装饰器：注册"当交换机上送一个未知流(packet-in)时"的回调</span>
+    <span class="lit">@set_ev_cls</span>(ofp_event.<span class="typ">EventOFPPacketIn</span>, <span class="var">MAIN_DISPATCHER</span>)
+    <span class="kw">def</span> <span class="fn">on_packet_in</span>(<span class="var">self</span>, ev):
+        msg  = ev.msg
+        dp   = msg.datapath              <span class="com"># 是哪台交换机来问的</span>
+        pkt  = packet.<span class="typ">Packet</span>(msg.data)
+        eth  = pkt.<span class="fn">get_protocol</span>(ethernet.ethernet)
+        in_port = msg.match[<span class="str">'in_port'</span>]
+
+        <span class="com"># 1) 学习：源 MAC 一定在刚才那个入端口后面</span>
+        <span class="var">self</span>.mac_to_port[eth.src] = in_port
+
+        <span class="com"># 2) 决策：目的 MAC 学过就定向转，否则先泛洪</span>
+        out_port = <span class="var">self</span>.mac_to_port.<span class="fn">get</span>(eth.dst, ofproto.<span class="var">OFPP_FLOOD</span>)
+        actions  = [parser.<span class="fn">OFPActionOutput</span>(out_port)]
+
+        <span class="com"># 3) 若已学会 → 下发一条流表项，今后同类包交换机自己转，不再上送</span>
+        <span class="kw">if</span> out_port != ofproto.<span class="var">OFPP_FLOOD</span>:
+            match = parser.<span class="fn">OFPMatch</span>(eth_dst=eth.dst)
+            <span class="var">self</span>.<span class="fn">add_flow</span>(dp, priority=<span class="num">1</span>, match=match, actions=actions)
+
+        <span class="com"># 4) 把当前这个包放出去（packet-out）</span>
+        dp.<span class="fn">send_msg</span>(parser.<span class="fn">OFPPacketOut</span>(
+            datapath=dp, in_port=in_port, actions=actions, data=msg.data))</pre>
+  </div>
+  <p>读这段代码，SDN 的抽象一目了然：你面对的是<strong>一个全网视角的字典 <code>mac_to_port</code> 和几个事件回调</strong>，完全不碰任何一台交换机的具体硬件。这种"注册回调、被动响应事件"的写法，和 Spring 里 <code>@EventListener</code> 监听应用事件、或 Netty 的 <code>ChannelHandler</code> 处理 I/O 事件是同一套<strong>事件驱动</strong>心智模型——只不过这里的"事件"是一个网络分组的到来。</p>
+  <div class="callout info"><strong>南向消息在这段代码背后的往返：</strong>交换机流表未命中 → 发 <strong><code>PacketIn</code></strong> 上送控制器（就是这里的回调入口）；控制器算完后回 <strong><code>FlowMod</code></strong> 安装流表项、并用 <strong><code>PacketOut</code></strong> 把当前包放行。第一个包"问一次大脑"，后续同类包全由交换机线速转发——这就是 SDN "慢路径决策、快路径转发"的经典分工，也解释了为什么集中控制并不会让每个包都去挤控制器。</div>
+
+  <h2>七、传统配置 vs SDN 编程：一次策略变更</h2>
+  <p>感受差距最直接的方式，是看"把 22 端口(SSH)流量在全网封掉"这件事怎么做：</p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">反例 — 传统：逐台命令式配置</div>
+      <pre><span class="com"># 登录 router-1，手敲 ACL</span>
+ssh router-1
+  access-list 101 deny tcp any any eq 22
+  interface Gi0/1 ; ip access-group 101 in
+
+<span class="com"># 再登录 router-2 ... router-N，重复 N 遍</span>
+<span class="com"># 问题：</span>
+<span class="com">#  · 各厂商命令还不一样</span>
+<span class="com">#  · 漏配一台就有缺口，配置漂移</span>
+<span class="com">#  · 想回滚?再逐台登回去删</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">正例 — SDN：声明式集中编程</div>
+      <pre><span class="com"># 在控制器应用里表达一次"意图"</span>
+<span class="kw">for</span> sw <span class="kw">in</span> controller.<span class="fn">all_switches</span>():
+    sw.<span class="fn">install</span>(
+        match = {<span class="str">"tcp_dst"</span>: <span class="num">22</span>},
+        action = <span class="str">"drop"</span>,
+        priority = <span class="num">100</span>)
+
+<span class="com"># 控制器据全网视图统一下发</span>
+<span class="com">#  · 一份逻辑,覆盖所有设备</span>
+<span class="com">#  · 无漂移;回滚=删这段代码重下发</span>
+<span class="com">#  · 与厂商无关(OpenFlow 统一抽象)</span></pre>
+    </div>
+  </div>
+  <p>左边是"对着每一台机器说该怎么做（命令式、面向设备）"，右边是"对整个网络说我想要什么（声明式、面向意图）"。这正是<strong>命令式 → 声明式</strong>的范式跃迁——和你从手写 JDBC 一条条 SQL，转向用 JPA 声明"我要这样一个实体"是同一种解放。</p>
+
+  <h2>八、真正的坑：逻辑集中 ≠ 物理单点</h2>
+  <div class="callout warn"><strong>"集中控制器不就是单点故障 (SPOF) 吗？"——这是对 SDN 最普遍的误解。</strong>关键词是<strong>"逻辑（logically）集中"</strong>：控制器在<strong>编程模型上</strong>表现为一个有全局视图的单一实体，但在<strong>物理部署上</strong>它几乎总是一个由多台服务器组成的<strong>分布式集群</strong>（如 ONOS、OpenDaylight 都支持多控制器 + Raft 一致性）。它需要解决和任何分布式系统一样的问题：状态一致性、故障切换、脑裂。<strong>所以 SDN 没有消灭分布式系统，只是把它从"网络协议层"搬到了"控制器软件层"——在这里你能用成熟的分布式共识算法去治理它。</strong></div>
+  <div class="callout tip"><strong>你其实天天在用 SDN 的思想——服务网格（Service Mesh）。</strong>Istio 的架构就是 SDN 在七层微服务上的翻版：<strong>数据平面</strong>是每个 Pod 旁的 Envoy 边车代理（负责真正转发/限流/熔断，对应 SDN 交换机），<strong>控制平面</strong>是 Istiod（掌握全局服务拓扑、统一下发路由规则，对应 SDN 控制器），二者之间的 <strong>xDS 协议</strong>就是它的"南向 API"。你写一份 <code>VirtualService</code> YAML 声明"20% 流量灰度到 v2"，Istiod 便把规则推给所有 Envoy——和上一节"控制器统一下发流表"一模一样。SDN 教会你的这套<strong>控制/数据平面分离</strong>思想，早已越出网络设备，成了现代基础设施的通用范式。</div>
+
+  <div class="callout key"><strong>一句话收束：</strong>SDN 的内核是<strong>把控制平面从每台设备里剥离、集中到一个可编程的软件控制器</strong>。记牢四条主线：<strong>分离</strong>——交换机退化为只做"匹配+动作"的哑转发设备；<strong>集中</strong>——控制器持全网视图统一决策（<em>逻辑</em>集中，物理上仍是分布式集群，非单点）；<strong>可编程</strong>——上层控制应用经北向 API(REST) 表达意图，控制器经南向 API(OpenFlow) 下发流表；<strong>基于流</strong>——转发依据从"仅目的 IP"扩展到"任意首部字段组合"，一张流表兼当路由/交换/防火墙/负载均衡。从命令式逐台配置到声明式集中编程，SDN 让网络第一次真正"可被软件定义"。</div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="20-BGP.html" class="nav-btn">← BGP</a>
+    <a href="22-ARP.html" class="nav-btn next">ARP →</a>
+  </div>
+</div>
+</body>
+</html>

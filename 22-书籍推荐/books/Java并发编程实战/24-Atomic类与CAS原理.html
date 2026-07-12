@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atomic 类与 CAS 原理</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / Atomic 类与 CAS 原理</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第10-11章·显式锁与原子变量</div>
+    <h1>Atomic 类与 CAS 原理</h1>
+    <p>不用锁也能安全地"读—改—写"——CAS 把并发的胜负交给一条 CPU 指令，Atomic 类则把它包成你顺手就能用的原子变量。</p>
+  </div>
+
+  <h2>一、锁太重了：我们到底想要什么</h2>
+  <p>上一节的 AQS 让我们看清了锁的本质：<strong>抢不到就挂起（阻塞），醒过来还要重新调度</strong>。对一个简单到不能再简单的 <code>count++</code> 而言，用 <code>synchronized</code> 保护它，就像为了给一张纸盖个章，先把整个房间锁上、把别人赶到门外排队睡觉——安全，但代价高得离谱：上下文切换、线程挂起唤醒、内核态与用户态往返。</p>
+  <p>我们真正想要的是：让 <code>count++</code> 这个<strong>复合操作</strong>（读→改→写三步）变成一个<strong>不可分割的原子动作</strong>，同时<em>不阻塞任何线程</em>。这就是 <em>无锁（lock-free）</em> 的诉求，而实现它的地基，是一条硬件提供的原子指令——CAS。</p>
+
+  <div class="callout info">
+    <strong>回顾第 2 章的痛点：</strong><code>count++</code> 之所以线程不安全，是因为它是"读 count → 加 1 → 写回"三步，两个线程可能都读到旧值 10，各自 +1 写回 11，丢了一次更新。<code>volatile</code>（第 4 章）能保证可见性却挡不住这种复合竞态。锁能解决，但太重。CAS 给了第三条路：把"检查旧值 + 写入新值"合并成一步硬件原子操作。
+  </div>
+
+  <h2>二、CAS 是什么：一条"比较并交换"指令</h2>
+  <p>CAS 全称 <strong>Compare-And-Swap</strong>（比较并交换）。它接受三个参数，语义可以用一句话概括：</p>
+
+  <div class="formula">CAS(<span class="hl">V</span>, <span class="hl">A</span>, <span class="hl">B</span>) &nbsp;=&nbsp; if (V == A) V = B, return true &nbsp;else&nbsp; return false</div>
+
+  <p>其中 <code>V</code> 是内存里的变量（value），<code>A</code> 是你<em>预期它现在应该是</em>的旧值（expected），<code>B</code> 是你想写入的新值（new）。关键在于：<strong>"比较 V 是否等于 A"和"把 B 写进 V"这两个动作，由 CPU 保证是一个原子步骤，中间不可能被其他线程插入</strong>。如果比较失败（说明有人抢先改了 V），CAS 什么都不做，返回 false，由调用方决定"要不要再试一次"。</p>
+
+  <div class="callout tip">
+    <strong>生活类比——抢共享文档的"版本号"：</strong>你打开一份在线文档，看到它是"第 10 版"（预期值 A=10）。你在本地改好，点保存时系统做一次 CAS：<em>"服务器上现在还是第 10 版吗？是→存成第 11 版；不是→说明别人已经改过，拒绝你的保存，让你刷新后重来"</em>。这正是乐观锁的思路：<strong>不提前上锁，先干活，提交时才检查有没有冲突</strong>。数据库的乐观锁 <code>UPDATE ... WHERE version = ?</code> 就是同一个套路。
+  </div>
+
+  <h2>三、自旋：CAS 失败了怎么办</h2>
+  <p>CAS 只做"一次尝试"。要把它变成"一定成功的原子自增"，需要在外面套一个<strong>循环——失败就重读最新值、重算、再 CAS，直到成功</strong>。这个"失败重试"的循环就叫 <em>自旋（spin）</em>。用伪代码表达一次 <code>getAndIncrement</code>：</p>
+
+  <div class="diagram">          ┌─────────────────────────────────────┐
+          │  do {                               │
+   读旧值  │    int old = value;      (volatile 读)│
+          │    int next = old + 1;              │
+          │  } while ( !CAS(value, old, next) ) │◄── 失败：说明别人抢先改了
+          │            比较并交换  ──── 成功 ──► │    old 已过期，回到循环顶重读
+          └─────────────────────────────────────┘
+
+  线程A: old=10 ─CAS(10→11)─► 成功✔
+  线程B: old=10 ─CAS(10→11)─► V已经是11≠10，失败✗  ─►  重读 old=11 ─CAS(11→12)─► 成功✔
+                                        （B 没有被挂起，只是多转了一圈）</div>
+
+  <p>对比锁：锁竞争失败会让线程<strong>挂起（park）</strong>，交出 CPU；而 CAS 失败只是<strong>空转一圈重试</strong>，线程始终持有 CPU、从不进入内核阻塞。在竞争不激烈、临界区极短时，这种"忙等一小会儿"远比"睡眠再唤醒"划算——这就是无锁算法的性能来源。</p>
+
+  <h2>四、Atomic 类：把自旋 CAS 包成顺手的工具</h2>
+  <p>你不用自己写自旋循环。<code>java.util.concurrent.atomic</code> 包把这套逻辑封装成了一族开箱即用的原子变量。按用途分四类：</p>
+
+  <table>
+    <tr><th>类别</th><th>代表类</th><th>用途</th></tr>
+    <tr><td>基本类型</td><td><code>AtomicInteger</code> <code>AtomicLong</code> <code>AtomicBoolean</code></td><td>原子计数器、序号生成、开关标志</td></tr>
+    <tr><td>引用类型</td><td><code>AtomicReference&lt;T&gt;</code></td><td>原子地替换一个对象引用（如无锁栈的栈顶）</td></tr>
+    <tr><td>带版本/标记</td><td><code>AtomicStampedReference</code> <code>AtomicMarkableReference</code></td><td>解决 ABA 问题（见第六节）</td></tr>
+    <tr><td>字段更新器</td><td><code>AtomicIntegerFieldUpdater</code> 等</td><td>对已有类的 <code>volatile</code> 字段做原子更新，省一层包装对象</td></tr>
+  </table>
+
+  <p>最常见的 <code>AtomicInteger</code> 用法，就是把那个会翻车的 <code>count++</code> 换成一个方法调用：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ synchronized 保护自增</div>
+      <pre>class Counter {
+  private int count = 0;
+  // 每次自增都要抢锁、可能挂起
+  public synchronized void inc() {
+    count++;
+  }
+  public synchronized int get() {
+    return count;
+  }
+}
+// 正确，但高频调用下锁竞争严重</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ AtomicInteger 无锁自增</div>
+      <pre>class Counter {
+  private final AtomicInteger count
+      = new AtomicInteger(0);
+  // 无锁，底层自旋 CAS
+  public void inc() {
+    count.incrementAndGet();
+  }
+  public int get() {
+    return count.get();
+  }
+}
+// 同样正确，无阻塞、无上下文切换</pre>
+    </div>
+  </div>
+
+  <h2>五、扒开 JDK 源码：CAS 到底怎么落到硬件</h2>
+  <p><code>AtomicInteger.getAndIncrement()</code> 顺着调下去，会走到 <code>Unsafe.getAndAddInt</code>——JDK 里那个"绕过 Java 安全检查直接操作内存"的后门类。这段循环正是我们前面画的自旋 CAS：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>sun.misc.Unsafe（JDK 8 源码节选）</span><span>自旋 + CAS</span></div>
+    <pre><span class="com">// AtomicInteger 内部</span>
+<span class="kw">public final</span> <span class="kw">int</span> <span class="fn">getAndIncrement</span>() {
+    <span class="kw">return</span> unsafe.<span class="fn">getAndAddInt</span>(<span class="kw">this</span>, valueOffset, <span class="num">1</span>);
+}
+
+<span class="com">// Unsafe.getAndAddInt：一直重试到成功</span>
+<span class="kw">public final</span> <span class="kw">int</span> <span class="fn">getAndAddInt</span>(<span class="typ">Object</span> o, <span class="kw">long</span> offset, <span class="kw">int</span> delta) {
+    <span class="kw">int</span> v;
+    <span class="kw">do</span> {
+        v = <span class="fn">getIntVolatile</span>(o, offset);        <span class="com">// 每轮都重新读最新值（volatile 读）</span>
+    } <span class="kw">while</span> (!<span class="fn">compareAndSwapInt</span>(o, offset, v, v + delta)); <span class="com">// CAS 失败就再来</span>
+    <span class="kw">return</span> v;                                <span class="com">// 返回旧值</span>
+}
+
+<span class="com">// 这是个 native 方法，最终由 JVM 编译成一条 CPU 原子指令</span>
+<span class="kw">public final native boolean</span> <span class="fn">compareAndSwapInt</span>(
+        <span class="typ">Object</span> o, <span class="kw">long</span> offset, <span class="kw">int</span> expected, <span class="kw">int</span> x);</pre>
+  </div>
+
+  <div class="callout info">
+    <strong>联系操作系统 / 硬件：</strong><code>compareAndSwapInt</code> 是 <code>native</code> 的，HotSpot 会把它编译成一条带 <code>lock</code> 前缀的 <strong><code>cmpxchg</code></strong>（compare-exchange）指令（x86 架构）。<code>lock</code> 前缀会锁定缓存行（现代 CPU 用<em>缓存锁定</em>而非古老的锁总线），并通过第 4 章讲过的 <strong>MESI 缓存一致性协议</strong>让其他核的副本失效——所以 CAS 天然带有 <code>volatile</code> 级别的<strong>可见性</strong>保证。ARM 上则用 <code>LDREX/STREX</code>（load/store exclusive）指令对来实现同样的语义。一句话：<em>原子性不是 Java 变的魔法，是 CPU 指令集直接提供的能力</em>。
+  </div>
+
+  <div class="callout tip">
+    <strong>JDK 9+ 的演进：</strong><code>Unsafe</code> 是不对外的内部 API。从 Java 9 起官方推荐用 <code>VarHandle</code>（<code>java.lang.invoke</code>）来做 CAS 与各种内存访问模式，它是 <code>Unsafe</code> 的合法、安全、跨平台替代品。<code>AtomicInteger</code> 等类的内部实现也逐步迁移到了 <code>VarHandle</code>。你自己写并发代码时，需要底层 CAS 就用 <code>VarHandle</code>，别再直接摸 <code>Unsafe</code>。
+  </div>
+
+  <h2>六、CAS 最大的坑：ABA 问题</h2>
+  <p>CAS 只关心"现在的值等不等于我预期的旧值"。但"值相等"不代表"这中间没被人动过"。设想一个变量从 <strong>A 被改成 B、又被改回 A</strong>：你手里的预期值还是 A，CAS 一看"当前是 A，符合预期"，就<em>放心地成功了</em>——可它完全没察觉这中间发生过两次修改。这就是臭名昭著的 <strong>ABA 问题</strong>。</p>
+
+  <div class="diagram">时间轴 ─────────────────────────────────────────►
+  线程1: 读到 stack.top = A ......(被抢占，挂起一会儿)...... CAS(top, A→X) 成功✔ 但栈已被破坏
+  线程2:              pop A → pop B → push A                   (top 又变回 A，但 A.next 已不是当初那个)
+
+  线程1 的 CAS 看到 top 仍是 A，误以为"没人动过"，
+  结果把一个已经过时的结构接了回去 ── 经典的无锁栈丢节点 / 悬挂指针。</div>
+
+  <div class="callout warn">
+    <strong>陷阱与面试高频点：ABA 何时"真的有害"？</strong>对 <code>AtomicInteger</code> 这类<em>只看最终数值</em>的计数器，ABA 通常无害——值是几就是几，中间怎么变的不影响结果。但对<strong>引用类型</strong>（如无锁栈/队列的节点指针、对象池的复用对象），A 虽然"看起来是同一个引用"，其内部状态或它在数据结构中的语义可能已经天翻地覆，此时 ABA 会导致数据结构损坏。别一听 ABA 就恐慌，也别以为它永远无所谓——<em>关键看你 CAS 的对象"值相等"是否真的等价于"状态没变"</em>。
+  </div>
+
+  <p>解法很直观：<strong>给值加一个只增不减的版本号 / 时间戳</strong>，CAS 时连版本一起比较。<code>AtomicStampedReference</code> 就是干这个的——它把"引用 + int 戳记"打包，只有<em>引用和戳记都匹配</em>才交换成功。这样 A→B→A 的过程会把戳记从 1 推到 3，预期戳记 1 不再匹配，CAS 失败，ABA 被识破。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>AtomicStampedReference 破解 ABA</span><span>引用 + 版本戳一起 CAS</span></div>
+    <pre><span class="typ">AtomicStampedReference</span>&lt;<span class="typ">String</span>&gt; ref =
+        <span class="kw">new</span> <span class="typ">AtomicStampedReference</span>&lt;&gt;(<span class="str">"A"</span>, <span class="num">0</span>);   <span class="com">// 初始值 A，戳记 0</span>
+
+<span class="kw">int</span> stamp = ref.<span class="fn">getStamp</span>();                 <span class="com">// 先记下当前戳记 = 0</span>
+<span class="typ">String</span> cur = ref.<span class="fn">getReference</span>();           <span class="com">// 当前引用 = "A"</span>
+
+<span class="com">// 期间别的线程做了 A→B→A，戳记已被推到 2</span>
+
+<span class="kw">boolean</span> ok = ref.<span class="fn">compareAndSet</span>(
+        cur,          <span class="com">// 预期引用 "A" —— 值确实还是 A</span>
+        <span class="str">"X"</span>,          <span class="com">// 新引用</span>
+        stamp,        <span class="com">// 预期戳记 0</span>
+        stamp + <span class="num">1</span>);   <span class="com">// 新戳记</span>
+<span class="com">// ok == false！因为当前戳记是 2，不等于预期的 0 —— ABA 被识别</span></pre>
+  </div>
+
+  <h2>七、CAS 的另外两个短板</h2>
+  <p>ABA 之外，CAS 还有两个绕不开的代价，正好对应它"无锁"的另一面：</p>
+
+  <div class="callout warn">
+    <strong>短板一：高竞争下自旋空转烧 CPU。</strong>CAS 失败重试是靠"占着 CPU 转圈"实现的。当竞争激烈、大量线程同时抢一个变量时，绝大多数 CAS 都失败，线程们疯狂空转却没几个能真正前进，CPU 利用率飙高而吞吐量反而下降——这时候"忙等"就不再比"挂起"划算了。<strong>短板二：只能保证一个变量的原子性。</strong>CAS 天生只针对<em>单个内存位置</em>。要原子地更新多个变量（维持一组不变式），CAS 无能为力，只能退回到锁，或把多个变量封装进一个对象再用 <code>AtomicReference</code> 整体替换。
+  </div>
+
+  <p>针对"高竞争计数"这个最典型的痛点，JDK 8 给出了 <code>LongAdder</code> / <code>DoubleAdder</code>。它的思路是<strong>分而治之</strong>：不再让所有线程抢同一个 <code>value</code>，而是内部维护一个 <code>Cell[]</code> 数组，不同线程<em>散列到不同的 Cell 上各自累加</em>，读取时再把所有 Cell 求和。竞争被分散到多个热点，CAS 冲突大幅下降。</p>
+
+  <table>
+    <tr><th>维度</th><th><code>AtomicLong</code></th><th><code>LongAdder</code></th></tr>
+    <tr><td>核心结构</td><td>单个 volatile long</td><td>base + Cell[] 分段</td></tr>
+    <tr><td>低并发</td><td>快，且省内存</td><td>没必要，略费内存</td></tr>
+    <tr><td>高并发写</td><td>CAS 冲突剧烈，慢</td><td>冲突分散，快得多</td></tr>
+    <tr><td>读取实时性</td><td><code>get()</code> 精确即时</td><td><code>sum()</code> 是弱一致的近似汇总</td></tr>
+    <tr><td>适用</td><td>需要精确读、或写不密集</td><td>只增不太读的高频计数（QPS、监控埋点）</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>选型口诀：</strong>写少或需要精确当前值 → <code>AtomicLong</code>；写多读少、只要最终统计（如接口调用次数、限流计数）→ <code>LongAdder</code>。Spring Boot Actuator / Micrometer 的计数指标底层用的正是 <code>LongAdder</code>，就是看中它在高并发埋点下的吞吐优势。
+  </div>
+
+  <h2>八、CAS vs 锁：一张表理清取舍</h2>
+  <table>
+    <tr><th>维度</th><th>CAS / 无锁</th><th>synchronized / Lock</th></tr>
+    <tr><td>阻塞</td><td>否，线程不挂起（自旋）</td><td>是，抢不到就 park</td></tr>
+    <tr><td>思路</td><td>乐观锁：先干再验冲突</td><td>悲观锁：先独占再干</td></tr>
+    <tr><td>粒度</td><td>单个变量</td><td>任意大小的临界区、多变量</td></tr>
+    <tr><td>低竞争性能</td><td>极好（无切换开销）</td><td>一般（有锁开销）</td></tr>
+    <tr><td>高竞争性能</td><td>可能退化（自旋空转）</td><td>相对稳定（挂起让出 CPU）</td></tr>
+    <tr><td>典型坑</td><td>ABA、自旋消耗</td><td>死锁、上下文切换</td></tr>
+    <tr><td>代表场景</td><td>计数器、标志、无锁数据结构</td><td>复合业务逻辑、多变量一致性</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>建立联系——CAS 是整个 JUC 的基石：</strong>你上一节学的 AQS，其 <code>volatile int state</code> 的获取/释放全靠 CAS（<code>compareAndSetState</code>）；<code>ConcurrentHashMap</code> 在桶为空时用 CAS 无锁地放入首节点（<code>casTabAt</code>），只在冲突时才退化到 <code>synchronized</code>；<code>ReentrantLock</code>、<code>Semaphore</code>、线程池的 <code>ctl</code> 状态字……几乎所有 JUC 组件都把 CAS 当作"不阻塞快路径"。<em>看懂 CAS，你就拿到了理解整个并发包的钥匙。</em>
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>CAS 是一条 <strong>"比较预期旧值，相符才写入"的 CPU 原子指令</strong>（x86 上是 <code>lock cmpxchg</code>），它用<em>乐观锁 + 自旋重试</em>替代了锁的<em>悲观阻塞</em>，让"读—改—写"复合操作在不挂起线程的前提下保持原子。Atomic 类把这套自旋 CAS 封装成顺手的原子变量。记牢三条边界：<strong>①ABA</strong>——值相等不等于没被改过，引用类型用 <code>AtomicStampedReference</code> 加版本戳；<strong>②高竞争下自旋空转</strong>——热点计数改用分段的 <code>LongAdder</code>；<strong>③只能护一个变量</strong>——多变量一致性仍需上锁。CAS 不是锁的全面替代品，而是"临界区极短、竞争不激烈"时更聪明的那把刀；它更是 AQS、ConcurrentHashMap 乃至整个 JUC 的共同地基。下一篇《Java 内存模型（JMM）》，我们将从底层回答一个更根本的问题：这些可见性与有序性的保证，究竟由谁、按什么规则兑现。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="23-AQS框架原理.html" class="nav-btn">← AQS 框架原理</a>
+    <a href="25-Java内存模型JMM.html" class="nav-btn next">Java 内存模型（JMM） →</a>
+  </div>
+</div>
+</body>
+</html>

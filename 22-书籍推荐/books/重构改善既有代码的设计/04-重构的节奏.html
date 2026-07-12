@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重构的节奏：小步修改加频繁测试</title>
+  <style>
+    :root { --c: #f472b6; --c-dim: #831843; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">重构：改善既有代码的设计</a> / 重构的节奏：小步修改加频繁测试</div>
+  <div class="hero">
+    <div class="tag">重构 · 第1-2章·理念与原则</div>
+    <h1>重构的节奏：小步修改加频繁测试</h1>
+    <p>重构不是一次憋大招的手术，而是一连串"改一点、测一下、存个档"的小循环——慢就是快，稳才是真的快。</p>
+  </div>
+
+  <h2>一、什么是"重构的节奏"</h2>
+  <p>很多人对重构的想象是：关起门来啃三天，把一坨烂代码"一次性"改漂亮。Fowler 在书里反复强调的恰恰相反——重构真正的功夫，在于把一个大改动<strong>拆成一串小到几乎不可能出错的步子</strong>，每走一步就<strong>编译并运行测试</strong>，绿了就继续、红了就立刻退回。他自己的原话是："我做重构的步子小到别人觉得可笑，但正是这份小，让我几乎不用花时间调试。"</p>
+
+  <div class="callout info">
+    <strong>核心定义：</strong>重构的节奏 = <em>小步修改（small steps）</em> + <em>频繁测试（frequent testing）</em> + <em>及时提交（commit as checkpoints）</em>。每一步都保证程序<strong>始终处于可运行、测试全绿的状态</strong>；任何时刻停下来，代码都是能交付的，而不是一堆改了一半、编译都过不了的残骸。
+  </div>
+
+  <p>这里的关键词是<strong>"始终可用"</strong>。传统开发常常有一段"施工期"——代码被拆得七零八落，几个小时甚至几天里跑都跑不起来。重构刻意消灭这段施工期：它要求你像走钢丝一样，<em>每一小步落脚点都是稳的</em>。</p>
+
+  <h2>二、为什么要小步？——把"调试"变成"必然定位"</h2>
+  <p>小步的价值不是"稳重"这种玄学，而是一条冷冰冰的工程收益：<strong>它把 bug 的搜索范围压缩到了一次改动之内。</strong></p>
+
+  <p>假设你测试从绿变红，说明是你<em>刚刚</em>那次改动引入的问题。如果这次改动只有 5 行，你的排查范围就是这 5 行；如果你憋了两小时改了 500 行才第一次跑测试，那 bug 藏在这 500 行的任意角落，你得靠 debug 一点点缩小。前者是"看一眼就知道"，后者是"折磨一下午"。</p>
+
+  <div class="diagram">测试从绿变红时，bug 的可能藏身范围：
+
+小步（改 5 行就测）
+[■■□□□□□□□□□□□□□□□□□□]  ← 范围 ≈ 你刚写的这几行，抬眼即定位
+
+大步（改 500 行才测）
+[■■■■■■■■■■■■■■■■■■■■]  ← 范围 = 整段改动，只能 debug 二分排查</div>
+
+  <div class="callout info">
+    <strong>建立联系：这就是 <code>git bisect</code> 的思想被前置到了写代码阶段。</strong><code>git bisect</code> 靠二分法在历史提交里定位是哪一次引入了 bug——提交越小、越频繁，它定位得越精准。小步重构相当于你<em>一边写就一边把提交粒度做到最细</em>，于是根本不需要事后二分，出错点自动就摆在你眼前。频繁的小 commit，就是给未来的自己铺好的排查台阶。
+  </div>
+
+  <h3>一个生活类比：下楼梯 vs 跳楼梯</h3>
+  <p>小步重构像<strong>一级一级下楼梯</strong>：每一级都踩实了再迈下一步，就算脚滑也只退回上一级。大步重构像<strong>从楼梯口一跃而下</strong>：运气好省了几秒，运气不好就是骨折——而且你根本说不清是哪一下摔的。攀岩里有个"<em>三点固定</em>"原则（手脚四个支点始终留三个在岩壁上），重构的小步就是代码世界的三点固定：永远保留一个"随时能退回去的稳定态"。</p>
+
+  <h2>三、频繁测试：把反馈循环压到秒级</h2>
+  <p>小步之所以能成立，前提是<strong>测试要快、要能随手就跑</strong>。这也是为什么上一篇《重构的前提》强调"自测试代码（self-testing code）"是重构的地基——没有一套秒级返回的测试，你根本没法频繁测，小步也就失去了意义。</p>
+
+  <div class="formula">反馈延迟 <span class="hl">↓</span>　→　测试频率 <span class="hl">↑</span>　→　可承受的步子 <span class="hl">↓</span>　→　调试成本 <span class="hl">↓</span></div>
+
+  <p>这是一条正反馈链：测试跑得越快，你就越舍得频繁跑；跑得越频繁，你就越敢把步子迈小；步子越小，出错定位越准。反过来，如果一次测试要跑十分钟，你自然舍不得频繁跑，只能被迫攒大步——节奏就崩了。</p>
+
+  <div class="callout warn">
+    <strong>陷阱一：拿"慢测试"当频繁测试的挡箭牌。</strong>很多团队的单元测试里塞满了真实数据库连接、网络调用、<code>Thread.sleep</code>，跑一轮好几分钟，于是没人愿意频繁跑。这不是"重构不适合我们"，而是<em>测试设计出了问题</em>。真正的单元测试应当是内存里跑的、毫秒级的（依赖用 Mock/Stub 隔离掉）。先治好慢测试，重构的节奏才谈得上。
+  </div>
+
+  <h2>四、把大改动拆成小步：一个真实示例</h2>
+  <p>看一个具体动作："把一段散落在方法里的金额计算逻辑提炼成独立函数"。新手往往一把梭：剪切、粘贴、改名、顺手把逻辑也优化了，改完一大坨才第一次编译。下面对比"一把梭"和"拆成小步"两种做法。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 一把梭：混着改</div>
+      <pre>// 一次性：提炼 + 改名 + 改逻辑
+double calc(Order o) {
+  // 直接删掉旧代码，
+  // 敲一个全新的 amountFor()，
+  // 顺手把 int 改成 BigDecimal，
+  // 还把变量 p 改名成 price……
+  return amountFor(o);
+}
+// 改完 60 行才第一次编译
+// 测试红了：是提炼错了？
+// 改名漏了？还是逻辑动了？
+// 三种嫌疑，只能 debug</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 拆成小步：每步一测</div>
+      <pre>// 步骤①：只复制，不删原代码
+double amountFor(Order o) {
+  return o.qty * o.price; // 原样搬
+}
+// ← 编译 + 测试：绿。commit
+
+// 步骤②：原处改成调用它
+double calc(Order o) {
+  return amountFor(o);
+}
+// ← 编译 + 测试：绿。commit
+
+// 步骤③（换顶帽子）再谈优化
+// 比如把 double 换成 BigDecimal
+// ← 单独一步、单独一测、单独提交</pre>
+    </div>
+  </div>
+
+  <p>右边每一步都极其"无聊"——无聊到你几乎确信它不可能出错。这正是目的：<strong>把风险摊薄到每一步都趋近于零。</strong>而且注意步骤③——优化逻辑（改行为）被明确<em>推迟到重构完成之后</em>单独做。这就引出下一个关键纪律。</p>
+
+  <h2>五、两顶帽子：绝不同时改结构和改行为</h2>
+  <p>Kent Beck 提出的"<strong>两顶帽子（Two Hats）</strong>"是维持节奏的灵魂纪律。你写代码时永远只戴一顶帽子：</p>
+
+  <table>
+    <tr><th>帽子</th><th>你在做什么</th><th>行为会变吗</th><th>测试应如何</th></tr>
+    <tr><td><strong>重构帽</strong></td><td>只调整内部结构：改名、提炼、搬移</td><td><em>不变</em>（外部行为完全一致）</td><td>已有测试<strong>应始终全绿</strong>，不新增测试</td></tr>
+    <tr><td><strong>加功能帽</strong></td><td>新增能力、修改业务逻辑</td><td><em>会变</em>（这就是目的）</td><td>先写<strong>会红的新测试</strong>，再写代码让它变绿</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱二：两顶帽子一起戴，是重构翻车的头号原因。</strong>如果你一边提炼函数（改结构）一边顺手改了业务逻辑（改行为），当测试变红时你会陷入致命的模糊：<em>到底是重构手滑改坏了行为，还是新逻辑本身有 bug？</em>这两种错误的排查方式完全不同，混在一起就是灾难。纪律是：<strong>戴重构帽时，测试红了 = 你一定改错了结构，退回去就对了</strong>——因为行为本就该保持不变。这份"红就是我错了"的确定性，只有分开戴帽子才拿得到。
+  </div>
+
+  <div class="callout info">
+    <strong>联系 TDD 的红-绿-重构循环：</strong>Kent Beck 的 TDD 三步曲——<em>红</em>（写个失败测试）→ <em>绿</em>（写最脏的代码让它通过）→ <em>重构</em>（在测试保护下清理代码）——正是"两顶帽子"的时间编排。红和绿两步戴"加功能帽"，第三步戴"重构帽"。重构的节奏，本质上就是把 TDD 里那个"重构"步骤，独立出来放大成一套完整的工作方式。
+  </div>
+
+  <h2>六、commit 就是你的存档点</h2>
+  <p>小步 + 频繁测试还差最后一块拼图：<strong>每走完一个绿色的小步，就 <code>git commit</code> 一次。</strong>这些提交是你的"游戏存档点"——一旦某一步玩崩了，一个 <code>git reset --hard</code> 就能瞬间退回最近的稳定态，而不是手忙脚乱地手动撤销那些你已经记不清的改动。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>refactor-rhythm.sh</span><span>重构循环的命令级写照</span></div>
+    <pre><span class="com"># 一个重构小步的标准循环</span>
+<span class="com"># 1. 做一个小到不可能错的改动（改名 / 提炼 / 搬移）……</span>
+
+<span class="com"># 2. 编译 + 跑测试（要求秒级返回）</span>
+mvn <span class="lit">-q</span> test-compile test
+
+<span class="com"># 3a. 绿了 → 存档，进入下一小步</span>
+git commit <span class="lit">-am</span> <span class="str">"refactor: extract amountFor()"</span>
+
+<span class="com"># 3b. 红了 → 别 debug，直接退回最近的绿</span>
+git reset <span class="lit">--hard</span> HEAD   <span class="com"># 撤销这一步，换更小的步子重来</span>
+
+<span class="com"># 全部改完、确认整体绿之后，再一次性 squash 成一个干净提交</span>
+git rebase <span class="lit">-i</span> HEAD~<span class="num">8</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么"红了别 debug、直接退回"往往更划算？</strong>直觉上你想"再看看哪错了"，但既然上一步还是绿的、这一步只改了几行，那么<em>丢弃重来的成本</em>常常低于<em>调试的成本</em>。退回去、把步子拆得更小再走一遍，通常几分钟就绕过了原来卡你半天的坑。这也是小步的隐藏福利：每一步都小到"丢了也不心疼"。
+  </div>
+
+  <h2>七、慢就是快：节奏感的经济账</h2>
+  <p>初学者最大的心理障碍是："这么小步，得多慢啊？"事实恰恰相反。开发时间的大头从来不是敲代码，而是<strong>调试</strong>。小步几乎消灭了调试，所以总时长反而更短。用一条"耗时构成"直观感受一下：</p>
+
+  <h3>大步重构的时间构成</h3>
+  <div class="bar">
+    <span style="width:25%;background:#4ade80;">写代码 25%</span>
+    <span style="width:60%;background:#ef4444;">调试排查 60%</span>
+    <span style="width:15%;background:#fbbf24;">返工 15%</span>
+  </div>
+  <h3>小步重构的时间构成</h3>
+  <div class="bar">
+    <span style="width:70%;background:#4ade80;">写代码+测试 70%</span>
+    <span style="width:12%;background:#ef4444;">调试 12%</span>
+    <span style="width:18%;background:#60a5fa;">跑测试等待 18%</span>
+  </div>
+
+  <p>小步看起来"多花了"跑测试的时间，但它把那块吓人的红色调试区几乎抹平了。这就是 Fowler 说的"<strong>慢就是快</strong>（slow is smooth, smooth is fast）"——单步慢一点，全程快很多，而且过程可预测、不会突然掉进调试黑洞。</p>
+
+  <table>
+    <tr><th>维度</th><th>大步重构（憋大招）</th><th>小步重构（勤测勤提交）</th></tr>
+    <tr><td>出错定位</td><td>范围大，靠 debug 二分</td><td>范围=一步，抬眼即知</td></tr>
+    <tr><td>回退成本</td><td>手动撤销，易撤错撤漏</td><td><code>git reset</code> 秒回存档点</td></tr>
+    <tr><td>中途可交付性</td><td>施工期代码跑不起来</td><td>任意时刻都全绿可发布</td></tr>
+    <tr><td>心理负担</td><td>越改越怕，不敢停</td><td>每步都稳，随时能停</td></tr>
+    <tr><td>总耗时</td><td>看着快，实则被调试拖长</td><td>看着慢，实则更短更稳</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱三：把"重构"和"重写"混为一谈，于是放弃了节奏。</strong>一旦你想"这破代码没救了，我推倒重来"，就等于给自己开了一张"长期不可运行"的通行证——这正是小步重构要极力避免的状态。除非旧代码已烂到无法在其上小步前进，否则优先选择<em>在能运行的代码上一小步一小步地改进</em>。重写是高风险豪赌，重构是稳定复利。（这一取舍，正是本章"重构 vs 重写"那一节的主题。）
+  </div>
+
+  <div class="callout info">
+    <strong>联系工程实践：小步节奏和 CI/持续集成是同构的。</strong>持续集成鼓励"小批量、频繁合并"，道理和小步重构一模一样——<em>批量越小，集成冲突和缺陷定位就越简单</em>。你在本地做的"改一点就测一下、绿了就 commit"，放大到团队尺度就是"每人每天多次向主干提交小改动 + 流水线自动跑测试"。同一种"缩小批量、加密反馈"的智慧，贯穿了从个人编辑器到团队流水线的每一层。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>重构的节奏，就是把一个吓人的大改动，拆成一串<strong>小到不可能出错</strong>的动作，每动一下就<strong>编译并跑一次秒级测试</strong>，绿了就 <code>git commit</code> 存档、红了就直接退回上一个存档。这套节奏之所以成立，靠三根支柱：<em>快速自测试</em>（让你敢频繁测）、<em>两顶帽子</em>（让"红了=我改错了结构"这条判断永远成立）、<em>频繁提交</em>（让回退成本趋近于零）。它换来的是把开发中最贵的"调试"几乎归零——所以别怕步子小，<strong>慢就是快，稳才是真的快</strong>。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="03-重构的前提.html" class="nav-btn">← 重构的前提</a>
+    <a href="05-神秘命名.html" class="nav-btn next">神秘命名 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TCP：头部、序号确认、流量控制、连接管理</title>
+  <style>
+    :root { --c: #38bdf8; --c-dim: #164e63; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">计算机网络：自顶向下方法</a> / TCP：头部、序号确认、流量控制、连接管理</div>
+  <div class="hero">
+    <div class="tag">计算机网络 · 第3章·传输层</div>
+    <h1>TCP：头部、序号确认、流量控制、连接管理</h1>
+    <p>上一节的 rdt 只是"原理机"。TCP 把这些原理落到一张 20 字节的头部里，靠序号/确认号在字节流上做可靠传输，用接收窗口做流量控制，再用三次握手、四次挥手把连接稳稳地开与关。</p>
+  </div>
+
+  <h2>一、先立人设：TCP 到底是一条什么样的"管道"</h2>
+  <p>上一节我们从零推导出 rdt 协议家族（校验和、序号、ACK、定时器、滑动窗口）。TCP 就是把这些原理<strong>工程化落地</strong>的成品。在拆头部之前，先记住 TCP 的五个基本性格，后面每个机制都是为了兑现这些承诺：</p>
+  <table>
+    <tr><th>性格</th><th>含义</th><th>由谁兑现</th></tr>
+    <tr><td>面向连接</td><td>收发数据前必须先握手建立状态</td><td>三次握手 / 四次挥手</td></tr>
+    <tr><td>可靠有序</td><td>不丢、不重、不乱序，按发送顺序交付</td><td>序号 + 累积确认 + 重传</td></tr>
+    <tr><td>字节流</td><td>不保留"消息边界"，只是一串有序字节</td><td>序号按字节编号</td></tr>
+    <tr><td>全双工</td><td>同一连接双向同时收发</td><td>每方向各有独立 seq/ack</td></tr>
+    <tr><td>流量 / 拥塞控制</td><td>不压垮接收方，也不压垮网络</td><td>rwnd（本节） / cwnd（下节）</td></tr>
+  </table>
+  <div class="callout info"><strong>为什么强调"字节流"？</strong>这是 TCP 和 UDP 最本质的分野，也是无数 Java 网络 bug 的源头。UDP 是<strong>数据报</strong>——你 <code>send</code> 一次，对方就 <code>recv</code> 到完整一坨，边界天然对齐。TCP 眼里<strong>根本没有"一条消息"这个概念</strong>，它只管把你交下来的字节按顺序、编上号、可靠地送到对面，至于"哪几个字节算一条业务消息"是<strong>应用层自己的事</strong>。这个设计换来了极高的灵活性和吞吐，代价就是后面第四节的"粘包/半包"陷阱。</div>
+
+  <h2>二、TCP 段结构：一张 20 字节的头部撑起所有能力</h2>
+  <p>TCP 报文段 = <strong>首部（至少 20 字节）+ 数据</strong>。不用背每一位（书里也反复说"这不是 RFC 手册"），但要看懂<strong>每个字段解决什么问题</strong>——它们和上一节的 rdt 要素一一对应：</p>
+  <div class="diagram"> 0                   15 16                  31   ← 位偏移
++---------------------+---------------------+
+|      源端口 (16)     |     目的端口 (16)    |  ← 多路复用/分解(上上节)
++---------------------------------------------+
+|              序号 seq  (32)                 |  ← 本段首字节的字节流编号
++---------------------------------------------+
+|            确认号 ack  (32)                 |  ← 期望收到的下一个字节号
++----+-----+----------+---------------------+
+|首长|保留 |U A P R S F|   接收窗口 rwnd (16) |  ← 流量控制
++----+-----+----------+---------------------+
+|      校验和 (16)     |    紧急指针 (16)     |  ← 差错检测
++---------------------+---------------------+
+|              选项 (变长, 如 MSS/时间戳/窗口扩大)  |
++---------------------------------------------+
+|                  数据 (变长)                 |
++---------------------------------------------+
+   标志位: URG ACK PSH RST SYN FIN</div>
+  <p>几个字段值得单独点名，因为它们直接决定连接的行为：</p>
+  <table>
+    <tr><th>字段</th><th>作用</th><th>面试/实战要点</th></tr>
+    <tr><td><code>seq</code> 序号</td><td>本段<strong>第一个字节</strong>在整条字节流中的编号</td><td>不是"第几个报文段"，是<strong>字节</strong>编号</td></tr>
+    <tr><td><code>ack</code> 确认号</td><td>接收方<strong>期望收到的下一个字节</strong>的序号</td><td>累积确认；只在 <code>ACK=1</code> 时有效</td></tr>
+    <tr><td>首部长度</td><td>首部有多少个 4 字节字（因选项变长）</td><td>4 位 → 首部最大 15×4=60 字节</td></tr>
+    <tr><td><code>rwnd</code></td><td>接收方还能收多少字节（剩余缓冲）</td><td>流量控制核心，仅 16 位 → 需窗口扩大选项</td></tr>
+    <tr><td>标志位</td><td>SYN 建连、FIN 拆连、RST 强制复位、ACK 确认有效、PSH 尽快上交、URG 紧急</td><td><strong>SYN/FIN 各占 1 个序号</strong>！</td></tr>
+    <tr><td>MSS(选项)</td><td>本方向单段最大<strong>数据</strong>字节数</td><td>握手时协商，常见 1460 = 1500−20(IP)−20(TCP)</td></tr>
+  </table>
+  <div class="callout warn"><strong>陷阱：MSS ≠ MTU，SYN/FIN 会"吃掉"一个序号。</strong>MTU 是链路层一帧能装的最大字节数（以太网 1500），MSS 只算 TCP <strong>数据</strong>部分（1500 减去 IP 头 20、TCP 头 20 = 1460）。另外一个最容易错的点：<strong>SYN 和 FIN 虽然不带数据，却各自消耗一个序号</strong>——这就是为什么握手时对方回的 ack 是 <code>client_isn + 1</code> 而不是 <code>client_isn</code>。这个 "+1" 几乎是三次握手题的必考点。</div>
+
+  <h2>三、序号与确认号：把可靠性建立在"字节流"上</h2>
+  <p>rdt 里序号是给"分组"编的，而 TCP 给<strong>每一个字节</strong>编号。一个报文段的 <code>seq</code> = 它携带的第一个字节的编号；<code>ack</code> = 我<strong>已经全部收齐、正等着的下一个字节</strong>的编号。起始编号 ISN 不是从 0 开始，而是<strong>随机选取</strong>（防止旧连接的残包被误认，也提高安全性）。</p>
+  <div class="formula">某段 <span class="hl">seq</span> = 本段首字节序号 &nbsp;&nbsp; <span class="hl">ack</span> = 已收齐字节数 + 起始序号</div>
+
+  <h3>用一个经典例子建立直觉</h3>
+  <p>《自顶向下》里的 Telnet 例子最能说明"确认号"的含义。主机 A 敲一个字符 'C'，B 回显这个 'C'，全程都是<strong>捎带确认（piggyback）</strong>——把 ACK 塞进反方向的数据段里，省一个报文：</p>
+  <div class="diagram">主机A(seq起点42)                        主机B(seq起点79)
+   │  seq=42, ack=79, data='C'  (发1字节)   │
+   ├───────────────────────────────────────►│  收到第42字节
+   │                                         │
+   │  seq=79, ack=43, data='C'  (回显+确认)  │  ← ack=43: "42收到,等43"
+   │◄───────────────────────────────────────┤
+   │                                         │
+   │  seq=43, ack=80            (纯ACK)      │  ← ack=80: "79收到,等80"
+   ├───────────────────────────────────────►│</div>
+  <p>注意第二段：B 既<strong>回显数据</strong>（seq=79），又<strong>确认了 A 的字节</strong>（ack=43），一石二鸟。这就是全双工 + 捎带确认。</p>
+  <div class="callout tip"><strong>累积确认（cumulative ACK）是 TCP 的灵魂。</strong><code>ack=n</code> 的真正含义是"<strong>第 n 之前的所有字节我都收齐了</strong>"，而不仅仅是"收到了第 n−1 个"。好处：即使中间几个 ACK 丢了，只要后一个更大的 ACK 到达，发送方就知道前面全都到了——ACK 天然带"补丁"。这也解释了下一节"快速重传"里 <strong>3 个重复 ACK</strong> 的现象：接收方每收到一个失序段，就重复回<strong>同一个</strong> ack（还在等那个缺口），发送方连着收到 3 个重复 ack 就明白"那个字节丢了"，不等超时立刻重传。</div>
+  <div class="callout warn"><strong>高频错点：ack 是"期望下一个"，不是"最后收到的"。</strong>很多人把 <code>ack</code> 写成"已收到的最后一个字节号"，差一位。正确记法：<em>ack = 我下一步想要的字节</em>。收到了第 42 字节（1 字节数据），就回 <code>ack=43</code>。三次握手里收到 <code>SYN(seq=x)</code> 回 <code>ack=x+1</code> 也是同一个逻辑（SYN 占 1 号）。</div>
+
+  <h2>四、字节流的代价：粘包 / 半包（Java 必踩坑）</h2>
+  <p>既然 TCP 不保留消息边界，那么"你写了几次"和"对方读到几次"<strong>完全没有对应关系</strong>。发送方 <code>write</code> 两条消息，可能被合并进一个段发出（<strong>粘包</strong>）；一条大消息也可能被拆到两个段（<strong>半包</strong>）。这不是 bug，是 TCP 的本性——它只保证字节有序，不保证"按你写的次数切好"。</p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">反例 — 以为一次 read = 一条消息</div>
+      <pre><span class="typ">InputStream</span> in = socket.<span class="fn">getInputStream</span>();
+<span class="typ">byte</span>[] buf = <span class="kw">new</span> <span class="typ">byte</span>[<span class="num">1024</span>];
+<span class="typ">int</span> n = in.<span class="fn">read</span>(buf);
+<span class="com">// n 可能只是半条,也可能粘了两条</span>
+<span class="typ">String</span> msg = <span class="kw">new</span> <span class="typ">String</span>(buf, <span class="num">0</span>, n);
+<span class="fn">handle</span>(msg);   <span class="com">// 消息边界全乱 ✗</span></pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">正例 — 自定义"长度前缀"帧</div>
+      <pre><span class="typ">DataInputStream</span> in = <span class="kw">new</span> <span class="typ">DataInputStream</span>(
+        socket.<span class="fn">getInputStream</span>());
+<span class="typ">int</span> len = in.<span class="fn">readInt</span>();   <span class="com">// 先读4字节长度</span>
+<span class="typ">byte</span>[] body = <span class="kw">new</span> <span class="typ">byte</span>[len];
+in.<span class="fn">readFully</span>(body);       <span class="com">// 读满一整帧</span>
+<span class="fn">handle</span>(<span class="kw">new</span> <span class="typ">String</span>(body)); <span class="com">// 边界清晰 ✓</span></pre>
+    </div>
+  </div>
+  <div class="callout info"><strong>串联 Netty：帧解码器就是干这个的。</strong>手写 <code>readInt + readFully</code> 太原始，实际生产用 <strong>Netty 的 <code>LengthFieldBasedFrameDecoder</code></strong>（长度字段法）或 <code>LineBasedFrameDecoder</code>（分隔符法）来自动"切帧"。它们把"从无边界字节流里还原业务消息"这件事沉淀成了可复用组件——你在本项目 Netty 模块学到的 ByteToMessageDecoder，本质就是在对抗这一节讲的"TCP 是字节流"。三种切帧方案的取舍：<strong>固定长度</strong>（简单但浪费）、<strong>分隔符</strong>（如 \n，但内容不能含分隔符）、<strong>长度前缀</strong>（最通用，HTTP/2、Dubbo、gRPC 都用它）。</div>
+
+  <h2>五、流量控制：别把接收方的缓冲区撑爆</h2>
+  <p>接收方内核为每条连接维护一个<strong>接收缓冲区（RcvBuffer）</strong>。数据先进缓冲区，等应用层调 <code>read()</code> 才被取走。如果发送方发得太快、应用层读得太慢，缓冲区就会溢出、丢数据。<strong>流量控制</strong>就是让发送方"看接收方脸色行事"的机制——<em>速度匹配服务（speed-matching）</em>。</p>
+  <p>做法很朴素：接收方在每个段的 <code>rwnd</code> 字段里<strong>实时广播"我还能收多少"</strong>，发送方保证"已发出但没被确认的数据量"不超过这个数。</p>
+  <div class="formula"><span class="hl">rwnd</span> = RcvBuffer − (LastByteRcvd − LastByteRead)</div>
+  <div class="formula">发送方约束：LastByteSent − LastByteAcked ≤ <span class="hl">rwnd</span></div>
+  <div class="diagram">接收方缓冲区 (RcvBuffer)
+ ┌───────────────┬──────────────┬───────────────┐
+ │ 已被应用读走   │ 已收未读(排队) │   空闲 = rwnd   │
+ └───────────────┴──────────────┴───────────────┘
+   LastByteRead      LastByteRcvd
+                     应用read()慢 → 中间段变大 → rwnd变小 → 广播给发送方
+                     应用read()快 → 空闲变大   → rwnd变大 → 发送方可多发</div>
+  <div class="callout warn"><strong>经典陷阱：rwnd=0 后的死锁，靠"持续计时器"破解。</strong>当接收方缓冲满了，广播 <code>rwnd=0</code>，发送方停发。问题来了：此后接收方即使把数据读走、腾出了空间，它<strong>没有数据要发</strong>（比如是纯下载场景），也就没机会捎带一个"rwnd 变大了"的通知——双方就此<strong>僵死</strong>。TCP 的解法：发送方在收到 rwnd=0 后启动 <strong>持续计时器（persist timer）</strong>，定期发送只含 1 字节的<strong>零窗口探测（window probe）</strong>去戳接收方，逼它回一个带最新 rwnd 的 ACK。这题很爱考。</div>
+  <div class="callout info"><strong>别把流量控制和拥塞控制搞混（下一节主角）。</strong>两者都限制发送速率，但"为谁踩刹车"完全不同：</div>
+  <table>
+    <tr><th>维度</th><th>流量控制（本节）</th><th>拥塞控制（下节）</th></tr>
+    <tr><td>防止压垮谁</td><td><strong>接收方</strong>的缓冲区</td><td><strong>网络</strong>（中间路由器队列）</td></tr>
+    <tr><td>限制变量</td><td>接收窗口 <code>rwnd</code></td><td>拥塞窗口 <code>cwnd</code></td></tr>
+    <tr><td>信息来源</td><td>接收方在头部里明说</td><td>发送方靠丢包/RTT<strong>推测</strong></td></tr>
+    <tr><td>是端到端还是全局</td><td>纯两端协商</td><td>所有连接共同影响</td></tr>
+  </table>
+  <p>实际发送方的窗口是<strong>两者取小</strong>：<code>发送窗口 = min(rwnd, cwnd)</code>。谁更紧张听谁的。</p>
+
+  <h2>六、连接管理（上）：三次握手为什么是"三"次</h2>
+  <p>建连的目标：让双方<strong>都确认对方能收能发</strong>，并<strong>交换各自的初始序号 ISN</strong>（后续所有 seq/ack 都以它为基准）。三次握手正好是达成这个目标的最小步数：</p>
+  <div class="diagram">客户端                                        服务端
+ CLOSED                                        LISTEN
+   │  ① SYN=1, seq=x                            │
+   ├──────────────────────────────────────────►│  SYN_RCVD
+ SYN_SENT                                       │
+   │  ② SYN=1, ACK=1, seq=y, ack=x+1            │
+   │◄──────────────────────────────────────────┤
+ ESTABLISHED                                    │
+   │  ③ ACK=1, seq=x+1, ack=y+1  (可带数据)     │
+   ├──────────────────────────────────────────►│  ESTABLISHED
+   │            === 连接建立,开始传数据 ===       │</div>
+  <p>关键观察：② 的 <code>ack=x+1</code> 证明"服务端收到了客户端的 SYN"（还证明服务端能收）；③ 的 <code>ack=y+1</code> 证明"客户端收到了服务端的 SYN"。到第三步，<strong>双向的收发能力和双向的 ISN 才全部被确认</strong>。</p>
+  <div class="callout tip"><strong>为什么不能两次握手？</strong>核心是防止<strong>历史失效连接（旧的重复 SYN）</strong>建立假连接。设想客户端一个很早发出、在网络里滞留很久的旧 SYN，如果只要两次握手（服务端收到 SYN 就直接建连并开始发数据），这个旧 SYN 到达时服务端会误建一条连接、白白占资源。有了第三次握手，服务端发完 SYN-ACK 后要<strong>等客户端最终确认</strong>——客户端发现这是过期的旧连接，会回 <code>RST</code> 拒绝，连接建不起来。<strong>一句话：第三次握手是为了让客户端有机会否决一个过期的连接请求。</strong></div>
+  <div class="callout warn"><strong>SYN Flood 攻击 —— 高频安全考点。</strong>攻击者伪造大量源 IP 只发 ① SYN，服务端回了 ② SYN-ACK 后进入 <code>SYN_RCVD</code>，把连接放进<strong>半连接队列</strong>等第三次 ACK——但第三次永远不来。队列被塞满后，正常用户的 SYN 就被丢弃（拒绝服务）。防御：<strong>SYN Cookies</strong>——服务端在 SYN_RCVD 阶段<strong>不分配资源</strong>，而是把连接状态编码进 SYN-ACK 的初始序号里，等真正的第三次 ACK 回来再校验并建连。</div>
+  <p>在 Java 里，这一切被 <code>Socket</code>/<code>ServerSocket</code> 封装得几乎透明——但要知道每行代码触发了哪一步握手：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Java Socket 与三次握手的对应</span><span>Java</span></div>
+    <pre><span class="com">// 服务端: bind + listen, 进入 LISTEN 态</span>
+<span class="typ">ServerSocket</span> server = <span class="kw">new</span> <span class="typ">ServerSocket</span>(<span class="num">8080</span>, <span class="num">128</span>);
+<span class="com">//                          端口↑        ↑backlog=已完成握手队列长度</span>
+
+<span class="com">// accept() 从"已完成三次握手"的队列里取一条连接</span>
+<span class="com">// 若队列空则阻塞;握手是内核在后台完成的,不是 accept 触发的</span>
+<span class="typ">Socket</span> conn = server.<span class="fn">accept</span>();
+
+<span class="com">// 客户端: new Socket() 内部就在做①②③三次握手</span>
+<span class="com">// 构造函数返回时,连接已 ESTABLISHED</span>
+<span class="typ">Socket</span> s = <span class="kw">new</span> <span class="typ">Socket</span>(<span class="str">"10.0.0.5"</span>, <span class="num">8080</span>);
+s.<span class="fn">getOutputStream</span>().<span class="fn">write</span>(data);  <span class="com">// 此时才真正传业务数据</span></pre>
+  </div>
+  <div class="callout info"><strong>联系操作系统：backlog 其实是"两个队列"。</strong>内核为每个监听 socket 维护<strong>半连接队列（SYN 队列，收到 ① 后）</strong>和<strong>全连接队列（accept 队列，完成 ③ 后）</strong>。<code>new ServerSocket(port, backlog)</code> 的 backlog 影响的是<strong>全连接队列</strong>。如果应用 <code>accept()</code> 太慢，全连接队列被塞满，新完成握手的连接会被丢弃或触发重传——线上高并发服务如果看到大量连接超时，backlog 和 accept 处理速度是必查项。</div>
+
+  <h2>七、连接管理（下）：四次挥手与 TIME_WAIT</h2>
+  <p>关闭比建立多一步，因为 TCP 是<strong>全双工</strong>：每个方向都要<strong>单独关闭</strong>。一方发 <code>FIN</code> 只表示"我这边没数据要发了"，但它<strong>仍可继续接收</strong>对方的数据（半关闭）。于是 SYN 能合并成三次，FIN 却要四次：</p>
+  <div class="diagram">主动关闭方(如客户端)                     被动关闭方(如服务端)
+ ESTABLISHED                              ESTABLISHED
+   │  ① FIN=1, seq=u                       │
+   ├──────────────────────────────────────►│  CLOSE_WAIT ← 收到FIN,通知应用
+ FIN_WAIT_1                                │  (对方可能还有数据要发完)
+   │  ② ACK, ack=u+1                       │
+   │◄──────────────────────────────────────┤
+ FIN_WAIT_2                                │
+   │  ③ FIN=1, seq=w  (应用调close后)      │
+   │◄──────────────────────────────────────┤  LAST_ACK
+ TIME_WAIT                                 │
+   │  ④ ACK, ack=w+1                       │
+   ├──────────────────────────────────────►│  CLOSED
+   │  等待 2·MSL 后 → CLOSED                │</div>
+  <p>为什么 ② 和 ③ 不能合并成一步（像握手那样）？因为收到对方 FIN 时，<strong>被动方自己可能还有数据没发完</strong>——它得先立刻 ACK"我知道你要关了"，等自己的数据发完、应用主动调 <code>close()</code>，才发自己的 FIN。这中间的 <code>CLOSE_WAIT</code> 状态正是留给它"把话说完"的窗口。</p>
+  <div class="callout warn"><strong>生产事故 TOP 级：CLOSE_WAIT 堆积 = 你的代码忘了 close()。</strong>如果对端已关闭（你收到了 FIN、连接进入 <code>CLOSE_WAIT</code>），但你的应用<strong>迟迟不调 <code>close()</code></strong>，第三次 FIN 就发不出去，连接会<strong>永久卡在 CLOSE_WAIT</strong>，持续占用文件描述符，最终 <code>Too many open files</code> 打爆服务。排查口诀：<strong><code>netstat</code> 里大量 CLOSE_WAIT → 一定是本机应用没关连接（漏了 finally 里的 close）；大量 TIME_WAIT → 是本机作为主动关闭方、且短连接太多</strong>。前者是 bug，后者多是设计问题。</div>
+  <div class="callout tip"><strong>TIME_WAIT 为什么要等 2·MSL（MSL=报文最大存活时间）？两个原因：</strong><br>① <strong>保证最后那个 ACK（④）能到达对方</strong>：万一 ④ 丢了，对方会重发 FIN（③），此时我还在 TIME_WAIT，能再补一个 ACK。如果我直接 CLOSED 走人，对方就会一直重发 FIN、最后收到 RST 而异常关闭。<br>② <strong>让本连接的旧报文在网络中彻底消亡</strong>：等 2·MSL（一去一回），确保没有"迟到的老报文"会污染下一条复用相同四元组的新连接。</div>
+  <div class="code-block">
+    <div class="cb-header"><span>用 netstat 观察 TCP 状态 + SO_REUSEADDR</span><span>Shell / Java</span></div>
+    <pre><span class="com"># 统计各状态连接数(排查利器)</span>
+$ netstat -an | awk <span class="str">'/^tcp/ {s[$6]++} END{for(k in s)print k,s[k]}'</span>
+ESTABLISHED 812
+TIME_WAIT   3049      <span class="com"># 主动关闭方,短连接多 → 考虑长连接/连接池</span>
+CLOSE_WAIT  57        <span class="com"># 危险!应用漏了 close()</span>
+
+<span class="com">// Java: 服务重启时报 "Address already in use"?</span>
+<span class="com">// 是上次的连接还在 TIME_WAIT 占着端口。开启地址复用即可绕过:</span>
+<span class="typ">ServerSocket</span> server = <span class="kw">new</span> <span class="typ">ServerSocket</span>();
+server.<span class="fn">setReuseAddress</span>(<span class="kw">true</span>);   <span class="com">// SO_REUSEADDR,必须在 bind 之前设</span>
+server.<span class="fn">bind</span>(<span class="kw">new</span> <span class="typ">InetSocketAddress</span>(<span class="num">8080</span>));</pre>
+  </div>
+
+  <h2>八、收束：一图看懂 TCP 状态机主干</h2>
+  <div class="diagram">                          [主动]                [被动]
+ CLOSED ──connect─► SYN_SENT ──收SYN-ACK/发ACK─► ESTABLISHED
+   ▲                                               │  │
+   │ listen                                        │  │ 收FIN/发ACK
+   └── LISTEN ──收SYN/发SYN-ACK─► SYN_RCVD ────────┘  ▼
+                                                  CLOSE_WAIT
+ 主动关闭链:                                          │ 应用close/发FIN
+ ESTABLISHED ─close/发FIN─► FIN_WAIT_1 ─收ACK─►     ▼
+   FIN_WAIT_2 ─收FIN/发ACK─► TIME_WAIT ─2MSL─►   LAST_ACK
+                                    │              │ 收ACK
+                                    └──► CLOSED ◄──┘</div>
+  <div class="callout key"><strong>一句话收束：</strong>TCP 把上一节的 rdt 原理压进一张 20 字节头部——<strong>序号/确认号</strong>让可靠性建立在"字节流"上（累积确认 <code>ack=期望的下一个字节</code>，SYN/FIN 各占 1 号）；<strong>rwnd</strong> 做流量控制，防止压垮<strong>接收方</strong>（下节 cwnd 防止压垮<strong>网络</strong>，发送窗口取二者小值）；<strong>三次握手</strong>用最小步数交换双向 ISN 并否决过期连接，<strong>四次挥手 + TIME_WAIT(2MSL)</strong> 因全双工而拆两半、并为可靠关闭兜底。记牢三条实战线：<strong>字节流 → 粘包要自己切帧</strong>、<strong>CLOSE_WAIT 堆积是你没 close()</strong>、<strong>流量控制≠拥塞控制</strong>。这三点是理解 Netty、Socket 编程和线上网络故障的地基。</div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="12-可靠数据传输原理.html" class="nav-btn">← 可靠数据传输原理</a>
+    <a href="14-TCP拥塞控制.html" class="nav-btn next">TCP 拥塞控制 →</a>
+  </div>
+</div>
+</body>
+</html>

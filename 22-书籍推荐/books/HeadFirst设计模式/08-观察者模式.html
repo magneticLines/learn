@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>观察者模式：一对多依赖，主题通知观察者</title>
+  <style>
+    :root { --c: #f59e0b; --c-dim: #78350f; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Head First 设计模式</a> / 观察者模式：一对多依赖，主题通知观察者</div>
+  <div class="hero">
+    <div class="tag">设计模式 · 创建型与行为型模式</div>
+    <h1>观察者模式：一对多依赖，主题通知观察者</h1>
+    <p>就像订报纸——出版社不认识每一个订户，但报纸一出刊，所有订户的信箱都会自动收到。一变多知，松耦合是灵魂。</p>
+  </div>
+
+  <h2>一、开场：气象站的"一变全知"难题</h2>
+  <p>这是《Head First 设计模式》第 2 章的招牌案例。你要做一个气象站软件：有一个 <code>WeatherData</code> 对象，它从物理传感器拿到<strong>温度、湿度、气压</strong>三个读数；每当读数更新，就要刷新三块布告板——<em>当前状况显示、气象统计显示、天气预报显示</em>。而且甲方明确说了："以后还会有第三方接入自己的布告板，接口要能随便扩展。"</p>
+  <p>新手最直觉的写法，是在 <code>WeatherData</code> 里塞一个"测量更新"方法，手动挨个通知每块布告板：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>反直觉的"硬编码通知"——问题的根源</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">WeatherData</span> <span class="punct">{</span>
+    <span class="kw">public void</span> <span class="fn">measurementsChanged</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">float</span> temp <span class="punct">=</span> <span class="fn">getTemperature</span><span class="punct">();</span>
+        <span class="kw">float</span> humidity <span class="punct">=</span> <span class="fn">getHumidity</span><span class="punct">();</span>
+        <span class="kw">float</span> pressure <span class="punct">=</span> <span class="fn">getPressure</span><span class="punct">();</span>
+
+        <span class="com">// ↓↓↓ 坏味道：针对【具体实现】编程，且是硬编码</span>
+        currentDisplay.<span class="fn">update</span><span class="punct">(</span>temp, humidity, pressure<span class="punct">);</span>
+        statisticsDisplay.<span class="fn">update</span><span class="punct">(</span>temp, humidity, pressure<span class="punct">);</span>
+        forecastDisplay.<span class="fn">update</span><span class="punct">(</span>temp, humidity, pressure<span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <div class="callout warn"><strong>这段代码违反了你已学的两条原则。</strong> 其一，它<em>针对具体类编程</em>——每加/删一块布告板，都得回来改 <code>measurementsChanged()</code> 的源码，第三方根本无法在运行时接入，违反<strong>开闭原则</strong>。其二，会变的部分（"有哪些观察者、怎么通知"）和不变的部分（"取三个读数"）搅在了一起，违反<strong>封装变化</strong>。真正的痛点是：<code>WeatherData</code> 和三块布告板<em>互相知道对方是谁</em>，耦合被焊死了。</div>
+
+  <h2>二、生活类比：报纸订阅</h2>
+  <p>《Head First》用了一个绝妙的类比——<strong>报纸/杂志订阅</strong>，它几乎就是观察者模式的字面翻译：</p>
+  <div class="diagram">出版社(Subject / 主题)                       订户(Observer / 观察者)
+─────────────────────                       ──────────────────────
+  ① 你去出版社【订阅】       ◄────subscribe────  张三、李四、王五
+  ② 只要出新刊             ──────notify──────►  信箱自动收到，无需你去问
+  ③ 不想看了【退订】         ◄──unsubscribe───   王五退订，其他人照收
+  ④ 新人随时可【加入】       ◄────subscribe────  赵六今天才订，明天就收到
+
+关键：出版社【不关心】订户具体是谁、有多少、住哪，
+      只认"订户名单"这一层抽象；订户来去自由，双方都不必改对方。</div>
+  <p>把这套关系抽象出来，就是模式的两个角色：<strong>主题（Subject / Observable）</strong>维护一份观察者名单，提供注册/注销/通知的能力；<strong>观察者（Observer）</strong>实现一个统一的回调接口，被通知时更新自己。二者之间由"一对多"的依赖连接——<em>一个主题状态一变，所有登记在册的观察者都会被自动通知</em>。</p>
+  <div class="formula"><span class="hl">1</span> 个 Subject &nbsp;──状态改变──►&nbsp; 通知 <span class="hl">N</span> 个 Observer</div>
+
+  <h2>三、模式定义与松耦合的设计哲学</h2>
+  <div class="callout key"><strong>观察者模式（Observer Pattern）定义</strong><br>定义对象之间的<strong>一对多</strong>依赖关系，这样一来，当一个对象（主题）改变状态时，它的所有依赖者（观察者）都会收到通知并自动更新。<br><span style="color:#64748b;font-size:0.8rem">Defines a one-to-many dependency between objects so that when one object changes state, all of its dependents are notified and updated automatically.</span></div>
+  <p>它背后站着一条核心设计原则——<strong>为交互对象之间的松耦合设计而努力（Strive for loosely coupled designs between objects that interact）</strong>。"松耦合"具体松在哪几处，值得逐条拆开看，这是理解本模式的钥匙：</p>
+  <table>
+    <tr><th>松耦合体现</th><th>说明</th></tr>
+    <tr><td>主题只知道观察者<strong>实现了某接口</strong></td><td>它持有的是 <code>List&lt;Observer&gt;</code>，从不关心具体是哪个类，符合"针对接口编程"</td></tr>
+    <tr><td>可<strong>随时</strong>增删观察者</td><td>运行时 <code>register</code> / <code>remove</code>，主题代码一行不改——满足开闭原则</td></tr>
+    <tr><td>新增观察者类型<strong>无需改主题</strong></td><td>第三方写个新 <code>Observer</code> 实现，注册进来即可，双方独立演化</td></tr>
+    <tr><td>双方可<strong>独立复用</strong></td><td>主题不依赖具体观察者，观察者也不依赖具体主题，各自能被单独测试和替换</td></tr>
+  </table>
+  <div class="callout info"><strong>与已学知识串联：</strong> 松耦合的实现手段，正是你在前几节学到的组合拳——主题<em>组合</em>（HAS-A）了一份观察者列表（多用组合少用继承），依赖的是 <code>Observer</code> <em>接口</em>而非实现（针对接口编程），从而让高层的 <code>WeatherData</code> 和低层的布告板都依赖抽象（依赖倒置）。观察者模式不是凭空出现的新东西，而是这些原则在"事件通知"这一场景下的<strong>组合成品</strong>。</div>
+
+  <h2>四、动手实现气象站</h2>
+  <p>先定义两个接口——这就是"变化"与"稳定"之间的那堵墙：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>Subject 与 Observer 接口：契约层</span><span>Java</span></div>
+    <pre><span class="kw">public interface</span> <span class="typ">Subject</span> <span class="punct">{</span>
+    <span class="kw">void</span> <span class="fn">registerObserver</span><span class="punct">(</span><span class="typ">Observer</span> o<span class="punct">);</span>   <span class="com">// 订阅</span>
+    <span class="kw">void</span> <span class="fn">removeObserver</span><span class="punct">(</span><span class="typ">Observer</span> o<span class="punct">);</span>     <span class="com">// 退订</span>
+    <span class="kw">void</span> <span class="fn">notifyObservers</span><span class="punct">();</span>              <span class="com">// 出新刊，广播</span>
+<span class="punct">}</span>
+
+<span class="kw">public interface</span> <span class="typ">Observer</span> <span class="punct">{</span>
+    <span class="com">// 主题把新数据"推"给观察者（push 模型，稍后讨论 pull）</span>
+    <span class="kw">void</span> <span class="fn">update</span><span class="punct">(</span><span class="kw">float</span> temp, <span class="kw">float</span> humidity, <span class="kw">float</span> pressure<span class="punct">);</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>主题的实现是模式的心脏——它维护名单，并在状态变化时遍历通知：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>WeatherData：具体主题</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">WeatherData</span> <span class="kw">implements</span> <span class="typ">Subject</span> <span class="punct">{</span>
+    <span class="com">// 名单：只认 Observer 接口，不认任何具体布告板</span>
+    <span class="kw">private final</span> <span class="typ">List</span><span class="punct">&lt;</span><span class="typ">Observer</span><span class="punct">&gt;</span> observers <span class="punct">=</span> <span class="kw">new</span> <span class="typ">ArrayList</span><span class="punct">&lt;&gt;();</span>
+    <span class="kw">private float</span> temperature, humidity, pressure<span class="punct">;</span>
+
+    <span class="kw">public void</span> <span class="fn">registerObserver</span><span class="punct">(</span><span class="typ">Observer</span> o<span class="punct">)</span> <span class="punct">{</span> observers.<span class="fn">add</span><span class="punct">(</span>o<span class="punct">);</span> <span class="punct">}</span>
+    <span class="kw">public void</span> <span class="fn">removeObserver</span><span class="punct">(</span><span class="typ">Observer</span> o<span class="punct">)</span>   <span class="punct">{</span> observers.<span class="fn">remove</span><span class="punct">(</span>o<span class="punct">);</span> <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">notifyObservers</span><span class="punct">()</span> <span class="punct">{</span>
+        <span class="kw">for</span> <span class="punct">(</span><span class="typ">Observer</span> o <span class="punct">:</span> observers<span class="punct">)</span>          <span class="com">// 一对多广播</span>
+            o.<span class="fn">update</span><span class="punct">(</span>temperature, humidity, pressure<span class="punct">);</span>
+    <span class="punct">}</span>
+
+    <span class="com">// 传感器新数据进来时被调用 → 触发广播</span>
+    <span class="kw">public void</span> <span class="fn">measurementsChanged</span><span class="punct">()</span> <span class="punct">{</span> <span class="fn">notifyObservers</span><span class="punct">();</span> <span class="punct">}</span>
+
+    <span class="kw">public void</span> <span class="fn">setMeasurements</span><span class="punct">(</span><span class="kw">float</span> t, <span class="kw">float</span> h, <span class="kw">float</span> p<span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">this</span>.temperature <span class="punct">=</span> t<span class="punct">;</span> <span class="kw">this</span>.humidity <span class="punct">=</span> h<span class="punct">;</span> <span class="kw">this</span>.pressure <span class="punct">=</span> p<span class="punct">;</span>
+        <span class="fn">measurementsChanged</span><span class="punct">();</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p>观察者实现回调，被通知时刷新自己；构造时顺手完成订阅：</p>
+  <div class="code-block">
+    <div class="cb-header"><span>CurrentConditionsDisplay：具体观察者 + 客户端</span><span>Java</span></div>
+    <pre><span class="kw">public class</span> <span class="typ">CurrentConditionsDisplay</span> <span class="kw">implements</span> <span class="typ">Observer</span> <span class="punct">{</span>
+    <span class="kw">private final</span> <span class="typ">Subject</span> weatherData<span class="punct">;</span>   <span class="com">// 持有主题引用，为的是能退订</span>
+
+    <span class="kw">public</span> <span class="fn">CurrentConditionsDisplay</span><span class="punct">(</span><span class="typ">Subject</span> wd<span class="punct">)</span> <span class="punct">{</span>
+        <span class="kw">this</span>.weatherData <span class="punct">=</span> wd<span class="punct">;</span>
+        wd.<span class="fn">registerObserver</span><span class="punct">(</span><span class="kw">this</span><span class="punct">);</span>       <span class="com">// 自我登记，主动订阅</span>
+    <span class="punct">}</span>
+    <span class="kw">public void</span> <span class="fn">update</span><span class="punct">(</span><span class="kw">float</span> t, <span class="kw">float</span> h, <span class="kw">float</span> p<span class="punct">)</span> <span class="punct">{</span>
+        System.out.<span class="fn">println</span><span class="punct">(</span><span class="str">"当前温度："</span> <span class="punct">+</span> t <span class="punct">+</span> <span class="str">"℃，湿度："</span> <span class="punct">+</span> h <span class="punct">+</span> <span class="str">"%"</span><span class="punct">);</span>
+    <span class="punct">}</span>
+<span class="punct">}</span>
+
+<span class="com">// —— 客户端：注意加一块新布告板，WeatherData 一行都不用改 ——</span>
+<span class="typ">WeatherData</span> wd <span class="punct">=</span> <span class="kw">new</span> <span class="typ">WeatherData</span><span class="punct">();</span>
+<span class="kw">new</span> <span class="typ">CurrentConditionsDisplay</span><span class="punct">(</span>wd<span class="punct">);</span>       <span class="com">// 订阅</span>
+<span class="kw">new</span> <span class="typ">ForecastDisplay</span><span class="punct">(</span>wd<span class="punct">);</span>                <span class="com">// 订阅（第三方也这么接入）</span>
+wd.<span class="fn">setMeasurements</span><span class="punct">(</span><span class="num">26</span>, <span class="num">65</span>, <span class="num">1013</span><span class="punct">);</span>       <span class="com">// 一次调用，全部布告板自动刷新</span></pre>
+  </div>
+  <div class="callout tip"><strong>看清主动权在哪一侧。</strong> 是布告板<em>主动</em>去 <code>registerObserver(this)</code> 订阅，而不是气象站去"收集"布告板。这就是"好莱坞原则"——"别调用我们，我们会调用你（Don't call us, we'll call you）"：观察者向主题登记后就<em>被动等待回调</em>。这种控制反转（IoC）正是后面 Spring 容器、GUI 事件、回调式框架的思想内核。</div>
+
+  <h2>五、Push vs Pull：两种数据传递取舍</h2>
+  <p>上面 <code>update(temp, humidity, pressure)</code> 是 <strong>推模型（push）</strong>——主题把所有数据主动塞给观察者。但如果某块布告板只关心气压，它也被迫接收全部三个参数；将来主题多一个"风速"，接口签名一改，<em>所有</em>观察者都得跟着改。于是有了 <strong>拉模型（pull）</strong>：主题只通知"我变了"，观察者拿着主题引用<em>自己去取</em>需要的字段。</p>
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Push · 主题推全量数据</div>
+      <pre>void update(float t, float h, float p);
+// 主题：
+o.update(temp, humidity, pressure);
+
+// 痛点：
+// · 参数写死，加字段=改所有观察者
+// · 观察者被迫接收用不到的数据
+// · 接口与具体数据结构强耦合</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Pull · 观察者按需自取</div>
+      <pre>void update(Subject src);   // 只告知"谁变了"
+// 观察者：
+void update(Subject src) {
+  WeatherData wd = (WeatherData) src;
+  float p = wd.getPressure(); // 只取我要的
+}
+// 收益：主题加字段，观察者可不改；
+//      各观察者只依赖自己关心的 getter</pre>
+    </div>
+  </div>
+  <div class="callout info"><strong>JDK 里的官方选择：</strong> 早已废弃的 <code>java.util.Observable</code> 的 <code>update(Observable o, Object arg)</code> 同时支持两种——<code>arg</code> 非空是 push，观察者也可通过 <code>o</code> 拉数据。《Head First》作者也明说：<em>大多数情况下 pull 更"正确"</em>，因为它把"要什么数据"的决定权交回给观察者，耦合更松。但 push 在数据简单、性能敏感时更直接。没有绝对优劣，看数据量与变更频率权衡。</div>
+
+  <h2>六、别自己造轮子？聊聊 java.util.Observable</h2>
+  <p>JDK 从 1.0 就内置了 <code>java.util.Observable</code>（主题）和 <code>java.util.Observer</code>（观察者）接口。看起来能省事，但《Head First》专门用一节泼了冷水，Java 9 更是<strong>直接把它俩标记为 <code>@Deprecated</code></strong>。原因很硬核：</p>
+  <table>
+    <tr><th>缺陷</th><th>后果</th></tr>
+    <tr><td><code>Observable</code> 是<strong>类</strong>不是接口</td><td>你的主题必须 <code>extends Observable</code>，Java 单继承，一旦继承它就没法再继承别的类，扩展性被锁死——这正是"多用组合少用继承"的反面教材</td></tr>
+    <tr><td><code>setChanged()</code> 是 <code>protected</code></td><td>只能在子类内部调用，无法用组合方式把 Observable 当成员委托，逼你走继承这条死路</td></tr>
+    <tr><td>不支持序列化、线程安全弱</td><td>内部状态无法可靠保存/传输，且通知顺序、并发保证都不明确，官方文档直接建议改用 <code>java.beans.PropertyChangeSupport</code> 或 <code>java.util.concurrent.Flow</code>（响应式流）</td></tr>
+  </table>
+  <div class="callout warn"><strong>面试高频点：Observable 为什么被废弃？</strong> 一句话——<em>它把"主题"设计成了一个必须被继承的类，而非接口</em>，从根上违背了面向对象设计原则。这也反向印证了《Head First》让你"亲手撸一遍接口版观察者"的良苦用心：理解模式本质，比记住某个现成 API 重要得多。今天真要用现成方案，选 <code>PropertyChangeListener</code>（JavaBeans）、Spring 事件、或 <code>Flow.Publisher</code>（Reactive Streams / Java 9+）。</div>
+
+  <h2>七、观察者模式其实无处不在</h2>
+  <p>一旦你识别出"一个变，多个自动响应"的结构，就会发现整个生态都是观察者：</p>
+  <table>
+    <tr><th>场景</th><th>Subject（主题）</th><th>Observer（观察者）</th></tr>
+    <tr><td>Swing / AWT GUI</td><td><code>JButton</code></td><td><code>ActionListener</code>——按钮被点，所有监听器的 <code>actionPerformed</code> 被回调</td></tr>
+    <tr><td>Spring 事件机制</td><td><code>ApplicationEventPublisher</code></td><td><code>@EventListener</code> / <code>ApplicationListener</code>——发布 <code>ApplicationEvent</code>，容器广播给所有监听 Bean</td></tr>
+    <tr><td>JavaBeans</td><td><code>PropertyChangeSupport</code></td><td><code>PropertyChangeListener</code>——属性值一变就通知</td></tr>
+    <tr><td>响应式编程 (Java 9+ / RxJava)</td><td><code>Flow.Publisher</code> / <code>Observable</code></td><td><code>Flow.Subscriber</code>——观察者模式加上背压、异步、操作符的强化版</td></tr>
+    <tr><td>消息中间件 (Kafka/MQ)</td><td>Topic / 生产者</td><td>消费者组——发布-订阅是观察者模式在分布式下的放大版</td></tr>
+  </table>
+  <div class="callout info"><strong>与操作系统 / 底层串联：</strong> 往下看，Linux 的 <code>epoll</code>、<code>inotify</code> 文件监听、信号（signal）机制，本质都是"事件源 + 回调"的观察者思想；往上看，前端的 <code>addEventListener</code>、Vue/MobX 的响应式依赖收集，也都是它。区别只在于：<em>观察者模式是同步、进程内、一对多</em>；而消息队列的<em>发布-订阅</em>引入了中间的 broker，做到了异步与跨进程解耦——可以理解为"观察者模式 + 一个中间人"。</div>
+
+  <h2>八、四个必踩的坑</h2>
+  <div class="callout warn"><strong>坑一：忘记退订 → 内存泄漏（Lapsed Listener）。</strong> 主题持有观察者的<em>强引用</em>。如果观察者生命周期比主题短（如一个短命的 UI 面板订阅了长寿的数据源），用完却没 <code>removeObserver</code>，它就永远无法被 GC 回收，还会持续收到无用通知。这是 GUI/安卓开发最经典的内存泄漏源。对策：显式退订，或让主题持有 <code>WeakReference</code>（弱引用）。</div>
+  <div class="callout warn"><strong>坑二：遍历通知时增删观察者 → <code>ConcurrentModificationException</code>。</strong> 若某观察者的 <code>update()</code> 里又调用了 <code>removeObserver</code>（比如"收到一次通知后就退订"），正在 <code>for</code> 遍历的那个 <code>ArrayList</code> 会被结构性修改，直接抛异常。对策：遍历前<em>复制一份快照</em>（<code>new ArrayList&lt;&gt;(observers)</code>）再遍历，或使用 <code>CopyOnWriteArrayList</code>——这也是 Swing、Spring 事件源码里的标准做法。</div>
+  <div class="callout warn"><strong>坑三：不要依赖通知顺序。</strong> 模式定义里从未承诺"按注册先后通知"。观察者之间必须<em>相互独立</em>，任何"A 一定在 B 之前收到"的假设都是脆弱的。若真有顺序需求，说明这里可能不该用观察者，或该引入显式的优先级机制（如 Spring 的 <code>@Order</code>）。</div>
+  <div class="callout warn"><strong>坑四：观察者里做重活 / 抛异常。</strong> 同步观察者模式下，<code>notifyObservers()</code> 是<em>串行</em>调用每个 <code>update()</code> 的。某个观察者里做了耗时 IO，会阻塞后面所有观察者；某个 <code>update()</code> 抛了异常且未捕获，通知链会中断，后面的观察者收不到通知。对策：观察者内部要快、要吞掉自己的异常，或改用异步/独立线程分发。</div>
+
+  <h2>九、与相似模式的界限</h2>
+  <p>观察者常和几个"看起来也在传消息"的模式混淆，划清边界能帮你在面试里答到点上：</p>
+  <table>
+    <tr><th>模式</th><th>关系形态</th><th>核心区别</th></tr>
+    <tr><td><strong>观察者</strong></td><td>一对多，主题→观察者</td><td>状态变化时<em>广播</em>给所有登记者，观察者被动响应</td></tr>
+    <tr><td>发布-订阅 (Pub/Sub)</td><td>多对多，中间隔 broker</td><td>发布者与订阅者<em>互不知道对方</em>，靠消息通道/主题解耦，通常异步跨进程</td></tr>
+    <tr><td>中介者 (Mediator)</td><td>多对多，星型汇聚</td><td>对象间通信全走中介者，目的是<em>消除对象间的网状引用</em>，而非"一变多知"</td></tr>
+    <tr><td>责任链 (Chain)</td><td>一条链，顺序传递</td><td>请求<em>依次</em>传给处理者，通常只被<em>一个</em>处理掉，不是广播</td></tr>
+  </table>
+  <div class="callout tip"><strong>一个判别口诀：</strong> 看到"<em>一个状态源，多个方要同步跟着变，且它们来去自由</em>"，就是观察者；如果发送方和接收方之间需要<em>完全互不感知</em>并跨系统，那是发布-订阅（观察者 + broker）。</div>
+
+  <div class="callout key"><strong>一句话收束：</strong> 观察者模式用一份"观察者名单"，把"谁在关心我"这件会变的事从主题里彻底封装出去，换来主题与观察者之间的<strong>松耦合</strong>——主题只管在状态变化时对着接口喊一嗓子，剩下的"谁收、怎么处理、来去增删"全交给观察者自理。它是事件驱动、GUI、Spring 事件、响应式编程共同的地基。记住它的灵魂只有一句：<em>为交互对象之间的松耦合而设计</em>。</div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="07-策略模式.html" class="nav-btn">← 策略模式</a>
+    <a href="09-工厂方法与抽象工厂.html" class="nav-btn next">工厂方法与抽象工厂 →</a>
+  </div>
+</div>
+</body>
+</html>

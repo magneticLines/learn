@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AQS 框架原理</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / AQS 框架原理</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第10-11章·显式锁与原子变量</div>
+    <h1>AQS 框架原理</h1>
+    <p>一个 volatile int + 一条 CLH 队列，撑起了 ReentrantLock、Semaphore、CountDownLatch 半个 JUC——读懂 AQS，锁的世界就没有黑盒。</p>
+  </div>
+
+  <h2>一、AQS 解决了什么问题</h2>
+  <p><code>AbstractQueuedSynchronizer</code>（AQS，抽象队列同步器）是 Doug Lea 在 JUC 里埋下的<strong>发动机</strong>。ReentrantLock、Semaphore、CountDownLatch、ReentrantReadWriteLock、ThreadPoolExecutor 里的 Worker、甚至 CompletableFuture 的等待节点——它们的底层几乎都是同一套代码。</p>
+  <p>为什么要抽出这么一层？因为任何一个“阻塞式同步器”都要重复解决三件极难写对的事：<strong>①用什么表示“同步状态”</strong>（锁被占了几次？还剩几个许可？）、<strong>②抢不到时线程怎么排队阻塞</strong>、<strong>③状态释放时怎么公平地唤醒下一个</strong>。这三件事里，队列管理和 park/unpark 的时序，是并发 bug 的重灾区。AQS 把这些<em>共性</em>一次性写对、封装好，只把<em>差异</em>——“状态怎么算作获取成功”——用几个钩子方法留给子类。</p>
+
+  <div class="callout info">
+    <strong>一句话定位：</strong> AQS 用<strong>模板方法模式（Template Method）</strong>把“排队 + 阻塞 + 唤醒”这套骨架固化在父类，把“状态语义”这个变量下沉给子类实现。你只要回答“<em>此刻算不算获取成功</em>”，剩下线程怎么挂起、怎么排队、怎么被叫醒，AQS 全包了。这正是《设计模式》里模板方法“<em>不变的算法骨架 + 可变的步骤</em>”的教科书级应用。
+  </div>
+
+  <h2>二、核心三件套：state + CLH 队列 + 模板方法</h2>
+  <p>AQS 的全部机关，浓缩成三样东西。理解了它们的配合，源码就不再吓人。</p>
+
+  <table>
+    <tr><th>组件</th><th>实现</th><th>职责</th></tr>
+    <tr><td><strong>同步状态</strong></td><td><code>private volatile int state</code></td><td>用一个整数表达“资源还剩多少”。锁=持有次数，信号量=许可数，闭锁=倒数计数</td></tr>
+    <tr><td><strong>CLH 变体队列</strong></td><td>双向链表 <code>Node head/tail</code></td><td>抢不到的线程在此 FIFO 排队并 park 挂起，释放时按序唤醒</td></tr>
+    <tr><td><strong>模板方法</strong></td><td><code>tryAcquire</code> / <code>tryRelease</code> 等</td><td>子类重写，定义“对 state 做什么运算才算获取/释放成功”</td></tr>
+  </table>
+
+  <p>关键在于 <code>state</code> 是 <code>volatile</code> 的，而所有修改都通过 <code>getState()</code> / <code>setState()</code> / <code>compareAndSetState()</code> 三个方法进行——最后一个是基于 <code>Unsafe.compareAndSwapInt</code> 的 <strong>CAS</strong> 操作。这把我们之前学的 <em>volatile 保可见性</em>、<em>CAS 保原子性</em> 两块拼图，在这里合体成了无锁的状态机。</p>
+
+  <div class="callout tip">
+    <strong>联系已学：</strong> <code>volatile</code> 保证一个线程改了 <code>state</code>，其他线程立刻看得见（可见性 + 禁止重排）；但 <code>state++</code> 这种读-改-写不是原子的，所以要用 <code>compareAndSetState</code> 这个 CAS 来“比较并交换”。<strong>volatile 负责“看得见”，CAS 负责“改得对”</strong>——这也是下一篇《Atomic 类与 CAS 原理》的核心，AQS 是它最重量级的用户。
+  </div>
+
+  <h2>三、CLH 队列长什么样</h2>
+  <p>抢不到锁的线程被包装成一个 <code>Node</code>，用 CAS 挂到队尾（tail），然后调用 <code>LockSupport.park()</code> 把自己挂起。CLH 是一种基于双向链表的<strong>公平 FIFO 队列</strong>（AQS 用的是它的变体：显式维护 prev/next 指针，并用 <code>waitStatus</code> 传递唤醒信号）。</p>
+
+  <div class="diagram">      ┌──────┐      ┌──────┐      ┌──────┐      ┌──────┐
+head→ │ Node │ ←──→ │ Node │ ←──→ │ Node │ ←──→ │ Node │ ←tail
+      │ (哨兵)│      │  T1  │      │  T2  │      │  T3  │
+      │ ws=-1│      │ ws=-1│      │ ws=-1│      │ ws= 0│
+      └──────┘      └──────┘      └──────┘      └──────┘
+       持锁线程       第1个等待     第2个等待     刚入队
+                     (parked)     (parked)     (parked)
+
+  ws = waitStatus：SIGNAL(-1) 表示“我释放后有责任唤醒后继”
+  head 是不含线程的哨兵节点；真正的锁持有者的“影子”即 head
+  释放锁 → 找到 head 的后继 → LockSupport.unpark(T1) 叫醒队首</div>
+
+  <p>每个 <code>Node</code> 有一个 <code>waitStatus</code> 字段，最常见的是 <code>SIGNAL(-1)</code>：它标记在<em>前驱</em>节点上，含义是“我（前驱）在释放/取消时，<strong>有义务</strong> unpark 我的后继”。这套“前驱负责叫醒后继”的设计，避免了每个线程醒来空转检查，是 park/unpark 时序正确的关键。</p>
+
+  <table>
+    <tr><th>waitStatus</th><th>值</th><th>含义</th></tr>
+    <tr><td><code>SIGNAL</code></td><td>-1</td><td>后继节点已 park，本节点释放时须唤醒它</td></tr>
+    <tr><td><code>CANCELLED</code></td><td>1</td><td>线程因超时/中断放弃，节点作废，会被跳过清理</td></tr>
+    <tr><td><code>CONDITION</code></td><td>-2</td><td>节点在 Condition 条件队列上等待（非同步队列）</td></tr>
+    <tr><td><code>PROPAGATE</code></td><td>-3</td><td>共享模式下，唤醒需向后传播</td></tr>
+    <tr><td>默认</td><td>0</td><td>初始状态</td></tr>
+  </table>
+
+  <h2>四、独占 vs 共享：两种获取模式</h2>
+  <p>AQS 支持两大类同步器，区别在于“<strong>state 是否允许多个线程同时获取</strong>”。这决定了子类该重写哪组模板方法。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Exclusive · 独占</div>
+<pre>同一时刻只有一个线程能获取
+state 常表示“持有/重入次数”
+
+要重写：
+  tryAcquire(int)
+  tryRelease(int)
+  isHeldExclusively()
+
+代表：ReentrantLock
+      WriteLock</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Shared · 共享</div>
+<pre>多个线程可同时获取
+state 常表示“剩余许可/计数”
+
+要重写：
+  tryAcquireShared(int)
+  tryReleaseShared(int)
+
+代表：Semaphore
+      CountDownLatch
+      ReadLock</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：模板方法默认抛异常，不是空实现。</strong> AQS 里 <code>tryAcquire</code>/<code>tryRelease</code>/<code>tryAcquireShared</code>/<code>tryReleaseShared</code> 的默认实现都是 <code>throw new UnsupportedOperationException()</code>。这是刻意为之——强迫你按模式<em>只重写该重写的那一组</em>：写独占同步器却手贱重写了 <code>tryAcquireShared</code>，或该重写的忘了写，一运行就抛异常暴露，而不是静默错误。另外注意 <code>tryAcquireShared</code> 返回的是 <strong><code>int</code></strong> 而非 <code>boolean</code>：负数=失败，0=成功但后续无余量，正数=成功且还有剩余可继续唤醒后继。
+  </div>
+
+  <h2>五、acquire 源码走读（独占）</h2>
+  <p>以最经典的 <code>acquire(int)</code> 为例，这是 <code>ReentrantLock.lock()</code> 的骨架。全流程只有短短几行，却精确编排了“先自旋抢一把、抢不到才排队挂起”的逻辑。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>AbstractQueuedSynchronizer.java（简化）</span><span>JDK 源码</span></div>
+<pre><span class="kw">public final void</span> <span class="fn">acquire</span>(<span class="kw">int</span> arg) {
+    <span class="com">// 1) 先试着直接抢（tryAcquire 由子类实现）；抢到就返回，连队列都不进</span>
+    <span class="kw">if</span> (!<span class="fn">tryAcquire</span>(arg) &amp;&amp;
+        <span class="com">// 2) 抢不到 → 包装成独占节点入队 → 在队列里自旋+park 直到拿到锁</span>
+        <span class="fn">acquireQueued</span>(<span class="fn">addWaiter</span>(<span class="typ">Node</span>.EXCLUSIVE), arg))
+        <span class="fn">selfInterrupt</span>();   <span class="com">// 3) 排队期间被中断过，这里补一次中断标志</span>
+}
+
+<span class="kw">final boolean</span> <span class="fn">acquireQueued</span>(<span class="kw">final</span> <span class="typ">Node</span> node, <span class="kw">int</span> arg) {
+    <span class="kw">boolean</span> interrupted = <span class="kw">false</span>;
+    <span class="kw">for</span> (;;) {                              <span class="com">// 死循环 = 醒来后重新竞争</span>
+        <span class="kw">final</span> <span class="typ">Node</span> p = node.<span class="fn">predecessor</span>();
+        <span class="kw">if</span> (p == head &amp;&amp; <span class="fn">tryAcquire</span>(arg)) { <span class="com">// 只有“队首的下一个”才有资格抢</span>
+            <span class="fn">setHead</span>(node);                   <span class="com">// 抢到 → 自己变哨兵头，脱离等待</span>
+            p.next = <span class="kw">null</span>;                    <span class="com">// 帮助 GC</span>
+            <span class="kw">return</span> interrupted;
+        }
+        <span class="com">// 没轮到 / 没抢到 → 该不该 park？该就 LockSupport.park() 挂起</span>
+        <span class="kw">if</span> (<span class="fn">shouldParkAfterFailedAcquire</span>(p, node) &amp;&amp; <span class="fn">parkAndCheckInterrupt</span>())
+            interrupted = <span class="kw">true</span>;
+    }
+}</pre>
+  </div>
+
+  <div class="diagram">acquire(1) 流程：
+
+  tryAcquire ── 成功 ──────────────────────────→ 拿到锁，返回
+      │
+     失败
+      ↓
+  addWaiter：CAS 把当前线程节点接到 tail
+      ↓
+  acquireQueued 死循环：
+      ├─ 我的前驱是 head？→ 再 tryAcquire 一次
+      │        └─ 成功 → setHead，出队，返回
+      └─ 否则 → 把前驱 ws 置 SIGNAL → park() 挂起
+                        ↑
+             别人 release → unparkSuccessor → 我被唤醒，回到循环顶重试</div>
+
+  <p>释放侧对称而简洁：<code>release()</code> 调用子类 <code>tryRelease()</code> 把 state 减到位后，若 <code>head</code> 存在且 <code>waitStatus != 0</code>，就 <code>unparkSuccessor(head)</code> 唤醒队首后继。被唤醒的线程从 <code>park()</code> 处恢复，回到 <code>for(;;)</code> 顶端重新 <code>tryAcquire</code>——注意是<em>重新竞争</em>，不是直接给它，这给了非公平锁“插队”的可能。</p>
+
+  <div class="callout info">
+    <strong>联系操作系统：</strong> <code>LockSupport.park()/unpark()</code> 底层是 <code>Unsafe.park</code>，在 Linux 上对应 <code>pthread</code> 的条件变量/futex——线程真正被内核挂起，<strong>不占 CPU</strong>，这与自旋锁（忙等烧 CPU）本质不同。park 还有个妙处：<code>unpark</code> 可以先于 <code>park</code> 发生（许可可预存一个），从而避免了 <code>wait/notify</code> 那种“通知丢失”的经典竞态。
+  </div>
+
+  <h2>六、手写一个同步器：Mutex</h2>
+  <p>百闻不如一见。用 AQS 造一把最简单的<strong>不可重入互斥锁</strong>，你会发现自己几乎不用碰任何线程排队代码——只需回答“state 0→1 算加锁成功，1→0 算释放”。这正是 AQS 官方 Javadoc 的示例。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Mutex.java</span><span>正例 · 基于 AQS 自定义锁</span></div>
+<pre><span class="kw">public class</span> <span class="typ">Mutex</span> {
+    <span class="com">// 把同步逻辑委托给一个继承 AQS 的内部类（组合优于继承的实践）</span>
+    <span class="kw">private static class</span> <span class="typ">Sync</span> <span class="kw">extends</span> <span class="typ">AbstractQueuedSynchronizer</span> {
+
+        <span class="com">// state==1 表示已被某线程独占持有</span>
+        <span class="kw">protected boolean</span> <span class="fn">isHeldExclusively</span>() { <span class="kw">return</span> <span class="fn">getState</span>() == <span class="num">1</span>; }
+
+        <span class="com">// 唯一要动脑的地方：CAS 把 0 改成 1 就算抢到锁</span>
+        <span class="kw">protected boolean</span> <span class="fn">tryAcquire</span>(<span class="kw">int</span> ignore) {
+            <span class="kw">if</span> (<span class="fn">compareAndSetState</span>(<span class="num">0</span>, <span class="num">1</span>)) {
+                <span class="fn">setExclusiveOwnerThread</span>(<span class="typ">Thread</span>.<span class="fn">currentThread</span>());
+                <span class="kw">return true</span>;
+            }
+            <span class="kw">return false</span>;                       <span class="com">// 抢不到 → 交给 AQS 去排队/park</span>
+        }
+
+        <span class="kw">protected boolean</span> <span class="fn">tryRelease</span>(<span class="kw">int</span> ignore) {
+            <span class="kw">if</span> (<span class="fn">getState</span>() == <span class="num">0</span>)
+                <span class="kw">throw new</span> <span class="typ">IllegalMonitorStateException</span>();
+            <span class="fn">setExclusiveOwnerThread</span>(<span class="kw">null</span>);
+            <span class="fn">setState</span>(<span class="num">0</span>);                       <span class="com">// 释放：置回 0，AQS 会唤醒后继</span>
+            <span class="kw">return true</span>;
+        }
+        <span class="typ">Condition</span> <span class="fn">newCondition</span>() { <span class="kw">return new</span> <span class="fn">ConditionObject</span>(); }
+    }
+
+    <span class="kw">private final</span> <span class="typ">Sync</span> sync = <span class="kw">new</span> <span class="typ">Sync</span>();
+    <span class="kw">public void</span> <span class="fn">lock</span>()    { sync.<span class="fn">acquire</span>(<span class="num">1</span>); }     <span class="com">// 复用 AQS 的排队+挂起</span>
+    <span class="kw">public void</span> <span class="fn">unlock</span>()  { sync.<span class="fn">release</span>(<span class="num">1</span>); }    <span class="com">// 复用 AQS 的唤醒</span>
+    <span class="kw">public boolean</span> <span class="fn">tryLock</span>() { <span class="kw">return</span> sync.<span class="fn">tryAcquire</span>(<span class="num">1</span>); }
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>体会“不变 vs 可变”的边界：</strong> 上面这 30 行里，你没写一行“如何入队、如何 park、如何唤醒下一个”——那些复杂、易错的骨架全在 <code>acquire()</code>/<code>release()</code> 里由 AQS 提供。你只实现了 <code>tryAcquire</code>/<code>tryRelease</code> 这几个<em>纯状态判断</em>。这就是模板方法模式为你省下的心智负担。
+  </div>
+
+  <h2>七、AQS 如何撑起半个 JUC</h2>
+  <p>同一套 AQS，靠对 <code>state</code> 赋予不同语义，就变出了性格迥异的同步工具。看清这张“语义对照表”，JUC 的许多类你就能秒懂其原理。</p>
+
+  <table>
+    <tr><th>同步器</th><th>模式</th><th><code>state</code> 的含义</th><th>核心逻辑</th></tr>
+    <tr><td><code>ReentrantLock</code></td><td>独占</td><td>重入持有次数</td><td>0→1 加锁；同线程再进则 +1；释放 -1，减到 0 才真正放锁</td></tr>
+    <tr><td><code>Semaphore</code></td><td>共享</td><td>剩余许可数</td><td>acquire 时 CAS 减 1（减到负数则排队）；release 加 1 并唤醒</td></tr>
+    <tr><td><code>CountDownLatch</code></td><td>共享</td><td>剩余计数</td><td><code>countDown</code> 减 1；<code>await</code> 在 state≠0 时阻塞，归 0 时全部放行</td></tr>
+    <tr><td><code>ReentrantReadWriteLock</code></td><td>混合</td><td>高16位=读锁数<br>低16位=写锁数</td><td>一个 int 拆两半，同时管读写两种状态</td></tr>
+    <tr><td><code>ThreadPoolExecutor.Worker</code></td><td>独占</td><td>0/1 运行标记</td><td>用极简 AQS 表达“任务执行中不可被 interrupt 打断”</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>ReentrantReadWriteLock 的位运算巧思：</strong> 一个 32 位 int 装不下两个独立计数？拆成两半即可——<code>state &gt;&gt;&gt; 16</code> 是读锁持有总数，<code>state &amp; 0xFFFF</code> 是写锁重入数。<code>CountDownLatch</code> 则更极简：<code>tryAcquireShared</code> 只判断 <code>getState()==0 ? 1 : -1</code>，<code>tryReleaseShared</code> 循环 CAS 把计数减 1。同一引擎，配不同的“state 解释器”，就是完全不同的工具。
+  </div>
+
+  <h2>八、公平锁 vs 非公平锁</h2>
+  <p>ReentrantLock 的公平与否，差别<em>仅仅一行</em>：抢锁前要不要检查队列里有没有人排在你前面。这也解释了为什么默认是非公平——吞吐更高。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">NonfairSync · 非公平（默认）</div>
+<pre>protected boolean tryAcquire(int acq) {
+  if (getState() == 0) {
+    // 不看队列，上来就抢！
+    if (compareAndSetState(0, acq)) {
+      setExclusiveOwnerThread(cur);
+      return true;
+    }
+  }
+  ...重入判断...
+}
+// 新来的可能插队 → 吞吐高
+// 但排队者可能饥饿</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">FairSync · 公平</div>
+<pre>protected boolean tryAcquire(int acq) {
+  if (getState() == 0) {
+    // 先问：队列里有前辈吗？
+    if (!hasQueuedPredecessors()
+        &amp;&amp; compareAndSetState(0, acq)) {
+      setExclusiveOwnerThread(cur);
+      return true;
+    }
+  }
+  ...重入判断...
+}
+// 严格 FIFO → 无饥饿
+// 频繁挂起/唤醒 → 吞吐低</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱 &amp; 高频面试点：</strong> ① 非公平锁并非“完全无序”——只有<em>刚好在锁空闲瞬间</em>到达的新线程能插队；一旦进了队列，仍是 FIFO。② 默认非公平的真实理由：公平锁每次都要唤醒队首线程再让它上下文切换，而非公平允许“正在运行的线程”直接续上，省掉一次昂贵的 park/unpark，<strong>吞吐通常显著更高</strong>。③ <code>hasQueuedPredecessors()</code> 是公平性的唯一开关，别小看这一个方法。
+  </div>
+
+  <h2>九、Condition：AQS 自带的等待队列</h2>
+  <p>还记得 <code>synchronized</code> 配 <code>wait/notify</code> 吗？显式锁的对应物是 <code>Lock.newCondition()</code> 返回的 <code>Condition</code>，其实现 <code>ConditionObject</code> 正是 AQS 的内部类。它维护一条<strong>独立于同步队列的“条件队列”</strong>：<code>await()</code> 把线程节点从同步队列移到条件队列并释放锁；<code>signal()</code> 再把节点从条件队列迁回同步队列去重新抢锁。</p>
+
+  <div class="diagram">同步队列（争锁）            条件队列（等条件）
+ head→A→B→C                  firstWaiter→X→Y
+
+ X.await()  ：X 释放锁，从"同步队列"移入"条件队列"，park
+ signal()   ：把 X 从"条件队列"摘出，重新 enq 回"同步队列"队尾
+             ↑ 注意：signal 只是"移队"，X 还得重新排队抢锁才能醒</div>
+
+  <div class="callout tip">
+    <strong>为什么比 wait/notify 强：</strong> 一把 <code>Lock</code> 可以 <code>newCondition()</code> 出<strong>多个</strong>独立 Condition（如“非空”和“非满”两个条件，见 <code>ArrayBlockingQueue</code>），<code>signal</code> 时能<em>精准唤醒</em>等待特定条件的线程；而 <code>synchronized</code> 只有一个隐式等待集，<code>notify</code> 只能盲目唤醒。这就是 Condition 独立成篇的价值——详见上一节。
+  </div>
+
+  <div class="formula">同步器 <span class="hl">=</span> AQS(排队 + park/unpark) <span class="hl">+</span> 子类(state 语义)</div>
+
+  <h2>十、避坑清单与面试锦囊</h2>
+  <ul>
+    <li><strong>别直接继承 AQS 暴露给外部。</strong> 规范做法是像 ReentrantLock 那样，用一个 <code>private static class Sync extends AQS</code> 内部类持有同步逻辑，外层类<em>组合</em>它——避免把 <code>acquire/release</code> 这些底层方法泄露给使用者。</li>
+    <li><strong><code>tryAcquireShared</code> 返回 int，不是 boolean。</strong> 语义是“剩余资源量”，返回值 ≥0 才算成功，且正数会触发向后传播唤醒。写共享同步器时最容易在这里翻车。</li>
+    <li><strong>CAS 一定放在自旋里。</strong> 单次 <code>compareAndSetState</code> 可能因竞争失败，同步器代码几乎总是 <code>for(;;)</code> 包着 CAS 重试，切勿写成“失败就返回”。</li>
+    <li><strong>面试必答：</strong> AQS 用什么模式？<em>模板方法</em>。队列是什么？<em>CLH 变体的双向 FIFO</em>。靠什么挂起线程？<em>LockSupport.park/unpark</em>。state 怎么保证线程安全？<em>volatile 可见性 + CAS 原子更新</em>。公平锁差在哪？<em>tryAcquire 里多一个 hasQueuedPredecessors 判断</em>。</li>
+  </ul>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong> AQS 是 JUC 的地基发动机——它用 <strong>模板方法模式</strong>把“<em>入队 → park 挂起 → 释放时唤醒后继</em>”这套最难写对的骨架封在父类，只把“<em>对 volatile 的 state 做什么 CAS 才算获取成功</em>”留给子类。ReentrantLock、Semaphore、CountDownLatch 只是给同一个 <code>state</code> 赋予了不同解释。看懂它，你就同时看穿了半个 <code>java.util.concurrent</code>。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="22-Condition.html" class="nav-btn">← Condition</a>
+    <a href="24-Atomic类与CAS原理.html" class="nav-btn next">Atomic 类与 CAS 原理 →</a>
+  </div>
+</div>
+</body>
+</html>

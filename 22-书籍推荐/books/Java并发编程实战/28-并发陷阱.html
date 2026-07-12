@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>并发陷阱：指令重排与内存屏障</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 并发陷阱：指令重排与内存屏障</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第12-16章·JMM与测试</div>
+    <h1>并发陷阱：指令重排与内存屏障</h1>
+    <p>你写下的代码顺序，从来不是它真正执行的顺序——搞懂谁在偷偷重排、为什么允许重排、以及内存屏障如何按住它，并发的"灵异事件"才会现出原形。</p>
+  </div>
+
+  <h2>一、为什么会有指令重排</h2>
+  <p>先建立一个反直觉的认知：<strong>你写的 Java 源码顺序，只是给单线程读者看的"意图"，不是 CPU 真正执行的顺序</strong>。从源码到真正落地执行，至少有三层都在偷偷调整顺序，目的只有一个——<em>榨干硬件性能</em>。</p>
+
+  <table>
+    <tr><th>层级</th><th>谁在重排</th><th>为什么这么做</th></tr>
+    <tr><td><strong>编译器</strong></td><td>javac / JIT（C2）</td><td>把不依赖的指令挪开，隐藏内存访问延迟、复用寄存器、做循环优化</td></tr>
+    <tr><td><strong>CPU</strong></td><td>乱序执行 + 指令流水线</td><td>一条指令等内存时，让后面无依赖的指令先跑，别让执行单元闲着</td></tr>
+    <tr><td><strong>内存系统</strong></td><td>Store Buffer / 失效队列</td><td>写操作先塞进写缓冲区异步刷回，读操作从缓存拿——导致"写后读"看起来被换位</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>为什么允许它们乱来？</strong>因为访问主内存要上百个时钟周期，而一次寄存器运算只要一两个。如果 CPU 老老实实"取数→算→存→取下一个数"，绝大部分时间都在<em>干等内存</em>。重排的本质，是让"能立刻算的先算，等内存的往后靠",把等待的空窗填满。这和你做饭时"烧水的间隙先切菜"是同一个直觉——顺序无关的事，凭什么要排队？
+  </div>
+
+  <h2>二、护身符：as-if-serial 与数据依赖</h2>
+  <p>既然大家都在重排，为什么单线程程序从来没出过问题？因为所有重排都必须遵守一条铁律——<strong>as-if-serial（貌似串行）语义</strong>：不管怎么重排，<em>单线程</em>的执行结果必须和"按代码顺序跑"一模一样。要守住这条，重排就不能打破<strong>数据依赖</strong>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Reorder.java</span><span>数据依赖决定谁能被重排</span></div>
+    <pre><span class="kw">int</span> a = <span class="num">1</span>;        <span class="com">// ①</span>
+<span class="kw">int</span> b = <span class="num">2</span>;        <span class="com">// ②  ① 与 ② 无依赖 → 可以互换顺序</span>
+<span class="kw">int</span> c = a + b;    <span class="com">// ③  依赖 ①②的结果 → 必须排在它们之后，不可提前</span></pre>
+  </div>
+
+  <p>①②之间没有依赖，编译器 / CPU 尽可随意换序；但③读了 <code>a</code> 和 <code>b</code>，存在<em>真实数据依赖</em>，永远不会被提到①②之前。单线程里，as-if-serial 帮你把"重排"这件事完全屏蔽了，你根本感知不到。</p>
+
+  <div class="callout warn">
+    <strong>陷阱一：as-if-serial 只对"单线程"负责，它压根不看别的线程。</strong>①②可以换序，在单线程里毫无区别；可一旦<em>另一个线程</em>正盯着 <code>a</code> 和 <code>b</code>，它就可能先看到 <code>b == 2</code> 却还看到 <code>a == 0</code>——因为对它而言②被"提前"了。<strong>重排在跨线程时不再透明，这正是几乎所有可见性 / 有序性 bug 的总根源。</strong>
+  </div>
+
+  <h2>三、亲眼看见重排：经典的 0,0 现象</h2>
+  <p>这是 JMM 教科书级的例子（Doug Lea 用它做过大量实测）。两个线程、四个赋值，直觉告诉你结果不可能是 <code>(x=0, y=0)</code>——但它真的会发生。</p>
+
+  <div class="diagram">初始：a = 0, b = 0
+
+  线程 1              线程 2
+  ─────────          ─────────
+  a = 1;   ①         b = 1;   ③
+  x = b;   ②         y = a;   ④
+
+  你以为的所有可能：(x,y) ∈ { (0,1), (1,0), (1,1) }
+  实际可能出现：             (x,y) = (0,0)   ← 灵异！
+
+  原因：①② 无数据依赖，可被重排成 ②① ；③④ 同理。
+       若两线程都先执行了"读"（② 与 ④），再执行"写"，
+       就出现 x=0 且 y=0。这正是 x86 唯一允许的
+       StoreLoad 重排（写后读换位）。</div>
+
+  <p>这不是理论臆想。在真实 x86（强内存模型 TSO）上，用 <a href="27-并发测试.html" style="color:var(--c);text-decoration:none;">上一节的 jcstress</a> 跑上千万次，就能稳定观测到一小撮 <code>(0,0)</code>。<strong>能被工具复现出来，才叫真陷阱，而不是"理论上存在"。</strong></p>
+
+  <div class="callout tip">
+    <strong>联系上一篇《并发测试》：</strong>为什么普通 JUnit 测不出这种 bug？因为它出现概率极低，且强依赖硬件与 JIT 优化时机。<code>jcstress</code> 之所以专门存在，就是用海量迭代 + 内存打乱 + 多平台，把这类"重排 / 可见性"缺陷从概率的阴影里逼出来。指令重排是"病",jcstress 是"CT 机"——这也是本章把测试和 JMM 放在一起讲的原因。
+  </div>
+
+  <h2>四、内存屏障：按住重排的手</h2>
+  <p>要禁止某处重排，靠的是<strong>内存屏障（Memory Barrier / Fence）</strong>——一条特殊 CPU 指令，像马路上的<em>硬隔离栏</em>：栏两侧的车（指令）绝不许越界互换。JSR-133 把它抽象成四种，按"前操作—后操作"的类型组合命名：</p>
+
+  <table>
+    <tr><th>屏障</th><th>含义（X 屏障 Y：X 不能重排到 Y 之后）</th><th>成本（x86）</th></tr>
+    <tr><td><code>LoadLoad</code></td><td>读1 → 读2：保证读1先于读2完成</td><td>几乎免费</td></tr>
+    <tr><td><code>StoreStore</code></td><td>写1 → 写2：保证写1先刷回，再做写2</td><td>几乎免费</td></tr>
+    <tr><td><code>LoadStore</code></td><td>读 → 写：读先完成，写才能动</td><td>几乎免费</td></tr>
+    <tr><td><code>StoreLoad</code></td><td>写 → 读：写彻底落地、清空 store buffer 后，读才能进行</td><td><strong>昂贵</strong>（唯一在 x86 有真实开销）</td></tr>
+  </table>
+
+  <p><code>volatile</code> 正是靠这四种屏障实现的（上一章《volatile 与 happens-before》已详解插入策略）。而它们真正的物理落地，取决于 CPU 的内存模型强弱：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">x86 / TSO（强模型）</div>
+      <pre>只允许一种重排：
+  写后读（StoreLoad）
+
+→ LoadLoad/StoreStore/LoadStore
+  基本是空操作
+→ 只有 StoreLoad 要真屏障
+  （lock 前缀 / mfence）
+
+代价：屏障便宜，但"看起来正常"
+的代码在这里 bug 反而藏得更深</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">ARM / Power（弱模型）</div>
+      <pre>四种重排几乎都允许
+
+→ 每种屏障都要真指令
+  （dmb ish 等）
+
+代价：屏障更贵，但也逼你
+把同步写对——少了 volatile
+的代码在这里立刻暴雷
+
+启示：x86 上"能跑"≠ 正确</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱二："我在自己电脑上跑了一万次都没问题" 不能证明代码正确。</strong>你大概率用的是 x86，它是四种重排里最保守的强模型，很多缺同步的代码在 x86 上碰巧不出错。同一段代码换到手机、Mac 的 ARM 芯片（弱模型）上，重排更激进，立刻翻车。<strong>并发正确性要靠 JMM 规则（happens-before）证明，而不是靠"在某台机器上测没崩"。</strong>
+  </div>
+
+  <h2>五、最出名的重排陷阱：DCL 单例</h2>
+  <p>双重检查锁（Double-Checked Locking）是重排"坑人"的头号案例，几乎每个 Java 面试都会问。先看那个<em>看似正确、实则致命</em>的版本：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 少了 volatile</div>
+      <pre>class Singleton {
+  private static Singleton inst;
+  static Singleton get() {
+    if (inst == null) {          // ①
+      synchronized (Singleton.class) {
+        if (inst == null)        // ②
+          inst = new Singleton();// ③ 危险
+      }
+    }
+    return inst;                  // ④
+  }
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 加上 volatile</div>
+      <pre>class Singleton {
+  private static volatile Singleton
+      inst;                       // 关键字
+  static Singleton get() {
+    if (inst == null) {
+      synchronized (Singleton.class) {
+        if (inst == null)
+          inst = new Singleton();
+      }
+    }
+    return inst;
+  }
+}</pre>
+    </div>
+  </div>
+
+  <p>问题出在第③行 <code>inst = new Singleton()</code>。它<strong>不是一条原子指令</strong>，而是三步，且第2、3步之间可以被重排：</p>
+
+  <div class="diagram">inst = new Singleton() 实际展开为三步：
+
+  1. memory = allocate();      // 分配内存，得到地址
+  2. ctor(memory);            // 调用构造函数，初始化对象
+  3. inst = memory;           // 把 inst 指向这块地址（此刻 inst != null）
+
+  编译器 / CPU 允许把顺序重排为  1 → 3 → 2 ：
+
+  1. memory = allocate();
+  3. inst = memory;           // inst 已经 != null，但对象还没构造完！
+  2. ctor(memory);            // 姗姗来迟
+
+  ┌─ 线程 A 正卡在 3 和 2 之间 ─┐
+  │  线程 B 执行 ① if(inst==null) 判为 false，       │
+  │  直接 return 一个"半初始化"对象 → 拿去用就爆炸  │
+  └──────────────────────────────────────────────┘</div>
+
+  <div class="callout info">
+    <strong>volatile 是怎么修好它的？</strong>给 <code>inst</code> 加 <code>volatile</code> 后，写 <code>inst = memory</code> 前会插入 <em>StoreStore</em> 屏障，逼着"构造对象（第2步）"必须<strong>先于</strong>"发布引用（第3步）"完成；读 <code>inst</code> 后的 <em>LoadLoad</em> 屏障，保证别的线程读到非 null 引用时，对象一定已构造完整。这与上一章"搭便车（piggyback）安全发布"是同一个机制——用一次 volatile 写把它之前的一切修改一起、有序地发布出去。这也是 Java 5+ 修订 JMM 后，DCL <strong>必须</strong>配 volatile 才成立的根本原因。
+  </div>
+
+  <div class="callout tip">
+    <strong>更省心的替代方案：静态内部类（Holder 模式）。</strong>与其和 volatile + DCL 较劲，不如利用<strong>类初始化的天然线程安全</strong>——JVM 保证一个类的 <code>&lt;clinit&gt;</code> 只被执行一次且对所有线程可见（靠类加载锁）。<code>private static class Holder { static final Singleton INST = new Singleton(); }</code>，外部 <code>return Holder.INST;</code> 触发懒加载。既懒汉、又线程安全、还没有屏障心智负担——《Effective Java》推荐的正是它和枚举单例。
+  </div>
+
+  <h2>六、另一个隐蔽陷阱：long / double 的非原子写</h2>
+  <p>重排之外，JMM 还留了一个冷门但致命的坑。JLS 规定：对 <code>long</code> / <code>double</code> 这两个 <strong>64 位</strong>类型的普通读写，<em>不保证原子性</em>——JVM 允许把它拆成两个 32 位操作。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>WordTearing.java</span><span>64 位写可能被撕裂</span></div>
+    <pre><span class="kw">long</span> value;   <span class="com">// 非 volatile</span>
+
+<span class="com">// 线程 A</span>
+value = <span class="lit">0xFFFFFFFF_FFFFFFFFL</span>;   <span class="com">// 写全 1，可能拆成 高32位 + 低32位 两步</span>
+
+<span class="com">// 线程 B 恰好在两步之间读，可能读到"半新半旧"：</span>
+<span class="com">// 0xFFFFFFFF_00000000  —— 一个从未被任何线程写入过的诡异值（字撕裂 word tearing）</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱三：共享的 <code>long</code> / <code>double</code> 字段不加 volatile，可能读到"拼接出来的幽灵值"。</strong>在 64 位 JVM 上现代实现通常已保证其原子性，所以你平时"碰巧没事"；但 JLS 并不强制，32 位平台或某些实现就可能撕裂。<strong>只要一个 <code>long</code>/<code>double</code> 会被多线程共享，就给它加 <code>volatile</code></strong>——volatile 的 64 位读写 JLS 明确要求原子。（注意：这只解决"单次读写"的原子与可见，复合运算 <code>value++</code> 仍要 <code>AtomicLong</code>。）
+  </div>
+
+  <h2>七、四把"锁不住乱序"的钥匙怎么选</h2>
+  <p>禁止有害重排、建立正确的内存顺序，Java 给了你几件工具，能力与代价各不相同：</p>
+
+  <table>
+    <tr><th>手段</th><th>禁止重排的范围</th><th>额外能力</th><th>代价</th></tr>
+    <tr><td><code>volatile</code></td><td>屏障两侧的读/写不越界</td><td>可见性 + 有序性</td><td>低（读几乎零成本）</td></tr>
+    <tr><td><code>final</code></td><td>构造期写 → 引用发布 不重排</td><td>安全发布不可变对象</td><td>零（无运行期开销）</td></tr>
+    <tr><td><code>synchronized</code>/<code>Lock</code></td><td>整个临界区不外泄</td><td>原子性 + 可见 + 有序</td><td>较高（可能阻塞）</td></tr>
+    <tr><td><code>VarHandle</code>/CAS</td><td>可精确指定 acquire/release/opaque</td><td>无锁原子 + 细粒度顺序</td><td>低，但心智门槛高</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>被忽视的 <code>final</code>：</strong>很多人只知道 final 表示"不可变",却不知它有专属的内存语义。JMM 保证：只要对象<em>正确构造</em>（this 没在构造期逸出），那么<strong>其他线程即便通过普通引用（非 volatile）拿到它，也一定能看到 final 字段被正确初始化后的值</strong>——JVM 在构造函数末尾对 final 字段插入了 StoreStore 屏障。这就是 <code>String</code>、<code>Integer</code> 等不可变类不用任何同步就能安全共享的底层依据，也是上一章"不变性"能成为并发利器的原因。
+  </div>
+
+  <h2>八、把重排"钉死"的形式化契约</h2>
+  <p>逐个屏障去推理太累。JMM 最终把这一切抽象成一个你只需记住的判据——<strong>只要在写与读之间建立起 happens-before 关系，就不允许出现"读看不到写"或"重排导致错乱"</strong>：</p>
+
+  <div class="formula">写 <span class="hl">happens-before</span> 读 &nbsp; ⟹ &nbsp; 无有害重排 <span class="hl">∧</span> 结果可见</div>
+
+  <p>建立这条边的方式，就是上一章那几条规则：volatile 写→读、锁的 unlock→lock、<code>Thread.start()</code>、<code>join()</code>、final 字段构造语义，再用<em>传递性</em>串成链。你不必关心底层插了哪种屏障——那是 JVM 按平台去兑现契约的实现细节。</p>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>指令重排不是 bug，而是编译器 / CPU / 内存系统为压榨性能付出的"合法作弊"，它被 <strong>as-if-serial</strong> 关在单线程的笼子里——可一旦跨线程共享数据，笼子就消失了，于是有了 <code>(0,0)</code> 的灵异、DCL 的半初始化对象、long 的字撕裂。<strong>内存屏障</strong>是按住乱序的物理手段，而 <strong>happens-before</strong> 是你不必碰屏障、就能推理正确性的高层契约。所以并发正确性的黄金法则是：<em>不要靠"在我机器上测着没崩"来判断，而要靠 volatile / final / 锁 / CAS 显式建立 happens-before</em>——这，也正是本章 JMM 与并发测试合并讲解想留给你的最终直觉。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="27-并发测试.html" class="nav-btn">← 并发测试</a>
+    <a href="roadmap.html" class="nav-btn next">框架图 →</a>
+  </div>
+</div>
+</body>
+</html>

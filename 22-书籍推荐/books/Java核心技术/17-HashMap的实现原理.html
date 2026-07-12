@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HashMap 的实现原理</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java核心技术·卷I</a> / HashMap 的实现原理</div>
+  <div class="hero">
+    <div class="tag">Java 核心 · 第8-9章·泛型与集合</div>
+    <h1>HashMap 的实现原理</h1>
+    <p>用一个数组、一个哈希函数，把"按 key 找 value"从遍历 O(n) 压到平均 O(1)——这是数据结构里最经典的一次空间换时间。</p>
+  </div>
+
+  <h2>一、要解决的问题：如何做到 O(1) 查找</h2>
+  <p>想象你有一万个用户，要按用户名查手机号。如果放在数组里挨个比对，最坏要比一万次（O(n)）；如果用有序结构做二分（TreeMap），也要 O(log n)。<strong>HashMap 的野心是：不管有多少数据，一次定位就找到</strong>——平均 O(1)。</p>
+  <p>它的思路借鉴了数组"按下标随机访问"的天赋：数组之所以快，是因为 <code>arr[i]</code> 能通过 <em>基地址 + i × 元素大小</em> 一步算出内存地址。HashMap 就想：<strong>能不能把任意 key（字符串、对象……）也算成一个数组下标？</strong>这个"把 key 变成下标"的函数，就是哈希函数。</p>
+
+  <div class="formula">下标 index <span class="hl">=</span> hash(key) <span class="hl">&amp;</span> (数组长度 - 1)</div>
+
+  <div class="callout info">
+    <strong>核心直觉——哈希 = 建索引：</strong>就像图书馆按书名首字母分区，你找《Java》直接走到"J"区，而不是从头翻。哈希函数就是那个"分区规则"，把 key 直接映射到它该待的"桶（bucket）"。区分得越均匀，每个区书越少，找得越快。
+  </div>
+
+  <h2>二、底层数据结构：数组 + 链表 + 红黑树</h2>
+  <p>HashMap 的骨架是一个数组，源码里叫 <code>table</code>，数组元素类型是 <code>Node&lt;K,V&gt;</code>（Java 8 命名，Java 7 里叫 <code>Entry</code>）。每个数组位置称为一个<strong>桶（bucket）</strong>。当多个 key 算出同一个下标时（哈希冲突），它们就在同一个桶里用<strong>链表</strong>串起来；链表太长（Java 8 起）会转成<strong>红黑树</strong>。</p>
+
+  <div class="diagram">table (Node[] 数组)
+ ┌────┐
+ │ 0  │──&gt; null
+ ├────┤
+ │ 1  │──&gt; (k1,v1) ──&gt; (k9,v9) ──&gt; null      ← 链表：桶内冲突
+ ├────┤
+ │ 2  │──&gt; null
+ ├────┤
+ │ 3  │──&gt; (k3,v3) ──&gt; null
+ ├────┤
+ │ 4  │──&gt; ●红黑树根                          ← 链表过长转红黑树
+ │    │      /    \
+ │    │   node    node ...  (&gt;=8 个且容量&gt;=64)
+ └────┘
+   ↑
+ 每个格子叫一个"桶 bucket"；数组长度必是 2 的幂</div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>HashMap.java (JDK 源码节选)</span><span>核心字段与 Node 结构</span></div>
+    <pre><span class="kw">transient</span> <span class="typ">Node</span>&lt;K,V&gt;[] table;        <span class="com">// 桶数组，第一次 put 时才懒初始化</span>
+<span class="kw">transient int</span> size;                   <span class="com">// 实际键值对数量</span>
+<span class="kw">int</span> threshold;                        <span class="com">// 扩容阈值 = 容量 × 负载因子</span>
+<span class="kw">final float</span> loadFactor;               <span class="com">// 负载因子，默认 0.75</span>
+
+<span class="kw">static class</span> <span class="typ">Node</span>&lt;K,V&gt; <span class="kw">implements</span> <span class="typ">Map.Entry</span>&lt;K,V&gt; {
+    <span class="kw">final int</span> hash;   <span class="com">// 缓存的 hash 值，避免每次重算（key 不变，hash 不变）</span>
+    <span class="kw">final</span> K key;
+    V value;
+    <span class="typ">Node</span>&lt;K,V&gt; next;    <span class="com">// 指向同桶下一个节点 —— 这就是链表</span>
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么把 hash 缓存进 Node？</strong>因为 key 一旦放进去就不该变（见第八节），它的 hash 也就固定了。缓存下来，扩容重新分桶、查找比对时都能直接复用，省掉大量重复的 <code>hashCode()</code> 调用——这是"用一点空间换很多时间"的典型微优化。
+  </div>
+
+  <h2>三、哈希函数：为什么要把高位"搅拌"进来</h2>
+  <p>你可能以为下标就是 <code>key.hashCode() % 数组长度</code>。但 JDK 做了两处关键改造。第一，用<strong>位与代替取模</strong>：当数组长度 <code>n</code> 是 2 的幂时，<code>hash % n</code> 完全等价于 <code>hash &amp; (n-1)</code>，而位运算比除法快得多。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>HashMap.java</span><span>扰动函数 hash()</span></div>
+    <pre><span class="kw">static final int</span> <span class="fn">hash</span>(<span class="typ">Object</span> key) {
+    <span class="kw">int</span> h;
+    <span class="com">// key 为 null 时 hash 恒为 0 —— 所以 null 永远落在 0 号桶</span>
+    <span class="kw">return</span> (key == <span class="kw">null</span>) ? <span class="num">0</span>
+         : (h = key.<span class="fn">hashCode</span>()) ^ (h &gt;&gt;&gt; <span class="num">16</span>);
+    <span class="com">// 把高 16 位异或到低 16 位：让高位也参与最终下标运算</span>
+}</pre>
+  </div>
+
+  <p>第二处改造就是那句 <code>(h = key.hashCode()) ^ (h &gt;&gt;&gt; 16)</code>，称为<strong>扰动（perturbation）</strong>。原因藏在下标公式里：<code>hash &amp; (n-1)</code>。数组初期很小（默认 16），<code>n-1 = 15 = 0b1111</code>，位与只会保留 hash 的<em>最低 4 位</em>，高位再怎么不同也被丢弃。如果两个 key 的 hashCode 只是高位不同、低位相同，它们就会撞进同一个桶。</p>
+
+  <div class="diagram">hashCode  : 1111 1111 1111 0101  1010 0000 0000 0001
+h &gt;&gt;&gt; 16  : 0000 0000 0000 0000  1111 1111 1111 0101
+异或结果  : 1111 1111 1111 0101  0101 1111 1111 0100   ← 高位信息"混"进了低位
+                                 ↑↑↑↑
+              & (16-1) 时，这几位才是真正决定下标的位</div>
+
+  <div class="callout info">
+    <strong>一句话概括扰动的价值：</strong>让 hashCode 的<em>高位也对最终下标产生影响</em>，从而在数组还很小的时候就把元素撒得更均匀，减少冲突。这是一次成本极低（一次异或、一次移位）却收益明显的工程折中。
+  </div>
+
+  <h2>四、为什么容量必须是 2 的幂</h2>
+  <p>这个约束贯穿整个 HashMap，背后有三个环环相扣的理由：</p>
+  <table>
+    <tr><th>好处</th><th>原理</th></tr>
+    <tr><td>取模变位与</td><td>仅当 <code>n</code> 为 2 的幂，<code>hash % n</code> 才等于 <code>hash &amp; (n-1)</code>，用位运算提速</td></tr>
+    <tr><td>下标分布均匀</td><td><code>n-1</code> 的二进制是连续的 1（如 <code>1111</code>），位与能保留 hash 低位的全部信息；若 <code>n</code> 非 2 的幂，<code>n-1</code> 中有 0 位，那些位永远取不到，桶被浪费</td></tr>
+    <tr><td>扩容重哈希极快</td><td>容量翻倍后，元素要么留在原位 <code>i</code>，要么移到 <code>i + oldCap</code>，只需看 hash 多出来的那一位是 0 还是 1，无需重算 hash（见第六节）</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱：<code>new HashMap&lt;&gt;(1000)</code> 并不会得到容量 1000。</strong>你传入的初始容量会被 <code>tableSizeFor()</code> 向上取整到最近的 2 的幂——传 1000 实际得到 1024，传 17 得到 32。所以别以为传个数字就精确控制了容量。想装 1000 个元素又不想扩容，正确算法是 <code>(int)(1000 / 0.75) + 1</code> 再交给它取幂。
+  </div>
+
+  <h2>五、put 的完整流程</h2>
+  <p>把这条主干走一遍，HashMap 的绝大多数细节就串起来了：</p>
+  <div class="diagram">put(key, value)
+   │
+   ├─ 1. 算 hash = hash(key)                    // 扰动后的 hash
+   ├─ 2. 若 table 为空 → resize() 懒初始化       // 第一次 put 才建数组
+   ├─ 3. 算下标 i = (n-1) &amp; hash
+   │
+   ├─ 4. table[i] 为空？
+   │        是 → 直接放入新 Node，结束
+   │        否 → 发生冲突，进入桶内查找 ↓
+   │
+   ├─ 5. 遍历桶内节点，逐个比较：
+   │        hash 相同 &amp;&amp; (key == k || key.equals(k)) ?
+   │          是 → 找到同一个 key，覆盖旧 value（返回旧值）
+   │          否 → 继续找下一个
+   │
+   ├─ 6. 走到链表尾仍没找到 → 尾插一个新 Node
+   │        若链表长度 &gt;= 8 且容量 &gt;= 64 → 转红黑树
+   │
+   └─ 7. ++size &gt; threshold ? → resize() 扩容</div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>get 的对称逻辑</span><span>先定位桶，再桶内比对</span></div>
+    <pre><span class="kw">public</span> V <span class="fn">get</span>(<span class="typ">Object</span> key) {
+    <span class="kw">int</span> hash = <span class="fn">hash</span>(key);
+    <span class="typ">Node</span>&lt;K,V&gt; e = table[(n - <span class="num">1</span>) &amp; hash];  <span class="com">// 一步定位到桶</span>
+    <span class="kw">while</span> (e != <span class="kw">null</span>) {                       <span class="com">// 桶内可能有多个（冲突）</span>
+        <span class="com">// 先比 hash（int 比较极快，快速排除）</span>
+        <span class="com">// 再用 == 比引用，最后才 equals —— 短路优化</span>
+        <span class="kw">if</span> (e.hash == hash &amp;&amp;
+            (e.key == key || (key != <span class="kw">null</span> &amp;&amp; key.<span class="fn">equals</span>(e.key))))
+            <span class="kw">return</span> e.value;
+        e = e.next;
+    }
+    <span class="kw">return</span> <span class="kw">null</span>;   <span class="com">// 没找到返回 null（注意：也可能是存了 null 值，见陷阱）</span>
+}</pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>高频面试点——为什么比较条件是 <code>hash 相同 &amp;&amp; (== 或 equals)</code>？</strong>因为不同的 key 可能算出相同的下标（冲突），甚至相同的 hash 值，所以定位到桶只是第一步，<em>桶里可能有好几个 key</em>，必须逐个用 <code>equals</code> 确认到底是不是你要的那个。先比 hash 是为了快速剪枝——hash 都不同的连 equals 都省了。
+  </div>
+
+  <h2>六、负载因子与扩容（resize）</h2>
+  <p>数组总会装满。HashMap 用<strong>负载因子（loadFactor，默认 0.75）</strong>来决定"多满就扩容"：当 <code>size &gt; 容量 × 0.75</code> 时，触发 <code>resize()</code>，容量翻倍，并把所有元素重新分配到新数组——这个过程叫<strong>rehash（重哈希）</strong>。</p>
+
+  <div class="formula">threshold <span class="hl">=</span> capacity <span class="hl">×</span> loadFactor &nbsp;&nbsp;(16 × 0.75 = <span class="hl">12</span>)</div>
+
+  <p>0.75 是空间与时间的折中：太大（如 1.0）桶容易挤满、冲突链变长、查询变慢；太小（如 0.5）数组还很空就扩容，浪费内存且频繁 rehash。0.75 让"每个桶平均元素数"维持在较低水平，冲突概率与内存占用达到较好平衡。</p>
+
+  <div class="callout tip">
+    <strong>Java 8 扩容的神来之笔——不用重算 hash：</strong>容量从 <code>16</code> 翻到 <code>32</code>，<code>n-1</code> 从 <code>0b01111</code> 变成 <code>0b11111</code>，只多了最高一位。一个元素的新位置只取决于它 hash 在<em>那一位</em>上是 0 还是 1：是 0 就<strong>留在原下标 i</strong>，是 1 就移到 <strong>i + oldCap</strong>。于是整条链被一拆为二，无需对每个元素重新 <code>hashCode()</code> 和取模，扩容成本大幅下降。
+  </div>
+
+  <div class="diagram">扩容前 n=16，桶 i=1 的链：  A(...0 0001) → B(...1 0001)
+                                    ↑           ↑
+                            多出的那一位: 0        1
+扩容后 n=32 拆成两条链：
+   桶 1        (原位 i)      : A          ← 多出位为 0，留下
+   桶 17 (i + oldCap=1+16)  : B          ← 多出位为 1，前移 16</div>
+
+  <h2>七、Java 7 vs Java 8：一次影响深远的重构</h2>
+  <p>HashMap 在 Java 8 经历了大改，这些差异是面试的重灾区，也解释了很多"历史 bug"的由来：</p>
+  <table>
+    <tr><th>维度</th><th>Java 7</th><th>Java 8+</th></tr>
+    <tr><td>桶结构</td><td>数组 + 链表</td><td>数组 + 链表 + <strong>红黑树</strong></td></tr>
+    <tr><td>冲突最坏查询</td><td>O(n)（链表退化）</td><td>O(log n)（树化后）</td></tr>
+    <tr><td>链表插入位置</td><td><strong>头插法</strong></td><td><strong>尾插法</strong></td></tr>
+    <tr><td>扩容时</td><td>重算下标、可能倒置链表</td><td>低位/高位拆链，保持相对顺序</td></tr>
+    <tr><td>并发扩容风险</td><td>可能形成<strong>环形链表</strong>导致 CPU 100%</td><td>不会成环（但仍非线程安全，会丢数据）</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>树化的三个阈值（记牢）：</strong>链表长度达到 <code>TREEIFY_THRESHOLD = 8</code> <em>且</em> 数组容量 <code>&gt;= MIN_TREEIFY_CAPACITY = 64</code> 时，链表转红黑树；若容量不足 64，会优先<em>扩容</em>而非树化（因为扩容能分散冲突，成本更低）。当树节点因删除/扩容降到 <code>UNTREEIFY_THRESHOLD = 6</code> 时，退化回链表。为什么是 8？在 hash 分布良好时，一个桶里堆到 8 个的概率按泊松分布已低到约千万分之六，正常几乎不会树化——树化是给"极端糟糕的 hash"兜底的保险，不是常态。
+  </div>
+
+  <h2>八、equals 与 hashCode 契约：最经典的坑</h2>
+  <p>HashMap 定位靠 <code>hashCode</code>，桶内确认靠 <code>equals</code>。所以自定义类做 key 时，<strong>必须同时正确重写这两个方法</strong>，否则 HashMap 会"抽风"。契约铁律：<em>equals 相等的两个对象，hashCode 必须相等</em>（反之不要求）。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 只重写 equals，忘了 hashCode</div>
+      <pre>class Point {
+  int x, y;
+  // 重写了 equals 判断 x,y 相等
+  // 却用了 Object 默认 hashCode
+}
+Map&lt;Point,String&gt; m = new HashMap&lt;&gt;();
+m.put(new Point(1,2), "A");
+m.get(new Point(1,2));  // 返回 null !!
+// 两个"相等"的 Point 算出不同 hash，
+// 落到不同桶，永远找不到</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 两者同步重写</div>
+      <pre>class Point {
+  int x, y;
+  public boolean equals(Object o){...}
+  public int hashCode() {
+    return Objects.hash(x, y);
+  }
+}
+// 或直接用 record（自动生成两者）
+record Point(int x, int y) {}
+// equals 相等 → hashCode 必相等
+// get 能稳定命中</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>可变对象做 key 是隐形炸弹：</strong>如果把一个对象放进 HashMap 后又修改了它参与 <code>hashCode</code> 的字段，它算出的桶下标就变了，但它<em>物理上还躺在旧桶里</em>。之后你再拿"新状态"去 <code>get</code>，会去新桶找，自然找不到——数据"人间蒸发"。所以 <strong>HashMap 的 key 应当是不可变的</strong>（这也是 <code>String</code> 设计成不可变、并缓存 hash 的重要原因，你的 key 用 String 天生安全）。
+  </div>
+
+  <h2>九、线程安全：HashMap 不是并发容器</h2>
+  <p>HashMap <strong>完全没有做同步</strong>。多线程并发 <code>put</code> 时，可能同时命中同一个桶互相覆盖导致<em>数据丢失</em>；并发扩容在 Java 7 甚至会形成<em>环形链表</em>让 <code>get</code> 陷入死循环、CPU 打满。它的迭代器还是 <strong>fail-fast</strong> 的：迭代过程中被结构性修改会抛 <code>ConcurrentModificationException</code>。</p>
+
+  <table>
+    <tr><th>方案</th><th>做法 / 特点</th><th>适用</th></tr>
+    <tr><td><code>HashMap</code></td><td>无同步，最快</td><td>单线程 / 局部变量 / 只读共享</td></tr>
+    <tr><td><code>Hashtable</code></td><td>每个方法 <code>synchronized</code>，全表锁，已过时</td><td>基本不用（遗留代码）</td></tr>
+    <tr><td><code>Collections.<br>synchronizedMap</code></td><td>包一层全表锁，粒度粗</td><td>低并发、图省事</td></tr>
+    <tr><td><code>ConcurrentHashMap</code></td><td>Java 8 用 <em>CAS + synchronized 锁单个桶</em>，并发度高</td><td><strong>高并发首选</strong></td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>联系 Spring：</strong>Spring 内部大量用 <code>ConcurrentHashMap</code> 做缓存（如单例 Bean 的 <code>singletonObjects</code>、各种 <code>@Cacheable</code> 后端），因为容器初始化后是"读多写少 + 多线程访问"的典型场景，正是 <code>ConcurrentHashMap</code> 的主场。而方法内部临时用的 Map 用普通 <code>HashMap</code> 就好——不共享就没有并发问题，别为不存在的问题付同步的代价。
+  </div>
+
+  <h2>十、性能与复杂度总览</h2>
+  <div class="bar">
+    <span style="width:70%;background:#4ade80;">get/put 平均 O(1)</span>
+    <span style="width:20%;background:#fbbf24;">树化后最坏 O(log n)</span>
+    <span style="width:10%;background:#ef4444;">Java7冲突退化 O(n)</span>
+  </div>
+  <table>
+    <tr><th>操作</th><th>平均</th><th>最坏（Java 8 树化后）</th></tr>
+    <tr><td><code>get</code> / <code>put</code> / <code>remove</code></td><td>O(1)</td><td>O(log n)</td></tr>
+    <tr><td><code>containsKey</code></td><td>O(1)</td><td>O(log n)</td></tr>
+    <tr><td><code>containsValue</code></td><td>O(n)</td><td>O(n)（要遍历所有桶）</td></tr>
+    <tr><td>遍历（entrySet）</td><td colspan="2">O(capacity + size)：连空桶也要走一遍，所以初始容量别设过大</td></tr>
+  </table>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>HashMap 的本质是<strong>「数组做索引骨架 + 哈希函数把 key 变成下标 + 链表/红黑树兜底冲突」</strong>。它用<em>扰动函数</em>让高位参与运算、用<em>2 的幂容量</em>把取模变位与并让扩容只需拆链、用<em>0.75 负载因子</em>平衡空间与冲突、用<em>Java 8 红黑树</em>为坏 hash 兜底。三条铁律务必记牢：<strong>key 要不可变、equals 与 hashCode 必须成对重写、多线程请换 ConcurrentHashMap</strong>。理解了这套设计，你就理解了几乎所有哈希表的共同套路。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="16-ArrayListvsLinkedListHashMapvsTreeMap.html" class="nav-btn">← ArrayList vs LinkedList、HashMap vs TreeMap</a>
+    <a href="18-Collections工具类与不可变集合.html" class="nav-btn next">Collections 工具类与不可变集合 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>阻塞队列与并发集合</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java核心技术·卷I</a> / 阻塞队列与并发集合</div>
+  <div class="hero">
+    <div class="tag">Java 核心 · 第12章·并发</div>
+    <h1>阻塞队列与并发集合</h1>
+    <p>把线程之间"交接工作"这件危险的手工活，封装成一个线程安全、满了会等、空了也会等的队列——从此告别裸写 wait/notify。</p>
+  </div>
+
+  <h2>一、要解决的问题：生产者-消费者</h2>
+  <p>并发编程里最常见的协作模式是<strong>生产者-消费者</strong>：一批线程负责生产任务（下载的网页、待写库的日志、上传的图片），另一批线程负责消费处理。两边速度往往不匹配——生产快了，任务堆积撑爆内存；消费快了，消费者只能空转浪费 CPU。中间需要一个<strong>缓冲区</strong>来削峰填谷。</p>
+  <p>用普通 <code>ArrayList</code> 当缓冲区行不行？不行。多线程同时读写会数据错乱（非线程安全）；就算加了锁，还有两个头疼问题：缓冲区<em>满了</em>生产者该怎么办？缓冲区<em>空了</em>消费者又该怎么办？答案是"等待"——但手写"等待/唤醒"极易出错。<strong>阻塞队列（BlockingQueue）就是把这三件事（线程安全 + 满了阻塞 + 空了阻塞）一次性打包好的标准件。</strong></p>
+
+  <div class="diagram">生产者线程                 阻塞队列 (缓冲区)                消费者线程
+ ┌────────┐   put()      ┌──┬──┬──┬──┬──┐    take()   ┌────────┐
+ │ P1 ────┼──────────────&gt;│t5│t4│t3│t2│t1│─────────────&gt;│  C1    │
+ │ P2 ────┼──────────────&gt;│  │  │  │  │  │─────────────&gt;│  C2    │
+ └────────┘              └──┴──┴──┴──┴──┘             └────────┘
+   队列满 → put 阻塞          容量有界                   队列空 → take 阻塞
+   (天然背压 / 限流)        FIFO 先进先出               (不空转, 让出 CPU)</div>
+
+  <div class="callout info">
+    <strong>核心直觉——快递驿站：</strong>快递员（生产者）把包裹放进驿站货架（队列），收件人（消费者）自己来取。货架满了快递员就得在门口等（<code>put</code> 阻塞）；货架空了收件人白跑一趟就在门口等来货（<code>take</code> 阻塞）。驿站解耦了双方，谁也不用直接等谁、当面交接。这就是<strong>解耦 + 缓冲 + 背压</strong>三合一。
+  </div>
+
+  <h2>二、BlockingQueue 的四组方法</h2>
+  <p><code>BlockingQueue</code> 继承自 <code>Queue</code>，最精妙的设计是：<strong>同一个操作（入队/出队）提供了四种"失败处理策略"</strong>，让你按场景选。这是初学者最容易混淆、也是面试爱考的点。</p>
+  <table>
+    <tr><th>操作</th><th>抛异常</th><th>返回特殊值</th><th>一直阻塞</th><th>超时退出</th></tr>
+    <tr><td><strong>入队</strong></td><td><code>add(e)</code></td><td><code>offer(e)</code></td><td><code>put(e)</code></td><td><code>offer(e,t,u)</code></td></tr>
+    <tr><td><strong>出队</strong></td><td><code>remove()</code></td><td><code>poll()</code></td><td><code>take()</code></td><td><code>poll(t,u)</code></td></tr>
+    <tr><td><strong>查看队首</strong></td><td><code>element()</code></td><td><code>peek()</code></td><td>—</td><td>—</td></tr>
+  </table>
+  <ul>
+    <li><strong>抛异常组</strong>：队列满时 <code>add</code> 抛 <code>IllegalStateException</code>，队列空时 <code>remove</code> 抛 <code>NoSuchElementException</code>。</li>
+    <li><strong>返回特殊值组</strong>：<code>offer</code> 满了返回 <code>false</code>，<code>poll</code> 空了返回 <code>null</code>——不阻塞、不抛异常，最"温和"。</li>
+    <li><strong>阻塞组</strong>：<code>put</code>/<code>take</code> 是生产者-消费者的主角，满/空就一直等，直到条件满足或被中断。</li>
+    <li><strong>超时组</strong>：等一段时间还不行就放弃，返回布尔或 <code>null</code>，兼顾"等待"与"不死等"。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>高频陷阱——别用 <code>add</code> 往有界队列里硬塞。</strong>很多人下意识写 <code>queue.add(task)</code>，队列一满就抛 <code>IllegalStateException</code> 把线程炸掉。生产者-消费者场景想要"满了就等"用 <code>put</code>；想要"满了就丢/走降级"用 <code>offer</code> 判返回值。<code>add</code> 只适合你<em>确信不会满</em>的无界队列。同理 <code>poll</code> 空了返回 <code>null</code>，若不判空直接用会导致后续 NPE。
+  </div>
+
+  <h2>三、七种实现该怎么选</h2>
+  <p>JDK 在 <code>java.util.concurrent</code> 下提供了一整个家族，各有取舍。选错会直接影响吞吐、内存甚至安全：</p>
+  <table>
+    <tr><th>实现</th><th>有界?</th><th>底层结构</th><th>关键特性 / 适用</th></tr>
+    <tr><td><code>ArrayBlockingQueue</code></td><td>有界(必填)</td><td>数组 + 单锁</td><td>容量固定，一把锁管两端；可选公平锁</td></tr>
+    <tr><td><code>LinkedBlockingQueue</code></td><td>可选(默认无界)</td><td>链表 + 双锁</td><td>put/take 各一把锁，吞吐更高；<strong>不传容量默认 Integer.MAX_VALUE，慎用</strong></td></tr>
+    <tr><td><code>PriorityBlockingQueue</code></td><td>无界</td><td>二叉堆</td><td>按优先级出队而非 FIFO；入队不阻塞</td></tr>
+    <tr><td><code>DelayQueue</code></td><td>无界</td><td>堆 + 延迟</td><td>元素到期才能取；定时任务、缓存过期</td></tr>
+    <tr><td><code>SynchronousQueue</code></td><td>容量 0</td><td>无缓冲</td><td>每个 put 必须等一个 take 直接"手递手"交接</td></tr>
+    <tr><td><code>LinkedBlockingDeque</code></td><td>可选</td><td>双向链表</td><td>双端队列，支持两头进出；工作窃取</td></tr>
+    <tr><td><code>LinkedTransferQueue</code></td><td>无界</td><td>链表(CAS)</td><td><code>transfer()</code> 让生产者等到被消费为止，性能优异</td></tr>
+  </table>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">ArrayBlockingQueue</div>
+      <pre>容量创建时固定，不能扩
+数组存储，内存连续、无节点开销
+一把 ReentrantLock
+  → put 和 take 互相排斥
+适合: 容量确定、要严格限流</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">LinkedBlockingQueue</div>
+      <pre>默认无界(易 OOM)，建议手动限容
+链表存储，每个元素多一个 Node 对象
+putLock + takeLock 两把锁
+  → 入队出队可真正并行
+适合: 高吞吐、生产消费速率相近</pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>经典 OOM 事故——<code>Executors.newFixedThreadPool()</code> 内部用的就是无界 <code>LinkedBlockingQueue</code>。</strong>一旦任务提交速度长期超过处理速度，任务会在队列里无限堆积，最终 <code>OutOfMemoryError</code>。阿里《Java 开发手册》因此强制要求：不要用 <code>Executors</code> 快捷方法，改用 <code>new ThreadPoolExecutor(...)</code> 显式传<em>有界</em>队列 + 明确的拒绝策略。这也是下一篇线程池要展开的重点。
+  </div>
+
+  <h2>四、原理：阻塞是怎么实现的</h2>
+  <p>阻塞队列的"满了等、空了等"不是靠自旋空转（那样浪费 CPU），而是基于 <code>ReentrantLock</code> + <code>Condition</code>（条件变量）。以 <code>ArrayBlockingQueue</code> 为例，它内部维护一把锁和两个"等待室"：<code>notEmpty</code>（消费者在这等队列变非空）和 <code>notFull</code>（生产者在这等队列变不满）。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>ArrayBlockingQueue.java (JDK 源码节选)</span><span>核心字段 + put</span></div>
+    <pre><span class="kw">final</span> <span class="typ">Object</span>[] items;         <span class="com">// 环形数组：用取模复用空间，不用真的搬数据</span>
+<span class="kw">int</span> takeIndex, putIndex, count;  <span class="com">// 队头下标 / 队尾下标 / 当前元素数</span>
+<span class="kw">final</span> <span class="typ">ReentrantLock</span> lock;    <span class="com">// 一把锁保护整个队列</span>
+<span class="kw">private final</span> <span class="typ">Condition</span> notEmpty;  <span class="com">// 消费者的等待队列</span>
+<span class="kw">private final</span> <span class="typ">Condition</span> notFull;   <span class="com">// 生产者的等待队列</span>
+
+<span class="kw">public void</span> <span class="fn">put</span>(E e) <span class="kw">throws</span> <span class="typ">InterruptedException</span> {
+    <span class="typ">Objects</span>.<span class="fn">requireNonNull</span>(e);         <span class="com">// 不允许 null 元素</span>
+    <span class="kw">final</span> <span class="typ">ReentrantLock</span> lock = <span class="kw">this</span>.lock;
+    lock.<span class="fn">lockInterruptibly</span>();          <span class="com">// 可被中断的加锁</span>
+    <span class="kw">try</span> {
+        <span class="kw">while</span> (count == items.length)  <span class="com">// ★ 必须是 while 不是 if！见下方陷阱</span>
+            notFull.<span class="fn">await</span>();             <span class="com">// 队列满 → 生产者进 notFull 等待室并释放锁</span>
+        <span class="fn">enqueue</span>(e);                    <span class="com">// 放入元素，内部会 notEmpty.signal() 唤醒消费者</span>
+    } <span class="kw">finally</span> {
+        lock.<span class="fn">unlock</span>();
+    }
+}</pre>
+  </div>
+
+  <p>配对的 <code>take()</code> 逻辑对称：队列空时在 <code>notEmpty</code> 上 <code>await()</code>，取出元素后 <code>notFull.signal()</code> 唤醒一个正在等待的生产者。<code>await()</code> 的关键在于它会<strong>原子地释放锁并让线程休眠</strong>，把 CPU 让给别人；被 <code>signal()</code> 唤醒后再重新竞争锁——这正是操作系统层面"阻塞而非忙等"的思想，避免无谓的 CPU 消耗。</p>
+
+  <div class="diagram">put 满时:   拿锁 → count==length? → notFull.await() ─┐ 释放锁并休眠
+                                                    │
+take 取走一个 → count-- → notFull.signal() ─────────┘ 唤醒生产者
+            生产者被唤醒 → 重新抢锁 → 再次检查 while → 条件满足 → 入队</div>
+
+  <div class="callout warn">
+    <strong>面试必考——为什么条件判断要用 <code>while</code> 而不是 <code>if</code>？</strong>两个原因：① <em>虚假唤醒（spurious wakeup）</em>，线程可能没被 signal 也醒来，这是操作系统允许的行为；② <em>多消费者竞争</em>，A 被唤醒后到真正抢到锁之间，元素可能已被 B 抢走，此时队列又空了。用 <code>if</code> 只判一次就会带着"队列非空"的错误假设去操作，导致取到 <code>null</code> 或数组越界。<code>while</code> 保证<em>被唤醒后再确认一遍条件</em>，这是使用条件变量的<strong>铁律</strong>——<code>Object.wait()</code> 同理。
+  </div>
+
+  <h2>五、实战：三行代码搞定生产者-消费者</h2>
+  <p>有了 <code>BlockingQueue</code>，你完全不需要碰锁和 <code>wait/notify</code>——所有同步细节都被封装在 <code>put</code>/<code>take</code> 里。对比一下"裸手写"和"用队列"的差距：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 裸写 wait/notify（暗藏 bug）</div>
+      <pre>Object lock = new Object();
+Queue&lt;Task&gt; q = new LinkedList&lt;&gt;();
+
+// 消费者
+synchronized (lock) {
+  if (q.isEmpty())   // BUG: 该用 while
+    lock.wait();
+  Task t = q.remove();
+  // 多消费者时 remove 可能抛异常
+}
+// 还要自己处理满、中断、
+// signal 时机... 极易写错</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 用 BlockingQueue（省心正确）</div>
+      <pre>BlockingQueue&lt;Task&gt; q =
+    new ArrayBlockingQueue&lt;&gt;(100);
+
+// 生产者
+q.put(task);   // 满了自动阻塞
+
+// 消费者
+Task t = q.take();  // 空了自动阻塞
+handle(t);
+
+// 锁、条件、唤醒、中断
+// 全由 JDK 保证正确
+</pre>
+    </div>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>完整的生产者-消费者骨架</span><span>含"毒丸(poison pill)"优雅关闭</span></div>
+    <pre><span class="typ">BlockingQueue</span>&lt;<span class="typ">String</span>&gt; queue = <span class="kw">new</span> <span class="typ">ArrayBlockingQueue</span>&lt;&gt;(<span class="num">100</span>);
+<span class="kw">final</span> <span class="typ">String</span> POISON = <span class="str">"__END__"</span>;   <span class="com">// 约定一个终止信号</span>
+
+<span class="typ">Runnable</span> producer = () -&gt; {
+    <span class="kw">try</span> {
+        <span class="kw">for</span> (<span class="typ">String</span> task : tasks) queue.<span class="fn">put</span>(task);
+        queue.<span class="fn">put</span>(POISON);            <span class="com">// 生产完投毒丸，通知消费者收工</span>
+    } <span class="kw">catch</span> (<span class="typ">InterruptedException</span> e) {
+        <span class="typ">Thread</span>.<span class="fn">currentThread</span>().<span class="fn">interrupt</span>(); <span class="com">// 恢复中断标志，别吞掉</span>
+    }
+};
+
+<span class="typ">Runnable</span> consumer = () -&gt; {
+    <span class="kw">try</span> {
+        <span class="kw">while</span> (<span class="kw">true</span>) {
+            <span class="typ">String</span> task = queue.<span class="fn">take</span>();   <span class="com">// 空则阻塞，不空转</span>
+            <span class="kw">if</span> (POISON.<span class="fn">equals</span>(task)) <span class="kw">break</span>; <span class="com">// 收到毒丸就退出循环</span>
+            <span class="fn">handle</span>(task);
+        }
+    } <span class="kw">catch</span> (<span class="typ">InterruptedException</span> e) {
+        <span class="typ">Thread</span>.<span class="fn">currentThread</span>().<span class="fn">interrupt</span>();
+    }
+};</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>联系线程池：</strong>你几乎每天都在间接用阻塞队列。<code>ThreadPoolExecutor</code> 内部就是一个大号的生产者-消费者——你 <code>submit()</code> 任务是"生产"，工作线程从 <code>workQueue</code>（一个 <code>BlockingQueue</code>）里 <code>take()</code> 任务执行是"消费"。换用不同队列会直接改变线程池性格：<code>SynchronousQueue</code> → 来一个任务直接开线程（<code>newCachedThreadPool</code>）；无界 <code>LinkedBlockingQueue</code> → 任务无限排队（<code>newFixedThreadPool</code>）；有界 <code>ArrayBlockingQueue</code> → 排满就触发拒绝策略。这是下一篇的核心伏笔。
+  </div>
+
+  <h2>六、并发集合：不止队列</h2>
+  <p>阻塞队列解决"线程间传递数据"，而<strong>并发集合</strong>解决"线程间共享数据结构"。老一辈的 <code>Vector</code>/<code>Hashtable</code> 靠给每个方法加 <code>synchronized</code> 实现线程安全——<em>全表一把大锁</em>，任何时刻只有一个线程能操作，高并发下就是性能瓶颈。<code>java.util.concurrent</code> 提供了更聪明的替代品：</p>
+  <table>
+    <tr><th>并发集合</th><th>替代谁</th><th>核心技巧</th></tr>
+    <tr><td><code>ConcurrentHashMap</code></td><td><code>Hashtable</code></td><td>CAS + 锁单个桶（Java 8），读几乎无锁，并发度极高</td></tr>
+    <tr><td><code>CopyOnWriteArrayList</code></td><td><code>Vector</code></td><td>写时复制整个数组，读完全无锁</td></tr>
+    <tr><td><code>ConcurrentSkipListMap</code></td><td><code>TreeMap</code></td><td>跳表实现的有序 Map，无锁并发</td></tr>
+    <tr><td><code>ConcurrentLinkedQueue</code></td><td>—</td><td>CAS 实现的无锁非阻塞队列（不阻塞，队空返回 null）</td></tr>
+  </table>
+
+  <h3>CopyOnWrite：读多写极少的利器</h3>
+  <p><code>CopyOnWriteArrayList</code> 的思路很极端：<strong>读操作完全不加锁（因此飞快），写操作则先把整个底层数组复制一份，在副本上改，改完用新数组原子替换旧引用。</strong>由于读的永远是一个"不会再变"的快照，读写互不干扰。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>CopyOnWriteArrayList.java</span><span>add 的写时复制</span></div>
+    <pre><span class="kw">public boolean</span> <span class="fn">add</span>(E e) {
+    <span class="fn">synchronized</span> (lock) {                    <span class="com">// 写之间才互斥，读不受影响</span>
+        <span class="typ">Object</span>[] es = <span class="fn">getArray</span>();
+        <span class="kw">int</span> len = es.length;
+        es = <span class="typ">Arrays</span>.<span class="fn">copyOf</span>(es, len + <span class="num">1</span>);   <span class="com">// ★ 复制一份新数组</span>
+        es[len] = e;
+        <span class="fn">setArray</span>(es);                        <span class="com">// 原子替换引用，读线程下一秒就看到</span>
+        <span class="kw">return</span> <span class="kw">true</span>;
+    }
+}</pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>别把 CopyOnWrite 当银弹。</strong>每次写都全量复制数组，<em>写多的场景性能灾难、内存翻倍</em>；而且读到的是"旧快照"，写入后其他线程的迭代器不会立刻看到新元素（弱一致性）。它只适合<strong>读远多于写</strong>的场景，最典型的就是"事件监听器列表""白名单配置"这类初始化后极少改动、却被高频遍历的数据。Spring 的事件监听器容器、很多框架的 Listener 列表内部就用它。
+  </div>
+
+  <h2>七、fail-fast vs 弱一致性迭代器</h2>
+  <p>为什么并发集合遍历时不像 <code>ArrayList</code> 那样抛 <code>ConcurrentModificationException</code>？因为它们用的是不同的迭代器策略，这是理解并发集合"安全边界"的关键对比：</p>
+  <table>
+    <tr><th>维度</th><th>fail-fast（普通集合）</th><th>弱一致性（并发集合）</th></tr>
+    <tr><td>代表</td><td><code>ArrayList</code> / <code>HashMap</code></td><td><code>ConcurrentHashMap</code> / <code>CopyOnWriteArrayList</code></td></tr>
+    <tr><td>遍历时被修改</td><td>立刻抛 <code>ConcurrentModificationException</code></td><td>不抛异常，正常遍历完</td></tr>
+    <tr><td>能否看到新改动</td><td>—（直接失败）</td><td>可能看到、也可能看不到，不保证</td></tr>
+    <tr><td>设计目的</td><td>尽早暴露"边遍历边改"的 bug</td><td>并发下的可用性优先于强一致</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>为什么并发集合选择"弱一致"？</strong>因为在真正的多线程环境下，"遍历的同时数据被别的线程改了"是<em>常态而非 bug</em>，若像 fail-fast 那样动不动抛异常，程序根本没法用。弱一致性迭代器基于某个时刻的数据视图工作，宁可"看不到最新修改"也不崩溃——这是<strong>用一致性换可用性</strong>的经典权衡，和分布式系统里的 CAP 取舍是同一种哲学。
+  </div>
+
+  <h2>八、性能直觉：锁粒度决定并发度</h2>
+  <p>这一整套并发容器进化的主线，其实就一句话：<strong>不断缩小锁的粒度</strong>。锁得越细，能同时干活的线程越多。</p>
+  <div class="formula">吞吐 <span class="hl">≈</span> 可并行操作数 <span class="hl">∝</span> 1 / 锁粒度</div>
+  <div class="bar">
+    <span style="width:15%;background:#ef4444;">Hashtable 全表锁</span>
+    <span style="width:30%;background:#fbbf24;">ArrayBlockingQueue 单锁</span>
+    <span style="width:25%;background:#60a5fa;">LinkedBlockingQueue 双锁</span>
+    <span style="width:30%;background:#4ade80;">ConcurrentHashMap 桶锁+CAS</span>
+  </div>
+  <p>从"整张表一把锁"（Hashtable），到"队列一把锁"（ArrayBlockingQueue），到"入队出队各一把锁"（LinkedBlockingQueue），再到"每个桶一把锁 + 无锁 CAS"（ConcurrentHashMap），最后到"完全无锁"（ConcurrentLinkedQueue 基于 CAS）——每一步都在把"必须串行"的范围压小，让更多线程真正并行。理解了这条主线，你就能预判任何一个并发容器大概快在哪、慢在哪。</p>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong><strong>阻塞队列 = 线程安全的缓冲区 + 满/空自动阻塞</strong>，把生产者-消费者从"裸写 wait/notify 的地狱"简化成 <code>put</code>/<code>take</code> 两个方法；它的底层是 <code>ReentrantLock + Condition</code>，条件判断永远用 <code>while</code>。选型三条铁律：<strong>① 生产者-消费者优先有界的 <code>ArrayBlockingQueue</code>，绝不裸用无界 <code>LinkedBlockingQueue</code>（会 OOM）；② 满了用 <code>put</code> 阻塞、用 <code>offer</code> 降级，别用会抛异常的 <code>add</code>；③ 共享数据结构选并发集合而非 <code>Vector</code>/<code>Hashtable</code>，读多写少用 <code>CopyOnWriteArrayList</code>，通用 Map 用 <code>ConcurrentHashMap</code></strong>。它们的迭代器是弱一致的，不抛 <code>ConcurrentModificationException</code>——这不是 bug，是并发下"可用性优先"的刻意设计。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="20-synchronized与volatile基础.html" class="nav-btn">← synchronized 与 volatile 基础</a>
+    <a href="22-线程池与CallableFuture.html" class="nav-btn next">线程池与 Callable、Future →</a>
+  </div>
+</div>
+</body>
+</html>

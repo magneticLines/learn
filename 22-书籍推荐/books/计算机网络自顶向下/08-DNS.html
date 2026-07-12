@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DNS：层次命名、递归迭代查询、缓存</title>
+  <style>
+    :root { --c: #38bdf8; --c-dim: #164e63; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">计算机网络：自顶向下方法</a> / DNS：层次命名、递归迭代查询、缓存</div>
+  <div class="hero">
+    <div class="tag">计算机网络 · 第2章·应用层</div>
+    <h1>DNS：层次命名、递归迭代查询、缓存</h1>
+    <p>互联网的电话簿——把人类记得住的名字，翻译成机器认得的地址，还要撑住每秒千万次查询而不崩。</p>
+  </div>
+
+  <h2>一、DNS 解决了什么问题：一张全世界共用的电话簿</h2>
+  <p>机器之间靠 <code>IP 地址</code> 通信（如 <code>142.250.72.14</code>），但人类记不住一串数字，只想记 <code>www.google.com</code>。<strong>DNS（Domain Name System，域名系统）</strong> 干的就是这件事：把<em>域名</em>翻译成<em>IP 地址</em>。它是一个运行在应用层、由无数服务器协作构成的<strong>分布式数据库</strong>，同时也是一个查询这个数据库的<strong>应用层协议</strong>。</p>
+
+  <div class="callout info">
+    <strong>历史小考据：为什么不用一个大文件？</strong>ARPANET 早期，全网主机名到 IP 的映射就存在一个 <code>HOSTS.TXT</code> 文件里，由斯坦福统一维护，各主机定期下载。主机一多，这套<em>集中式</em>方案立刻崩了：单点故障、维护量爆炸、命名冲突、更新延迟。DNS 就是它的"分布式 + 层次化"替代品——<strong>没有任何一台服务器掌握全部映射</strong>。（你今天电脑里的 <code>/etc/hosts</code> 正是那份古董文件的遗骸。）
+  </div>
+
+  <div class="callout tip">
+    <strong>建立联系：DNS 是"典型的关键基础服务"。</strong>它不像 HTTP 那样直接面向用户，却被几乎所有应用<em>间接</em>依赖——你 <code>new Socket("api.xx.com", 443)</code>、浏览器打开网页、微服务互相调用，第一步几乎都是 DNS 解析。所以后面会看到：DNS 慢，一切都慢；DNS 挂，半个互联网跟着挂（2016 年 Dyn 被 DDoS，Twitter/GitHub 集体宕机就是例证）。
+  </div>
+
+  <h2>二、层次命名：域名是一棵"从右往左"读的树</h2>
+  <p>DNS 的第一个精妙设计是<strong>层次化命名空间</strong>。把域名想象成一棵倒挂的树，最右边的点 <code>.</code> 是根（root），越往左越具体。<code>www.cs.umass.edu</code> 读作：根 → <code>edu</code> 顶级域 → <code>umass</code> → <code>cs</code> → 主机 <code>www</code>。</p>
+
+  <div class="diagram">                         .   (根 root，逻辑上唯一)
+          ┌──────────────┼───────────────┐
+         com            edu              cn        ← 顶级域 TLD
+       ┌──┴───┐          │            ┌───┴───┐
+    google  amazon    umass         edu     com    ← 二级域(可注册)
+       │                 │            │
+      www              cs …        tsinghua
+                         │
+                        www  → 完整域名 www.cs.umass.edu</div>
+
+  <p>为什么要分层？因为分层就能<strong>分权、分而治之</strong>：根只需要知道"各个 TLD 归谁管"，<code>.edu</code> 的服务器只需知道"<code>umass.edu</code> 归谁管"，而 <code>umass</code> 自己维护 <code>cs.umass.edu</code>、<code>www</code> 这些主机记录。每一级只对下一级负责，管理权层层下放——这和<a href="04-协议分层与OSI.html">协议分层</a>、和公司的组织架构、和文件系统的目录树，是<em>同一种</em>治理复杂度的思想。</p>
+
+  <h3>对应的服务器也是四层结构</h3>
+  <table>
+    <tr><th>服务器角色</th><th>职责</th><th>由谁运营</th></tr>
+    <tr><td><strong>根 DNS 服务器</strong></td><td>不知道具体域名的 IP，只告诉你"某个 TLD 该去问谁"</td><td>13 个逻辑根（<code>a~m.root-servers.net</code>），实际由 anycast 部署成上千台物理机</td></tr>
+    <tr><td><strong>TLD 服务器</strong></td><td>管理某个顶级域（<code>com</code>/<code>org</code>/<code>cn</code>…）下所有二级域的权威服务器地址</td><td>如 Verisign 管 <code>.com</code></td></tr>
+    <tr><td><strong>权威 DNS 服务器</strong></td><td>存放某组织自己域名的<em>最终</em>记录（真正的 IP）</td><td>组织自建，或托管给云厂商（Route 53、Cloudflare 等）</td></tr>
+    <tr><td><strong>本地 DNS 服务器</strong><br>(递归解析器)</td><td>不在层次树里，是主机的"代理人"，替你跑完整个查询流程并缓存结果</td><td>ISP / 公司，或公共 DNS（<code>8.8.8.8</code>、<code>114.114.114.114</code>）</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>13 个根服务器 = 只有 13 台机器？错。</strong>13 是"逻辑标识"数量（受早期 UDP 512 字节响应上限约束）。每一个都通过 <strong>Anycast（任播）</strong> 复制成全球成百上千个物理节点，路由会把你的请求送到最近的那台。所以"打掉 13 台就断网"是彻底的误解。
+  </div>
+
+  <h2>三、递归查询 vs 迭代查询：谁替谁跑腿？</h2>
+  <p>这是本节最核心、也是面试最爱问的一点。DNS 查询有两种"责任模式"：</p>
+  <ul>
+    <li><strong>递归查询（recursive）</strong>：我把问题<em>全权委托</em>给你，你不查到最终答案不许回来。"帮我查到底。"</li>
+    <li><strong>迭代查询（iterative）</strong>：我问你，你不知道就<em>把线索给我</em>，我自己再去问下一个。"我不管，但你可以去问它。"</li>
+  </ul>
+  <p>现实中最典型的组合是：<strong>主机 → 本地 DNS 用递归</strong>（你只想要答案，不想自己跑腿），<strong>本地 DNS → 根/TLD/权威 用迭代</strong>。下面用课本经典例子走一遍：主机 <code>cis.poly.edu</code> 想解析 <code>gaia.cs.umass.edu</code>。</p>
+
+  <div class="diagram">                                        ┌───────────────┐
+                             ② 迭代 ─────▶│  根 DNS 服务器  │
+                       ┌───────────────── │  "去问 edu"     │◀── ③
+                       │ ③ 返回 edu TLD 地址└───────────────┘
+                       │                  ┌───────────────┐
+   ┌──────────┐        │         ④ 迭代 ──▶│  TLD 服务器 edu │
+   │  主机     │        ▼   ⑤ 返回umass权威 │  "去问 umass"   │◀── ⑤
+   │cis.poly  │  ① 递归 ┌──────────────┐    └───────────────┘
+   │   .edu   │────────▶│  本地 DNS     │   ┌───────────────┐
+   │          │◀────────│ (递归解析器)  │──▶│  权威 DNS 服务器 │ ⑥迭代
+   └──────────┘  ⑧ 返回IP└──────────────┘◀──│  dns.umass.edu  │
+                              ▲            └───────────────┘ ⑦返回
+                              └── ⑦ gaia = 128.119.245.12 ──┘</div>
+
+  <p>整个过程一共 8 条报文：① 主机把"帮我查到底"的<em>递归</em>请求丢给本地 DNS；② ~ ⑦ 本地 DNS 拿着这个任务，<em>迭代</em>地依次问根、TLD、权威，每一步只拿到"下一跳该问谁"，直到权威服务器吐出真正的 IP；⑧ 本地 DNS 把答案回给主机。</p>
+
+  <div class="callout warn">
+    <strong>陷阱 / 高频考点：为什么本地 DNS 对上游用迭代，而不是让根服务器也递归帮忙查到底？</strong>因为如果每台本地 DNS 都要求根服务器"递归查到底"，根服务器就得替全世界跑完整个流程，<em>瞬间被压垮</em>。迭代把跑腿的活留给数量众多、分散的本地 DNS，让顶层服务器只做"指路"这一件轻量的事。<strong>这是一个用架构分摊负载的经典权衡，不是技术限制。</strong>协议本身两种模式都支持，选哪种是"策略"问题。
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">递归查询（主机 → 本地 DNS）</div>
+      <pre>问："www.a.com 的 IP？"
+答："176.32.103.205"   ← 直接给终值
+· 客户端省心，一问一答
+· 跑腿压力全压在被问方
+· 用于 主机↔本地DNS</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">迭代查询（本地 DNS → 上游）</div>
+      <pre>问 根 ："www.a.com 的 IP？"
+答    ："我不知道，去问 .com"  ← 只给线索
+问 TLD："…？" 答："去问 a.com 权威"
+问 权威："…？" 答："176.32.103.205"
+· 分散负载，保护顶层服务器</pre>
+    </div>
+  </div>
+
+  <h2>四、缓存：DNS 能扛住互联网流量的真正秘密</h2>
+  <p>如果每次解析都从根跑一遍，根服务器和你的体验都会崩。<strong>缓存（caching）</strong> 才是让 DNS 实际可用的关键：任何 DNS 服务器只要拿到一条映射，就会把它<em>暂存</em>一段时间，下次直接命中，不再向上查询。</p>
+  <p>缓存多久？由记录自带的 <strong>TTL（Time To Live，生存时间，单位秒）</strong> 决定。TTL 一到，缓存条目就被丢弃。绝大多数热门域名的记录，在本地 DNS 里几乎<em>永远是热的</em>——所以你日常访问网站，DNS 这一步通常只花几毫秒。</p>
+
+  <div class="formula">
+    未命中：解析时延 ≈ <span class="hl">RTT<sub>local</sub></span> + RTT<sub>root</sub> + RTT<sub>TLD</sub> + RTT<sub>权威</sub><br>
+    命 中：解析时延 ≈ <span class="hl">RTT<sub>local</sub></span>  （其余全省）
+  </div>
+
+  <div class="bar">
+    <span style="width:12%;background:#4ade80">命中 ~2ms</span>
+    <span style="width:88%;background:#f97316">未命中 ~60ms+（跨越根/TLD/权威多次 RTT）</span>
+  </div>
+
+  <div class="callout tip">
+    <strong>缓存也缓存"坏消息"——负缓存（negative caching）。</strong>如果一个域名<em>不存在</em>（NXDOMAIN），这个"查无此名"的结果也会被缓存一小段时间，避免有人反复查一个错域名把上游打爆。这在防御拼写错误型攻击、以及排查"域名明明建好了却还解析不到"时很关键。
+  </div>
+
+  <div class="callout warn">
+    <strong>陷阱：TTL 是把双刃剑，切换服务器前务必提前调低。</strong>TTL 设得大（如 <code>86400</code> 秒 = 1 天）→ 缓存命中率高、上游压力小，但你一旦改了 IP，<em>老 IP 会被全世界缓存整整一天</em>，用户仍打到已下线的旧机器。TTL 设得小（如 <code>60</code> 秒）→ 切换快、故障转移灵敏，但查询量激增。<strong>正确做法：计划迁移前几天先把 TTL 调低，迁移完成、观察稳定后再调回。</strong>
+  </div>
+
+  <h2>五、常见资源记录（RR）：DNS 里到底存了什么</h2>
+  <p>DNS 数据库的每一条记录叫 <strong>资源记录（Resource Record）</strong>，格式是四元组 <code>(Name, Value, Type, TTL)</code>。<code>Type</code> 决定了 <code>Name</code> 和 <code>Value</code> 该怎么解读——这是理解 DNS 的最后一块拼图。</p>
+
+  <table>
+    <tr><th>类型</th><th>Name → Value 含义</th><th>典型用途</th></tr>
+    <tr><td><code>A</code></td><td>主机名 → IPv4 地址</td><td>最常见，域名解析到 IPv4</td></tr>
+    <tr><td><code>AAAA</code></td><td>主机名 → IPv6 地址</td><td>解析到 IPv6</td></tr>
+    <tr><td><code>NS</code></td><td>域 → 该域权威服务器的<em>主机名</em></td><td>层次委派的"指针"，迭代查询靠它</td></tr>
+    <tr><td><code>CNAME</code></td><td>别名 → 规范名（canonical name）</td><td>把多个名字指向同一个真实域名，便于统一改 IP</td></tr>
+    <tr><td><code>MX</code></td><td>域 → 邮件服务器的规范名</td><td>邮件路由（SMTP 靠它找收信服务器）</td></tr>
+    <tr><td><code>TXT</code></td><td>域 → 任意文本</td><td>域名归属验证、SPF/DKIM 反垃圾邮件</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>陷阱：根域名（apex/裸域）上不能放 CNAME。</strong>RFC 规定 <code>CNAME</code> 记录不能与同名的其它记录（如 <code>SOA</code>、<code>NS</code>）共存，而裸域 <code>example.com</code> 必然带有 <code>SOA</code>/<code>NS</code>。所以你没法把 <code>example.com</code> 直接 CNAME 到 <code>xxx.cloudfront.net</code>——只能给 <code>www.example.com</code> 这种子域用 CNAME，或改用云厂商的 <code>ALIAS</code>/<code>ANAME</code> 这类私有扩展。很多人第一次配 CDN 都栽在这。
+  </div>
+
+  <h2>六、协议细节 + 代码视角</h2>
+  <p>DNS 报文默认跑在 <strong>UDP 端口 53</strong> 上——因为一次查询就是"小请求 + 小响应"，用 UDP 省去 TCP 三次握手，快。但当响应过大（超过 512 字节、DNSSEC、或做区域传送 zone transfer）时，会<em>回退到 TCP</em>。这是"UDP 为主、TCP 兜底"的经典设计。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>命令行：用 dig 观察一次真实解析</span><span>shell</span></div>
+    <pre><span class="com"># +trace 让 dig 模拟本地 DNS，从根开始逐级迭代查询</span>
+$ dig www.cs.umass.edu
+
+<span class="com">;; ANSWER SECTION:</span>
+www.cs.umass.edu.   <span class="num">21599</span>  IN  <span class="typ">A</span>   <span class="lit">128.119.240.84</span>
+<span class="com">#                   ↑TTL(秒)     ↑Type    ↑Value(IP)</span>
+<span class="com"># 再查一次，TTL 会变小 —— 说明命中了缓存、且在倒计时</span></pre>
+  </div>
+
+  <p>作为 Java 程序员，你几乎从不手写 DNS 报文——<code>java.net.InetAddress</code> 封装了一切。当你解析域名时，JVM 委托操作系统 resolver 完成上面整套流程：</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>DnsDemo.java — InetAddress 背后就是一次 DNS 解析</span><span>Java</span></div>
+    <pre><span class="typ">InetAddress</span> addr = <span class="typ">InetAddress</span>.<span class="fn">getByName</span>(<span class="str">"www.cs.umass.edu"</span>);
+<span class="typ">System</span>.out.<span class="fn">println</span>(addr.<span class="fn">getHostAddress</span>());  <span class="com">// 128.119.240.84</span>
+
+<span class="com">// 一个域名可能有多条 A 记录（DNS 轮询做负载均衡）</span>
+<span class="kw">for</span> (<span class="typ">InetAddress</span> a : <span class="typ">InetAddress</span>.<span class="fn">getAllByName</span>(<span class="str">"www.google.com"</span>)) {
+    <span class="typ">System</span>.out.<span class="fn">println</span>(a.<span class="fn">getHostAddress</span>());
+}</pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>JDK 高频大坑：JVM 自己还有一层 DNS 缓存，且默认策略常年坑人。</strong><code>InetAddress</code> 在<em>进程内</em>缓存解析结果，由 <code>java.security</code> 里的 <code>networkaddress.cache.ttl</code> 控制。历史上，一旦安装了 <code>SecurityManager</code>，默认值是 <code>-1</code>（<strong>永久缓存，进程内绝不刷新</strong>）。后果：如果你连的是"域名背后 IP 会漂移"的服务（AWS RDS 故障转移、ELB、K8s Service），JVM 会死抱着一个已经失效的旧 IP 直到重启——即使 DNS 早就更新了。<strong>排查这类"重启就好"的诡异连接故障，先看这个属性。</strong>
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 反例：放任 JVM 无限缓存旧 IP</div>
+      <pre>// 什么都不配，靠默认
+// SecurityManager 下 ttl = -1 → 永久缓存
+InetAddress.getByName("db.rds.aws.com");
+// RDS 主备切换后 IP 变了
+// 应用仍连旧 IP → 连接全部失败
+// "重启 JVM 才恢复" ✗ 生产事故</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 正例：显式设定一个合理的正/负缓存 TTL</div>
+      <pre>// 启动早期设置（或写进 java.security）
+Security.setProperty(
+    "networkaddress.cache.ttl", "30");        // 正缓存 30s
+Security.setProperty(
+    "networkaddress.cache.negative.ttl", "5");// 负缓存 5s
+// 30s 后重新解析 → 自动跟上 IP 漂移 ✓
+// 既不打爆 DNS，又能及时故障转移</pre>
+    </div>
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>DNS 靠<strong>三招</strong>撑起了整个互联网的命名。① <em>层次命名</em>——把一棵域名树拆给根/TLD/权威分级管理，谁都不必掌握全局；② <em>递归+迭代</em>——主机把活递归甩给本地 DNS，本地 DNS 再迭代地"逐级问路"，把负载从顶层服务器分摊开；③ <em>缓存 + TTL</em>——绝大多数查询命中缓存、只花几毫秒，TTL 则在"新鲜度"和"查询压力/切换速度"之间做权衡。记住这三点，再叠加"UDP:53 兜底 TCP""JVM 自带一层缓存要小心"两个工程细节，DNS 就通了。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="07-FTP.html" class="nav-btn">← FTP</a>
+    <a href="09-Socket编程.html" class="nav-btn next">Socket 编程 →</a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>安全初始化与双重检查锁（DCL）</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / 安全初始化与双重检查锁（DCL）</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第12-16章·JMM与测试</div>
+    <h1>安全初始化与双重检查锁（DCL）</h1>
+    <p>DCL 是被写进面试题的"经典反面教材又经典正面教材"——搞懂它为什么必须加 volatile，你就真正看懂了 JMM 里"半初始化对象"的幽灵。</p>
+  </div>
+
+  <h2>一、问题的起点：延迟初始化</h2>
+  <p>很多对象昂贵又不一定用得上——一个几十 MB 的缓存、一条数据库连接池、一个重量级的解析器。我们希望它<strong>第一次被用到时才创建</strong>，这就是<em>延迟初始化（lazy initialization）</em>。它省内存、加快启动，代价是把"创建"这个动作从确定的类加载期，挪到了不确定的运行期——于是多个线程可能<strong>同时</strong>撞上"还没创建"这个窗口。</p>
+
+  <div class="callout info">
+    <strong>先厘清两条路：</strong>如果对象一定会用、且创建不贵，直接用<em>饿汉式</em>（<code>static final</code> 字段，类加载即创建）——它天然线程安全，根本不需要 DCL。只有当你确实需要<em>又懒又线程安全</em>时，才会走进 DCL 或 Holder 这些讨论。别一上来就套 DCL，那是把简单问题复杂化。
+  </div>
+
+  <h2>二、朴素懒汉：一个教科书级的竞态</h2>
+  <p>最直觉的写法，恰恰是错的。它踩中了我们在《什么是线程安全性》里讲过的<strong>先检查后执行（check-then-act）</strong>竞态：</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">✗ 朴素懒汉，非线程安全</div>
+      <pre>class Singleton {
+  private static Singleton inst;
+
+  static Singleton get() {
+    if (inst == null) {       // 检查
+      inst = new Singleton(); // 执行
+    }
+    return inst;
+  }
+}
+// 两个线程同时看到 inst==null
+// → 各 new 一次，单例被破坏</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">✓ 同步方法，正确但慢</div>
+      <pre>class Singleton {
+  private static Singleton inst;
+
+  static synchronized
+  Singleton get() {          // 整个方法加锁
+    if (inst == null) {
+      inst = new Singleton();
+    }
+    return inst;
+  }
+}
+// 正确，但每次读都要抢锁</pre>
+    </div>
+  </div>
+
+  <p>右边的 <code>synchronized</code> 方法确实正确，但它的代价刺眼：单例<strong>只在第一次</strong>需要初始化，之后的成千上万次调用都只是"取一个已存在的引用"，却仍要各自抢一次锁、走一次内存屏障。热点路径上被一把用不上的锁拖慢——这正是 DCL 想解决的痛点。</p>
+
+  <h2>三、双重检查锁：给"第一次"单独加锁</h2>
+  <p>DCL（Double-Checked Locking）的思路很聪明：<strong>先无锁地检查一次，只有当对象确实还没创建时才加锁；进了锁再检查第二次，防止两个线程都通过了第一次检查后重复创建。</strong>这样一旦对象建好，后续调用在第一次检查处就返回了，完全不碰锁。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Singleton.java</span><span>正确的 DCL —— 注意 volatile</span></div>
+    <pre><span class="kw">class</span> <span class="typ">Singleton</span> {
+    <span class="com">// ★ volatile 不可省略，原因见第四节</span>
+    <span class="kw">private</span> <span class="kw">static</span> <span class="kw">volatile</span> <span class="typ">Singleton</span> instance;
+
+    <span class="kw">private</span> <span class="fn">Singleton</span>() { <span class="com">/* 昂贵的初始化 */</span> }
+
+    <span class="kw">static</span> <span class="typ">Singleton</span> <span class="fn">getInstance</span>() {
+        <span class="kw">if</span> (instance == <span class="kw">null</span>) {              <span class="com">// ① 第一次检查（无锁，快速路径）</span>
+            <span class="kw">synchronized</span> (<span class="typ">Singleton</span>.<span class="kw">class</span>) {
+                <span class="kw">if</span> (instance == <span class="kw">null</span>) {      <span class="com">// ② 第二次检查（持锁，防重复创建）</span>
+                    instance = <span class="kw">new</span> <span class="typ">Singleton</span>();  <span class="com">// ③ 发布引用</span>
+                }
+            }
+        }
+        <span class="kw">return</span> instance;
+    }
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>两次检查各司其职：</strong>第 ① 次检查是<em>性能优化</em>——绝大多数调用发生在对象已就绪之后，让它们无锁直接返回。第 ② 次检查是<em>正确性保证</em>——线程 A、B 可能都通过了 ① 号检查排队进锁，A 建好后 B 拿到锁，若不再查一次，B 会再 new 一个。少了任何一次检查，DCL 都不成立。
+  </div>
+
+  <h2>四、致命细节：为什么必须 volatile？</h2>
+  <p>这是 DCL 全部精髓所在，也是面试必问。很多人写 DCL 时把 <code>volatile</code> 去掉，程序在测试里跑得好好的，上了生产才偶发崩溃——因为祸根是一个只在特定 CPU / JIT 优化下才显形的<strong>重排序</strong>问题。</p>
+
+  <p>看似原子的一行 <code>instance = new Singleton()</code>，编译成字节码后其实是三步（对应 <code>new</code> / <code>invokespecial &lt;init&gt;</code> / <code>putstatic</code>）：</p>
+
+  <div class="diagram">instance = new Singleton()  实际拆成三步：
+
+  ① allocate   分配内存，字段先置零值（此时对象"存在"但没初始化）
+  ② &lt;init&gt;     执行构造函数，把字段设为真正的初始值
+  ③ publish    把 instance 引用指向这块内存
+
+  正常顺序：  ① → ② → ③   （构造完再发布，安全）
+  重排之后：  ① → ③ → ②   （先发布再构造！JMM 允许，因为对单线程结果无影响）
+                     ▲
+                     └── 危险窗口：instance 已非 null，但对象还没构造完</div>
+
+  <p>JMM 允许把 ② 和 ③ 重排——在<em>单线程视角</em>里，先赋引用还是先构造，最终结果一样，所以编译器 / CPU 有权这么优化。但在多线程下就出事了：</p>
+
+  <div class="diagram">时间线（无 volatile，发生了 ①→③→② 重排）：
+
+  线程 A                          线程 B
+  ─────────────────────           ─────────────────────
+  ① 分配内存
+  ③ instance = 那块地址  ──────►   ① if (instance == null)  → false！
+                                   （看到非 null，跳过锁）
+  ② 执行构造函数...                return instance;
+                                   ↓
+                                   使用一个"半初始化"对象
+                                   字段还是零值 → NPE / 脏数据</div>
+
+  <div class="callout warn">
+    <strong>陷阱一：没有 volatile 的 DCL 会返回"半初始化对象"。</strong>线程 B 在第一次检查里看到 <code>instance != null</code> 就直接返回并使用它，可此刻线程 A 的构造函数还没跑完，对象的字段仍是默认零值（引用为 <code>null</code>、int 为 <code>0</code>）。B 拿着这个"空壳"去调方法，轻则读到脏字段，重则 <code>NullPointerException</code>。这种 bug<strong>极难复现</strong>——它依赖重排序真实发生，只在高并发、特定 JIT/CPU 下偶发。
+  </div>
+
+  <p>加上 <code>volatile</code> 后，问题从两个层面被堵死：</p>
+  <ul>
+    <li><strong>禁止重排（有序性）：</strong>对 volatile 变量 <code>instance</code> 的写（③）之前会插入 <em>StoreStore</em> 屏障，逼着构造函数里对字段的所有普通写（②）必须<strong>先于</strong> ③ 完成刷回主内存——② 再也不能被挪到 ③ 之后。</li>
+    <li><strong>建立 happens-before（可见性）：</strong>线程 A 对 volatile 的写 hb 线程 B 对它的读；由传递性，A 在构造函数里对字段的初始化，对读到非空引用的 B <strong>完全可见</strong>。这正是上一篇讲的 volatile "搭便车"发布对象。</li>
+  </ul>
+
+  <div class="formula">② 构造 <span class="hl">hb</span> ③ volatile写 <span class="hl">hb</span> ① volatile读 <span class="hl">hb</span> 使用<br><span style="font-size:0.9rem;color:#64748b">构造完成 → 对读到引用的线程完全可见</span></div>
+
+  <div class="callout warn">
+    <strong>陷阱二：Java 5 之前，加了 volatile 的 DCL 也是坏的。</strong>网上那篇著名的《Double-Checked Locking is Broken》正是老内存模型时代的产物。JSR-133（Java 5）<strong>重写</strong>了内存模型之前，旧 <code>volatile</code> 语义很弱——它不禁止 volatile 写与其前面普通写之间的重排，所以修不好半初始化问题。<em>只有 Java 5 及以后</em>，volatile 有了完整的 acquire/release 屏障语义，volatile 版 DCL 才真正成立。今天用 JDK 8/11/17，放心用；但要知道这段历史，别在旧 JDK 上照搬。
+  </div>
+
+  <h2>五、更优雅的替代：静态内部类 Holder</h2>
+  <p>DCL 能用，但它把 JMM 的复杂度暴露给了每个读者——一不小心漏个 <code>volatile</code> 就埋雷。有没有既懒加载、又线程安全、还不用自己操心屏障的写法？有，而且更简单：<strong>静态内部类持有者（Initialization-on-demand Holder）</strong>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Singleton.java</span><span>Holder 模式 —— 把线程安全外包给 JVM</span></div>
+    <pre><span class="kw">class</span> <span class="typ">Singleton</span> {
+    <span class="kw">private</span> <span class="fn">Singleton</span>() {}
+
+    <span class="com">// 内部类不会随外部类加载而加载</span>
+    <span class="kw">private</span> <span class="kw">static</span> <span class="kw">class</span> <span class="typ">Holder</span> {
+        <span class="kw">static</span> <span class="kw">final</span> <span class="typ">Singleton</span> INSTANCE = <span class="kw">new</span> <span class="typ">Singleton</span>();
+    }
+
+    <span class="kw">static</span> <span class="typ">Singleton</span> <span class="fn">getInstance</span>() {
+        <span class="kw">return</span> <span class="typ">Holder</span>.INSTANCE;  <span class="com">// 首次访问才触发 Holder 初始化</span>
+    }
+}</pre>
+  </div>
+
+  <div class="callout info">
+    <strong>它凭什么线程安全又懒加载？</strong>靠的是 <em>JVM 的类初始化机制</em>（JLS §12.4）。<code>Holder</code> 作为一个独立的类，只有在<strong>第一次被主动使用</strong>（这里是读 <code>Holder.INSTANCE</code>）时才会被加载和初始化——这就是"懒"。而 JVM 规范强制要求：类的初始化过程（执行 <code>&lt;clinit&gt;</code>）由一把<strong>初始化锁</strong>保护，<em>保证在多线程下 <code>&lt;clinit&gt;</code> 只会被执行恰好一次</em>，其余线程会阻塞等待完成。线程安全由 JVM 用类初始化锁替你实现了，你一行同步代码、一个 volatile 都不用写——把复杂度外包给了语言规范。
+  </div>
+
+  <h2>六、终极简洁：枚举单例</h2>
+  <p>《Effective Java》第 3 条明确推荐：<strong>单元素枚举是实现单例的最佳方式</strong>。它不仅线程安全（同样靠类初始化锁），还免费解决了 DCL / Holder 都要额外操心的两个问题——<em>反射攻击</em>和<em>序列化破坏</em>。</p>
+
+  <div class="code-block">
+    <div class="cb-header"><span>Singleton.java</span><span>枚举单例 —— 天然防反射 / 防序列化</span></div>
+    <pre><span class="kw">enum</span> <span class="typ">Singleton</span> {
+    INSTANCE;
+
+    <span class="kw">public</span> <span class="kw">void</span> <span class="fn">doWork</span>() { <span class="com">/* 业务方法 */</span> }
+}
+
+<span class="com">// 使用：Singleton.INSTANCE.doWork();</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>为什么枚举能防反射和序列化？</strong>JVM 从底层禁止用反射 <code>newInstance()</code> 创建枚举实例（会抛 <code>IllegalArgumentException</code>）；而枚举的序列化是特殊处理的——反序列化时按名字查找已有实例，而不是 new 一个新的。DCL 和 Holder 若不额外重写 <code>readResolve()</code>、加防护，都可能被反射或反序列化"造出第二个实例"，破坏单例。枚举把这些坑一次性堵上了。
+  </div>
+
+  <h2>七、四种方案横向对比</h2>
+  <table>
+    <tr><th>方案</th><th>懒加载</th><th>线程安全靠什么</th><th>要写 volatile?</th><th>防反射/序列化</th></tr>
+    <tr><td><strong>饿汉 <code>static final</code></strong></td><td>✗ 类加载即建</td><td>类初始化锁</td><td>否</td><td>✗</td></tr>
+    <tr><td><strong>同步方法</strong></td><td>✓</td><td><code>synchronized</code></td><td>否</td><td>✗</td></tr>
+    <tr><td><strong>DCL</strong></td><td>✓</td><td>双检 + <code>synchronized</code> + volatile</td><td><strong>是（必须）</strong></td><td>✗</td></tr>
+    <tr><td><strong>静态内部类 Holder</strong></td><td>✓</td><td>类初始化锁</td><td>否</td><td>✗</td></tr>
+    <tr><td><strong>枚举</strong></td><td>✗（随枚举类加载）</td><td>类初始化锁</td><td>否</td><td><strong>✓</strong></td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>选型建议：</strong>需要懒加载 → 首选 <strong>静态内部类 Holder</strong>（简单、无 volatile 心智负担）；不在乎懒加载、追求最健壮 → 用<strong>枚举</strong>；只有当你要<em>延迟初始化一个实例字段（不是静态单例）</em>，比如某个对象内部的懒加载缓存，Holder 用不上时，才轮到 <strong>DCL</strong>——这也是《JCIP》里 DCL 唯一还值得用的场景。作者原话是：DCL 曾是个流行技巧，但如今"已经被广泛废弃"，因为其收益（避免几次无竞争的锁开销）已经很微小。
+  </div>
+
+  <h2>八、串联：JDK 与 Spring 里的影子</h2>
+  <p>安全初始化不是屠龙之技，你天天用的框架里全是它的身影：</p>
+  <ul>
+    <li><strong>JDK 里的 DCL：</strong><code>String.hashCode()</code> 缓存了哈希值到一个非 volatile 的 <code>hash</code> 字段——它用的是"无害竞态"变体：即使重复计算也没关系，且 <code>int</code> 写本身原子，故不需要 volatile。这是与 DCL 相对的另一种思路：<em>当重复初始化无害且结果是原子值时，连锁都可以省</em>。</li>
+    <li><strong>Spring 单例：</strong>Bean 的单例语义由容器保证，而非你写 DCL。<code>DefaultSingletonBeanRegistry.getSingleton()</code> 内部用 <code>synchronized (this.singletonObjects)</code> 保护创建过程，并通过"三级缓存"里的早期引用来处理循环依赖——本质仍是"检查—创建—发布"，只是搬到了容器层。</li>
+    <li><strong>final 字段的安全发布：</strong>如果单例内部字段都是 <code>final</code>，JMM 给了一条特殊保证——<em>构造函数中对 final 字段的写，在对象引用发布给其他线程时一定可见</em>，无需额外同步。这是《不变性》一篇里不可变对象能被自由共享的根基，也和这里"如何把一个构造好的对象安全交出去"是同一个主题。</li>
+  </ul>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong>DCL 的全部难点浓缩成一句——<code>instance = new Singleton()</code> 不是原子的，它的"构造对象"与"发布引用"两步可能被<strong>重排</strong>，导致别的线程拿到<em>非 null 但没构造完</em>的半成品；<code>volatile</code> 用内存屏障禁止这次重排、并借 happens-before 把构造结果安全发布出去，所以在 DCL 里<strong>不可省略</strong>（且仅在 Java 5+ 才有效）。但更重要的是记住：<em>大多数时候你根本不该手写 DCL</em>——需要懒加载用<strong>静态内部类 Holder</strong>，追求健壮用<strong>枚举</strong>，把线程安全这件苦差事外包给 JVM 的类初始化锁，远比自己和 JMM 的重排序幽灵搏斗更靠谱。这也把《JMM 与 happens-before》的理论，落到了"如何安全地把一个对象交给多个线程"这个最实际的问题上。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="25-Java内存模型JMM.html" class="nav-btn">← Java 内存模型（JMM）</a>
+    <a href="27-并发测试.html" class="nav-btn next">并发测试 →</a>
+  </div>
+</div>
+</body>
+</html>

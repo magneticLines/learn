@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Condition：比 wait/notify 更灵活的等待通知</title>
+  <style>
+    :root { --c: #f89820; --c-dim: #7c4a10; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background: #0f1117; color: #e2e8f0; padding: 48px 20px 80px; line-height: 1.8; }
+    .page { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { font-size: 0.78rem; color: #334155; margin-bottom: 32px; }
+    .breadcrumb a { color: #475569; text-decoration: none; } .breadcrumb a:hover { color: #94a3b8; }
+    .hero { margin-bottom: 40px; }
+    .hero .tag { font-size: 0.72rem; color: var(--c); border: 1px solid var(--c-dim); border-radius: 4px; padding: 2px 8px; margin-bottom: 12px; display: inline-block; }
+    .hero h1 { font-size: 1.6rem; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .hero p { color: #64748b; font-size: 0.9rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--c); margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid var(--c); }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; } em { color: #cbd5e1; font-style: normal; }
+    .callout { border-radius: 8px; padding: 14px 16px; font-size: 0.85rem; margin: 16px 0; border-left: 3px solid; line-height: 1.75; }
+    .callout.info { background: #172554; border-color: #3b82f6; color: #93c5fd; }
+    .callout.warn { background: #422006; border-color: #f97316; color: #fdba74; }
+    .callout.tip { background: #1f3528; border-color: #4ade80; color: #86efac; }
+    .callout.key { background: #13151f; border-color: var(--c); color: #cbd5e1; }
+    .callout strong { color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 16px 0; }
+    th { background: #252840; color: #94a3b8; font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid #2d3148; }
+    td { padding: 9px 14px; border: 1px solid #1e2030; color: #94a3b8; vertical-align: top; }
+    tr:nth-child(even) td { background: #13151f; }
+    td code, th code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; font-size: 0.82rem; color: #e2e8f0; }
+    p code, li code { background: #1e2030; border: 1px solid #2d3148; padding: 1px 6px; border-radius: 4px; font-family: Consolas,monospace; font-size: 0.82rem; color: var(--c); }
+    .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
+    .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
+    .code-block pre { padding: 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.7; font-family: "Fira Code","Cascadia Code",Consolas,monospace; }
+    .kw { color: #c084fc; } .str { color: #86efac; } .num { color: #fbbf24; } .com { color: #64748b; } .fn { color: #60a5fa; } .punct { color: #8b95a8; } .var { color: #e2e8f0; } .typ { color: #5eead4; } .lit { color: #fb923c; }
+    hr { border: none; border-top: 1px solid #1e2030; margin: 40px 0; }
+    ul, ol { color: #94a3b8; font-size: 0.9rem; margin: 12px 0 12px 24px; } li { margin-bottom: 6px; }
+    .formula { text-align: center; font-size: 1.3rem; font-family: "Fira Code",Consolas,monospace; color: #f1f5f9; padding: 24px; background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; margin: 20px 0; letter-spacing: 0.05em; }
+    .formula .hl { color: var(--c); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .compare-card { background: #1e2030; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; }
+    .compare-card .label { font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .compare-card.bad .label { color: #ef4444; }
+    .compare-card.good .label { color: #4ade80; }
+    .compare-card pre { font-size: 0.8rem; line-height: 1.6; font-family: "Fira Code",Consolas,monospace; color: #94a3b8; white-space: pre-wrap; }
+    .diagram { background: #13151f; border: 1px solid #2d3148; border-radius: 10px; padding: 20px; margin: 16px 0; font-family: "Fira Code",Consolas,monospace; font-size: 0.8rem; color: #94a3b8; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .bar { display: flex; height: 34px; border-radius: 6px; overflow: hidden; margin: 16px 0; font-size: 0.72rem; font-weight: 600; }
+    .bar span { display: flex; align-items: center; justify-content: center; color: #0f1117; }
+    .nav-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e2030; gap: 12px; }
+    .nav-btn { font-size: 0.82rem; color: #475569; text-decoration: none; padding: 8px 16px; border: 1px solid #2d3148; border-radius: 6px; transition: all 0.15s; }
+    .nav-btn:hover { color: #94a3b8; border-color: #475569; }
+    .nav-btn.next { color: var(--c); border-color: var(--c-dim); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb"><a href="../../books-roadmap.html">书籍推荐</a> / <a href="roadmap.html">Java并发编程实战</a> / Condition：比 wait/notify 更灵活的等待通知</div>
+  <div class="hero">
+    <div class="tag">Java 并发 · 第10-11章·显式锁与原子变量</div>
+    <h1>Condition：比 wait/notify 更灵活的等待通知</h1>
+    <p>一把锁挂多个等待队列——把「谁该醒」这件事讲清楚，从此告别 notifyAll 的惊群与白醒。</p>
+  </div>
+
+  <h2>一、先看 wait/notify 的痛：一间屋子，两种人在等</h2>
+  <p>内置锁 <code>synchronized</code> 配套的 <code>wait</code>/<code>notify</code> 有一个结构性限制：<strong>每个对象只有一个隐式的「条件队列」</strong>。也就是说，无论线程是因为「缓冲区满了」在等，还是因为「缓冲区空了」在等，它们全都睡在<em>同一个</em>队列里。</p>
+  <p>后果很直接——你想唤醒「等不满的生产者」，却没办法只叫醒他们；<code>notify()</code> 随机挑一个（可能挑到不该醒的消费者），<code>notifyAll()</code> 则把所有人全叫醒，让它们抢锁、发现条件还不满足、再睡回去。这就是<strong>惊群（thundering herd）</strong>与<strong>白醒（无谓唤醒）</strong>。</p>
+
+  <div class="callout info">
+    <strong>生活类比：</strong>一家银行只有一个叫号大厅（单条件队列），办「存款」和办「取款」的人混坐在一起。柜员每处理完一笔，就冲大厅<em>喊一嗓子「下一位！」（notifyAll）</em>——结果 50 个人全站起来挤到窗口，49 个发现叫的不是自己的业务，又坐回去。<code>Condition</code> 做的事，就是<strong>给存款、取款各设一个叫号厅</strong>，需要谁就精准喊哪个厅。
+  </div>
+
+  <h2>二、Condition 是什么：Lock 的「可拆分等待室」</h2>
+  <p><code>Condition</code> 是 <code>java.util.concurrent.locks</code> 包里的接口，由 <code>Lock.newCondition()</code> 创建。它把 <code>wait</code>/<code>notify</code>/<code>notifyAll</code> 三件套原样搬到了显式锁上，方法名对应为 <code>await</code>/<code>signal</code>/<code>signalAll</code>。<strong>关键差异：一把 <code>Lock</code> 可以 <code>newCondition()</code> 出任意多个 <code>Condition</code></strong>，每个 <code>Condition</code> 都是一条<em>独立</em>的等待队列。</p>
+
+  <table>
+    <tr><th>内置锁（synchronized）</th><th>显式锁（Lock + Condition）</th><th>说明</th></tr>
+    <tr><td><code>obj.wait()</code></td><td><code>cond.await()</code></td><td>释放锁并挂起，被唤醒后重新竞争锁</td></tr>
+    <tr><td><code>obj.wait(ms)</code></td><td><code>await(t, unit)</code> / <code>awaitNanos</code> / <code>awaitUntil</code></td><td>Condition 的限时等待更丰富、返回值更好用</td></tr>
+    <tr><td><code>obj.notify()</code></td><td><code>cond.signal()</code></td><td>唤醒<em>该条件队列</em>的一个等待者</td></tr>
+    <tr><td><code>obj.notifyAll()</code></td><td><code>cond.signalAll()</code></td><td>唤醒<em>该条件队列</em>的全部等待者</td></tr>
+    <tr><td>一个对象 = 一个条件队列</td><td>一个 Lock = <strong>N 个</strong> Condition</td><td>这是 Condition 存在的根本理由</td></tr>
+    <tr><td>wait 可被中断</td><td>额外提供 <code>awaitUninterruptibly()</code></td><td>可选择「不响应中断」地等待，wait 做不到</td></tr>
+  </table>
+
+  <div class="formula">1 个 <span class="hl">synchronized</span> → 1 条隐式队列  ┃  1 个 <span class="hl">Lock</span> → N 个 Condition</div>
+
+  <h2>三、经典战场：有界缓冲区（生产者-消费者）</h2>
+  <p>这是《Java 并发编程实战》第 14 章的招牌案例。缓冲区有两个截然不同的等待原因：<strong>放不进去（满）</strong>和<strong>取不出来（空）</strong>。用 <code>Condition</code> 正好把它们拆成两个队列。先看用单条件 <code>wait/notify</code> 的写法为什么别扭，再看双 <code>Condition</code> 如何一击即中。</p>
+
+  <div class="compare-grid">
+    <div class="compare-card bad">
+      <div class="label">Bad · 单条件 + notifyAll</div>
+<pre>synchronized void put(T x) throws ... {
+  while (count == cap)
+    wait();            // 生产者、消费者
+                       // 睡在同一队列
+  doPut(x); count++;
+  notifyAll();         // 只能全叫醒：
+                       // 醒来的可能又是
+                       // 生产者 → 白醒
+}
+synchronized T take() throws ... {
+  while (count == 0)
+    wait();
+  T x = doTake(); count--;
+  notifyAll();         // 惊群：N 醒 1 用
+  return x;
+}</pre>
+    </div>
+    <div class="compare-card good">
+      <div class="label">Good · 双 Condition + signal</div>
+<pre>void put(T x) throws ... {
+  lock.lock();
+  try {
+    while (count == cap)
+      notFull.await();   // 只等"不满"
+    doPut(x); count++;
+    notEmpty.signal();   // 精准叫消费者
+  } finally { lock.unlock(); }
+}
+void take() throws ... {
+  lock.lock();
+  try {
+    while (count == 0)
+      notEmpty.await();  // 只等"不空"
+    doTake(); count--;
+    notFull.signal();    // 精准叫生产者
+  } finally { lock.unlock(); }
+}</pre>
+    </div>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><span>BoundedBuffer.java</span><span>正例 · 完整版</span></div>
+<pre><span class="kw">public class</span> <span class="typ">BoundedBuffer</span>&lt;<span class="typ">T</span>&gt; {
+    <span class="kw">private final</span> <span class="typ">Lock</span> lock      = <span class="kw">new</span> <span class="typ">ReentrantLock</span>();
+    <span class="kw">private final</span> <span class="typ">Condition</span> notFull  = lock.<span class="fn">newCondition</span>();  <span class="com">// 队列①：等"不满"的生产者</span>
+    <span class="kw">private final</span> <span class="typ">Condition</span> notEmpty = lock.<span class="fn">newCondition</span>();  <span class="com">// 队列②：等"不空"的消费者</span>
+    <span class="kw">private final</span> <span class="typ">Object</span>[] items = <span class="kw">new</span> <span class="typ">Object</span>[<span class="num">100</span>];
+    <span class="kw">private int</span> count, putIdx, takeIdx;
+
+    <span class="kw">public void</span> <span class="fn">put</span>(<span class="typ">T</span> x) <span class="kw">throws</span> <span class="typ">InterruptedException</span> {
+        lock.<span class="fn">lock</span>();
+        <span class="kw">try</span> {
+            <span class="kw">while</span> (count == items.length)     <span class="com">// ← while 而非 if！防虚假唤醒</span>
+                notFull.<span class="fn">await</span>();               <span class="com">// 释放锁 + 挂起；返回时已重新持有锁</span>
+            items[putIdx] = x;
+            <span class="kw">if</span> (++putIdx == items.length) putIdx = <span class="num">0</span>;
+            count++;
+            notEmpty.<span class="fn">signal</span>();              <span class="com">// 只唤醒 notEmpty 队列上的一个消费者</span>
+        } <span class="kw">finally</span> {
+            lock.<span class="fn">unlock</span>();                    <span class="com">// 必须放 finally，否则异常时锁永不释放</span>
+        }
+    }
+
+    <span class="kw">public</span> <span class="typ">T</span> <span class="fn">take</span>() <span class="kw">throws</span> <span class="typ">InterruptedException</span> {
+        lock.<span class="fn">lock</span>();
+        <span class="kw">try</span> {
+            <span class="kw">while</span> (count == <span class="num">0</span>)
+                notEmpty.<span class="fn">await</span>();
+            <span class="typ">Object</span> x = items[takeIdx];
+            <span class="kw">if</span> (++takeIdx == items.length) takeIdx = <span class="num">0</span>;
+            count--;
+            notFull.<span class="fn">signal</span>();               <span class="com">// 只唤醒 notFull 队列上的一个生产者</span>
+            <span class="kw">return</span> (<span class="typ">T</span>) x;
+        } <span class="kw">finally</span> {
+            lock.<span class="fn">unlock</span>();
+        }
+    }
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <strong>它就在 JDK 源码里：</strong> 上面这个双 <code>Condition</code> 结构，几乎逐字复刻了 <code>ArrayBlockingQueue</code> 的实现——打开源码你会看到同一把 <code>ReentrantLock</code> 派生出的 <code>notEmpty</code> 与 <code>notFull</code>。这也解释了「为什么 <code>put</code>/<code>take</code> 阻塞时能被精准唤醒而不惊群」。学会 Condition，你就读懂了半个 <code>java.util.concurrent</code>。
+  </div>
+
+  <h2>四、原理：AQS 的「同步队列」与「条件队列」两套链表</h2>
+  <p>要真正讲透，得看 <code>ReentrantLock</code> 背后的 <strong>AQS（AbstractQueuedSynchronizer）</strong>。<code>Condition</code> 的实现类是 AQS 的内部类 <code>ConditionObject</code>。这里有一个精妙的双队列模型：<strong>争锁靠「同步队列」，等条件靠「条件队列」，<code>await</code>/<code>signal</code> 做的就是节点在两条队列间的搬运。</strong></p>
+
+  <div class="diagram">ReentrantLock (AQS 内部)
+┌───────────────────────────────────────────────────────────┐
+│  同步队列 (sync queue, CLH)   —— 争"锁"失败的线程在这排队    │
+│     head → [n1] → [n2] → tail                              │
+│                                                            │
+│  条件队列 (每个 Condition 各一条)                           │
+│     notFull  :  firstWaiter → [w1] → [w2] → lastWaiter     │
+│     notEmpty :  firstWaiter → [c1] → lastWaiter            │
+└───────────────────────────────────────────────────────────┘
+
+await()  : ①完全释放锁  ②把当前线程包成 Node 挂到"条件队列"尾
+           ③LockSupport.park() 挂起            （人离开窗口去等待室）
+signal() : ①把"条件队列"队首 Node 摘下
+           ②转移(transfer)到"同步队列"尾部
+           ③它在那儿排队，轮到时被 unpark 重新拿锁 （叫回窗口排队）</div>
+
+  <p>看懂这张图，几个「反直觉」瞬间就通了：</p>
+  <ul>
+    <li><strong>为什么 <code>await()</code> 会释放锁？</strong> 因为它要让出临界区给别人干活，否则「等条件成立」永远等不到——谁来改变条件呢？这一点和 <code>Object.wait()</code> 完全一致。</li>
+    <li><strong>为什么 <code>signal()</code> 后被唤醒线程不会立刻执行？</strong> 因为它只是从条件队列被<em>转移</em>到了同步队列，还得<strong>重新排队抢锁</strong>，抢到才继续。所以 <code>signal()</code> 并不释放锁，唤醒的线程要等 <code>signal</code> 方最终 <code>unlock()</code> 后才有机会。</li>
+    <li><strong>为什么 <code>await</code>/<code>signal</code> 必须在锁内调用？</strong> 因为它们操作的是 AQS 的共享链表状态，靠「当前线程持有锁」来保证串行安全。没持锁就调，直接抛 <code>IllegalMonitorStateException</code>。</li>
+  </ul>
+
+  <div class="callout info">
+    <strong>串联操作系统：</strong> 这套机制不是 Java 发明的——它对应操作系统里的<strong>条件变量（condition variable）</strong>，即 POSIX 的 <code>pthread_cond_wait</code> / <code>pthread_cond_signal</code>。C 里条件变量必须搭配一把 <code>mutex</code>，<code>pthread_cond_wait</code> 会「原子地释放锁并睡眠」；Java 的 <code>Condition</code> 必须搭配 <code>Lock</code>、<code>await</code> 会「释放锁并挂起」，是同一个思想的对象化封装。底层的 <code>park</code>/<code>unpark</code> 最终落到 <code>futex</code> 等内核原语。
+  </div>
+
+  <h2>五、陷阱：新手最容易踩的四个坑</h2>
+
+  <div class="callout warn">
+    <strong>坑 ①：用 <code>if</code> 判断条件，而不是 <code>while</code>。</strong> 必须写 <code>while (条件不满足) cond.await();</code>。原因有二：一是<em>虚假唤醒（spurious wakeup）</em>，线程可能没被 signal 也醒来；二是<em>被唤醒 ≠ 条件仍成立</em>——你从条件队列转到同步队列、再抢到锁，这中间可能别的线程又把资源抢光了。<code>if</code> 只判一次就往下走，会在错误状态上操作。<strong>「循环里重检条件」是等待通知的铁律。</strong>
+  </div>
+
+  <div class="callout warn">
+    <strong>坑 ②：<code>signal</code> 用错了 Condition，或该用 <code>signalAll</code> 却用 <code>signal</code>。</strong> 若多个不同条件共用一个 Condition，<code>signal</code> 只叫醒一个、且可能叫醒「条件并不满足的那个」，导致<em>信号丢失、系统卡死</em>。安全法则：<em>拿不准就用 <code>signalAll</code></em>；只有当「所有等待者等的是同一个条件、且一次只能让一个前进」时，用 <code>signal</code> 才安全（这也是有界缓冲区能用 signal 的前提——notFull 队列里全是等「不满」的生产者）。
+  </div>
+
+  <div class="callout warn">
+    <strong>坑 ③：忘了 <code>finally { unlock() }</code>。</strong> 与 <code>synchronized</code> 出块自动释放不同，<code>Lock</code> 必须<strong>手动解锁</strong>。<code>await()</code> 内部会临时全释放锁、返回时重新加锁；但如果你的业务代码在持锁期间抛异常又没 <code>finally</code>，锁就永久泄漏，其他线程全卡死——这比死锁更难查。
+  </div>
+
+  <div class="callout warn">
+    <strong>坑 ④：在没持有该 <code>Lock</code> 时调用 <code>await</code>/<code>signal</code>。</strong> 直接抛 <code>IllegalMonitorStateException</code>（和 <code>synchronized</code> 块外调 <code>wait</code> 报的是同一个异常）。另外要分清：<code>lock.newCondition()</code> 产出的 Condition 必须配<em>那把</em> lock 使用，别张冠李戴。
+  </div>
+
+  <h2>六、对比与选型：什么时候真的需要 Condition</h2>
+  <table>
+    <tr><th>维度</th><th>wait / notify（内置锁）</th><th>Condition（显式锁）</th></tr>
+    <tr><td>等待队列数量</td><td>每对象<strong>仅 1 条</strong></td><td>每 Lock <strong>可多条</strong>，按语义拆分</td></tr>
+    <tr><td>唤醒精度</td><td>只能 notify/notifyAll，易惊群</td><td>可对特定队列 signal，精准</td></tr>
+    <tr><td>限时/可中断/不可中断等待</td><td>仅 wait(ms)，且必被中断</td><td>await 系列齐全，含 <code>awaitUninterruptibly</code></td></tr>
+    <tr><td>公平性</td><td>不可选</td><td>随 <code>ReentrantLock(true)</code> 可公平</td></tr>
+    <tr><td>释放锁责任</td><td>自动（出 synchronized 块）</td><td>手动 <code>finally{unlock()}</code></td></tr>
+    <tr><td>复杂度 / 出错概率</td><td>低，够用就别上</td><td>高，用错反而更危险</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <strong>务实选型：</strong> 如果只有<em>一种</em>等待条件（比如「等某个标志位变 true」），<code>synchronized + wait/notifyAll</code> 更简单、更不容易写错，优先用它。<strong>只有当同一把锁上存在两种及以上、需要分别精准唤醒的等待条件时（生产者/消费者、读者/写者），<code>Condition</code> 的多队列能力才真正物有所值。</strong>更上层：能用 <code>ArrayBlockingQueue</code>、<code>LinkedBlockingQueue</code> 这些现成并发容器，就别自己撸 Condition——它们已经替你踩平了所有坑。
+  </div>
+
+  <div class="callout key">
+    <strong>一句话收束：</strong> <code>Condition</code> 的核心价值是<strong>把「一把锁上的多种等待原因」拆成多条独立队列</strong>，从而实现<em>精准唤醒</em>、消灭惊群与白醒。它是 <code>wait/notify</code> 在显式锁上的进化版：底层靠 AQS 的「同步队列 ⇄ 条件队列」节点搬运实现，<code>await</code> 释放锁并挂到条件队列，<code>signal</code> 把节点转回同步队列重新抢锁。用它时牢记三条铁律——<em>while 循环重检条件、拿不准用 signalAll、unlock 放 finally</em>。
+  </div>
+
+  <hr>
+  <div class="nav-footer">
+    <a href="21-ReadWriteLock与StampedLock.html" class="nav-btn">← ReadWriteLock 与 StampedLock</a>
+    <a href="23-AQS框架原理.html" class="nav-btn next">AQS 框架原理 →</a>
+  </div>
+</div>
+</body>
+</html>
