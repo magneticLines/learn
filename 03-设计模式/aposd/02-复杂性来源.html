@@ -16,6 +16,7 @@
     .hero p { color: #64748b; font-size: 0.9rem; }
     h2 { font-size: 1rem; font-weight: 600; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid; }
     h3 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; margin: 24px 0 10px; }
+    h4 { font-size: 0.85rem; font-weight: 600; color: #64748b; margin: 20px 0 8px; }
     p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; } strong { color: #e2e8f0; }
     .code-block { background: #1e2030; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; margin: 16px 0; }
     .code-block .cb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252840; border-bottom: 1px solid #2d3148; font-size: 0.72rem; color: #475569; }
@@ -142,6 +143,81 @@
 
   <div class="callout tip">
     <strong>为什么更好？</strong> 每个类只依赖自己内部的常量，修改 <code>OrderService</code> 的分页大小不会对 <code>UserService</code> 产生任何影响。依赖被<strong>局部化</strong>了。
+  </div>
+
+  <h3>等一下：这是不是把"全局统一修改"变难了？</h3>
+
+  <p>看到这里应该有个反问：如果需求是"<strong>全站分页从 20 改成 10</strong>"呢？全局变量改一处就完了，上面的"正例"反而要改 N 处——那到底哪个才是对的？</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>变更需求</th>
+        <th>全局 <code>Config.PAGE_SIZE</code></th>
+        <th>各 Service 各自持有</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>全站统一 20 → 10</td>
+        <td>改 1 处 ✅</td>
+        <td>改 N 处 ❌</td>
+      </tr>
+      <tr>
+        <td>订单改 50，用户仍 20</td>
+        <td>做不到，得先拆开 ❌</td>
+        <td>改 1 处 ✅</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>所以"哪个更好"并不绝对，取决于<strong>哪一类变更更常发生</strong>。上面的例子只演示了第二类需求，把第一类的代价藏起来了。</p>
+
+  <h4>真正的判断标准：这是一个概念，还是 N 个概念碰巧同值？</h4>
+
+  <p>这里的关键是 DRY 常被误读。DRY 说的是"<strong>每一份知识在系统中只有一个权威表示</strong>"，而不是"字面值相同的东西要去重"。</p>
+
+  <ul>
+    <li>如果"全站分页大小"确实是<strong>一个业务决策</strong>（产品规定：本产品所有列表统一每页 20 条），那它就是一个概念，共享是正确的，改一处也是应该的。</li>
+    <li>如果只是用户列表恰好 20、订单列表也恰好 20，那是 <strong>coincidental duplication（巧合重复）</strong>。把它们合并成一个变量，等于凭空造了一条"这两者必须永远相等"的约束——而这条约束从来没有人真正想要。</li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>Ousterhout 反对的不是"共享常量"，而是"隐式共享"。</strong> <code>UserService</code> 从来没有声明过"我要和 <code>OrderService</code> 保持一致"，它只是图方便读了一个全局变量。于是改的人看不到影响面——必须全局搜索 <code>PAGE_SIZE</code> 的所有引用才知道会波及谁。这正是<strong>晦涩掩盖了依赖</strong>，两个根源叠在一起。<br/>
+    此外，反例里是 <code>public static int</code>（非 final），任何人都能在运行时改它：测试里改完不还原就会污染其他测试，并发下还有可见性问题。这比"变更放大"更致命。
+  </div>
+
+  <h4>更好的第三种写法：显式的默认值 + 可覆盖</h4>
+
+  <div class="code-block">
+    <div class="cb-header"><span>正例 — 共享概念有名字，各自策略仍显式</span><span>better</span></div>
+    <pre><span class="com">// The default is ONE named concept with ONE owner.</span>
+<span class="kw">public final class</span> <span class="ty">PagingDefaults</span> <span class="punct">{</span>
+    <span class="kw">public static final int</span> <span class="var">PAGE_SIZE</span> <span class="punct">=</span> <span class="num">20</span><span class="punct">;</span>  <span class="com">// final: read-only, no runtime tampering</span>
+    <span class="kw">private</span> <span class="fn">PagingDefaults</span><span class="punct">() {}</span>
+<span class="punct">}</span>
+
+<span class="punct">@</span><span class="ty">Service</span>
+<span class="kw">public class</span> <span class="ty">OrderService</span> <span class="punct">{</span>
+    <span class="kw">private final int</span> <span class="var">pageSize</span><span class="punct">;</span>
+
+    <span class="com">// Each service declares its own paging policy explicitly.</span>
+    <span class="com">// Falling back to the shared default is a deliberate choice, not an accident.</span>
+    <span class="kw">public</span> <span class="fn">OrderService</span><span class="punct">(</span><span class="punct">@</span><span class="ty">Value</span><span class="punct">(</span><span class="str">"${app.order.page-size:50}"</span><span class="punct">)</span> <span class="kw">int</span> <span class="var">pageSize</span><span class="punct">) {</span>
+        <span class="kw">this</span><span class="punct">.</span><span class="var">pageSize</span> <span class="punct">=</span> <span class="var">pageSize</span><span class="punct">;</span>
+    <span class="punct">}</span>
+<span class="punct">}</span></pre>
+  </div>
+
+  <p>这样三件事同时成立：</p>
+  <ol>
+    <li>"全站默认值"这个概念仍然只有一个来源，统一改 20 → 10 只需改 <code>PagingDefaults</code>（或配置文件一行）。</li>
+    <li>每个 Service 的分页策略在它的构造器里<strong>显式可见</strong>，读代码的人不用全局搜索就知道它用了什么、能不能单独调。</li>
+    <li>没有可变全局状态，测试可以直接构造不同 pageSize，互不污染。</li>
+  </ol>
+
+  <div class="callout tip">
+    <strong>一句话总结：</strong>全局常量本身不是罪，<strong>隐式的、未经声明的共享</strong>才是。判断依据只有一条——把这两处的值绑在一起，是你<strong>想要的契约</strong>，还是<strong>碰巧相等</strong>？想要的，就抽出来并给它一个名字；碰巧的，就让它们各自独立。
   </div>
 
   <h3>另一种高危依赖：接口签名的连锁变更</h3>
