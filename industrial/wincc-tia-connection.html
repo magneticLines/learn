@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>WinCC 连接博图指南</title>
+<title>1214C 本机联调</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -99,358 +99,241 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
 </style>
 </head>
 <body>
-
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">TIA Portal · WinCC · S7-1200 / S7-1500</div>
-  <h1>WinCC 怎么和博图连接</h1>
-  <p class="lede">从零讲清楚：WinCC 有哪几种、它们和博图是什么关系，以及每种情况下从建项目到画面显示 PLC 数据的完整步骤，包括没有真实 PLC、博图和 WinCC 都装在同一台电脑上时怎么用仿真联调。最后附排错表和上线检查清单。菜单名以中文版博图为准，括号里给出英文版的叫法。</p>
+  <div class="eyebrow">CPU 1214C · 博图 V16 · WinCC V7.5 · NetToPLCsim</div>
+  <h1>1214C 本机联调：博图程序连 WinCC 画面</h1>
+  <p class="lede">没有真实 PLC，博图 V16 写的 1214C 程序、WinCC V7.5 做的画面都在同一台电脑上。按这一页从上到下做，就能让 WinCC 画面读写仿真 PLC 里的数据。</p>
 </header>
 
 <div class="decide">
-  <h3>先确定你属于哪种情况</h3>
+  <h3>这套环境里每个软件的角色</h3>
   <div class="decide-grid">
-    <a class="pick" href="#a">
-      <span class="tag">情况 A · 最常见</span>
-      <strong>WinCC 装在博图里面</strong>
-      <span>触摸屏（KTP/TP 面板），或电脑上跑 WinCC RT Advanced / Professional / Unified。画面就在博图项目里做。</span>
-    </a>
-    <a class="pick" href="#b">
-      <span class="tag">情况 B · 有真实 PLC</span>
-      <strong>单独安装的 WinCC V7 / V8 连真实 PLC</strong>
-      <span>PLC 程序在博图里写，画面在独立的 WinCC 项目管理器里做，电脑通过网线连现场 PLC。</span>
-    </a>
-    <a class="pick" href="#c">
-      <span class="tag">情况 C · 无硬件</span>
-      <strong>博图和 WinCC 都在本机，用仿真联调</strong>
-      <span>没有真实 PLC，程序在博图里写，画面在独立 WinCC 里做，用 PLCSIM Advanced 在同一台电脑上模拟 PLC。</span>
-    </a>
-    <a class="pick" href="#d">
-      <span class="tag">情况 D</span>
-      <strong>用 OPC UA 通用连接</strong>
-      <span>S7-1500 / 新固件 S7-1200 自带 OPC UA 服务器，任何支持 OPC UA 的上位机都能连。</span>
-    </a>
+    <div class="pick"><span class="tag">博图 V16</span><strong>写程序、下载</strong><span>编写 1214C 的 PLC 程序，编译后下载到仿真 PLC。</span></div>
+    <div class="pick"><span class="tag">S7-PLCSIM V16</span><strong>假装成一台 1214C</strong><span>博图自带的仿真器，在电脑里运行你的 PLC 程序。</span></div>
+    <div class="pick"><span class="tag">NetToPLCsim</span><strong>翻译 / 转发</strong><span>免费第三方工具，在本机网卡上开 102 端口，把 WinCC 的请求转给 PLCSIM。</span></div>
+    <div class="pick"><span class="tag">WinCC V7.5</span><strong>上位机画面</strong><span>按 IP 去连 NetToPLCsim，读写 PLC 变量并显示在画面上。</span></div>
   </div>
 </div>
 
-<!-- ======== CONCEPTS ======== -->
-<section id="concept">
+<section id="why">
   <div class="sec-head">
-    <span class="eyebrow">前置概念</span>
-    <h2>“WinCC” 其实是几个产品</h2>
-  </div>
-  <div class="tbl">
-    <table>
-      <thead><tr><th>名字</th><th>是什么</th><th>和博图的关系</th></tr></thead>
-      <tbody>
-        <tr><td><b>博图 TIA Portal</b></td><td>西门子的集成开发平台。STEP 7 写 PLC 程序，WinCC 做画面，都在这一个软件里</td><td>开发平台本身</td></tr>
-        <tr><td><b>WinCC (TIA Portal)</b><br>Basic / Comfort / Advanced / Professional / Unified</td><td>装进博图里的 HMI 组态软件，版本越高支持的设备和功能越多</td><td><b>在博图内部</b>，PLC 和画面放在同一个项目里</td></tr>
-        <tr><td><b>WinCC V7.x / V8</b>（俗称经典版）</td><td>独立安装的 SCADA（监控与数据采集）软件，适合大型上位机系统</td><td><b>在博图外部</b>，只能通过网络通信访问 PLC</td></tr>
-      </tbody>
-    </table>
+    <span class="eyebrow">原理</span>
+    <h2>为什么中间要多一个 NetToPLCsim</h2>
   </div>
   <div class="why">
-    <b class="k">为什么要分清</b>
-    <p>同一个博图项目里，博图知道 PLC 的 IP 地址、变量名和数据块结构，所以 HMI 能直接浏览 PLC 变量，连接也能自动生成。经典版 WinCC 是另一个软件，打不开博图项目，只能按 IP 地址去访问 PLC，所以通信驱动、变量地址、PLC 的访问权限都得自己配置。</p>
+    <b class="k">PLCSIM 不对外开放</b>
+    <p>博图自带的 PLCSIM 只和博图内部通信，没有网络接口，WinCC 按 IP 找不到它。能对外开放网络的 PLCSIM Advanced 又只支持 S7-1500，不支持 1214C。NetToPLCsim 正好填这个空：它在本机网卡上监听 S7 通信端口 <code>TCP 102</code>，把 WinCC 发来的请求转给 PLCSIM，WinCC 就以为自己连上了一台真实 PLC。</p>
   </div>
   <div class="why">
-    <b class="k">通信的本质</b>
-    <p>不管哪种情况，HMI 和 PLC 之间都是一根<b>以太网线（PROFINET 口）</b>，走西门子的 <b>S7 通信协议</b>，PLC 那边用 <code>TCP 102</code> 端口。HMI 每隔一个“采集周期”（默认 1 秒）问 PLC 要一次变量的值，按钮按下时把值写回 PLC。所谓“连接”，就是让 HMI 知道 PLC 的地址，并且知道每个变量在 PLC 里的位置。</p>
+    <b class="k">代价：只能用绝对地址</b>
+    <p>经过 NetToPLCsim 转发时，只支持 S7 的 PUT/GET 读写，也就是按 <code>DB1.DBX0.0</code> 这种“块号 + 字节偏移”访问。WinCC 的“从 AS 读取符号”用不了，变量要按 DB 的偏移量手工建。为此 PLC 要勾 PUT/GET，DB 块要取消“优化的块访问”。</p>
   </div>
-  <div class="diagram" role="img" aria-label="网络拓扑：PLC 192.168.0.1 与 HMI 192.168.0.2 通过交换机连接，同一子网 255.255.255.0">
-    <svg viewBox="0 0 640 170" xmlns="http://www.w3.org/2000/svg">
-      <rect class="d-box" x="20" y="45" width="170" height="80" rx="6"/>
-      <text class="d-txt" x="105" y="78" text-anchor="middle">PLC S7-1500</text>
-      <text class="d-sub" x="105" y="102" text-anchor="middle">192.168.0.1</text>
-      <rect class="d-box" x="255" y="60" width="130" height="50" rx="6"/>
-      <text class="d-txt" x="320" y="90" text-anchor="middle">交换机</text>
-      <rect class="d-box" x="450" y="45" width="170" height="80" rx="6"/>
-      <text class="d-txt" x="535" y="78" text-anchor="middle">HMI / 上位机</text>
-      <text class="d-sub" x="535" y="102" text-anchor="middle">192.168.0.2</text>
-      <path class="d-wire" d="M190 85 H255"/>
-      <path class="d-wire" d="M385 85 H450"/>
-      <text class="d-lbl" x="320" y="145" text-anchor="middle">子网掩码 255.255.255.0 · 前三段必须相同</text>
-      <text class="d-lbl" x="222" y="74" text-anchor="middle">PN</text>
-      <text class="d-lbl" x="418" y="74" text-anchor="middle">PN</text>
+  <div class="diagram" role="img" aria-label="数据流：WinCC V7.5 连接环回网卡 192.168.0.10 上的 NetToPLCsim，NetToPLCsim 转发到 PLCSIM 中 IP 为 192.168.0.1 的 CPU 1214C，博图 V16 向 PLCSIM 下载程序">
+    <svg viewBox="0 0 660 220" xmlns="http://www.w3.org/2000/svg">
+      <rect class="d-box" x="10" y="10" width="640" height="200" rx="8" style="fill:none" stroke-dasharray="6 4"/>
+      <text class="d-sub" x="24" y="32">同一台电脑</text>
+      <rect class="d-box" x="30" y="70" width="140" height="70" rx="6"/>
+      <text class="d-txt" x="100" y="100" text-anchor="middle">WinCC V7.5</text>
+      <text class="d-sub" x="100" y="122" text-anchor="middle">画面</text>
+      <rect class="d-box" x="255" y="70" width="150" height="70" rx="6"/>
+      <text class="d-txt" x="330" y="100" text-anchor="middle">NetToPLCsim</text>
+      <text class="d-sub" x="330" y="122" text-anchor="middle">192.168.0.10</text>
+      <rect class="d-box" x="490" y="70" width="140" height="70" rx="6"/>
+      <text class="d-txt" x="560" y="100" text-anchor="middle">PLCSIM 1214C</text>
+      <text class="d-sub" x="560" y="122" text-anchor="middle">192.168.0.1</text>
+      <rect class="d-box" x="490" y="160" width="140" height="38" rx="6"/>
+      <text class="d-txt" x="560" y="184" text-anchor="middle">博图 V16</text>
+      <path class="d-wire" d="M170 105 H255"/>
+      <path class="d-wire" d="M405 105 H490"/>
+      <path class="d-wire" d="M560 160 V140"/>
+      <text class="d-lbl" x="212" y="95" text-anchor="middle">TCP 102</text>
+      <text class="d-lbl" x="447" y="95" text-anchor="middle">转发</text>
+      <text class="d-lbl" x="600" y="155" text-anchor="start">下载</text>
     </svg>
   </div>
 </section>
 
-<!-- ======== SCENARIO A ======== -->
-<section id="a">
+<section id="tia">
   <div class="sec-head">
-    <span class="eyebrow">情况 A</span>
-    <h2>博图内部的 WinCC：PLC 与 HMI 同一项目</h2>
-    <p class="lede">适用于精简面板 / 精智面板（Basic / Comfort），以及 PC 上的 WinCC RT Advanced / Professional / Unified。</p>
+    <span class="eyebrow">第一阶段</span>
+    <h2>博图 V16：准备 PLC 程序并启动仿真</h2>
   </div>
-
   <ol class="steps">
     <li><div class="step-body">
-      <h3>确认 PLC 已在项目中，并设置好 IP</h3>
-      <p>在项目里双击 PLC 打开设备视图，点 PLC 的网口，进入 <span class="path">属性<b>›</b>常规<b>›</b>PROFINET 接口<b>›</b>以太网地址</span>，设为 <code>192.168.0.1</code> / <code>255.255.255.0</code>。</p>
+      <h3>打开仿真支持</h3>
+      <p>项目树里右键 <b>项目名</b> → <span class="path">属性<b>›</b>保护</span>，勾选 <b>块编译时支持仿真</b>。不勾的话，下载到 PLCSIM 时会提示不支持。</p>
     </div></li>
 
     <li><div class="step-body">
-      <h3>添加 HMI 设备</h3>
-      <p><b>触摸屏：</b><span class="path">项目树<b>›</b>添加新设备 (Add new device)<b>›</b>HMI</span>，选系列和尺寸，比如 SIMATIC 精简系列面板 → 7" → KTP700 Basic。<b>订货号和版本号要和实物铭牌一致。</b></p>
-      <p><b>电脑做上位机：</b><span class="path">添加新设备<b>›</b>PC 系统<b>›</b>常规 PC<b>›</b>PC station</span>。然后打开它的设备视图，从右侧硬件目录拖入：</p>
+      <h3>放开 PLC 的访问权限</h3>
+      <p>双击 <code>PLC_1 [CPU 1214C]</code> → <span class="path">属性<b>›</b>常规<b>›</b>防护与安全</span>：</p>
       <ul>
-        <li><span class="path">SIMATIC HMI 应用软件<b>›</b>WinCC RT Advanced</span>（或 RT Professional）</li>
-        <li><span class="path">通信模块<b>›</b>PROFINET/Ethernet<b>›</b>常规 IE (IE general)</span>，代表电脑的网卡</li>
-      </ul>
-      <div class="note">添加触摸屏时如果弹出“HMI 设备向导”，在 <b>PLC 连接</b> 这一页直接选中你的 PLC，向导会自动建好连接，第 3 步就可以跳过。</div>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>在网络视图里连线、建 HMI 连接</h3>
-      <ul>
-        <li>项目树双击 <span class="path">设备和网络 (Devices &amp; networks)</span>，切到 <b>网络视图</b>。</li>
-        <li>从 PLC 的绿色 PROFINET 口拖一条线到 HMI（或 PC station 里常规 IE）的网口，两者会加入同一个子网 <code>PN/IE_1</code>。</li>
-        <li>点工具栏的 <b>连接</b> 按钮，下拉选 <b>HMI 连接</b>，再从 HMI 拖到 PLC，生成 <code>HMI_连接_1</code>。</li>
-        <li>点 HMI 的网口，把 IP 设为 <code>192.168.0.2</code>，掩码一致。</li>
-      </ul>
-      <div class="note">检查方法：打开 <span class="path">HMI 设备<b>›</b>连接</span>，表里应该有一行，伙伴是你的 PLC，状态没有红色报错。</div>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>在画面里绑定 PLC 变量</h3>
-      <ul>
-        <li>打开 <span class="path">HMI<b>›</b>画面<b>›</b>根画面</span>，从右侧工具箱拖一个 <b>I/O 域</b> 或 <b>按钮</b>。</li>
-        <li>I/O 域：<span class="path">属性<b>›</b>常规<b>›</b>过程<b>›</b>变量</span>，点 “...”，<b>直接浏览到 PLC 的变量表或 DB 块</b>，选中变量。</li>
-        <li>按钮：<span class="path">属性<b>›</b>事件<b>›</b>按下</span>，加系统函数 <code>置位位 (SetBit)</code>，释放事件加 <code>复位位 (ResetBit)</code>，变量选 PLC 里的点动位。</li>
-      </ul>
-      <p>选中 PLC 变量后，博图会自动在 HMI 变量表里生成一个同名变量，“连接”一栏填好 <code>HMI_连接_1</code>。这种方式叫<b>符号寻址</b>（按变量名访问），所以 DB 块保持默认的“优化的块访问”就可以。</p>
-      <div class="warn"><b>注意：</b>DB 块属性里的“可从 HMI/OPC UA 访问”（每个变量后面的勾）要保持勾选。取消勾选后 HMI 浏览不到这个变量。</div>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>编译并下载</h3>
-      <ul>
-        <li>先选中 PLC → 编译 → 下载。</li>
-        <li><b>触摸屏：</b>先在面板上进入 <span class="path">Control Panel<b>›</b>Transfer</span> 启用 PN/X1 传输，并在 <span class="path">Network Interface</span> 里设好 IP。然后在博图里选中 HMI → 下载到设备。</li>
-        <li><b>PC station：</b>电脑上打开 <b>Station Configurator（站组态编辑器）</b>，把 WinCC RT 和网卡放到与博图相同的插槽号，站名也要一致；然后在博图里对 PC station 下载。</li>
+        <li><b>访问级别</b>：选“完全访问权限（无任何保护）”。</li>
+        <li><span class="path">连接机制</span>：勾选 <b>允许来自远程对象的 PUT/GET 通信访问</b>。WinCC 读写数据靠的就是 PUT/GET，不勾的话连接正常但读不到值。</li>
       </ul>
     </div></li>
 
     <li><div class="step-body">
-      <h3>没有硬件时：用 PLCSIM 仿真联调</h3>
-      <ul>
-        <li>选中 PLC → <b>开始仿真</b>（会启动 S7-PLCSIM），下载程序并切到 RUN。</li>
-        <li>选中 HMI → 右键 <span class="path">开始仿真<b>›</b>运行系统</span>。</li>
-        <li>画面上 I/O 域显示数值、按下按钮 PLC 变量跟着变，就说明通了。</li>
-      </ul>
-      <div class="warn"><b>仿真显示 ####：</b>打开控制面板里的“设置 PG/PC 接口”，把应用程序访问点 <code>S7ONLINE</code> 指向带 <code>PLCSIM</code> 字样的条目，重启 HMI 仿真。</div>
-    </div></li>
-  </ol>
-</section>
-
-<!-- ======== SCENARIO B ======== -->
-<section id="b">
-  <div class="sec-head">
-    <span class="eyebrow">情况 B</span>
-    <h2>经典版 WinCC V7 / V8 连接真实的 S7-1200 / 1500</h2>
-    <p class="lede">要做三件事：电脑网卡能到达 PLC，WinCC 有对应的通信驱动，PLC 允许被外部访问。</p>
-  </div>
-
-  <ol class="steps">
-    <li><div class="step-body">
-      <h3>电脑网卡与 PLC 同网段</h3>
-      <p>给上位机网卡设一个静态 IP，比如 <code>192.168.0.10</code> / <code>255.255.255.0</code>。在命令行里 <code>ping 192.168.0.1</code>，能通再往下做。</p>
+      <h3>设定 PLC 的 IP</h3>
+      <p><span class="path">属性<b>›</b>常规<b>›</b>PROFINET 接口<b>›</b>以太网地址</span>，IP 设为 <code>192.168.0.1</code>，子网掩码 <code>255.255.255.0</code>。NetToPLCsim 会按这个 IP 找到仿真 PLC。</p>
     </div></li>
 
     <li><div class="step-body">
-      <h3>设置 PG/PC 接口</h3>
-      <p>控制面板（或 WinCC 项目管理器里）打开 <b>设置 PG/PC 接口 (Set PG/PC Interface)</b>，访问点 <code>S7ONLINE</code> 选择接到 PLC 的那块网卡，条目名形如 <code>Intel(R) Ethernet ... .TCPIP.1</code>。</p>
-      <div class="note">电脑上有 WiFi、蓝牙、VMware 虚拟网卡时最容易选错，一定按网卡名称核对。</div>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>博图里设置 PLC 的访问权限</h3>
-      <p>双击 PLC → <span class="path">属性<b>›</b>防护与安全 (Protection &amp; Security)</span>：</p>
+      <h3>给 WinCC 用的 DB 块取消“优化的块访问”</h3>
       <ul>
-        <li><b>访问级别</b>：先选“完全访问权限（无任何保护）”调通，之后再按需加密码。</li>
-        <li><span class="path">连接机制</span> 里勾选 <b>允许来自远程对象的 PUT/GET 通信访问</b>。用旧驱动或绝对地址时必须勾。</li>
-      </ul>
-      <p>改完后编译并下载到 PLC，<b>硬件配置也要一起下载</b>，只下程序不会生效。</p>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>WinCC 里添加通信驱动和连接</h3>
-      <p><b>推荐（V7.4 SP1 及以上）：</b></p>
-      <ul>
-        <li>WinCC 项目管理器 → <b>变量管理</b> → 右键 <b>添加新的驱动程序</b> → <code>SIMATIC S7-1200, S7-1500 Channel</code>。</li>
-        <li>展开到通道单元 <code>OMS+</code> → 右键 <b>新建连接</b>，命名如 <code>PLC_1</code>。</li>
-        <li>连接属性里填 PLC 的 IP <code>192.168.0.1</code>，PLC 设了访问密码的话这里也要填。</li>
-      </ul>
-      <p><b>旧版本：</b>驱动选 <code>SIMATIC S7 Protocol Suite</code> → 通道单元 <code>TCP/IP</code> → 新建连接，填 IP、机架号 <code>0</code>、插槽号 <code>1</code>（S7-300 是 <code>2</code>）。</p>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>创建变量：符号寻址或绝对寻址</h3>
-      <p><b>方式一：符号寻址（新驱动，推荐）</b></p>
-      <ul>
-        <li>在连接下打开 <b>AS 符号 (AS Symbols)</b>，选 <b>从 AS 读取</b>，WinCC 会在线从 PLC 拉取变量表和 DB 结构。</li>
-        <li>勾选需要的变量，添加到 WinCC 变量管理。之后改了 PLC 程序，再读一次就能同步。</li>
-        <li>按名字访问，DB 块可以保持“优化的块访问”。</li>
-      </ul>
-      <p><b>方式二：绝对寻址</b></p>
-      <ul>
-        <li>手动新建变量，地址写成 <code>DB1.DBD0</code>（双字）、<code>DB1.DBX4.0</code>（位）、<code>M10.0</code>、<code>I0.0</code> 这种形式。</li>
-        <li>博图里对应 DB 块：右键 <span class="path">属性<b>›</b>属性 (Attributes)</span>，<b>取消勾选“优化的块访问”</b>，编译后 DB 里会多出“偏移量”列，按这一列的地址填。</li>
+        <li>建议专门建一个数据块（比如 <code>DB1 HMI_Data</code>），把要在画面上显示和操作的变量都放进去。</li>
+        <li>右键 DB → <b>属性</b> → <b>属性</b>页，<b>取消勾选“优化的块访问”</b>，确定后编译。</li>
+        <li>打开 DB，会多出一列 <b>偏移量</b>。WinCC 里的地址就按这一列填，后面会用到。</li>
       </ul>
       <div class="why">
-        <b class="k">为什么优化块不能用绝对地址</b>
-        <p>“优化的块访问”打开后，PLC 会按自己的方式重新排列变量的存储位置，以换取更快的访问速度，所以变量没有固定的字节偏移量，<code>DB1.DBD0</code> 这样的地址也就不存在。符号寻址按名字找变量，不依赖偏移量，所以不受影响。</p>
+        <b class="k">为什么必须取消</b>
+        <p>“优化的块访问”打开后，PLC 会自行安排变量的存储位置，变量没有固定的字节偏移量，<code>DB1.DBX0.0</code> 这样的地址也就不存在。取消后变量按声明顺序依次排列，每个变量都有确定的偏移量。</p>
+      </div>
+      <div class="note">示例：DB1 里依次声明 <code>Start : Bool</code>、<code>Stop : Bool</code>、<code>Speed : Int</code>、<code>Temp : Real</code>，偏移量通常是 <code>0.0</code>、<code>0.1</code>、<code>2.0</code>、<code>4.0</code>。Int 和 Real 会对齐到偶数字节，所以 Speed 从 2.0 开始而不是 1.0，<b>以博图里显示的偏移量为准</b>。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>启动 PLCSIM 并下载</h3>
+      <ul>
+        <li>选中 PLC → 工具栏 <b>开始仿真</b>，PLCSIM 窗口弹出。</li>
+        <li>博图随即弹出下载对话框，接口选 PLCSIM 那一项，搜索到 <code>192.168.0.1</code> 后下载。<b>硬件配置和程序一起下</b>，IP 和 PUT/GET 设置都在硬件配置里。</li>
+        <li>下载完成后把 PLCSIM 切到 <b>RUN</b>，指示灯变绿。</li>
+      </ul>
+    </div></li>
+  </ol>
+</section>
+
+<section id="nic">
+  <div class="sec-head">
+    <span class="eyebrow">第二阶段</span>
+    <h2>添加一块环回网卡，给 NetToPLCsim 用</h2>
+  </div>
+  <div class="why">
+    <b class="k">为什么不用真实网卡</b>
+    <p>NetToPLCsim 需要一个本机 IP 来监听。用环回网卡（一块只存在于系统里的虚拟网卡）不受网线是否插着、公司网络 IP 是多少的影响，联调最稳定。</p>
+  </div>
+  <ol class="steps">
+    <li><div class="step-body">
+      <h3>安装环回网卡</h3>
+      <p><code>Win + R</code> 输入 <code>hdwwiz</code> 回车 → 下一步 → <b>安装我手动从列表选择的硬件</b> → <b>网络适配器</b> → 厂商选 <b>Microsoft</b>，型号选 <b>Microsoft KM-TEST 环回适配器</b> → 完成。</p>
+    </div></li>
+    <li><div class="step-body">
+      <h3>给它设静态 IP</h3>
+      <p>控制面板 → 网络连接，找到新出现的环回网卡 → 属性 → <b>Internet 协议版本 4</b>：IP <code>192.168.0.10</code>，掩码 <code>255.255.255.0</code>，网关留空。</p>
+      <div class="warn"><b>注意网段冲突：</b>如果你的真实网卡也在 192.168.0.x 网段，就把这一整套换成 <code>192.168.100.x</code>：环回网卡 <code>192.168.100.10</code>，博图里 PLC 改为 <code>192.168.100.1</code> 并重新下载。</div>
+    </div></li>
+  </ol>
+</section>
+
+<section id="n2p">
+  <div class="sec-head">
+    <span class="eyebrow">第三阶段</span>
+    <h2>配置 NetToPLCsim</h2>
+  </div>
+  <ol class="steps">
+    <li><div class="step-body">
+      <h3>下载并以管理员身份运行</h3>
+      <p>在 SourceForge 搜索 NetToPLCsim，<b>下载最新版</b>（它对 PLCSIM V16 的支持取决于自身版本）。解压后右键 <code>NetToPLCsim.exe</code> → <b>以管理员身份运行</b>。</p>
+    </div></li>
+    <li><div class="step-body">
+      <h3>让出 102 端口</h3>
+      <p>启动时如果提示 102 端口被占用，并询问是否停止 <b>S7DOS Help Service</b>（有的版本叫 IEPG Help Service），选 <b>是</b>。这个西门子服务默认占着本机的 102 端口，不停掉 NetToPLCsim 就无法监听。</p>
+      <div class="note">停掉这个服务只影响本次开机。电脑重启后它会自动恢复，下次联调时 NetToPLCsim 会再问一次。</div>
+    </div></li>
+    <li><div class="step-body">
+      <h3>添加站点</h3>
+      <p>点 <b>Add</b>，填写：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>字段</th><th>填什么</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td>Name</td><td><code>PLC_1214C</code></td><td>随便起</td></tr>
+            <tr><td>Network IP Address</td><td><code>192.168.0.10</code></td><td>点旁边的按钮选环回网卡。WinCC 要连的就是这个地址</td></tr>
+            <tr><td>Plcsim IP Address</td><td><code>192.168.0.1</code></td><td>博图里 PLC 的 IP，可以点按钮从正在运行的 PLCSIM 中选</td></tr>
+            <tr><td>Rack / Slot</td><td><code>0</code> / <code>1</code></td><td>S7-1200 固定是机架 0、插槽 1</td></tr>
+          </tbody>
+        </table>
       </div>
     </div></li>
-
     <li><div class="step-body">
-      <h3>画面绑定变量并激活运行</h3>
-      <ul>
-        <li>打开 <b>图形编辑器 (Graphics Designer)</b>，新建画面，放一个 I/O 域，组态对话框里选择刚才的变量，更新周期选 <code>1 s</code> 或 <code>500 ms</code>。</li>
-        <li>项目管理器 → <b>计算机属性 → 启动</b>，勾选“图形运行系统”，起始画面选这张画面。</li>
-        <li>点工具栏的 ▶ <b>激活</b>。回到变量管理，在变量上右键查看 <b>连接状态</b>，显示“正常”就算连好了。</li>
-      </ul>
+      <h3>启动转发</h3>
+      <p>点 <b>Start Server</b>，站点状态显示 running 即可。cmd 里 <code>ping 192.168.0.10</code> 应该能通。</p>
     </div></li>
   </ol>
-
-  <div class="note">手边没有真实 PLC、想在同一台电脑上联调，直接看下面的 <a href="#c">情况 C</a>。</div>
 </section>
 
-<!-- ======== SCENARIO C ======== -->
-<section id="c">
+<section id="wincc">
   <div class="sec-head">
-    <span class="eyebrow">情况 C</span>
-    <h2>博图和 WinCC 都在本机：用 PLCSIM Advanced 仿真联调</h2>
-    <p class="lede">没有真实 PLC，程序在博图里写，画面在独立的 WinCC V7 / V8 里做，三样东西都跑在同一台电脑上。</p>
-  </div>
-
-  <div class="why">
-    <b class="k">为什么普通 PLCSIM 不行</b>
-    <p>博图自带的 S7-PLCSIM 只和博图内部通信，不对外开放网络接口，单独安装的 WinCC 找不到它。<b>S7-PLCSIM Advanced</b> 会在电脑上装一块“虚拟网卡”，让仿真 PLC 拥有自己的 IP 地址。这样 WinCC 就能像连真实 PLC 一样，按 IP 去连它。</p>
-  </div>
-
-  <div class="diagram" role="img" aria-label="本机仿真拓扑：博图和 WinCC 通过 Siemens PLCSIM 虚拟网卡 192.168.0.10 访问仿真 PLC 192.168.0.1">
-    <svg viewBox="0 0 640 200" xmlns="http://www.w3.org/2000/svg">
-      <rect class="d-box" x="10" y="10" width="620" height="180" rx="8" style="fill:none" stroke-dasharray="6 4"/>
-      <text class="d-sub" x="24" y="32">同一台电脑</text>
-      <rect class="d-box" x="30" y="50" width="150" height="50" rx="6"/>
-      <text class="d-txt" x="105" y="80" text-anchor="middle">博图（下载程序）</text>
-      <rect class="d-box" x="30" y="120" width="150" height="50" rx="6"/>
-      <text class="d-txt" x="105" y="150" text-anchor="middle">WinCC V7 / V8</text>
-      <rect class="d-box" x="245" y="75" width="150" height="70" rx="6"/>
-      <text class="d-txt" x="320" y="105" text-anchor="middle">虚拟网卡</text>
-      <text class="d-sub" x="320" y="127" text-anchor="middle">192.168.0.10</text>
-      <rect class="d-box" x="460" y="75" width="155" height="70" rx="6"/>
-      <text class="d-txt" x="537" y="105" text-anchor="middle">仿真 PLC 1500</text>
-      <text class="d-sub" x="537" y="127" text-anchor="middle">192.168.0.1</text>
-      <path class="d-wire" d="M180 75 H212 V100 H245"/>
-      <path class="d-wire" d="M180 145 H212 V120 H245"/>
-      <path class="d-wire" d="M395 110 H460"/>
-      <text class="d-lbl" x="427" y="98" text-anchor="middle">TCP 102</text>
-    </svg>
-  </div>
-
-  <ol class="steps">
-    <li><div class="step-body">
-      <h3>确认 PLC 型号</h3>
-      <p>PLCSIM Advanced <b>只支持 S7-1500 和 ET 200SP CPU，不支持 S7-1200</b>。程序是 1200 的话，先看本节末尾的替代方案。</p>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>博图里打开“支持仿真”并放开访问权限</h3>
-      <ul>
-        <li>右键项目名 → <span class="path">属性<b>›</b>保护</span>，勾选 <b>块编译时支持仿真</b>。不勾的话，下载到仿真器时会报错。</li>
-        <li>PLC <span class="path">属性<b>›</b>防护与安全</span>：访问级别选完全访问，勾选 <b>PUT/GET</b>。</li>
-        <li>记下 PLC 的 IP，例如 <code>192.168.0.1</code>。</li>
-      </ul>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>启动 PLCSIM Advanced 实例</h3>
-      <ul>
-        <li>打开 S7-PLCSIM Advanced 控制面板。</li>
-        <li><b>Online Access</b> 切到 <b>PLCSIM Virtual Eth. Adapter</b>。选成 “PLCSIM” 本地模式的话，博图能下载，WinCC 却连不上。</li>
-        <li>Instance name 随便填；IP 填 <code>192.168.0.1</code>（和博图一致）；Subnet 填 <code>255.255.255.0</code>；PLC type 选 Unspecified CPU 1500。</li>
-        <li>点 <b>Start</b>，等实例指示灯变黄（STOP 状态）。</li>
-      </ul>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>给虚拟网卡设 IP，确认能 ping 通</h3>
-      <p>安装 PLCSIM Advanced 后，网络适配器里会多出一块 <b>Siemens PLCSIM Virtual Ethernet Adapter</b>。给它设一个同网段的静态 IP，比如 <code>192.168.0.10</code>。cmd 里 <code>ping 192.168.0.1</code> 能通，说明仿真 PLC 已经在线了。</p>
-      <div class="note">如果本机的真实网卡也在 192.168.0.x 网段，两边会冲突。这时把仿真 PLC 和虚拟网卡一起改到 <code>192.168.100.x</code> 这类不冲突的网段，博图里的 PLC IP 也同步修改。</div>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>博图下载到仿真 PLC</h3>
-      <p>选中 PLC → 下载。PG/PC 接口类型选 <b>PN/IE</b>，接口选 <b>Siemens PLCSIM Virtual Ethernet Adapter</b>。搜索到 <code>192.168.0.1</code> 后下载，完成后切到 <b>RUN</b>。</p>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>WinCC 连接仿真 PLC</h3>
-      <ul>
-        <li>设置 PG/PC 接口：<code>S7ONLINE</code> 指向 <code>Siemens PLCSIM Virtual Ethernet Adapter.TCPIP.1</code>。</li>
-        <li>变量管理 → 添加 <code>SIMATIC S7-1200, S7-1500 Channel</code> → <code>OMS+</code> → 新建连接，IP 填 <code>192.168.0.1</code>。</li>
-        <li>用 <b>AS 符号 → 从 AS 读取</b> 导入变量，或者按情况 B 的方式手动填绝对地址。</li>
-        <li>画面绑定变量 → 激活运行，连接状态显示“正常”就通了。</li>
-      </ul>
-    </div></li>
-  </ol>
-
-  <div class="warn"><b>别同时开两个仿真器：</b>PLCSIM Advanced 和博图自带的普通 PLCSIM 会互相冲突，只保留一个。</div>
-
-  <h3>PLC 是 S7-1200 时的替代方案</h3>
-  <div class="tbl">
-    <table>
-      <thead><tr><th>方案</th><th>做法</th><th>取舍</th></tr></thead>
-      <tbody>
-        <tr><td><b>临时换成 1500 仿真</b></td><td>复制一份项目，右键 CPU → 更换设备，换成 1500，再按上面的步骤走</td><td>最省事，大部分逻辑可以直接用；1200 专用的指令或硬件需要调整</td></tr>
-        <tr><td><b>NetToPLCsim</b></td><td>免费的第三方工具，把普通 PLCSIM 映射到本机网卡的 102 端口，WinCC 按 IP 去连</td><td>不用买 PLCSIM Advanced；只适合 PUT/GET + 绝对地址，稳定性一般</td></tr>
-        <tr><td><b>画面改到博图里做</b></td><td>博图项目里添加 HMI 设备，按情况 A 组态，PLC 和 HMI 同时点“开始仿真”</td><td>不需要任何额外软件；代价是放弃独立 WinCC，画面要在博图里重做</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<!-- ======== SCENARIO D ======== -->
-<section id="d">
-  <div class="sec-head">
-    <span class="eyebrow">情况 D</span>
-    <h2>OPC UA 通用连接</h2>
-    <p class="lede">适合跨厂商上位机，或者 WinCC 与 PLC 之间想用标准协议的场合。</p>
+    <span class="eyebrow">第四阶段</span>
+    <h2>WinCC V7.5：建连接、建变量、做画面</h2>
   </div>
   <ol class="steps">
     <li><div class="step-body">
-      <h3>PLC 启用 OPC UA 服务器</h3>
-      <p><span class="path">PLC 属性<b>›</b>OPC UA<b>›</b>服务器</span>，勾选 <b>激活 OPC UA 服务器</b>。端点地址形如 <code>opc.tcp://192.168.0.1:4840</code>。</p>
-      <p>同时在 <span class="path">运行系统许可证<b>›</b>OPC UA</span> 里选择已购买的许可类型，否则编译会报错。</p>
+      <h3>把访问点指向环回网卡</h3>
+      <p>控制面板 → <b>设置 PG/PC 接口</b>：应用程序访问点下拉选 <code>CP-TCPIP</code>（没有的话选“添加/删除”新建一个），分配给 <code>Microsoft KM-TEST 环回适配器.TCPIP.1</code>，确定。</p>
     </div></li>
     <li><div class="step-body">
-      <h3>决定开放哪些变量</h3>
-      <p>默认 DB 和变量表里勾了“可从 HMI/OPC UA 访问”的变量都会出现在服务器的地址空间里。下载到 PLC。</p>
+      <h3>添加驱动</h3>
+      <p>WinCC 项目管理器 → <b>变量管理</b> → 右键 <b>添加新的驱动程序</b> → 选 <code>SIMATIC S7 Protocol Suite</code>。</p>
+      <div class="note">这里用经典的 S7 Protocol Suite，不用 “S7-1200, S7-1500 Channel”。后者主打符号访问，而本方案只能走 PUT/GET 绝对地址，经典驱动对此最稳。</div>
     </div></li>
     <li><div class="step-body">
-      <h3>WinCC 作为 OPC UA 客户端连接</h3>
+      <h3>确认通道单元的逻辑设备名称</h3>
+      <p>展开驱动 → 右键 <b>TCP/IP</b> 通道单元 → <b>系统参数</b> → <b>单元</b>页，逻辑设备名称应为 <code>CP-TCPIP</code>，也就是上一步指向环回网卡的那个访问点。</p>
+    </div></li>
+    <li><div class="step-body">
+      <h3>新建连接</h3>
+      <p>右键 <b>TCP/IP</b> → <b>新建连接</b>，命名 <code>PLC_1214C</code> → 右键 <b>连接参数</b>：</p>
       <ul>
-        <li>经典 WinCC：变量管理 → 添加驱动 <code>OPC UA WinCC Channel</code> → 新建连接，填端点地址，浏览并导入变量。</li>
-        <li>第一次连接时，客户端和服务器需要<b>互相信任对方的证书</b>。调试阶段可以先选安全策略 None，跑通后再改为 Sign &amp; Encrypt 并互相导入证书。</li>
+        <li>IP 地址：<b><code>192.168.0.10</code></b>，填 NetToPLCsim 监听的地址，<b>不是 PLC 的 192.168.0.1</b>。</li>
+        <li>机架号 <code>0</code>，插槽号 <code>1</code>。</li>
       </ul>
+    </div></li>
+    <li><div class="step-body">
+      <h3>按偏移量建变量</h3>
+      <p>选中连接 → 在右侧变量表里新建变量，地址按博图 DB 的偏移量填写：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>博图变量</th><th>偏移量</th><th>WinCC 数据类型</th><th>WinCC 地址</th></tr></thead>
+          <tbody>
+            <tr><td><code>Start : Bool</code></td><td>0.0</td><td>二进制变量</td><td><code>DB1.DBX0.0</code></td></tr>
+            <tr><td><code>Stop : Bool</code></td><td>0.1</td><td>二进制变量</td><td><code>DB1.DBX0.1</code></td></tr>
+            <tr><td><code>Speed : Int</code></td><td>2.0</td><td>有符号 16 位数</td><td><code>DB1.DBW2</code></td></tr>
+            <tr><td><code>Temp : Real</code></td><td>4.0</td><td>浮点数 32 位 IEEE 754</td><td><code>DB1.DBD4</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">地址规则：<code>X</code> 是位（字节.位），<code>B</code> 是字节，<code>W</code> 是 2 字节的字，<code>D</code> 是 4 字节的双字。M 区、I/Q 区写成 <code>M10.0</code>、<code>MW20</code>、<code>I0.0</code>、<code>Q0.0</code>，不用改 DB 设置也能访问。</div>
+    </div></li>
+    <li><div class="step-body">
+      <h3>画面绑定变量</h3>
+      <ul>
+        <li>打开 <b>图形编辑器</b>，新建画面，放一个 <b>I/O 域</b>，组态对话框里变量选 <code>Speed</code>，更新周期 <code>500 ms</code>。</li>
+        <li>放一个 <b>按钮</b>：属性 → 事件 → 鼠标 → 按左键选“直接连接”，常数 <code>1</code> 写入变量 <code>Start</code>；释放左键写 <code>0</code>，就是一个点动按钮。</li>
+      </ul>
+    </div></li>
+    <li><div class="step-body">
+      <h3>设置启动画面并激活</h3>
+      <p>项目管理器 → <b>计算机</b> → 属性 → <b>启动</b>页勾选“图形运行系统”，<b>图形运行系统</b>页选起始画面。点工具栏 ▶ <b>激活</b>。</p>
+      <p>验证：在博图里监视 DB1，改 <code>Speed</code> 的值，WinCC 画面跟着变；在 WinCC 里按按钮，博图里 <code>Start</code> 跟着变。双向都通，就说明联调成功。</p>
     </div></li>
   </ol>
 </section>
 
-<!-- ======== MIGRATION ======== -->
-<section id="migrate">
+<section id="order">
   <div class="sec-head">
-    <span class="eyebrow">补充</span>
-    <h2>把经典 WinCC 的画面搬进博图</h2>
+    <span class="eyebrow">日常使用</span>
+    <h2>每次联调的启动顺序</h2>
   </div>
-  <p>两种 WinCC 的画面格式不同，不能直接复制粘贴。官方方法是在原电脑上用 <b>SIMATIC Migration Tool</b> 把 WinCC V7 项目导出为迁移文件，再在博图里 <span class="path">项目<b>›</b>移植项目 (Migrate project)</span>，目标是 WinCC Professional。图形对象和变量大多能转过来，VBS / C 脚本和部分 ActiveX 控件要手动重写。老的 WinCC flexible 项目可以直接在博图中打开移植。</p>
+  <ol class="steps">
+    <li><div class="step-body"><h3>博图 V16：开始仿真 → 下载 → RUN</h3><p>PLC 程序有修改时重新下载；改了 DB 结构的话，WinCC 里对应变量的地址也要按新的偏移量更新。</p></div></li>
+    <li><div class="step-body"><h3>NetToPLCsim：管理员运行 → Start Server</h3><p>必须在 PLCSIM 已经运行之后再启动，否则它找不到仿真 PLC。</p></div></li>
+    <li><div class="step-body"><h3>WinCC V7.5：激活运行</h3><p>关闭时反过来：先退出 WinCC 运行，再停 NetToPLCsim，最后关 PLCSIM。</p></div></li>
+  </ol>
 </section>
 
-<!-- ======== TROUBLESHOOT ======== -->
 <section id="debug">
   <div class="sec-head">
     <span class="eyebrow">排错</span>
@@ -460,43 +343,38 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
     <table>
       <thead><tr><th>现象</th><th>常见原因</th><th>怎么处理</th></tr></thead>
       <tbody>
-        <tr><td class="sym">I/O 域显示 ####</td><td>完全没连上 PLC</td><td>先 ping PLC；检查两边 IP 是否同网段、网线和交换机、PG/PC 接口选的网卡</td></tr>
-        <tr><td class="sym">ping 得通但连不上</td><td>防火墙拦了 TCP 102；或者 PLC 访问级别带密码</td><td>Windows 防火墙放行 102 端口（或调试时临时关闭）；连接属性里填密码</td></tr>
-        <tr><td class="sym">连接正常，数值为 0 或坏值</td><td>没勾 PUT/GET；绝对地址对应的 DB 是优化块；地址偏移写错</td><td>勾 PUT/GET 后重新下载硬件配置；取消优化块访问并按偏移量列核对地址</td></tr>
-        <tr><td class="sym">HMI 里浏览不到某个 DB 变量</td><td>“可从 HMI/OPC UA 访问”没勾</td><td>DB 编辑器里勾上，重新编译下载</td></tr>
-        <tr><td class="sym">仿真时一直 ####</td><td>PG/PC 接口没指向 PLCSIM；经典 WinCC 连普通 PLCSIM</td><td>S7ONLINE 指向 PLCSIM 条目；经典 WinCC 改用 PLCSIM Advanced</td></tr>
-        <tr><td class="sym">博图能下载，WinCC 连不上仿真 PLC</td><td>PLCSIM Advanced 的 Online Access 选成了 PLCSIM 本地模式</td><td>停止实例，改为 PLCSIM Virtual Eth. Adapter 后重新启动并下载</td></tr>
-        <tr><td class="sym">下载到仿真器提示不支持</td><td>项目没勾“块编译时支持仿真”</td><td>项目属性 → 保护 → 勾选后重新编译下载</td></tr>
-        <tr><td class="sym">ping 不通仿真 PLC</td><td>虚拟网卡 IP 不在同网段，或与真实网卡网段冲突</td><td>给虚拟网卡设同网段 IP；网段冲突时把仿真改到 192.168.100.x</td></tr>
-        <tr><td class="sym">运行一段时间自动退出</td><td>WinCC RT 没有授权，处于演示模式</td><td>用 Automation License Manager 检查授权，或安装试用授权</td></tr>
-        <tr><td class="sym">下载触摸屏失败</td><td>面板没开 PN 传输；HMI 设备版本与面板固件不一致</td><td>面板 Control Panel 里开启传输；博图里更换设备版本，或更新面板固件</td></tr>
-        <tr><td class="sym">PC station 运行后找不到连接</td><td>Station Configurator 的插槽、站名与博图不一致</td><td>按博图 PC station 设备视图，逐项核对插槽号和站名</td></tr>
+        <tr><td class="sym">下载时提示不支持仿真</td><td>没勾“块编译时支持仿真”</td><td>项目属性 → 保护 → 勾选后重新编译下载</td></tr>
+        <tr><td class="sym">NetToPLCsim 提示 port 102 被占用</td><td>没以管理员运行，或没停掉 S7DOS Help Service</td><td>右键以管理员身份运行，提示停止服务时选“是”</td></tr>
+        <tr><td class="sym">NetToPLCsim 找不到 PLCSIM</td><td>PLCSIM 没运行或不在 RUN；NetToPLCsim 版本太旧</td><td>先启动 PLCSIM 并切 RUN；换 NetToPLCsim 最新版</td></tr>
+        <tr><td class="sym">WinCC 变量显示 #### / 连接断开</td><td>连接 IP 填成了 PLC 的 192.168.0.1；CP-TCPIP 没指向环回网卡</td><td>连接 IP 改为 192.168.0.10；在设置 PG/PC 接口里重新分配访问点</td></tr>
+        <tr><td class="sym">连接正常，数值一直是 0</td><td>没勾 PUT/GET；DB 仍是优化块；改了设置但只下载了程序</td><td>勾 PUT/GET、取消优化块访问，连同硬件配置一起重新下载</td></tr>
+        <tr><td class="sym">数值乱跳或明显不对</td><td>地址偏移量写错，或数据类型不匹配（比如 Real 建成了整数）</td><td>对照博图 DB 偏移量列逐个核对地址和类型</td></tr>
+        <tr><td class="sym">WinCC 运行一段时间自动退出</td><td>没有运行系统授权，处于演示模式</td><td>在 Automation License Manager 里检查授权，或安装试用授权</td></tr>
+        <tr><td class="sym">WinCC 无法激活或驱动加载失败</td><td>WinCC V7.5 官方主要支持 Windows 10，在 Windows 11 上可能有兼容问题</td><td>确认已打 SP 更新；仍有问题时，把整套软件装进 Windows 10 虚拟机</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<!-- ======== CHECKLIST ======== -->
 <section id="checklist">
   <div class="sec-head">
-    <span class="eyebrow">上线前</span>
+    <span class="eyebrow">联调前</span>
     <h2>检查清单</h2>
   </div>
   <ul class="check">
-    <li><span>PLC 和 HMI / 上位机的 IP 前三段相同，子网掩码一致，能互相 ping 通</span></li>
-    <li><span>博图里 HMI 连接存在，伙伴是正确的 PLC（情况 A）</span></li>
-    <li><span>PG/PC 接口 S7ONLINE 指向正确网卡（情况 B，或仿真时指向 PLCSIM）</span></li>
-    <li><span>用绝对地址时已勾 PUT/GET，相关 DB 已取消优化块访问，并重新下载了硬件配置</span></li>
-    <li><span>用符号寻址时，需要的变量都勾了“可从 HMI/OPC UA 访问”</span></li>
-    <li><span>本机仿真时：PLCSIM Advanced 用 Virtual Eth. Adapter 模式，虚拟网卡与仿真 PLC 同网段，且没有同时打开普通 PLCSIM</span></li>
-    <li><span>Windows 防火墙已放行 TCP 102（OPC UA 是 4840）</span></li>
-    <li><span>WinCC 运行系统授权有效，不在演示模式</span></li>
-    <li><span>采集周期按需要设置，变量很多时不要全设成 100 ms，以免通信负载过高</span></li>
+    <li><span>项目已勾“块编译时支持仿真”</span></li>
+    <li><span>PLC 访问级别为完全访问，已勾 PUT/GET</span></li>
+    <li><span>给 WinCC 用的 DB 已取消“优化的块访问”，并记下了每个变量的偏移量</span></li>
+    <li><span>硬件配置和程序都已下载到 PLCSIM，PLCSIM 处于 RUN</span></li>
+    <li><span>环回网卡 IP 为 192.168.0.10，与 PLC 同网段但不相同</span></li>
+    <li><span>NetToPLCsim 以管理员运行，站点为 192.168.0.10 → 192.168.0.1，机架 0 插槽 1，已 Start Server</span></li>
+    <li><span>设置 PG/PC 接口中 CP-TCPIP 指向环回网卡</span></li>
+    <li><span>WinCC 连接 IP 填的是 192.168.0.10，机架 0 插槽 1</span></li>
   </ul>
 </section>
 
 <footer>
-  适用版本参考：博图 V16 至 V19 / V20，WinCC V7.4 SP1 及以上 / V8。不同版本的菜单位置可能略有差异，以实际软件为准。
+  适用环境：CPU 1214C，博图 V16 + S7-PLCSIM V16，WinCC V7.5，NetToPLCsim 最新版。如果 NetToPLCsim 始终无法连上 PLCSIM V16，可以复制一份项目把 CPU 更换为 S7-1500，改用 S7-PLCSIM Advanced V3.0 仿真。菜单位置以实际软件为准。
 </footer>
 
 </div>
