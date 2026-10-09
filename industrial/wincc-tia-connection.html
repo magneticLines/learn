@@ -62,6 +62,23 @@ nav.toc ol{margin:6px 0 0;padding-left:1.4em;display:grid;gap:2px;font-size:.93r
 nav.toc a{text-decoration:none}
 nav.toc a:hover{text-decoration:underline}
 
+/* Sidebar TOC: cloned from nav.toc by script, only on wide screens */
+.sidetoc{display:none}
+@media (min-width:1200px){
+  body{padding-left:288px}
+  .wrap nav.toc.js-hide{display:none}
+  .sidetoc{display:block;position:fixed;top:0;left:0;bottom:0;width:272px;overflow-y:auto;padding:28px 18px 28px 24px;background:var(--panel);border-right:1px solid var(--line);font-size:.88rem;line-height:1.5}
+  .sidetoc .sidetoc-title{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+  .sidetoc ol{list-style:none;margin:0;padding:0;display:grid;gap:2px;counter-reset:t}
+  .sidetoc li{counter-increment:t}
+  .sidetoc ol a{display:grid;grid-template-columns:24px minmax(0,1fr);gap:6px;padding:6px 8px;border-radius:6px;color:var(--muted);text-decoration:none;border-left:2px solid transparent}
+  .sidetoc ol a::before{content:counter(t,decimal-leading-zero);font-family:var(--f-mono);font-size:.75rem;padding-top:1px}
+  .sidetoc ol a:hover{background:var(--bg);color:var(--ink)}
+  .sidetoc ol a.active{background:var(--accent-soft);color:var(--ink);border-left-color:var(--accent);font-weight:700}
+  .sidetoc .back{display:block;margin-top:14px;padding:6px 8px;color:var(--muted);text-decoration:none;font-size:.82rem}
+  .sidetoc .back:hover{color:var(--accent)}
+}
+
 section{margin-top:56px;display:grid;gap:18px;scroll-margin-top:16px}
 .sec-head{display:grid;gap:4px}
 .sec-head .eyebrow{color:var(--muted)}
@@ -114,7 +131,7 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
 <header>
   <div class="eyebrow">CPU 1214C · 博图 V16 · WinCC V7.5 · NetToPLCsim</div>
   <h1>1214C 本机联调：博图程序连 WinCC 画面</h1>
-  <p class="lede">没有真实 PLC，博图 V16 写的 1214C 程序、WinCC V7.5 做的画面都在同一台电脑上。按这一页从上到下做，每一步都有“怎么确认做对了”，就能让 WinCC 画面读写仿真 PLC 里的数据。</p>
+  <p class="lede">目标：把本仓库里的两个现成项目连起来，即博图项目 <code>other/灌装/灌装完整程序.ap16</code> 和 WinCC 项目 <code>other/Canned/canned/canned.MCP</code>。没有真实 PLC，所有软件都在同一台电脑上。按这一页从上到下做，每一步都有“怎么确认做对了”，最后在 WinCC 主画面 <code>罐装.Pdl</code> 上按“启动”，看到整条灌装线动起来。</p>
 </header>
 
 <div class="decide">
@@ -128,18 +145,40 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
   <div class="note">想先了解这个灌装项目本身在控制什么（工位、I/O 分配、程序块、DB 结构、画面动画原理），见 <a href="./canned-project-analysis.html">灌装项目拆解</a>。</div>
 </div>
 
+<div class="decide">
+  <h3>这两个项目的现状（从项目文件里读出来的）</h3>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>项</th><th>博图项目</th><th>WinCC 项目</th></tr></thead>
+      <tbody>
+        <tr><td>位置</td><td><code>other/灌装/灌装完整程序.ap16</code></td><td><code>other/Canned/canned/canned.MCP</code></td></tr>
+        <tr><td>设备 / 计算机</td><td>PLC 名 <code>PLC_1</code>，CPU 1214C DC/DC/DC，固件 V4.4；另有一块 TP700 触摸屏 <code>HMI_1</code>（本次不用）</td><td>项目里的计算机名是 <code>DESKTOP-K9C4FQM</code>（原作者的电脑），要改成你的</td></tr>
+        <tr><td>数据</td><td>全局数据块 <code>"DB" [DB1]</code>，画面用到的数据都在里面；外加 PLC 变量表里的 I/Q 点</td><td>76 个变量，全部建在 <code>SIMATIC S7-1200, S7-1500 Channel</code> 驱动的连接 <code>NewConnection_1</code> 下</td></tr>
+        <tr><td>画面</td><td>—</td><td>启动画面 <code>罐装.Pdl</code>（全屏运行），另有一份旧版 <code>罐装1.Pdl</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="why">
+    <b class="k">要做的事，一句话</b>
+    <p>WinCC 原来的驱动按<b>变量名</b>访问 PLC，这套仿真环境用不了。要把这 76 个变量<b>原名不变</b>地搬到 <code>SIMATIC S7 Protocol Suite</code> 驱动下，改成按<b>地址</b>访问（如 <code>DB1,DBX48.0</code>）。名字不变，画面上的按钮、动画就一个都不用改。地址对照表已经整理好了：<a href="../other/wincc-tag-mapping.csv">other/wincc-tag-mapping.csv</a>。</p>
+  </div>
+  <div class="note">两个项目都提交在 git 里。博图和 WinCC 打开项目时会改写项目文件，<code>git status</code> 里会出现很多改动，属于正常现象。改乱了用 <code>git checkout -- other/</code> 恢复到原始版本即可。</div>
+</div>
+
 <nav class="toc" aria-label="目录">
   <b>目录</b>
   <ol>
     <li><a href="#why">原理：为什么要 NetToPLCsim、为什么只能用绝对地址</a></li>
     <li><a href="#install">准备阶段：软件准备</a></li>
-    <li><a href="#tia">第一阶段：博图 V16 准备程序并启动仿真</a></li>
+    <li><a href="#tia">第一阶段：博图 V16 打开灌装项目、核对 DB 并启动仿真</a></li>
     <li><a href="#nic">第二阶段：添加环回网卡</a></li>
     <li><a href="#n2p">第三阶段：配置 NetToPLCsim</a></li>
-    <li><a href="#wincc-env">第四阶段：WinCC 打开项目、建驱动和连接</a></li>
-    <li><a href="#tags">第五阶段：按偏移量建变量（含数组 / Struct、已有项目迁移）</a></li>
+    <li><a href="#wincc-env">第四阶段：WinCC 打开 canned 项目、建驱动和连接</a></li>
+    <li><a href="#tags">第五阶段：地址怎么写，先建 4 个测试变量</a></li>
     <li><a href="#screen">第六阶段：做测试画面并激活</a></li>
     <li><a href="#verify">验证：三层判断是否真的连上</a></li>
+    <li><a href="#migrate">第七阶段：迁移全部 76 个变量</a></li>
+    <li><a href="#run">第八阶段：修复画面遗留引用，运行罐装主画面</a></li>
     <li><a href="#order">日常使用：每次联调的启动顺序</a></li>
     <li><a href="#debug">排错：现象、原因和处理</a></li>
     <li><a href="#checklist">联调前检查清单</a></li>
@@ -285,6 +324,17 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
   <p>这一阶段全部在<b>博图</b>里操作。</p>
   <ol class="steps">
     <li><div class="step-body">
+      <h3>打开灌装项目</h3>
+      <ol>
+        <li>启动博图 V16，在 Portal 视图点 <b>打开现有项目</b> → <b>浏览</b>，选 <code>other\灌装\灌装完整程序.ap16</code>。</li>
+        <li>打开后点左下角 <b>项目视图</b>。左边项目树里能看到 <code>PLC_1 [CPU 1214C DC/DC/DC]</code> 和 <code>HMI_1 [TP700 Comfort]</code> 两个设备。</li>
+        <li>展开 <span class="path">PLC_1<b>›</b>程序块</span>，应该有 <code>Main [OB1]</code>、<code>01系统启停</code>、<code>02模拟量处理</code>、<code>03自动控制部分</code>、<code>04流程</code>、<code>吹气延时</code> 和 <code>DB [DB1]</code>。</li>
+      </ol>
+      <div class="note">本页后面所有博图操作都是对 <b>PLC_1</b> 做的。<code>HMI_1</code> 是博图里组态的触摸屏，和 WinCC V7.5 无关，这次不用管它，也不要选中它去仿真。</div>
+      <div class="note">如果提示项目需要升级，说明你的博图不是 V16。用 V17 及以上版本升级项目也可以，但 PLCSIM 的版本要跟着换成同一版本。</div>
+    </div></li>
+
+    <li><div class="step-body">
       <h3>打开仿真支持</h3>
       <p>项目树里右键 <b>项目名</b>（最顶上那一行）→ <b>属性</b> → <b>保护</b> 选项卡，勾选 <b>块编译时支持仿真</b> → 确定。</p>
       <div class="note">不勾的话，下载到 PLCSIM 时会提示“不支持仿真”。</div>
@@ -306,24 +356,34 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
     <li><div class="step-body">
       <h3>设定 PLC 的 IP</h3>
       <p>还是在 CPU 属性里：<span class="path">常规<b>›</b>PROFINET 接口 [X1]<b>›</b>以太网地址</span>，IP 设为 <code>192.168.0.1</code>，子网掩码 <code>255.255.255.0</code>。</p>
-      <div class="note">NetToPLCsim 会按这个 IP 找到仿真 PLC。WinCC 不直接用这个 IP。</div>
+      <div class="note">NetToPLCsim 会按这个 IP 找到仿真 PLC。WinCC 不直接用这个 IP。灌装项目里原来已经设过 IP 的话，可以先记下原值再改；不想改也行，后面 NetToPLCsim 的 Plcsim IP 填原值即可。</div>
     </div></li>
 
     <li><div class="step-body">
-      <h3>找到（或新建）给 WinCC 用的 DB</h3>
+      <h3>认识给 WinCC 用的 DB：<code>"DB" [DB1]</code></h3>
       <div class="note">DB（数据块）是 <b>PLC 程序</b>的一部分，只在<b>博图</b>里有。WinCC 里看不到 DB，它只按 <code>DB1,DBW2</code> 这样的地址去 PLC 里读写。</div>
-      <ul>
-        <li>项目树 → <span class="path">PLC_1<b>›</b>程序块</span>，看有没有 DB。已有的话，名字后面方括号里的就是编号，比如 <code>DB [DB1]</code>。</li>
-        <li>没有的话：双击 <b>添加新块</b> → 左边选 <b>数据块 (DB)</b> → 名称填 <code>HMI_Data</code> → 类型选 <b>全局 DB</b> → 确定。把要在画面上显示和操作的变量都放进去。</li>
-      </ul>
+      <p>灌装项目只有一个全局 DB，名字就叫 <code>DB</code>，编号 1。双击打开，能看到六个部分：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>成员</th><th>起始偏移</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><code>P/N</code></td><td>0.0</td><td>上升沿 / 下降沿指令用的存储位，WinCC 不用</td></tr>
+            <tr><td><code>仿真数据</code></td><td>14.0</td><td>瓶子坐标、气缸行程、各工序进度，驱动画面动画</td></tr>
+            <tr><td><code>HMI按键</code></td><td>48.0</td><td>启动、停止、复位和两个仿真异常按钮，由画面写入</td></tr>
+            <tr><td><code>设定数据</code></td><td>50.0</td><td>称重上下限、灌装液位，由画面写入</td></tr>
+            <tr><td><code>检测数据</code></td><td>60.0</td><td>液位、重量的实际值和仿真值</td></tr>
+            <tr><td><code>状态</code></td><td>92.0</td><td>各工位完成标志、流程步号</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div></li>
 
     <li><div class="step-body">
       <h3>取消“优化的块访问”，并固定 DB 编号</h3>
       <ol>
-        <li>右键这个 DB → <b>属性</b>。</li>
-        <li>左边选 <b>属性</b>（不是“常规”）→ <b>取消勾选“优化的块访问”</b>。</li>
-        <li>左边选 <b>常规</b> → <b>编号</b> 从“自动”改成 <b>手动</b>，记下编号（例如 1）→ 确定。</li>
+        <li>右键 <code>DB [DB1]</code> → <b>属性</b>。</li>
+        <li>左边选 <b>属性</b>（不是“常规”）→ <b>取消勾选“优化的块访问”</b>。已经是不勾选的状态就不用动。</li>
+        <li>左边选 <b>常规</b> → <b>编号</b> 从“自动”改成 <b>手动</b>，确认是 <code>1</code> → 确定。</li>
         <li>右键 DB → <b>编译</b>。</li>
         <li>双击打开 DB，表格里多出一列 <b>偏移量</b>，每个变量都有了 <code>0.0</code>、<code>2.0</code> 这样的值。</li>
       </ol>
@@ -336,6 +396,36 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
         <p>WinCC 的地址里写死了 DB 编号。编号默认自动分配，删掉重建或者从别的项目复制 DB 时可能会变，一变 WinCC 里的地址就全部失效。</p>
       </div>
       <div class="note">看不到偏移量列：确认已取消优化并编译过；还看不到的话，在列标题上右键，把“偏移量”列显示出来。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>用对照表核对偏移量</h3>
+      <p>后面 WinCC 的地址全部照 <code>other/wincc-tag-mapping.csv</code> 填，所以先确认表里的偏移量和你博图里看到的一致。打开 DB，点每个 Struct 前面的 <b>▶</b> 展开，抽查下面几个：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>博图里的变量</th><th>类型</th><th>偏移量应为</th><th>对照表里的地址</th></tr></thead>
+          <tbody>
+            <tr><td><code>仿真数据.仿真开关</code></td><td>Bool</td><td>14.0</td><td><code>DB1,DBX14.0</code></td></tr>
+            <tr><td><code>HMI按键.启动</code></td><td>Bool</td><td>48.0</td><td><code>DB1,DBX48.0</code></td></tr>
+            <tr><td><code>设定数据.称重质量下限</code></td><td>Real</td><td>54.0</td><td><code>DB1,DBD54</code></td></tr>
+            <tr><td><code>设定数据.灌装液位</code></td><td>Int</td><td>58.0</td><td><code>DB1,DBW58</code></td></tr>
+            <tr><td><code>检测数据.液位实际值</code></td><td>Real</td><td>76.0</td><td><code>DB1,DBD76</code></td></tr>
+            <tr><td><code>状态.流程</code></td><td>Int</td><td>94.0</td><td><code>DB1,DBW94</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="warn"><b>有一个对不上：</b>说明 DB 结构被改过，对照表作废。这时以博图里的偏移量为准，在第七阶段建变量前，先把对照表的“新地址”列按博图重新填一遍。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>查出“液位检测”“称重检测”的地址</h3>
+      <p>对照表里有两个变量写着“博图 PLC 变量表里没找到”，它们是模拟量输入，第七阶段要用到地址：</p>
+      <ol>
+        <li>项目树 → <span class="path">PLC_1<b>›</b>PLC 变量</span> → 双击 <b>显示所有变量</b>（会把所有变量表合在一起显示，比只看“默认变量表”全）。</li>
+        <li>在名称列找 <code>液位检测</code> 和 <code>称重检测</code>，记下数据类型和地址。从项目文件推断应该是 <code>Int</code>，地址在 <code>%IW30</code>、<code>%IW32</code> 附近，以你看到的为准。</li>
+        <li>顺便把地址补进 <code>wincc-tag-mapping.csv</code> 对应行，下一次就不用再查。</li>
+      </ol>
+      <div class="note">真的找不到也不影响联调：这两个变量是真实传感器的原始值，仿真时一直是 0，画面上显示的液位和重量用的是 DB 里的“仿真值”。</div>
     </div></li>
 
     <li><div class="step-body">
@@ -390,7 +480,7 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
       </div>
       <p>没有红色 ❌ 后点 <b>装载</b>。</p>
       <div class="warn"><b>必须连硬件配置一起下：</b>IP、PUT/GET、访问级别都存在硬件配置里，不在程序里。只下软件的话这些设置不生效，WinCC 能连上但读不到值。不确定上次有没有下硬件配置时，右键 PLC → <span class="path">下载到设备<b>›</b>硬件和软件（仅更改）</span> 再下一次，没有副作用。</div>
-      <div class="note">出现红色 ❌ 时点开看说明。常见的是“不支持仿真”：回到本阶段第 01 步勾选“块编译时支持仿真”，重新编译后再下载。</div>
+      <div class="note">出现红色 ❌ 时点开看说明。常见的是“不支持仿真”：回到本阶段第 02 步勾选“块编译时支持仿真”，重新编译后再下载。</div>
     </div></li>
 
     <li><div class="step-body">
@@ -511,15 +601,28 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
   </div>
   <ol class="steps">
     <li><div class="step-body">
-      <h3>打开项目，修正计算机名</h3>
-      <p>项目是别的电脑做的、或者你改过电脑名时，激活会报“<b>组态的服务器不可用，请更正您输入的服务器名称</b>”。打开项目后先做这一步：</p>
+      <h3>打开 canned 项目，修正计算机名</h3>
+      <p>启动 <b>WinCC Explorer</b>（WinCC 项目管理器）→ <span class="path">文件<b>›</b>打开</span>，选 <code>other\Canned\canned\canned.MCP</code>。</p>
+      <p>这个项目是在一台叫 <code>DESKTOP-K9C4FQM</code> 的电脑上做的，直接激活会报“<b>组态的服务器不可用，请更正您输入的服务器名称</b>”。打开项目后先做这一步：</p>
       <ol>
         <li>cmd 里执行 <code>echo %COMPUTERNAME%</code>，记下电脑名（用它而不是 <code>hostname</code>，WinCC 用的是这个最长 15 位的名字）。</li>
-        <li>WinCC 项目管理器左边单击 <b>计算机</b>，右边那台计算机右键 → <b>属性</b>，<b>计算机名称</b> 改成刚才的名字，一个字符都不能差。</li>
+        <li>WinCC 项目管理器左边单击 <b>计算机</b>，右边那台计算机（显示为 <code>DESKTOP-K9C4FQM</code>）右键 → <b>属性</b>，<b>计算机名称</b> 改成刚才的名字，一个字符都不能差。</li>
         <li><span class="path">文件<b>›</b>关闭</span>，再 <span class="path">文件<b>›</b>打开</span> 同一个 <code>.mcp</code>。有时要关闭重开两次才生效。</li>
         <li>顺便确认项目类型：左边树最顶上的项目名右键 → <b>属性</b> → 类型应为 <b>单用户项目</b>。</li>
       </ol>
-      <div class="note">项目文件夹的路径里不要有中文和空格。</div>
+      <div class="note">项目文件夹的路径里不要有中文和空格。<code>D:\workSpace\shea\learn\java_learn\other\Canned\canned</code> 符合要求；如果你把仓库放在带中文的目录下，先把 <code>canned</code> 文件夹复制到纯英文路径再打开。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>看一眼原来的驱动和变量</h3>
+      <p>项目管理器里双击 <b>变量管理</b>，左边展开能看到：</p>
+      <pre><code>变量管理
+├─ 内部变量
+└─ SIMATIC S7-1200, S7-1500 Channel
+   └─ OMS+
+      └─ NewConnection_1      ← 76 个变量都在这里</code></pre>
+      <p>单击 <code>NewConnection_1</code>，右边变量表的“地址”列是 <code>"DB".HMI按键.启动</code> 这种<b>符号</b>写法。这就是要换掉的东西：后面会新建一个 S7 Protocol Suite 连接，把这些变量用同样的名字、按绝对地址重建一遍。</p>
+      <div class="note">先不要删它。第五、六阶段用新起名字的测试变量验证连通，确认通了，第七阶段再整体替换。中间层级的名字（如 <code>OMS+</code>）可能因版本不同略有差别。</div>
     </div></li>
 
     <li><div class="step-body">
@@ -588,10 +691,22 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
 <section id="tags">
   <div class="sec-head">
     <span class="eyebrow">第五阶段</span>
-    <h2>按偏移量建变量</h2>
+    <h2>地址怎么写，先建 4 个测试变量</h2>
   </div>
   <div class="note"><b>偏移量在博图里看，地址在 WinCC 里填</b>，两者是同一个位置的两种写法。WinCC 里没有“偏移量”这一列，只有“地址”。</div>
-  <div class="warn"><b>先试几个，再批量：</b>先建 3～4 个有代表性的变量（1 个 Bool、1 个 Int、1 个 Real，再加 1 个 DB 里比较靠后的），走完第六阶段和验证，确认连通了再批量建。</div>
+  <div class="warn"><b>先试几个，再批量：</b>76 个变量一口气建完再测，出了问题不知道是连接错还是地址错。先在新连接下建 4 个测试变量，走完第六阶段和验证，确认连通了，第七阶段再批量迁移。</div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>测试变量名</th><th>WinCC 数据类型</th><th>地址</th><th>对应博图变量</th><th>测什么</th></tr></thead>
+      <tbody>
+        <tr><td><code>T_启动</code></td><td>二进制变量</td><td><code>DB1,DBX48.0</code></td><td><code>"DB".HMI按键.启动</code></td><td>Bool 写入</td></tr>
+        <tr><td><code>T_灌装液位</code></td><td>有符号 16 位数</td><td><code>DB1,DBW58</code></td><td><code>"DB".设定数据.灌装液位</code></td><td>Int 双向读写</td></tr>
+        <tr><td><code>T_称重下限</code></td><td>浮点数 32 位 IEEE 754</td><td><code>DB1,DBD54</code></td><td><code>"DB".设定数据.称重质量下限</code></td><td>Real 双向读写</td></tr>
+        <tr><td><code>T_流程</code></td><td>有符号 16 位数</td><td><code>DB1,DBW94</code></td><td><code>"DB".状态.流程</code></td><td>DB 靠后位置的读取</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note">名字加 <code>T_</code> 前缀，是为了不和旧连接下的原变量重名（WinCC 不允许重名）。测完可以删，也可以留着。</div>
   <ol class="steps">
     <li><div class="step-body">
       <h3>把偏移量换算成 WinCC 地址</h3>
@@ -622,17 +737,17 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
       </ol>
       <div class="tbl">
         <table>
-          <thead><tr><th>窗口里的字段</th><th>怎么填</th><th>例：Speed，Int，偏移量 2.0</th></tr></thead>
+          <thead><tr><th>窗口里的字段</th><th>怎么填</th><th>例：T_灌装液位，Int，偏移量 58.0</th></tr></thead>
           <tbody>
             <tr><td>数据区域</td><td><code>DB</code></td><td>DB</td></tr>
             <tr><td>DB 号</td><td>博图里 DB 的编号</td><td>1</td></tr>
             <tr><td>寻址</td><td>Bool→位，Byte→字节，Int / Word→字，Real / DInt→双字</td><td>字</td></tr>
-            <tr><td>起始地址（DBW / DBD / DBX 后面的数）</td><td>偏移量<b>小数点前</b>的数</td><td>2</td></tr>
+            <tr><td>起始地址（DBW / DBD / DBX 后面的数）</td><td>偏移量<b>小数点前</b>的数</td><td>58</td></tr>
             <tr><td>位</td><td>偏移量<b>小数点后</b>的数，只有 Bool 才填</td><td>不填</td></tr>
           </tbody>
         </table>
       </div>
-      <p>确定后地址显示为 <code>DB1,DBW2</code>。找不到 <b>…</b> 按钮：确认选中的是连接而不是“内部变量”（内部变量没有地址栏），地址列在表格靠右，可能要往右拖滚动条。</p>
+      <p>确定后地址显示为 <code>DB1,DBW58</code>。照这个方法把 4 个测试变量都建好。找不到 <b>…</b> 按钮：确认选中的是连接而不是“内部变量”（内部变量没有地址栏），地址列在表格靠右，可能要往右拖滚动条。</p>
     </div></li>
 
     <li><div class="step-body">
@@ -644,37 +759,8 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
         <li>Bool 数组按位挤在一起：第 k 个元素在 <code>起始 + k÷8</code> 字节的 <code>k mod 8</code> 位。</li>
         <li>Struct 内部：Bool 按位挤在一起，Int / Real 从偶数字节开始。</li>
       </ul>
-      <div class="note">例：<code>Motors : Array[1..3] of "Motor_T"</code> 从 22.0 开始、每个 8 字节，则 <code>Motors[2].Speed</code>（成员内偏移 2）= 22 + 8 + 2 = <code>DB1,DBW32</code>。WinCC 变量名用 <code>Motors_2_Speed</code>，不要带方括号。</div>
+      <div class="note">灌装项目里的例子：<code>检测数据.转换值 : Array[0..1] of Real</code> 从 60.0 开始，Real 每个 4 字节，所以 <code>转换值[0]</code> = <code>DB1,DBD60</code>，<code>转换值[1]</code> = 60 + 1 × 4 = <code>DB1,DBD64</code>。紧接着的 <code>中间值[0..1]</code> 从 68.0 开始，分别是 <code>DB1,DBD68</code>、<code>DB1,DBD72</code>。原 WinCC 项目里这 4 个变量叫 <code>DB_检测数据_转换值[0]</code> 这样带方括号的名字，迁移时照原名建即可。</div>
       <p>同一种 Struct 重复很多次时，可以用 WinCC 的 <b>结构类型</b>：变量管理 → 结构类型 → 新建，成员填相对偏移；之后每个实例只建一个结构变量、给起始地址，WinCC 自动展开出各成员。</p>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>迁移已有项目：保持原变量名，换到新连接下</h3>
-      <p>如果手上是别人做好的完整 WinCC 项目，画面里的按钮、I/O 域都绑定着原来的变量。原项目通常用 <b>S7-1200, S7-1500 Channel</b>（按符号访问，比如 <code>"DB".HMI按键.启动</code>），连不了 NetToPLCsim。做法是<b>让新连接下的变量顶替原名</b>，画面一个都不用改：</p>
-      <ol>
-        <li><b>查按钮用的变量</b>：图形编辑器里右键按钮 → <b>属性</b> → <b>事件</b> → 鼠标，双击蓝色闪电。直接连接看“目标”里的变量名；C 动作找 <code>SetTagBit("变量名", 1)</code>；VBS 找 <code>HMIRuntime.Tags("变量名")</code>。I/O 域在 <span class="path">属性<b>›</b>输出/输入<b>›</b>输出值</span> 旁边看。</li>
-        <li><b>原变量改名</b>：旧驱动下的变量改名加 <code>_old</code>（或删除）。WinCC 不允许重名，不先处理新变量建不了。</li>
-        <li><b>建同名新变量</b>：在 <code>PLC_1214C</code> 下新建变量，<b>名字和原名一模一样</b>，地址按符号去博图查偏移量：<code>"DB".HMI按键.启动</code> → 打开 DB → 展开 HMI按键 → 启动的偏移量 48.0 → <code>DB1,DBX48.0</code>。原地址本来就是 <code>%M10.0</code> 这种绝对地址的，去掉 <code>%</code> 照抄。</li>
-        <li><b>检查</b>：WinCC 项目管理器里的 <b>交叉索引</b> 刷新一次，确认画面引用的变量都能在新连接下找到。</li>
-        <li>全部切换并测试通过后，把旧驱动整个删掉，免得它每次激活都尝试去连原来的 PLC。</li>
-      </ol>
-      <div class="note">原始项目已提交在 git 里，改坏了直接用 git 恢复到最初版本即可，不用另外复制备份。</div>
-      <div class="note">本仓库的“灌装”项目已经整理好了一张对照表：<a href="../other/wincc-tag-mapping.csv">other/wincc-tag-mapping.csv</a>（WinCC 变量名 → 新地址），可以直接参照。用之前在博图里抽查 2～3 个偏移量是否一致。</div>
-    </div></li>
-
-    <li><div class="step-body">
-      <h3>变量多时用 Excel 批量生成</h3>
-      <ol>
-        <li>博图里打开 DB（已编译），选中所有行 <code>Ctrl + C</code>，粘贴到 Excel，只留“名称、数据类型、偏移量”三列（A、B、C）。</li>
-        <li>WinCC 里先手工建一个 Bool、一个 Int、一个 Real 当样板，看你的软件里“数据类型”和“地址”列实际显示成什么格式。</li>
-        <li>Excel 加一列地址公式（DB 号按实际改）：</li>
-      </ol>
-      <pre><code>=IF(B2="Bool","DB1,DBX"&amp;TEXT(C2,"0.0"),IF(B2="Byte","DB1,DBB"&amp;INT(C2),IF(OR(B2="Int",B2="Word"),"DB1,DBW"&amp;INT(C2),IF(OR(B2="Real",B2="DInt",B2="DWord"),"DB1,DBD"&amp;INT(C2),"??"))))</code></pre>
-      <ol start="4">
-        <li>按 WinCC 变量表的列顺序整理好“名称、数据类型、地址”，复制后在 WinCC 变量表最下面空行的第一格 <code>Ctrl + V</code>。粘不进去的话，先从变量管理导出一份 Excel 看格式，填好再导入。</li>
-        <li>抽查几个，特别是 Real 和 Bool。</li>
-      </ol>
-      <div class="note">Bool 要用 <code>TEXT(C2,"0.0")</code>，否则 Excel 会把 <code>0.0</code> 变成 <code>0</code>。出现 <code>??</code> 的是 String、数组、Struct 等，单独处理。</div>
     </div></li>
   </ol>
 </section>
@@ -694,21 +780,137 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
       <p>项目管理器 → 右键 <b>图形编辑器</b> → <b>新建画面</b> → 右键新画面 → <b>重命名</b> 为 <code>ConnTest.Pdl</code> → 双击打开。已有项目也新建一个，不动原画面。</p>
     </div></li>
     <li><div class="step-body">
-      <h3>放 I/O 域并绑定变量</h3>
+      <h3>先弄清楚：I/O 域和“绑定变量”是什么</h3>
+      <p>图形编辑器里画出来的按钮、文字、方框，刚放上去时<b>只是一张画</b>，和 PLC 没有任何关系。要让它显示真实数据，就得告诉它“你对应哪个变量”，这就叫<b>绑定</b>（WinCC 里也叫“动态化”或“变量连接”）。</p>
+      <p><b>I/O 域</b>是画面上的一个数值框，I/O 即 Input / Output。它有两个方向：<b>输出</b>是把变量的当前值显示出来，<b>输入</b>是让操作员敲一个新值、回车后写进变量。用网页打比方，它就是一个和后端字段双向绑定的 <code>&lt;input&gt;</code> 框。</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>域类型</th><th>显示</th><th>可输入</th><th>适合</th></tr></thead>
+          <tbody>
+            <tr><td>输出</td><td class="ok">能</td><td class="bad">不能</td><td>实际值、状态，比如当前重量，不允许操作员改</td></tr>
+            <tr><td>输入</td><td>只在输入时可见</td><td class="ok">能</td><td>很少用</td></tr>
+            <tr><td><b>I/O 域</b></td><td class="ok">能</td><td class="ok">能</td><td>设定值；本次测试要双向改值，所以选它</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="why">
+        <b class="k">两层映射，不要混</b>
+<pre><code>画面上的 I/O 域 ──绑定──> WinCC 变量 T_灌装液位 ──地址 DB1,DBW58──> PLC 里 "DB".设定数据.灌装液位
+  （看得见的格子）          （WinCC 里的名字）                    （PLC 内存里真正的数据）</code></pre>
+        <p>第一层在<b>画面</b>里设置（本步骤），第二层在<b>变量管理</b>里设置（第五阶段填的地址）。画面只认变量名，不关心地址，所以第七阶段只要名字不变，换驱动、改地址，画面都不用动。</p>
+      </div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>认识图形编辑器的界面</h3>
+      <p>双击 <code>ConnTest.Pdl</code> 打开后，主要用到三块区域：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>区域</th><th>位置</th><th>用来做什么</th></tr></thead>
+          <tbody>
+            <tr><td>画布</td><td>中间的大白板</td><td>放控件的地方，运行时看到的就是它</td></tr>
+            <tr><td><b>对象选项板</b></td><td>一般在右侧</td><td>所有可以拖的控件，分“标准”“控件”等选项卡</td></tr>
+            <tr><td><b>属性</b>窗口</td><td>右键控件 → 属性 打开</td><td>修改选中控件的颜色、格式、绑定的变量等</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">找不到对象选项板：菜单 <span class="path">视图<b>›</b>工具栏</span>，勾选“对象选项板”；版本不同也可能在 <span class="path">视图<b>›</b>对象选项板</span>。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>拖入第一个 I/O 域，绑定 <code>T_灌装液位</code></h3>
       <ol>
-        <li>右侧 <b>对象选项板</b>（没有的话 <span class="path">视图<b>›</b>工具栏</span> 勾出来）→ <b>标准</b> → <b>智能对象</b> → <b>I/O 域</b>，拖到画面上。</li>
-        <li>弹出组态对话框：<b>变量</b> 点右边的选变量按钮，在列表里<b>展开到 <span class="path">SIMATIC S7 Protocol Suite<b>›</b>TCP/IP<b>›</b>PLC_1214C</span></b>，选变量，不要手工输入。</li>
-        <li><b>更新</b> 选 <code>500 ms</code>，<b>域类型</b> 选 <code>I/O 域</code>（能显示也能输入）→ 确定。</li>
-        <li>每个测试变量放一个 I/O 域，旁边放一个 <b>静态文本</b> 写上变量名。</li>
+        <li>对象选项板 → <b>标准</b> 选项卡 → 展开 <b>智能对象</b> → 找到 <b>I/O 域</b>。</li>
+        <li>按住拖到画布左上角，松开鼠标（也可以单击选中后在画布上拖出一个矩形）。</li>
+        <li>松开后会自动弹出 <b>I/O 域组态</b> 对话框（没弹出就右键这个 I/O 域 → <b>组态对话框</b>），按下表填：</li>
       </ol>
-      <div class="note">已画好的 I/O 域不用重画：右键 → <b>组态对话框</b>，或 <span class="path">属性<b>›</b>输出/输入<b>›</b>输出值</span> 灯泡图标上右键 → <b>变量</b>，重新选变量即可，灯泡变绿说明绑定成功。Real 想显示小数，把 <b>输出格式</b> 改成 <code>999.99</code>。</div>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>对话框里的字段</th><th>填什么</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr><td><b>变量</b></td><td>点输入框右边的<b>选变量按钮</b>（带变量图标的小按钮），在弹出的列表里选，见下一步</td><td>手敲容易错，而且可能误选到旧驱动下的同名变量</td></tr>
+            <tr><td><b>更新</b></td><td><code>500 ms</code></td><td>WinCC 每 500 毫秒主动去 PLC 读一次。测试够用；越短越跟手，但通信负担越重</td></tr>
+            <tr><td><b>域类型</b></td><td><code>I/O 域</code></td><td>既要看又要改</td></tr>
+            <tr><td>字体 / 字号 / 颜色</td><td>默认即可，字小可以把字号改到 14～16</td><td>不影响通信</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>在选变量对话框里找到新连接下的变量</h3>
+      <p>点了选变量按钮后，弹出一个左右两栏的窗口，左边是变量的树形目录，右边是选中目录下的变量列表：</p>
+<pre><code>左栏（树）                                 右栏（变量列表）
+├─ 内部变量
+├─ SIMATIC S7-1200, S7-1500 Channel        ← 旧驱动，不要选这里
+└─ SIMATIC S7 Protocol Suite
+   └─ TCP/IP
+      └─ PLC_1214C          ← 单击这里 ──>   T_启动
+                                             T_灌装液位   ← 双击选中
+                                             T_称重下限
+                                             T_流程</code></pre>
+      <ol>
+        <li>左栏逐级展开 <span class="path">SIMATIC S7 Protocol Suite<b>›</b>TCP/IP<b>›</b>PLC_1214C</span>，单击 <code>PLC_1214C</code>。</li>
+        <li>右栏出现第五阶段建的 4 个测试变量，<b>双击</b> <code>T_灌装液位</code>（或单击后点确定）。</li>
+        <li>回到组态对话框，“变量”框里显示 <code>T_灌装液位</code>，点 <b>确定</b>。</li>
+      </ol>
+      <div class="note">右栏是空的：确认第五阶段的变量是建在 <code>PLC_1214C</code> 这个连接下，而不是“内部变量”里；窗口顶部有过滤框的话，清空它。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>设置显示格式</h3>
+      <p>I/O 域默认的显示格式不一定合适：位数不够时会显示成 <code>***</code>，Real 可能只显示整数。右键 I/O 域 → <b>属性</b> → <b>属性</b> 选项卡 → 左边选 <b>输出/输入</b>，右边改：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>属性</th><th>Int 变量（T_灌装液位、T_流程）</th><th>Real 变量（T_称重下限）</th></tr></thead>
+          <tbody>
+            <tr><td>数据格式</td><td>十进制</td><td>十进制</td></tr>
+            <tr><td>输出格式</td><td><code>99999</code></td><td><code>9999.99</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>双击“静态”列里的值就能修改。输出格式里<b>一个 9 代表一位数字</b>，小数点后的 9 个数就是小数位数：<code>9999.99</code> 能显示到 9999.99，<code>12.5</code> 会显示成 <code>12.50</code>。</p>
+      <div class="note">这里只影响画面怎么显示，不影响 PLC 里存的值。显示成 <code>***</code> 不是通信出错，而是格式位数不够，把 9 加多几个即可。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>检查绑定是否成功：看灯泡</h3>
+      <p>还在属性窗口的 <span class="path">输出/输入<b>›</b>输出值</span> 这一行，往右看“动态”列的图标：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>动态列图标</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>白色灯泡</td><td class="bad">没绑定，只是个固定值</td></tr>
+            <tr><td><b>绿色灯泡</b>，旁边显示 <code>T_灌装液位</code></td><td class="ok">已绑定到变量</td></tr>
+            <tr><td>闪电图标</td><td>用的是动态对话框或脚本，测试画面用不到</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>同一行的“更新周期”列应该是 <code>500 ms</code>。</p>
+      <div class="note">已画好的 I/O 域想换变量，不用删了重画：在绿色灯泡上<b>右键 → 变量</b>，重新从列表选即可。也可以右键 I/O 域 → <b>组态对话框</b> 重新选。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>复制出另外两个，并加上文字标签</h3>
+      <ol>
+        <li>选中刚做好的 I/O 域，<code>Ctrl + C</code>、<code>Ctrl + V</code> 两次，得到两个副本，拖到下面排整齐。</li>
+        <li>副本绑定的还是 <code>T_灌装液位</code>：分别在绿色灯泡上右键 → <b>变量</b>，改成 <code>T_称重下限</code> 和 <code>T_流程</code>。</li>
+        <li><code>T_称重下限</code> 那个的输出格式改成 <code>9999.99</code>（按上一步）。</li>
+        <li>对象选项板 → <b>标准</b> → <b>标准对象</b> → <b>静态文本</b>，在每个 I/O 域左边放一个，双击后输入变量名，比如 <code>T_灌装液位</code>。静态文本不绑定任何变量，只是给人看的标签。</li>
+      </ol>
+      <p>做完后画面大致是这样：</p>
+<pre><code>T_灌装液位   [   0   ]
+T_称重下限   [ 0.00  ]
+T_流程       [   0   ]
+[ T_启动 ]   ← 下一步做的按钮</code></pre>
+      <div class="warn"><b>最容易踩的坑：</b>复制出来的 I/O 域忘了改变量，三个框绑定的都是同一个变量，验证时会以为另外两个地址出了错。复制后逐个检查灯泡旁边显示的变量名。</div>
     </div></li>
     <li><div class="step-body">
-      <h3>（可选）放一个点动按钮</h3>
+      <h3>放一个点动按钮测 T_启动</h3>
       <ol>
-        <li>对象选项板 → <b>窗口对象</b> → <b>按钮</b>，拖到画面上，文本填 <code>启动</code>。</li>
+        <li>对象选项板 → <b>窗口对象</b> → <b>按钮</b>，拖到画面上，文本填 <code>T_启动</code>。</li>
         <li>右键按钮 → <b>属性</b> → <b>事件</b> 选项卡 → 左边 <span class="path">按钮<b>›</b>鼠标</span>。</li>
-        <li><b>按左键</b> 那一行的闪电图标上右键 → <b>直接连接</b>：左边“来源”选 <b>常数</b> 填 <code>1</code>，右边“目标”选 <b>变量</b> 选一个 Bool 变量 → 确定，闪电变蓝。</li>
+        <li><b>按左键</b> 那一行的闪电图标上右键 → <b>直接连接</b>：左边“来源”选 <b>常数</b> 填 <code>1</code>，右边“目标”选 <b>变量</b> 选 <code>T_启动</code> → 确定，闪电变蓝。</li>
         <li><b>释放左键</b> 同样设置，常数填 <code>0</code>。</li>
       </ol>
       <div class="note">点动要用“按左键 / 释放左键”两个事件。“鼠标动作”是点一下才触发一次，只能写一个值。</div>
@@ -721,7 +923,7 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
         <li>左边 <b>计算机</b> → 右边计算机 → 属性 → <b>启动</b> 页确认勾选了“图形运行系统”。</li>
         <li>确认 PLCSIM 是 RUN、NetToPLCsim 是 running，点工具栏 ▶ <b>激活</b>。</li>
       </ol>
-      <div class="note">测试通过后，记得把启动画面改回原项目的主画面。</div>
+      <div class="note">测试通过后，第八阶段会把启动画面改回原项目的主画面 <code>罐装.Pdl</code>。</div>
     </div></li>
   </ol>
 </section>
@@ -754,9 +956,10 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
       <h3>双向改值：地址是否正确</h3>
       <p>博图打开 DB → 点 <b>全部监视</b>（眼镜图标）。</p>
       <ul>
-        <li><b>PLC → WinCC</b>：博图里右键变量 → <b>修改操作数</b>，改成 <code>123</code>，画面上的 I/O 域 1 秒内跟着变。</li>
-        <li><b>WinCC → PLC</b>：在 I/O 域里输入 <code>456</code> 并<b>按回车</b>，博图监视值跟着变；按住按钮，Bool 变 TRUE，松开变 FALSE。</li>
+        <li><b>PLC → WinCC</b>：博图里展开 <code>设定数据</code>，右键 <code>灌装液位</code> → <b>修改操作数</b>，改成 <code>123</code>，画面上 <code>T_灌装液位</code> 的 I/O 域 1 秒内跟着变。<code>称重质量下限</code> 改成 <code>12.5</code> 同样测一次。</li>
+        <li><b>WinCC → PLC</b>：在 <code>T_灌装液位</code> 的 I/O 域里输入 <code>456</code> 并<b>按回车</b>，博图监视值跟着变；按住 <code>T_启动</code> 按钮，<code>HMI按键.启动</code> 变 TRUE，松开变 FALSE。<code>T_流程</code> 只看能不能显示出和博图一致的步号。</li>
       </ul>
+      <div class="note">改值前先记下 <code>灌装液位</code>、<code>称重质量下限</code> 原来的监视值，测完改回去。这两个是工艺参数，留着 456 这种测试值，第八阶段的灌装动画和称重判断会不正常。</div>
       <div class="tbl">
         <table>
           <thead><tr><th>现象</th><th>说明</th></tr></thead>
@@ -769,6 +972,164 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
           </tbody>
         </table>
       </div>
+    </div></li>
+  </ol>
+</section>
+
+<section id="migrate">
+  <div class="sec-head">
+    <span class="eyebrow">第七阶段</span>
+    <h2>迁移全部 76 个变量</h2>
+  </div>
+  <p>测试变量双向改值都对了，说明链路和地址算法都没问题，现在把原项目的 76 个变量整体搬到新连接下。</p>
+  <div class="why">
+    <b class="k">为什么名字必须一模一样</b>
+    <p>WinCC 画面里的按钮、I/O 域、动画脚本引用变量时，存的是<b>变量名这个字符串</b>，比如脚本里写的是 <code>SmartTags("DB_仿真数据_罐子_X")</code>。变量名不变，画面就能自动找回新变量，一个控件都不用改。这和 Java 里按接口名注入依赖、换实现类不用改调用方是同一个道理。</p>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>这 76 个变量分四类</th><th>数量</th><th>地址从哪来</th></tr></thead>
+      <tbody>
+        <tr><td>对照表里有地址的</td><td>69</td><td><code>wincc-tag-mapping.csv</code> 的“新地址”列，直接用</td></tr>
+        <tr><td>数组元素 <code>DB_检测数据_转换值[0]</code>、<code>[1]</code>、<code>DB_检测数据_中间值[0]</code>、<code>[1]</code></td><td>4</td><td>对照表漏了，地址是 <code>DB1,DBD60</code>、<code>DBD64</code>、<code>DBD68</code>、<code>DBD72</code>，都是浮点数（推算过程见第五阶段数组那一步）</td></tr>
+        <tr><td><code>液位检测</code>、<code>称重检测</code></td><td>2</td><td>第一阶段在博图“显示所有变量”里查到的地址，有符号 16 位数</td></tr>
+        <tr><td><code>DB_设定数据_罐装1质量</code></td><td>1</td><td>博图里已经没有对应变量，单独处理</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ol class="steps">
+    <li><div class="step-body">
+      <h3>退出运行，删除旧连接 <code>NewConnection_1</code></h3>
+      <ol>
+        <li>WinCC 还在运行的话，先点工具栏 ■ <b>取消激活</b>。</li>
+        <li>变量管理 → 展开 <code>SIMATIC S7-1200, S7-1500 Channel</code> → 右键 <code>NewConnection_1</code> → <b>删除</b>，确认。它下面的 76 个变量会一起删掉。</li>
+      </ol>
+      <div class="why">
+        <b class="k">为什么删而不是改名</b>
+        <p>WinCC 不允许重名，旧变量不让位，同名新变量就建不了。76 个逐个改名太费事，而且旧连接本来就连不上仿真 PLC，留着没用。画面里的引用不会因为删变量而消失，只是暂时找不到对象，同名变量建好后就自动对上了。</p>
+      </div>
+      <div class="note">原始项目在 git 里，删错了可以 <code>git checkout -- other/Canned/</code> 恢复后重来（要先退出 WinCC 项目，否则文件被占用）。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>在 Excel 里准备 69 行数据</h3>
+      <ol>
+        <li>用 Excel 打开 <code>other/wincc-tag-mapping.csv</code>（文件带 BOM，中文不会乱码）。</li>
+        <li>选中表头 → <span class="path">数据<b>›</b>筛选</span>，在“新地址”列取消勾选“(空白)”，剩下 69 行。</li>
+        <li>前三列就是要用的：<b>WinCC 变量名</b>、<b>WinCC 数据类型</b>、<b>新地址</b>。数据类型已经按 WinCC 中文界面的叫法写好了（二进制变量、有符号 16 位数、浮点数 32 位 IEEE 754）。</li>
+      </ol>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>按列粘贴进 WinCC 变量表</h3>
+      <p>WinCC V7.5 的变量表编辑器（Configuration Studio）和 Excel 一样支持复制粘贴。为了避免列顺序对不上，<b>一列一列地粘</b>：</p>
+      <ol>
+        <li>变量管理里单击选中 <span class="path">SIMATIC S7 Protocol Suite<b>›</b>TCP/IP<b>›</b>PLC_1214C</span>，右边是这个连接的变量表，里面已有 4 个 <code>T_</code> 测试变量。</li>
+        <li>Excel 里选中筛选后的“WinCC 变量名”列 69 个单元格（不含表头）→ <code>Ctrl + C</code>。WinCC 里单击<b>名称</b>列最下面的空单元格 → <code>Ctrl + V</code>，一次生成 69 行。</li>
+        <li>Excel 复制“WinCC 数据类型”列 → WinCC 里单击刚生成的第一行的<b>数据类型</b>单元格 → <code>Ctrl + V</code>。</li>
+        <li>Excel 复制“新地址”列 → WinCC 里单击第一行的<b>地址</b>单元格 → <code>Ctrl + V</code>。</li>
+        <li>抽查几行：名称、类型、地址三者是否属于同一个变量，特别是浮点数和二进制变量。</li>
+      </ol>
+      <div class="warn"><b>一定要先粘数据类型，再粘地址：</b>地址的写法依赖数据类型。比如 <code>DB1,DBD76</code> 只有在类型是 32 位时才合法，类型还是默认值时粘进去可能被拒绝或被改写。</div>
+      <div class="note">粘贴失败或者某一列粘不进去：先在 WinCC 里手工建好一个变量，选中整行复制，粘到 Excel 里看它的列顺序和写法，把 Excel 数据照这个格式整理后再整行粘回去。实在不行就逐个手工建，69 个大约半小时。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>补建对照表以外的 7 个变量</h3>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>变量名（照抄）</th><th>建在哪</th><th>数据类型</th><th>地址</th></tr></thead>
+          <tbody>
+            <tr><td><code>DB_检测数据_转换值[0]</code></td><td>PLC_1214C</td><td>浮点数 32 位 IEEE 754</td><td><code>DB1,DBD60</code></td></tr>
+            <tr><td><code>DB_检测数据_转换值[1]</code></td><td>PLC_1214C</td><td>浮点数 32 位 IEEE 754</td><td><code>DB1,DBD64</code></td></tr>
+            <tr><td><code>DB_检测数据_中间值[0]</code></td><td>PLC_1214C</td><td>浮点数 32 位 IEEE 754</td><td><code>DB1,DBD68</code></td></tr>
+            <tr><td><code>DB_检测数据_中间值[1]</code></td><td>PLC_1214C</td><td>浮点数 32 位 IEEE 754</td><td><code>DB1,DBD72</code></td></tr>
+            <tr><td><code>称重检测</code></td><td>PLC_1214C</td><td>有符号 16 位数</td><td>第一阶段查到的地址，如 <code>IW30</code></td></tr>
+            <tr><td><code>液位检测</code></td><td>PLC_1214C</td><td>有符号 16 位数</td><td>第一阶段查到的地址，如 <code>IW32</code></td></tr>
+            <tr><td><code>DB_设定数据_罐装1质量</code></td><td><b>内部变量</b></td><td>浮点数 32 位 IEEE 754</td><td>（无）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><b>输入字的地址怎么填</b>：地址窗口里“数据区域”选 <b>输入</b>（不是 DB），寻址选 <b>字</b>，起始地址填 30。确定后显示为 <code>IW30</code>；德文助记符设置下显示为 <code>EW30</code>，意思一样。</li>
+        <li><b>为什么“罐装1质量”建成内部变量</b>：它是早期有两个灌装工位时留下的，博图里对应的变量已经删了。建成同名内部变量，引用它的画面控件就不会报错，只是不再和 PLC 交换数据。想知道它在画面哪里用到，项目管理器里打开 <b>交叉索引</b>，搜这个名字就能看到。如果它其实是一个设定值输入框，也可以改到 PLC_1214C 下，指向 <code>称重质量上限</code>（<code>DB1,DBD50</code>）或 <code>称重质量下限</code>（<code>DB1,DBD54</code>），按画面上的文字判断。</li>
+      </ul>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>核对数量，删掉旧驱动</h3>
+      <ol>
+        <li><code>PLC_1214C</code> 下应有 75 个原变量 + 4 个 <code>T_</code> 测试变量 = 79 行；内部变量里多了 1 个 <code>DB_设定数据_罐装1质量</code>。75 + 1 = 76，和原来一致。</li>
+        <li>变量管理里右键 <code>SIMATIC S7-1200, S7-1500 Channel</code> 驱动 → <b>删除</b>。它下面已经空了，删掉后每次激活就不会再去尝试连接原来那台 PLC。</li>
+      </ol>
+    </div></li>
+  </ol>
+</section>
+
+<section id="run">
+  <div class="sec-head">
+    <span class="eyebrow">第八阶段</span>
+    <h2>修复画面遗留引用，运行罐装主画面</h2>
+  </div>
+  <ol class="steps">
+    <li><div class="step-body">
+      <h3>把 <code>到达灌装位置1</code>、<code>到达灌装位置2</code> 改成 <code>到达灌装位置</code></h3>
+      <p>主画面 <code>罐装.Pdl</code> 里有指示灯引用了 <code>到达灌装位置1</code> 和 <code>到达灌装位置2</code>。这两个变量<b>在原 WinCC 项目里就不存在</b>（原项目只有 <code>到达灌装位置</code>，对应 <code>I0.3</code>），是早期两个灌装工位时留下的，不修的话这两盏灯永远不亮。</p>
+      <ol>
+        <li>项目管理器 → <b>交叉索引</b> → 工具栏点 <b>更新</b>（数据多时要等一会儿）。</li>
+        <li>在列表里搜 <code>到达灌装位置1</code>，看它在 <code>罐装.Pdl</code> 里被哪个对象、哪个属性引用，记下对象名。<code>到达灌装位置2</code> 同样处理。</li>
+        <li>双击打开 <code>罐装.Pdl</code>，选中那个对象 → 右键 <b>属性</b>，找到带<b>绿色闪电</b>或<b>灯泡</b>图标的属性（就是做了动态化的那个）。</li>
+        <li>如果是灯泡（直接连接变量）：右键灯泡 → <b>变量</b>，从列表选 <code>到达灌装位置</code>。如果是闪电（动态对话框或脚本）：双击打开，把表达式里的 <code>'到达灌装位置1'</code> 改成 <code>'到达灌装位置'</code>，确定。</li>
+        <li>两个对象都改完，<code>Ctrl + S</code> 保存画面。</li>
+      </ol>
+      <div class="note">现在只有一个灌装工位，两盏灯指向同一个变量会同时亮。觉得多余可以直接删掉其中一盏。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>启动画面改回 <code>罐装.Pdl</code>，调试期间关掉全屏</h3>
+      <ol>
+        <li>项目管理器 → 图形编辑器 → 右键 <code>罐装.Pdl</code> → <b>定义画面为启动画面</b>。</li>
+        <li>原项目设置成了<b>全屏运行</b>，激活后看不到标题栏，不方便来回切换博图。调试期间建议关掉：左边 <b>计算机</b> → 右边计算机右键 <b>属性</b> → <b>图形运行系统</b> 页 → 窗口属性里取消勾选 <b>全屏</b> → 确定。</li>
+      </ol>
+      <div class="note">全屏状态下要退出，按 <code>Alt + Tab</code> 切回 WinCC 项目管理器，点 ■ <b>取消激活</b>。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>激活，检查画面没有 <code>####</code></h3>
+      <ol>
+        <li>确认 PLCSIM 是 RUN、NetToPLCsim 是 running，点 ▶ <b>激活</b>。</li>
+        <li>画面上所有数值都正常显示，没有 <code>####</code> 或灰掉的控件，说明 76 个变量都对上了。</li>
+        <li><span class="path">工具<b>›</b>驱动程序连接状态</span> 里只剩 <code>PLC_1214C</code> 一个连接，状态<b>正常</b>。</li>
+      </ol>
+      <div class="note">个别控件显示 <code>####</code>：多半是那个变量名和画面引用的名字有一个字符不同（粘贴时多了空格、全角半角不一致）。在交叉索引里搜这个控件引用的名字，对照变量表改成一致。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>按“启动”，看灌装线动起来</h3>
+      <p>点画面上的 <b>启动</b> 按钮，同时在博图里监视 <code>DB</code>，正常的现象依次是：</p>
+      <ul>
+        <li><b>运行指示灯</b>（Q0.0）亮，<code>状态.流程</code> 开始变化（每个步号对应哪个工位，以 <code>04流程</code> 为准）。</li>
+        <li>传送带皮带轮转起来（七张 <code>motor0x.png</code> 轮流切换），瓶子开始向右移动，<code>仿真数据.罐子.X</code> 在涨。</li>
+        <li>瓶子到达称重吹气工位后停下，吹气气缸下移再缩回，<code>状态.完成吹气</code> 置 1，流程步号加 1。</li>
+        <li>后面的灌装（液位上涨）、拧盖（盖子出现）、标签、热缩、清洗、消毒依次进行，各自的进度值从 0 涨到目标值。</li>
+      </ul>
+      <p>能完整走完一轮，博图程序和 WinCC 画面就彻底连起来了。</p>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>流程卡住时怎么查</h3>
+      <p>在博图里监视 <code>状态.流程</code>，看它停在哪一步，再看这一步在等什么：</p>
+      <ul>
+        <li><b>一直是 0</b>：启动信号没进去。监视 <code>HMI按键.启动</code>，按下按钮时是否变 TRUE；也检查 <code>HMI按键.停止</code> 是不是一直为 TRUE（停止常被写成常闭逻辑）。</li>
+        <li><b>动画不动，但步号在变</b>：检查 <code>仿真数据.仿真开关</code> 是否为 TRUE。它控制程序是否计算仿真数据，在博图里右键 → 修改为 TRUE 试试。</li>
+        <li><b>停在某个工位不走</b>：打开 <code>04流程</code> 看这一步的转移条件。如果条件是 <code>到达灌装位置</code>、<code>灌装气缸下限位</code> 这类<b>真实输入</b>，仿真时没有传感器，它们永远是 0。这时要在 PLCSIM 里手动给输入置位：PLCSIM 小窗口点右上角切换到<b>项目视图</b> → 新建 <b>SIM 表</b> → 填地址（如 <code>%I0.3</code>）→ 勾选“修改”列的方框，就能模拟传感器动作。</li>
+      </ul>
+      <div class="note">到位信号到底来自真实输入还是仿真坐标，从项目文件里读不出来（见 <a href="./canned-project-analysis.html#prog">灌装项目拆解</a>），以 <code>04流程</code> 的实际程序为准。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>测试异常分支</h3>
+      <p>点画面上的 <b>仿真瓶子质量过低</b>（或<b>超重</b>）按钮，下一个瓶子称重时重量超出上下限，<b>瓶子异常示灯</b>（Q2.2）亮；画面上有报警窗口的话，会出现对应的报警条目。再点一次按钮关闭仿真异常，按 <b>复位</b> 清除。</p>
     </div></li>
   </ol>
 </section>
@@ -807,6 +1168,9 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
         <tr><td class="sym">WinCC 变量显示 ####</td><td>连接 IP 填成了 192.168.0.1；CP-TCPIP 没指向环回网卡</td><td>连接 IP 改为 192.168.0.10；在设置 PG/PC 接口里重新分配访问点</td></tr>
         <tr><td class="sym">连接正常，数值一直是 0</td><td>没勾 PUT/GET；DB 仍是优化块；改了设置但只下载了程序</td><td>勾 PUT/GET、取消优化块访问，连同硬件配置一起重新下载</td></tr>
         <tr><td class="sym">数值乱跳或明显不对</td><td>地址偏移量写错，或数据类型不匹配（比如 Real 建成了整数）</td><td>对照博图 DB 偏移量列逐个核对地址和类型</td></tr>
+        <tr><td class="sym">迁移后个别控件显示 ####</td><td>新变量名和画面引用的名字不完全一致（多了空格、全角半角不同），或者该变量漏建</td><td>交叉索引里搜控件引用的名字，对照变量表改名或补建</td></tr>
+        <tr><td class="sym">到达灌装位置那两盏灯永远不亮</td><td>画面还引用着不存在的 <code>到达灌装位置1</code> / <code>2</code></td><td>按第八阶段第 01 步改成 <code>到达灌装位置</code></td></tr>
+        <tr><td class="sym">按启动后流程不走，或停在某一步</td><td>启动 / 停止信号逻辑、仿真开关没开、程序在等真实传感器输入</td><td>按第八阶段“流程卡住时怎么查”逐项排查，必要时用 PLCSIM 的 SIM 表给输入置位</td></tr>
         <tr><td class="sym">WinCC 运行一段时间自动退出</td><td>没有运行系统授权，处于演示模式</td><td>在 Automation License Manager 里检查授权，或安装试用授权</td></tr>
         <tr><td class="sym">WinCC 无法激活或驱动加载失败</td><td>WinCC V7.5 官方主要支持 Windows 10，在 Windows 11 上可能有兼容问题</td><td>确认已打 SP 更新；仍有问题时，把整套软件装进 Windows 10 虚拟机</td></tr>
       </tbody>
@@ -826,7 +1190,8 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
     <li><span>1214C 固件版本为 V4.0 及以上</span></li>
     <li><span>项目已勾“块编译时支持仿真”</span></li>
     <li><span>PLC 访问级别为完全访问，已勾 PUT/GET，IP 为 192.168.0.1</span></li>
-    <li><span>给 WinCC 用的 DB 已取消“优化的块访问”，编号已改为手动，并记下了每个变量的偏移量</span></li>
+    <li><span><code>"DB" [DB1]</code> 已取消“优化的块访问”，编号手动固定为 1</span></li>
+    <li><span>抽查的偏移量和 <code>wincc-tag-mapping.csv</code> 一致；液位检测、称重检测的地址已查到</span></li>
     <li><span>硬件配置和程序都已下载到 PLCSIM，PLCSIM 处于 RUN</span></li>
     <li class="h"><h3>网络与 NetToPLCsim</h3></li>
     <li><span>环回网卡 IP 为 192.168.0.10，与真实网卡不在同一网段</span></li>
@@ -838,7 +1203,12 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
     <li><span>驱动是 SIMATIC S7 Protocol Suite，连接建在 TCP/IP 单元下，IP 192.168.0.10，机架 0 插槽 1</span></li>
     <li><span>变量建在这个连接下，地址按偏移量填写，数据类型与博图一致</span></li>
     <li><span>画面上的控件引用的是这个连接下的变量（从列表选，或与原名完全一致）</span></li>
-    <li><span>激活后 netstat 有 ESTABLISHED，驱动程序连接状态为正常，双向改值一致</span></li>
+    <li><span>激活后 netstat 有 ESTABLISHED，驱动程序连接状态为正常，4 个测试变量双向改值一致</span></li>
+    <li class="h"><h3>迁移与运行</h3></li>
+    <li><span>旧连接 <code>NewConnection_1</code> 和 S7-1200, S7-1500 Channel 驱动已删除</span></li>
+    <li><span>PLC_1214C 下有 75 个原名变量，内部变量里有 <code>DB_设定数据_罐装1质量</code></span></li>
+    <li><span><code>罐装.Pdl</code> 里的 <code>到达灌装位置1/2</code> 已改为 <code>到达灌装位置</code></span></li>
+    <li><span>启动画面为 <code>罐装.Pdl</code>，画面无 <code>####</code>，按启动后灌装线能完整走完一轮</span></li>
   </ul>
 </section>
 
@@ -847,5 +1217,48 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
 </footer>
 
 </div>
+<aside class="sidetoc" aria-label="侧边目录"></aside>
+<script>
+(() => {
+  const toc = document.querySelector('.wrap nav.toc');
+  const side = document.querySelector('.sidetoc');
+  if (!toc || !side) return;
+  const title = document.createElement('p');
+  title.className = 'sidetoc-title';
+  title.textContent = '目录';
+  const list = document.createElement('ol');
+  const links = [];
+  toc.querySelectorAll('ol a[href^="#"]').forEach(a => {
+    const li = document.createElement('li');
+    const link = a.cloneNode(true);
+    li.appendChild(link);
+    list.appendChild(li);
+    links.push(link);
+  });
+  const top = document.createElement('a');
+  top.className = 'back';
+  top.href = '#';
+  top.textContent = '↑ 回到顶部';
+  side.append(title, list, top);
+  toc.classList.add('js-hide');
+
+  // Highlight the section currently nearest the top of the viewport
+  const sections = links.map(l => document.getElementById(l.getAttribute('href').slice(1))).filter(Boolean);
+  const setActive = () => {
+    let current = null;
+    for (const sec of sections) {
+      if (sec.getBoundingClientRect().top <= 120) current = sec;
+    }
+    links.forEach(l => l.classList.toggle('active', current !== null && l.getAttribute('href') === '#' + current.id));
+    const act = side.querySelector('a.active');
+    if (act) {
+      const r = act.getBoundingClientRect();
+      if (r.top < 0 || r.bottom > window.innerHeight) act.scrollIntoView({block: 'nearest'});
+    }
+  };
+  window.addEventListener('scroll', setActive, {passive: true});
+  setActive();
+})();
+</script>
 </body>
 </html>
