@@ -382,7 +382,7 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
       <h3>取消“优化的块访问”，并固定 DB 编号</h3>
       <ol>
         <li>右键 <code>DB [DB1]</code> → <b>属性</b>。</li>
-        <li>左边选 <b>属性</b>（不是“常规”）→ <b>取消勾选“优化的块访问”</b>。已经是不勾选的状态就不用动。</li>
+        <li>左边选 <b>属性</b>（不是“常规”）→ <b>取消勾选“优化的块访问”</b>。灌装项目的这个 DB 目前<b>是勾选状态</b>（项目数据里程序访问 <code>状态.流程</code> 用的是优化布局的第 82 字节，而不是对照表里的 94），所以这一步必须做。</li>
         <li>左边选 <b>常规</b> → <b>编号</b> 从“自动”改成 <b>手动</b>，确认是 <code>1</code> → 确定。</li>
         <li>右键 DB → <b>编译</b>。</li>
         <li>双击打开 DB，表格里多出一列 <b>偏移量</b>，每个变量都有了 <code>0.0</code>、<code>2.0</code> 这样的值。</li>
@@ -426,6 +426,32 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
         <li>顺便把地址补进 <code>wincc-tag-mapping.csv</code> 对应行，下一次就不用再查。</li>
       </ol>
       <div class="note">真的找不到也不影响联调：这两个变量是真实传感器的原始值，仿真时一直是 0，画面上显示的液位和重量用的是 DB 里的“仿真值”。</div>
+    </div></li>
+
+    <li><div class="step-body">
+      <h3>设置 4 个起始值：不设好，灌装线会卡住</h3>
+      <p>WinCC 主画面 <code>罐装.Pdl</code> 上<b>没有任何控件</b>能修改下面这 4 个变量，它们只能取 DB 里的<b>起始值</b>（PLC 启动时变量的初始值）。程序的逻辑决定了它们必须是这样：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>DB 里的变量</th><th>起始值设为</th><th>程序怎么用它（从项目里还原的梯形图）</th></tr></thead>
+          <tbody>
+            <tr><td><code>仿真数据.仿真开关</code></td><td><b><code>TRUE</code></b></td><td><code>02模拟量处理</code>：为 TRUE 时，<code>液位实际值</code> / <code>称重实际值</code> 取程序算出的仿真值；为 FALSE 时取模拟量模块的真实读数，仿真时一直是 0</td></tr>
+            <tr><td><code>设定数据.灌装液位</code></td><td><b><code>80</code></b>（1～95 之间都行）</td><td>灌装时仿真液位每 0.1 秒加 1，<b>最高只到 95</b>；<code>液位实际值 ≥ 灌装液位</code> 才算灌满、抬起灌装头</td></tr>
+            <tr><td><code>设定数据.称重质量上限</code></td><td><b><code>180.0</code></b></td><td>正常瓶子的仿真重量是 150，“超重”按钮把它改成 200；<code>重量 ≥ 上限</code> 时亮“有杂物指示灯”</td></tr>
+            <tr><td><code>设定数据.称重质量下限</code></td><td><b><code>130.0</code></b></td><td>“质量过低”按钮把重量改成 120；<code>重量 ≤ 下限</code> 时亮“瓶子异常示灯”</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ol>
+        <li>双击打开 <code>DB [DB1]</code>，展开 <code>仿真数据</code>、<code>设定数据</code>。</li>
+        <li>在 <b>起始值</b> 列里按上表填写（看不到这一列：列标题上右键，把“起始值”显示出来）。</li>
+        <li><code>Ctrl + S</code> 保存，右键 DB → <b>编译</b>。</li>
+      </ol>
+      <div class="why">
+        <b class="k">为什么最容易卡在“灌装”</b>
+        <p>假设 <code>仿真开关</code> 是 FALSE：液位实际值一直是 0，永远达不到设定值，灌装头就一直压在瓶子上不抬起，传送带也不会再走。假设 <code>灌装液位</code> 设成 100：仿真液位涨到 95 就不涨了，同样永远灌不满。这两种情况画面看上去都是“液位涨到一半不动了”，所以先把起始值设对。</p>
+      </div>
+      <div class="note">起始值只在 DB <b>重新初始化</b>时才会写进 PLC。本阶段改了优化访问，下载时博图会提示要重新初始化 DB，正好把这些起始值一起带进去。以后 PLCSIM 运行中想临时改，在博图里监视 DB，右键变量 → <b>修改操作数</b> 即可。</div>
     </div></li>
 
     <li><div class="step-body">
@@ -475,6 +501,7 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:v
             <tr><td>停止模块</td><td><code>全部停止</code>，下载时 PLC 要先停下来</td></tr>
             <tr><td>设备组态 / 硬件配置</td><td><code>下载到设备</code></td></tr>
             <tr><td>软件</td><td><code>下载到设备</code> 或 <code>一致性下载</code></td></tr>
+            <tr><td>数据块 <code>DB</code>（提示结构已更改）</td><td><code>重新初始化</code>。改了优化访问后 DB 的布局变了，必须重新初始化，起始值也是这时写进去的</td></tr>
           </tbody>
         </table>
       </div>
@@ -956,10 +983,10 @@ T_流程       [   0   ]
       <h3>双向改值：地址是否正确</h3>
       <p>博图打开 DB → 点 <b>全部监视</b>（眼镜图标）。</p>
       <ul>
-        <li><b>PLC → WinCC</b>：博图里展开 <code>设定数据</code>，右键 <code>灌装液位</code> → <b>修改操作数</b>，改成 <code>123</code>，画面上 <code>T_灌装液位</code> 的 I/O 域 1 秒内跟着变。<code>称重质量下限</code> 改成 <code>12.5</code> 同样测一次。</li>
-        <li><b>WinCC → PLC</b>：在 <code>T_灌装液位</code> 的 I/O 域里输入 <code>456</code> 并<b>按回车</b>，博图监视值跟着变；按住 <code>T_启动</code> 按钮，<code>HMI按键.启动</code> 变 TRUE，松开变 FALSE。<code>T_流程</code> 只看能不能显示出和博图一致的步号。</li>
+        <li><b>PLC → WinCC</b>：博图里展开 <code>设定数据</code>，右键 <code>灌装液位</code> → <b>修改操作数</b>，改成 <code>60</code>，画面上 <code>T_灌装液位</code> 的 I/O 域 1 秒内跟着变。<code>称重质量下限</code> 改成 <code>125.5</code>，<code>T_称重下限</code> 应显示 <code>125.50</code>。</li>
+        <li><b>WinCC → PLC</b>：在 <code>T_灌装液位</code> 的 I/O 域里输入 <code>70</code> 并<b>按回车</b>，博图监视值跟着变；按住 <code>T_启动</code> 按钮，<code>HMI按键.启动</code> 变 TRUE，松开变 FALSE。按下的同时整条线就启动了（运行指示灯 <code>Q0.0</code> 置位，传送带开始走），这是正常的；<code>T_流程</code> 会随着瓶子到达各工位在 0～7 之间变化，和博图监视值一致即可。</li>
       </ul>
-      <div class="note">改值前先记下 <code>灌装液位</code>、<code>称重质量下限</code> 原来的监视值，测完改回去。这两个是工艺参数，留着 456 这种测试值，第八阶段的灌装动画和称重判断会不正常。</div>
+      <div class="note">测完把 <code>灌装液位</code> 改回 <code>80</code>、<code>称重质量下限</code> 改回 <code>130.0</code>（就是第一阶段设的起始值）。灌装液位必须在 1～95 之间，否则第八阶段灌装工位会卡住，原因见第一阶段“设置 4 个起始值”。</div>
       <div class="tbl">
         <table>
           <thead><tr><th>现象</th><th>说明</th></tr></thead>
@@ -1030,6 +1057,7 @@ T_流程       [   0   ]
         <li>Excel 复制“新地址”列 → WinCC 里单击第一行的<b>地址</b>单元格 → <code>Ctrl + V</code>。</li>
         <li>抽查几行：名称、类型、地址三者是否属于同一个变量，特别是浮点数和二进制变量。</li>
       </ol>
+      <div class="warn"><b>I/Q 地址的写法要和你的 WinCC 一致：</b>对照表里输入写成 <code>I0.2</code>、输出写成 <code>Q1.1</code>（英文助记符）。第五阶段建测试变量时如果看到 WinCC 把输入显示成 <code>E</code>、输出显示成 <code>A</code>（德文助记符），粘贴前先在 Excel 里把 I/Q 地址替换成 E/A 写法，否则这 33 个 I/Q 变量会粘不进去或地址被拒绝。DB 地址两种设置下写法相同。</div>
       <div class="warn"><b>一定要先粘数据类型，再粘地址：</b>地址的写法依赖数据类型。比如 <code>DB1,DBD76</code> 只有在类型是 32 位时才合法，类型还是默认值时粘进去可能被拒绝或被改写。</div>
       <div class="note">粘贴失败或者某一列粘不进去：先在 WinCC 里手工建好一个变量，选中整行复制，粘到 Excel 里看它的列顺序和写法，把 Excel 数据照这个格式整理后再整行粘回去。实在不行就逐个手工建，69 个大约半小时。</div>
     </div></li>
@@ -1052,7 +1080,7 @@ T_流程       [   0   ]
       </div>
       <ul>
         <li><b>输入字的地址怎么填</b>：地址窗口里“数据区域”选 <b>输入</b>（不是 DB），寻址选 <b>字</b>，起始地址填 30。确定后显示为 <code>IW30</code>；德文助记符设置下显示为 <code>EW30</code>，意思一样。</li>
-        <li><b>为什么“罐装1质量”建成内部变量</b>：它是早期有两个灌装工位时留下的，博图里对应的变量已经删了。建成同名内部变量，引用它的画面控件就不会报错，只是不再和 PLC 交换数据。想知道它在画面哪里用到，项目管理器里打开 <b>交叉索引</b>，搜这个名字就能看到。如果它其实是一个设定值输入框，也可以改到 PLC_1214C 下，指向 <code>称重质量上限</code>（<code>DB1,DBD50</code>）或 <code>称重质量下限</code>（<code>DB1,DBD54</code>），按画面上的文字判断。</li>
+        <li><b>为什么“罐装1质量”建成内部变量</b>：它是早期有两个灌装工位时留下的，博图里对应的变量已经删了。建成同名内部变量，引用它的画面控件就不会报错，只是不再和 PLC 交换数据。核对过画面文件：主画面 <code>罐装.Pdl</code> 和旧画面 <code>罐装1.Pdl</code> 都没有引用它，所以它不影响运行，建成内部变量只是为了和原项目保持 76 个一致，跳过不建也可以。</li>
       </ul>
     </div></li>
 
@@ -1106,30 +1134,60 @@ T_流程       [   0   ]
 
     <li><div class="step-body">
       <h3>按“启动”，看灌装线动起来</h3>
-      <p>点画面上的 <b>启动</b> 按钮，同时在博图里监视 <code>DB</code>，正常的现象依次是：</p>
-      <ul>
-        <li><b>运行指示灯</b>（Q0.0）亮，<code>状态.流程</code> 开始变化（每个步号对应哪个工位，以 <code>04流程</code> 为准）。</li>
-        <li>传送带皮带轮转起来（七张 <code>motor0x.png</code> 轮流切换），瓶子开始向右移动，<code>仿真数据.罐子.X</code> 在涨。</li>
-        <li>瓶子到达称重吹气工位后停下，吹气气缸下移再缩回，<code>状态.完成吹气</code> 置 1，流程步号加 1。</li>
-        <li>后面的灌装（液位上涨）、拧盖（盖子出现）、标签、热缩、清洗、消毒依次进行，各自的进度值从 0 涨到目标值。</li>
-      </ul>
-      <p>能完整走完一轮，博图程序和 WinCC 画面就彻底连起来了。</p>
+      <p>点画面上的 <b>启动</b> 按钮。下面的每一步都是从项目里还原出的梯形图逻辑，可以一边看画面、一边在博图里监视 <code>DB</code> 对照：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>阶段</th><th>画面上看到的</th><th>程序里发生了什么</th><th><code>状态.流程</code></th></tr></thead>
+          <tbody>
+            <tr><td>启动</td><td>运行指示灯亮，瓶子开始向右走</td><td><code>01系统启停</code> 的 SR 触发器把 <code>运行指示灯</code>（Q0.0）置 1；传送带运行时 <code>罐子.X</code> 每 0.1 秒加 5</td><td>0</td></tr>
+            <tr><td>称重吹气</td><td>瓶子在 X=150 停下，吹气头下压、吹气、抬起</td><td><code>罐子.X = 150</code> 触发“到达称重吹气位置”；吹气气缸行程 0→26，到下限位开吹气阀门；<code>吹气延时</code> 定时器到时后缩回，回到上限位置位 <code>完成吹气</code></td><td>1（吹气阀门开着时）</td></tr>
+            <tr><td>灌装</td><td>X=340 停下，灌装头下压，液位上涨到 80 后抬起</td><td>灌装气缸行程 0→50；灌装阀门开着时液位每 0.1 秒加 1，<code>液位实际值 ≥ 灌装液位</code> 后缩回</td><td>2</td></tr>
+            <tr><td>拧盖</td><td>X=530 停下，拧盖头下压，盖子出现</td><td>拧盖气缸行程 0→40，拧盖电机转，进度每 0.1 秒加 4，到 100 后缩回</td><td>3</td></tr>
+            <tr><td>换到第二排</td><td>瓶子回到左边、下移一排</td><td><code>罐子.X ≥ 590</code> 时 X 清零，<code>罐子.Y</code> 加 200</td><td>0</td></tr>
+            <tr><td>标签投放</td><td>第二排 X=150 停下，标签落到瓶身上（大标）</td><td><code>标签Y辅助</code> 每 0.1 秒加 5，到 70；定时器到时置位 <code>标签投放完毕</code></td><td>4</td></tr>
+            <tr><td>包装热缩</td><td>X=250 停下，大标变小标</td><td>热缩进度每 0.1 秒加 5 到 100</td><td>5</td></tr>
+            <tr><td>清洗</td><td>X=400 停下</td><td>清洗进度加到 100</td><td>6</td></tr>
+            <tr><td>消毒</td><td>X=530 停下</td><td>消毒进度加到 100</td><td>7</td></tr>
+            <tr><td>下一个瓶子</td><td>瓶子回到第一排最左边，重新开始</td><td>第二排走到头后 <code>罐子.Y</code> 超过 200，X、Y 都清零</td><td>0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="why">
+        <b class="k">“到位传感器”是程序自己算出来的</b>
+        <p>这个项目没有真实传感器。<code>03自动控制部分</code> 的第 7 个网络用比较指令代替传感器，例如 <code>罐子.Y = 0 且 罐子.X = 150</code> 时把 <code>到达称重吹气位置</code>（I0.2）置 1；气缸行程到 0 就是上限位，到最大值就是下限位。PLC 里其余的逻辑和接真实设备时完全一样，这是教学项目常用的“程序内仿真”写法。</p>
+      </div>
+      <p>能完整走完一轮（<code>状态.流程</code> 依次出现过 1～7，最后回到 0），博图程序和 WinCC 画面就彻底连起来了。</p>
+      <div class="note">停止：按 <b>停止</b>，运行指示灯灭，传送带和各工位的阀门、电机都停下，已经压下的气缸会自动抬回原位；再按 <b>启动</b> 继续。按 <b>复位</b> 会把瓶子位置、各工序进度、完成标志全部清零，并同时停机。</div>
     </div></li>
 
     <li><div class="step-body">
-      <h3>流程卡住时怎么查</h3>
-      <p>在博图里监视 <code>状态.流程</code>，看它停在哪一步，再看这一步在等什么：</p>
-      <ul>
-        <li><b>一直是 0</b>：启动信号没进去。监视 <code>HMI按键.启动</code>，按下按钮时是否变 TRUE；也检查 <code>HMI按键.停止</code> 是不是一直为 TRUE（停止常被写成常闭逻辑）。</li>
-        <li><b>动画不动，但步号在变</b>：检查 <code>仿真数据.仿真开关</code> 是否为 TRUE。它控制程序是否计算仿真数据，在博图里右键 → 修改为 TRUE 试试。</li>
-        <li><b>停在某个工位不走</b>：打开 <code>04流程</code> 看这一步的转移条件。如果条件是 <code>到达灌装位置</code>、<code>灌装气缸下限位</code> 这类<b>真实输入</b>，仿真时没有传感器，它们永远是 0。这时要在 PLCSIM 里手动给输入置位：PLCSIM 小窗口点右上角切换到<b>项目视图</b> → 新建 <b>SIM 表</b> → 填地址（如 <code>%I0.3</code>）→ 勾选“修改”列的方框，就能模拟传感器动作。</li>
-      </ul>
-      <div class="note">到位信号到底来自真实输入还是仿真坐标，从项目文件里读不出来（见 <a href="./canned-project-analysis.html#prog">灌装项目拆解</a>），以 <code>04流程</code> 的实际程序为准。</div>
+      <h3>卡住时怎么查</h3>
+      <p>在博图里监视 <code>DB</code>，按现象对照：</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>现象</th><th>原因</th><th>处理</th></tr></thead>
+          <tbody>
+            <tr><td>按启动后运行指示灯不亮</td><td>启动信号没进 PLC，或停止 / 复位信号一直是 1（SR 触发器复位优先）</td><td>监视 <code>HMI按键.启动</code>，按下时是否变 TRUE；<code>HMI按键.停止</code>、<code>HMI按键.复位</code> 平时应为 FALSE。不对就回到第七阶段核对这三个变量的地址</td></tr>
+            <tr><td>指示灯亮了，瓶子不动</td><td>画面没收到 <code>罐子.X</code>，或时钟存储器没启用</td><td>博图里看 <code>罐子.X</code> 在不在涨：在涨说明是画面问题，检查 <code>DB_仿真数据_罐子_X</code> 的地址；不涨就到 CPU 属性 → <b>系统和时钟存储器</b>，确认启用了时钟存储器字节 <code>MB0</code> 和系统存储器字节 <code>MB1</code>，改完连同硬件配置重新下载</td></tr>
+            <tr><td>瓶子经过工位<b>不停</b>，一直走</td><td>程序写进 I0.2 等输入点的“到位信号”被 PLCSIM 每个周期的输入刷新覆盖了</td><td>博图打开 <code>03自动控制部分</code>，把第 7 个网络（一组比较指令写 <code>到达…位置</code> 和各限位）拖到第 1 个网络之前，编译下载。这样同一个扫描周期里先算到位信号、再用它，不再受输入刷新的影响</td></tr>
+            <tr><td>停在<b>灌装</b>，液位涨到一半（≤ 95）不动</td><td><code>仿真开关</code> 是 FALSE，或 <code>灌装液位</code> 大于 95</td><td>把 <code>仿真开关</code> 改为 TRUE、<code>灌装液位</code> 改为 80（第一阶段“设置 4 个起始值”）</td></tr>
+            <tr><td>停在<b>称重吹气</b>，吹气头不下压</td><td>“仿真瓶子质量过低 / 超重”按钮处于按下状态。程序设计就是重量异常时不吹气、不放行</td><td>再点一次那个按钮，取消仿真异常</td></tr>
+            <tr><td>停在某个工位，气缸压下后不抬起</td><td>该工位的“缩回”条件没满足：灌装看液位，拧盖看进度到 100，吹气、标签、热缩、清洗、消毒看定时器</td><td>监视对应的进度值和 <code>状态.xxx缩回</code> / <code>xxx完毕</code>，看卡在哪个条件</td></tr>
+            <tr><td>画面上的东西不动，但博图里数值在变</td><td>画面那一侧的变量地址错了</td><td>用第五阶段的方法单独测这个变量；回到第七阶段核对名称和地址</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div></li>
 
     <li><div class="step-body">
       <h3>测试异常分支</h3>
-      <p>点画面上的 <b>仿真瓶子质量过低</b>（或<b>超重</b>）按钮，下一个瓶子称重时重量超出上下限，<b>瓶子异常示灯</b>（Q2.2）亮；画面上有报警窗口的话，会出现对应的报警条目。再点一次按钮关闭仿真异常，按 <b>复位</b> 清除。</p>
+      <ol>
+        <li>点画面上的 <b>仿真瓶子质量过低</b> 按钮（再点一次取消，按钮颜色会变化）。</li>
+        <li>下一个瓶子到达称重吹气工位时，程序把 <code>称重仿真值</code> 设成 120，低于下限 130：<b>瓶子异常示灯</b>（Q2.2）亮，吹气头不下压，瓶子停在这里不放行。</li>
+        <li>再点一次按钮取消，重量恢复为 150，吹气继续，流程往下走。</li>
+        <li><b>仿真瓶子质量超重</b> 同理：重量变成 200，高于上限 180，亮 <b>有杂物指示灯</b>（Q2.3）。</li>
+      </ol>
+      <div class="note">主画面 <code>罐装.Pdl</code> 上没有这两盏指示灯（旧版 <code>罐装1.Pdl</code> 上有），所以在画面上只能看到瓶子被卡住。要看指示灯，在博图里监视 <code>Q2.2</code>、<code>Q2.3</code>，或者在画面上加两个圆形对象，把背景色动态化绑定到 <code>瓶子异常示灯</code>、<code>有杂物指示灯</code>。</div>
     </div></li>
   </ol>
 </section>
@@ -1170,7 +1228,7 @@ T_流程       [   0   ]
         <tr><td class="sym">数值乱跳或明显不对</td><td>地址偏移量写错，或数据类型不匹配（比如 Real 建成了整数）</td><td>对照博图 DB 偏移量列逐个核对地址和类型</td></tr>
         <tr><td class="sym">迁移后个别控件显示 ####</td><td>新变量名和画面引用的名字不完全一致（多了空格、全角半角不同），或者该变量漏建</td><td>交叉索引里搜控件引用的名字，对照变量表改名或补建</td></tr>
         <tr><td class="sym">到达灌装位置那两盏灯永远不亮</td><td>画面还引用着不存在的 <code>到达灌装位置1</code> / <code>2</code></td><td>按第八阶段第 01 步改成 <code>到达灌装位置</code></td></tr>
-        <tr><td class="sym">按启动后流程不走，或停在某一步</td><td>启动 / 停止信号逻辑、仿真开关没开、程序在等真实传感器输入</td><td>按第八阶段“流程卡住时怎么查”逐项排查，必要时用 PLCSIM 的 SIM 表给输入置位</td></tr>
+        <tr><td class="sym">按启动后不动，或停在某个工位</td><td>启停信号地址错、仿真开关为 FALSE、灌装液位大于 95、仿真异常按钮处于按下状态、到位信号被输入刷新覆盖</td><td>按第八阶段“卡住时怎么查”的表格逐项对照</td></tr>
         <tr><td class="sym">WinCC 运行一段时间自动退出</td><td>没有运行系统授权，处于演示模式</td><td>在 Automation License Manager 里检查授权，或安装试用授权</td></tr>
         <tr><td class="sym">WinCC 无法激活或驱动加载失败</td><td>WinCC V7.5 官方主要支持 Windows 10，在 Windows 11 上可能有兼容问题</td><td>确认已打 SP 更新；仍有问题时，把整套软件装进 Windows 10 虚拟机</td></tr>
       </tbody>
@@ -1192,6 +1250,7 @@ T_流程       [   0   ]
     <li><span>PLC 访问级别为完全访问，已勾 PUT/GET，IP 为 192.168.0.1</span></li>
     <li><span><code>"DB" [DB1]</code> 已取消“优化的块访问”，编号手动固定为 1</span></li>
     <li><span>抽查的偏移量和 <code>wincc-tag-mapping.csv</code> 一致；液位检测、称重检测的地址已查到</span></li>
+    <li><span>DB 起始值：仿真开关 TRUE、灌装液位 80、称重质量上限 180.0、下限 130.0；下载时 DB 已重新初始化</span></li>
     <li><span>硬件配置和程序都已下载到 PLCSIM，PLCSIM 处于 RUN</span></li>
     <li class="h"><h3>网络与 NetToPLCsim</h3></li>
     <li><span>环回网卡 IP 为 192.168.0.10，与真实网卡不在同一网段</span></li>
